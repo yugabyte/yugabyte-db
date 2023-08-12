@@ -108,16 +108,36 @@ DEFINE_test_flag(bool, exit_unfinished_deleting, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
+DEFINE_test_flag(
+    bool, xcluster_fail_create_consumer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, test failure to create snapshot on consumer.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
 
+// This macro assumes the existence of local variables: cdc_rpc_tasks, bootstrap_ids,
+// old_snapshot_id, and new_snapshot_id.
+#define CLEANUP_AND_RETURN_IF_NOT_OK(s, state) \
+  do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      CleanupSetupReplicationWithBootstrap( \
+          cdc_rpc_tasks, (state), bootstrap_ids, old_snapshot_id, new_snapshot_id); \
+      return MoveStatus(std::move(_s)); \
+    } \
+  } while (false)
+
+#define VERIFY_RESULT_AND_CLEANUP(expr, state) \
+  RESULT_CHECKER_HELPER(expr, CLEANUP_AND_RETURN_IF_NOT_OK(__result, (state)))
+
 namespace yb {
 using client::internal::RemoteTabletServer;
 
 namespace master {
+using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
 
 ////////////////////////////////////////////////////////////
 // CDC Stream Loader
@@ -529,7 +549,7 @@ void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>*
 }
 
 Status CatalogManager::BackfillMetadataForCDC(
-    scoped_refptr<TableInfo> table, rpc::RpcContext* rpc) {
+    scoped_refptr<TableInfo> table, const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
   TableId table_id;
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
@@ -595,7 +615,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     // consumption because the former is generally done manually.
     alter_table_req_pg_type.mutable_table()->set_table_id(table_id);
     AlterTableResponsePB alter_table_resp_pg_type;
-    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc);
+    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc, epoch);
   } else {
     LOG_WITH_FUNC(INFO)
         << "found pgschema_name and pg_type_oid, no backfilling required for table id: "
@@ -605,7 +625,8 @@ Status CatalogManager::BackfillMetadataForCDC(
 }
 
 Status CatalogManager::CreateCDCStream(
-    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc) << ": " << req->ShortDebugString();
   std::string id_type_option_value(cdc::kTableId);
 
@@ -631,14 +652,14 @@ Status CatalogManager::CreateCDCStream(
     alter_table_req.mutable_table()->set_table_id(req->table_id());
     alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
     AlterTableResponsePB alter_table_resp;
-    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc);
+    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc, epoch);
     if (!s.ok()) {
       return STATUS(
           InternalError, "Unable to change the WAL retention time for table", req->table_id(),
           MasterError(MasterErrorPB::INTERNAL_ERROR));
     }
 
-    Status status = BackfillMetadataForCDC(table, rpc);
+    Status status = BackfillMetadataForCDC(table, epoch, rpc);
     if (!status.ok()) {
       return STATUS(
           InternalError, "Unable to backfill pgschema_name and/or pg_type_oid", req->table_id(),
@@ -647,7 +668,7 @@ Status CatalogManager::CreateCDCStream(
   }
 
   if (!req->has_db_stream_id()) {
-    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc));
+    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc, epoch));
   } else {
     // Update and add table_id.
     RETURN_NOT_OK(AddTableIdToCDCStream(*req));
@@ -661,7 +682,7 @@ Status CatalogManager::CreateCDCStream(
 
 Status CatalogManager::CreateNewCDCStream(
     const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
-    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   scoped_refptr<CDCStreamInfo> stream;
   {
     TRACE("Acquired catalog manager lock");
@@ -708,7 +729,8 @@ Status CatalogManager::CreateNewCDCStream(
   CreateTableResponsePB table_resp;
   RETURN_NOT_OK(CreateTableIfNotFound(
       cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
-      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr));
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
+      epoch));
   TRACE("Created CDC state table");
 
   // Skip if disable_cdc_state_insert_on_setup is set.
@@ -1222,8 +1244,8 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
 
   // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
   auto writer = sys_catalog_->NewWriter(leader_ready_term());
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->SyncWrite(writer.get()), "Cleaning CDC streams from system catalog"));
   LOG(INFO) << "Successfully cleaned up the streams " << JoinStreamsCSVLine(streams_to_delete)
@@ -1812,13 +1834,10 @@ Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
   return Status::OK();
 }
 
-Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
-    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
-    SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc) {
-  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
-            << req->DebugString();
-
-  // Sanity checking section.
+Result<std::shared_ptr<CDCRpcTasks>>
+CatalogManager::SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req) {
+  // PHASE 1: Validating user input.
   SCHECK(
       !req->replication_id().empty(), InvalidArgument, "Replication ID must be provided",
       req->ShortDebugString());
@@ -1843,15 +1862,152 @@ Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
   std::vector<HostPort> hp;
   HostPortsFromPBs(req->producer_master_addresses(), &hp);
   std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
+  return CDCRpcTasks::CreateWithMasterAddrs(replication_id, master_addrs);
+}
+
+Result<std::vector<TableMetaPB>>
+CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks,
+    const LeaderEpoch& epoch,
+    std::vector<client::YBTableName>* tables,
+    TxnSnapshotId* old_snapshot_id,
+    TxnSnapshotId* new_snapshot_id,
+    SetupReplicationWithBootstrapStatePB* state,
+    rpc::RpcContext* rpc) {
+  // Create snapshot on producer.
+  *state = SetupReplicationWithBootstrapStatePB::CREATE_PRODUCER_SNAPSHOT;
+  auto snapshot = VERIFY_RESULT(cdc_rpc_tasks->CreateSnapshot(*tables, old_snapshot_id));
+
+  // Import snapshot.
+  *state = SetupReplicationWithBootstrapStatePB::IMPORT_SNAPSHOT;
+  ImportSnapshotMetaRequestPB import_req;
+  ImportSnapshotMetaResponsePB import_resp;
+  import_req.mutable_snapshot()->CopyFrom(snapshot);
+  RETURN_NOT_OK(ImportSnapshotMeta(&import_req, &import_resp, rpc, epoch));
+
+  // Create snapshot on consumer.
+  *state = SetupReplicationWithBootstrapStatePB::CREATE_CONSUMER_SNAPSHOT;
+  const auto& tables_meta = import_resp.tables_meta();
+  CreateSnapshotRequestPB snapshot_req;
+  CreateSnapshotResponsePB snapshot_resp;
+
+  for (const auto& table_meta : tables_meta) {
+    SCHECK(
+        ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type()), InternalError,
+        Format("Found unknown table type: $0", table_meta.table_type()));
+
+    const string& new_table_id = table_meta.table_ids().new_id();
+    RETURN_NOT_OK(WaitForCreateTableToFinish(new_table_id, rpc->GetClientDeadline()));
+
+    snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
+  }
+
+  snapshot_req.set_add_indexes(false);
+  snapshot_req.set_transaction_aware(true);
+  snapshot_req.set_imported(true);
+  auto s = CreateSnapshot(&snapshot_req, &snapshot_resp, rpc, epoch);
+  if (snapshot_resp.has_snapshot_id())
+    *new_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id());
+  if (!s.ok()) return s;
+
+  return std::vector<TableMetaPB>(tables_meta.begin(), tables_meta.end());
+}
+
+void CatalogManager::CleanupSetupReplicationWithBootstrap(
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_task,
+    const SetupReplicationWithBootstrapStatePB& state,
+    const std::vector<xrepl::StreamId>& bootstrap_ids,
+    const TxnSnapshotId& old_snapshot_id,
+    const TxnSnapshotId& new_snapshot_id) {
+  Status s;
+  switch (state) {
+    case SETUP_REPLICATION:
+      FALLTHROUGH_INTENDED;
+    case RESTORE_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case TRANSFER_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case CREATE_CONSUMER_SNAPSHOT: {
+      if (!new_snapshot_id.IsNil()) {
+        auto deadline = CoarseMonoClock::Now() + 30s;
+        s = snapshot_coordinator_.Delete(new_snapshot_id, leader_ready_term(), deadline);
+        if (!s.ok()) {
+          LOG(WARNING) << Format("Failed to delete snapshot on consumer on status: $0", s);
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case IMPORT_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case CREATE_PRODUCER_SNAPSHOT: {
+      if (!old_snapshot_id.IsNil()) {
+        DeleteSnapshotResponsePB resp;
+        s = cdc_rpc_task->client()->DeleteSnapshot(old_snapshot_id, &resp);
+        if (!s.ok()) {
+          LOG(WARNING) << Format(
+              "Failed to send delete snapshot request to producer on status: $0", s);
+        }
+        if (resp.has_error()) {
+          LOG(WARNING) << Format(
+              "Failed to delete snapshot on producer with error: $0", resp.error());
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case BOOTSTRAP_PRODUCER: {
+      DeleteCDCStreamResponsePB resp;
+      s = cdc_rpc_task->client()->DeleteCDCStream(
+          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+      if (!s.ok()) {
+        LOG(WARNING) << Format(
+            "Failed to send delete CDC streams request to producer on status: $0", s);
+      }
+      if (resp.has_error()) {
+        LOG(WARNING) << Format(
+            "Failed to delete CDC streams on producer with error: $0", resp.error());
+      }
+    }
+  }
+}
+
+/*
+ * SetupNamespaceReplicationWithBootstrap is setup in _ stages.
+ * 1. Validates user input & connect to producer.
+ * 2. Calls BootstrapProducer with all user tables in namespace.
+ * 3. Create snapshot on producer and import onto consumer.
+ * 4. TODO: Document remaining steps when completed.
+ */
+Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
+            << req->DebugString();
+
+  // PHASE 1: Validate request and connect to producer.
   auto cdc_rpc_tasks =
-      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_id, master_addrs));
+      VERIFY_RESULT(SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(req));
 
-  // TODO: Make this async.
+  // PHASE 2: BootstrapProducer
   auto tables = VERIFY_RESULT(cdc_rpc_tasks->client()->ListUserTables(req->producer_namespace()));
-
-  // TODO: these bootstrap IDs will be used later.
   auto table_bootstrap_ids =
       VERIFY_RESULT(cdc_rpc_tasks->BootstrapProducer(req->producer_namespace(), tables));
+  std::vector<xrepl::StreamId> bootstrap_ids;
+  for (const auto& [_, bootstrap_id] : table_bootstrap_ids) {
+    bootstrap_ids.push_back(bootstrap_id);
+  }
+
+  // PHASE 3: Snapshots.
+  TxnSnapshotId old_snapshot_id = TxnSnapshotId::Nil();
+  TxnSnapshotId new_snapshot_id = TxnSnapshotId::Nil();
+  SetupReplicationWithBootstrapStatePB state =
+      SetupReplicationWithBootstrapStatePB::BOOTSTRAP_PRODUCER;
+
+  auto tables_meta = VERIFY_RESULT_AND_CLEANUP(
+      SetupReplicationWithBootstrapCreateAndImportSnapshot(
+          cdc_rpc_tasks, epoch, &tables, &old_snapshot_id, &new_snapshot_id, &state, rpc),
+      state);
 
   return Status::OK();
 }
@@ -3019,7 +3175,7 @@ void CatalogManager::MergeUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(
+      auto s = w->Mutate<true>(
           QLWriteRequestPB::QL_STMT_UPDATE,
           original_universe.get(),
           universe.get(),
@@ -3561,8 +3717,8 @@ Status CatalogManager::UpdateProducerAddress(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
+      RETURN_NOT_OK(w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -3686,7 +3842,8 @@ Status CatalogManager::RemoveTablesFromReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
+      auto s = w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
       if (s.ok()) {
         s = sys_catalog_->SyncWrite(w.get());
       }
@@ -3878,9 +4035,9 @@ Status CatalogManager::RenameUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
+      RETURN_NOT_OK(w->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
       RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
+          w->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -5042,7 +5199,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
     size_t count_tablet_streams_to_delete = 0;
     size_t count_streams_already_deleted = 0;
-    vector<xrepl::StreamId> streams_where_parent_unpolled;
 
     for (const auto& stream_id : stream_ids) {
       // Check parent entry, if it doesn't exist, then it was already deleted.
@@ -5074,7 +5230,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
             (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
           VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
           count_tablet_streams_to_delete++;
-          streams_where_parent_unpolled.push_back(stream_id);
           continue;
         }
       }
@@ -5105,19 +5260,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
         // Also delete the parent tablet from cdc_state for all completed streams.
         entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
         count_tablet_streams_to_delete++;
-      }
-    }
-
-    // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
-    // yet, to prevent unnecessary retention of intents for the children tablets.
-    for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
-      for (const auto& stream_id : streams_where_parent_unpolled) {
-        cdc::CDCStateTableEntry entry(child_tablet_id, stream_id);
-        entry.checkpoint = OpId::Invalid();
-        entries_to_update.push_back(std::move(entry));
-        LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet_id << " in stream "
-                  << stream_id << " to -1.-1 ."
-                  << "Reason: Consumer has not started polling on these tablets yet";
       }
     }
 

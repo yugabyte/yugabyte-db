@@ -180,8 +180,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(table->Open(kTableName, client_.get()));
       tables_.push_back(std::move(table));
     }
-    std::shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(kSessionTimeout);
+    auto session = client_->NewSession(kSessionTimeout);
     sessions_[id] = session;
   }
 

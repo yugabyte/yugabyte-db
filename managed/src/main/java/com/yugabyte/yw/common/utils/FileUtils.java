@@ -202,4 +202,25 @@ public class FileUtils {
         .map(f -> f.getAbsolutePath())
         .collect(Collectors.toList());
   }
+
+  public static String computeHashForAFile(String content, int rSize)
+      throws NoSuchAlgorithmException {
+    MessageDigest md = MessageDigest.getInstance("SHA-256");
+    byte[] hashBytes = md.digest(content.getBytes(StandardCharsets.UTF_8));
+
+    StringBuilder hexString = new StringBuilder();
+    for (byte b : hashBytes) {
+      String hex = Integer.toHexString(0xff & b);
+      if (hex.length() == 1) {
+        hexString.append('0');
+      }
+      hexString.append(hex);
+    }
+
+    String hash = hexString.toString();
+    if (hash.length() < rSize) {
+      return hash;
+    }
+    return hexString.substring(0, rSize);
+  }
 }

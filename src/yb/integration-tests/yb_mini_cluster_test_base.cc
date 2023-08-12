@@ -121,8 +121,7 @@ void MiniClusterTestWithClient<T>::DoTearDown() {
 
 template <class T>
 client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
   return session;
 }
 

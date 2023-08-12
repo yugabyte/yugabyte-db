@@ -216,11 +216,7 @@ void HistogramImpl::Data(HistogramData * const data) const {
   data->sum = sum_;
   data->min = min();
   data->max = max();
-  data->median = Median();
-  data->percentile95 = Percentile(95);
-  data->percentile99 = Percentile(99);
   data->average = Average();
-  data->standard_deviation = StandardDeviation();
 }
 
 } // namespace rocksdb

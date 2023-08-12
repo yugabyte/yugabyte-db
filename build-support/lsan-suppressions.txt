@@ -47,3 +47,15 @@ leak:postmaster_strdup
 
 # https://github.com/yugabyte/yugabyte-db/issues/14745
 leak:ThreadSafeObjectPool
+
+# Regular expressions are allocated outside of a memory context. They have to be manually cleaned
+# up. When regular expressions are used in ysql_ident.conf, they are freed upon the reload of the
+# file but not upon the shutdown since all the memory allocated by the process is anyways going to
+# get freed. LSAN/ASAN reports it as a leak.
+# Starting PG 16 (future release as of 08/2023), regular expressions will also be allocated within a
+# memory context, so this suppression will not be needed.
+# Ref: https://github.com/postgres/postgres/commit/bea3d7e3831fa6a1395eadbad7d97cebc7aa8aee and
+# https://github.com/postgres/postgres/commit/a28269708844246fb1ec00a536b391cac0a64972.
+# We suppress leaks from parse_ident_line instead of pg_regcomp since pg_regcomp is a common 
+# function which is used in other areas of the code as well.
+leak:parse_ident_line

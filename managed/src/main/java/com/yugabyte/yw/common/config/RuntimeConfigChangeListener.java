@@ -10,6 +10,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 
 public interface RuntimeConfigChangeListener {
@@ -24,6 +25,10 @@ public interface RuntimeConfigChangeListener {
   }
 
   default void processUniverse(Universe universe) {
+    // Do nothing by default
+  }
+
+  default void processProvider(Provider provider) {
     // Do nothing by default
   }
 }

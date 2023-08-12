@@ -36,6 +36,7 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
@@ -108,17 +109,27 @@ service TabletServerService {
   // compatible with the schema provided in the request.
   rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
   returns (GetCompatibleSchemaVersionResponsePB);
+
+  rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
+      returns (StartRemoteSnapshotTransferResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
 // shouldn't be set together nor should be left empty together.
 message GetLockStatusRequestPB {
   message TransactionInfoPB {
-    repeated bytes transaction_ids = 1;
+    optional bytes id = 1;
+    optional SubtxnSetPB aborted = 2;
   }
-  // Tablets to scan. Limit per tablet results to the specified transaction_ids in TransactionInfoPB
-  // when non-empty. If empty, include lock info of all transactions at that tablet.
-  map<string, TransactionInfoPB> transactions_by_tablet = 1;
+
+  message TabletTransactionInfoPB {
+    repeated TransactionInfoPB transactions = 1;
+  }
+
+  // Tablets to scan. Limit per tablet results to the specified transaction_ids in
+  // TabletTransactionInfoPB when non-empty. If empty, include lock info of all transactions at that
+  // tablet.
+  map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
 
   optional bool include_trace = 2 [ default = false ];
 
@@ -423,5 +434,24 @@ message CancelTransactionRequestPB {
 
 message CancelTransactionResponsePB {
   // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+}
+
+message StartRemoteSnapshotTransferRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  required bytes tablet_id = 2;
+
+  required bytes snapshot_id = 3;
+
+  // Identification for the host we are bootstrapping from.
+  required bytes source_peer_uuid = 4;
+  repeated HostPortPB source_private_addr = 5;
+  repeated HostPortPB source_broadcast_addr = 6;
+  optional CloudInfoPB source_cloud_info = 7;
+}
+
+message StartRemoteSnapshotTransferResponsePB {
   optional TabletServerErrorPB error = 1;
 }

@@ -37,6 +37,8 @@ import type {
 
 export interface GetClusterActivitiesForQuery {
   activities: string;
+  status: string;
+  database?: string;
 }
 export interface GetClusterMetricForQuery {
   metrics: string;
@@ -76,6 +78,8 @@ export const getClusterActivitiesAxiosRequest = (
       method: 'GET',
       params: {
         activities: requestParameters['activities'],
+        status: requestParameters['status'],
+        database: requestParameters['database'],
       }
     },
     customAxiosInstance

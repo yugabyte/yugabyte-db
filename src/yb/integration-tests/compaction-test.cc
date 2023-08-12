@@ -1144,7 +1144,7 @@ TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsDelete) {
       LOG(INFO) << num_rows << " rows written to single tablet. "
           << rows_to_delete << " rows will be deleted";
       // Delete a large number of the rows, starting with id = 0 and going sequentially.
-      std::shared_ptr<client::YBSession> session = client_->NewSession();
+      auto session = client_->NewSession(60s);
       client::TableHandle table;
       RETURN_NOT_OK(table.Open(workload_->table_name(), client_.get()));
       std::vector<client::YBOperationPtr> ops;

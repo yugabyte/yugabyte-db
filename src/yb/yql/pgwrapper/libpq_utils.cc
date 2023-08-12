@@ -171,6 +171,9 @@ Result<T> GetValueImpl(PGresult* result, int row, int column) {
         VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint64_t))));
   } else if constexpr (std::is_same_v<T, std::string>) {
     return std::string(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+  } else if constexpr (std::is_same_v<T, Uuid>) {
+    return Uuid::FromSlice(
+        Slice(PQgetvalue(result, row, column), PQgetlength(result, row, column)));
   }
 }
 
@@ -597,6 +600,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
   constexpr Oid CSTRINGOID = 2275;
+  constexpr Oid UUIDOID = 2950;
 
   if (PQgetisnull(result, row, column)) {
     return "NULL";
@@ -624,6 +628,8 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:
       return yb::ToString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
+    case UUIDOID:
+      return yb::ToString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
     default:
       return Format("Type not supported: $0", type);
   }
@@ -680,13 +686,16 @@ std::string PqEscapeIdentifier(const std::string& input) {
 }
 
 bool HasTransactionError(const Status& status) {
+  // TODO: Refactor the function to check for specific error codes instead of checking multiple
+  // errors as few tests that shouldn't encounter a 40P01 would also get through on usage of a
+  // generic check. Refer https://github.com/yugabyte/yugabyte-db/issues/18478 for details.
   static const auto kExpectedErrors = {
-      "could not serialize access due to concurrent update",
-      "Transaction aborted:",
-      "expired or aborted by a conflict:",
-      "Unknown transaction, could be recently aborted:"
+      // ERRCODE_T_R_SERIALIZATION_FAILURE
+      "pgsql error 40001",
+      // ERRCODE_T_R_DEADLOCK_DETECTED
+      "pgsql error 40P01"
   };
-  return HasSubstring(status.message(), kExpectedErrors);
+  return HasSubstring(status.ToString(), kExpectedErrors);
 }
 
 bool IsRetryable(const Status& status) {
@@ -754,6 +763,7 @@ template GetValueResult<double> GetValue<double>(PGresult*, int, int);
 template GetValueResult<bool> GetValue<bool>(PGresult*, int, int);
 template GetValueResult<std::string> GetValue<std::string>(PGresult*, int, int);
 template GetValueResult<PGOid> GetValue<PGOid>(PGresult*, int, int);
+template GetValueResult<Uuid> GetValue<Uuid>(PGresult*, int, int);
 
 } // namespace pgwrapper
 } // namespace yb

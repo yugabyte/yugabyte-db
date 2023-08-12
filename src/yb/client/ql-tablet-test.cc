@@ -212,8 +212,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   YBSessionPtr CreateSession() {
-    auto session = client_->NewSession();
-    session->SetTimeout(15s);
+    auto session = client_->NewSession(15s);
     return session;
   }
 
@@ -957,8 +956,7 @@ TEST_F(QLTabletTest, LeaderChange) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, kNumTablets);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   // Write kValue1
   SetValue(session, kKey, kValue1, table);
@@ -1323,8 +1321,10 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
         complete = false;
         break;
       }
-      auto peer_history_cutoff =
-          peer->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      auto cutoff = peer->tablet()->RetentionPolicy()->GetRetentionDirective()
+          .history_cutoff;
+      ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+      auto peer_history_cutoff = cutoff.primary_cutoff_ht;
       committed = std::max(peer_history_cutoff, committed);
       auto min_allowed = std::min(peer->clock_ptr()->Now().AddMicroseconds(committed_delta_us),
                                   peer->tablet()->mvcc_manager()->LastReplicatedHybridTime());
@@ -1363,8 +1363,10 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(peers.size(), 1);
-    peer_committed[i] =
+    auto cutoff =
         peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+    peer_committed[i] = cutoff.primary_cutoff_ht;
     LOG(INFO) << "Peer: " << peers[0]->permanent_uuid() << ", index: " << i
               << ", committed: " << peer_committed[i];
     cluster_->mini_tablet_server(i)->Shutdown();
@@ -1387,8 +1389,10 @@ TEST_F(QLTabletTest, HistoryCutoff) {
         continue;
       }
       SCOPED_TRACE(Format("Peer: $0, index: $1", peers[0]->permanent_uuid(), i));
-      ASSERT_GE(peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff,
-                peer_committed[i]);
+      auto cutoff = peers[0]->tablet()->RetentionPolicy()->
+          GetRetentionDirective().history_cutoff;
+      ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+      ASSERT_GE(cutoff.primary_cutoff_ht, peer_committed[i]);
       break;
     }
     cluster_->mini_tablet_server(i)->Shutdown();
@@ -1560,8 +1564,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, /* num_tablets =*/1);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   LOG(INFO) << "Writing data...";
   int key = 0;
@@ -1626,8 +1629,7 @@ TEST_F(QLTabletTest, SlowPrepare) {
 
   const int kNumTablets = 1;
 
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);

@@ -254,7 +254,7 @@ class MasterPathHandlers {
   TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
-  std::vector<TabletInfoPtr> GetLeaderlessTablets();
+  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
 
   Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
       GetUnderReplicatedTablets();

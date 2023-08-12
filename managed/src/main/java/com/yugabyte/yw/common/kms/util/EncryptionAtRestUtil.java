@@ -350,6 +350,28 @@ public class EncryptionAtRestUtil {
             universeDetails.encryptionAtRestConfig = encryptionAtRestConfig;
             universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
                 encryptionAtRestConfig.opType.equals(OpType.ENABLE);
+            // Add the correct kms config UUID to universe details.
+            UUID universeDetailsKmsConfigUUID =
+                universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
+            KmsHistory lastActiveKmsHistory = getActiveKey(universeUUID);
+            if (universeDetailsKmsConfigUUID != null) {
+              LOG.info(
+                  "Setting kmsConfigUUID {} for universe {} in the "
+                      + "universe details from previous universe details.",
+                  universeDetailsKmsConfigUUID,
+                  universeUUID);
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID = universeDetailsKmsConfigUUID;
+            } else if (lastActiveKmsHistory != null) {
+              // This is a failsafe mechanism if by any chance if was not populated before due to
+              // some error.
+              LOG.info(
+                  "Setting kmsConfigUUID {} for universe {} in the "
+                      + "universe details from last active key.",
+                  lastActiveKmsHistory.getConfigUuid(),
+                  universeUUID);
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID =
+                  lastActiveKmsHistory.getConfigUuid();
+            }
             universe.setUniverseDetails(universeDetails);
             LOG.info(
                 "Successfully set EAR status {} for universe {} in the universe details.",

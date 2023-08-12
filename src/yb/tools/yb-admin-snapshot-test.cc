@@ -42,6 +42,7 @@
 
 DECLARE_string(certs_dir);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_create_table_with_empty_namespace_name);
 
 namespace yb {
 namespace tools {
@@ -724,6 +725,55 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
   ASSERT_NOK(RunAdminToolCommand(
       "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
       strings::Substitute("$0:3", c2z1)));
+}
+
+TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
+  // Start with a table missing its namespace_name (as if created before 2.3).
+  FLAGS_TEST_create_table_with_empty_namespace_name = true;
+  CreateTable(Transactional::kFalse);
+  FLAGS_TEST_create_table_with_empty_namespace_name = false;
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  // Create snapshot of default table that gets created.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  RpcController rpc;
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  auto snapshot_id = FullyDecodeTxnSnapshotId(resp.snapshots(0).id());
+  auto get_table_entry = [&]() -> Result<master::SysTablesEntryPB> {
+    for (auto& entry : resp.snapshots(0).entry().entries()) {
+      if (entry.type() == master::SysRowEntryType::TABLE) {
+        return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
+      }
+    }
+    return STATUS(NotFound, "Could not find TABLE entry");
+  };
+
+  // Old behaviour, snapshot doesn't have namespace_name.
+  master::SysTablesEntryPB table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_FALSE(table_meta.has_namespace_name());
+
+  // Delete snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("delete_snapshot", snapshot_id));
+
+  // Restart cluster, run namespace_name migration to populate the namespace_name field.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // Create a new snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  rpc.Reset();
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+
+  // Ensure that the namespace_name field is now populated.
+  table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_TRUE(table_meta.has_namespace_name());
+  ASSERT_EQ(table_meta.namespace_name(), keyspace);
 }
 
 }  // namespace tools

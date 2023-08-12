@@ -22,7 +22,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *command*: The operation to be performed. See [Commands](#commands) below.
+* *command*: The operation to be performed. See [Commands](#commands).
 * *flags*: The flags to be applied to the command. See [Flags](#flags).
 
 ### Online help

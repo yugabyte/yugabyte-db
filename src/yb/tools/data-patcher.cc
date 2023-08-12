@@ -704,11 +704,22 @@ Status ChangeTimeInWalDir(
           }
         } else if (replicate.has_history_cutoff()) {
           auto& state = *replicate.mutable_history_cutoff();
-          auto history_cutoff_ht = HybridTime(state.history_cutoff());
-          if (is_final_step) {
-            state.set_history_cutoff(VERIFY_RESULT(add_delta(history_cutoff_ht)));
-          } else {
-            delta_data.AddEarlyTime(history_cutoff_ht);
+          if (state.has_primary_cutoff_ht()) {
+            auto history_cutoff_ht = HybridTime(state.primary_cutoff_ht());
+            if (is_final_step) {
+              state.set_primary_cutoff_ht(VERIFY_RESULT(add_delta(history_cutoff_ht)));
+            } else {
+              delta_data.AddEarlyTime(history_cutoff_ht);
+            }
+          }
+          if (state.has_cotables_cutoff_ht()) {
+            auto history_cutoff_ht = HybridTime(state.cotables_cutoff_ht());
+            if (is_final_step) {
+              state.set_cotables_cutoff_ht(
+                  VERIFY_RESULT(add_delta(history_cutoff_ht)));
+            } else {
+              delta_data.AddEarlyTime(history_cutoff_ht);
+            }
           }
         }
         if (is_final_step) {
@@ -918,7 +929,9 @@ class ApplyPatch {
             RETURN_NOT_OK(patcher.UpdateFileSizes());
             docdb::ConsensusFrontier frontier;
             frontier.set_hybrid_time(HybridTime::kMin);
-            frontier.set_history_cutoff(HybridTime::FromMicros(kYugaByteMicrosecondEpoch));
+            frontier.set_history_cutoff_information(
+                { HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+                  HybridTime::FromMicros(kYugaByteMicrosecondEpoch) });
             RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
           } else {
             LOG(INFO) << "We did not see RocksDB CURRENT or MANIFEST-... files in "

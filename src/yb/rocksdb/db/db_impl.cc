@@ -6079,12 +6079,11 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
           auto frontier = mem->GetFrontier(type);
+          // Non-empty MemTable could have no (or stale) frontier if we've written to the MemTable,
+          // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
+          // under lock).
           if (frontier) {
             UserFrontier::Update(frontier.get(), type, &accumulated);
-          } else {
-            YB_LOG_EVERY_N_SECS(DFATAL, 5)
-                << db_options_.log_prefix << "[" << cfd->GetName()
-                << "] " << ToString(type) << " frontier is not initialized for non-empty MemTable";
           }
         }
       } else {

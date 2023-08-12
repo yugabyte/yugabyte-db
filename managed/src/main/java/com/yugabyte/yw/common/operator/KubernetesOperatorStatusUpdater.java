@@ -3,13 +3,19 @@
 package com.yugabyte.yw.common.operator;
 
 import com.yugabyte.yw.models.Universe;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.EventBuilder;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectReference;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.yugabyte.operator.v1alpha1.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -83,14 +89,10 @@ public class KubernetesOperatorStatusUpdater {
           LOG.error("YBUniverse {} no longer exists", universeName);
           return;
         }
+
         List<String> cqlEndpoints = Arrays.asList(u.getYQLServerAddresses().split(","));
         List<String> sqlEndpoints = Arrays.asList(u.getYSQLServerAddresses().split(","));
         YBUniverseStatus ybUniverseStatus = new YBUniverseStatus();
-        ybUniverseStatus.setUniverseStatus(status);
-        ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
-        ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
-
-        ybUniverseStatus.setUniverseStatus(status);
         ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
         ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
         LOG.info("Universe status is: {}", status);
@@ -100,13 +102,45 @@ public class KubernetesOperatorStatusUpdater {
             .resource(ybUniverse)
             .replaceStatus();
 
+        // Update Swamper Targets configMap
+        String configMapName = ybUniverse.getMetadata().getName() + "-prometheus-targets";
+        // TODO (@anijhawan) should call the swamperHelper target function but we are in static
+        // context here.
+        String swamperTargetFileName =
+            "/opt/yugabyte/prometheus/targets/yugabyte." + u.getUniverseUUID().toString() + ".json";
+        String namespace = ybUniverse.getMetadata().getNamespace();
+        try {
+          updateSwamperTargetConfigMap(configMapName, namespace, swamperTargetFileName);
+        } catch (IOException e) {
+          LOG.info("Got Exception in Creating Swamper Targets");
+        }
         doKubernetesEventUpdate(universeName, status);
-
       } else {
         LOG.info("No universe with that name found in map");
       }
     } catch (Exception e) {
       LOG.error("Failed to update status: ", e);
+    }
+  }
+
+  public static void updateSwamperTargetConfigMap(
+      String configMapName, String namespace, String fileName) throws IOException {
+    try (KubernetesClient kubernetesClient = new DefaultKubernetesClient()) {
+      String fileContent = new String(Files.readAllBytes(Paths.get(fileName)));
+
+      // Create a ConfigMap object and populate it with data
+      ConfigMap configMap = new ConfigMap();
+      configMap.setMetadata(new ObjectMeta());
+      configMap.getMetadata().setName(configMapName);
+      configMap.getMetadata().setNamespace(namespace);
+      configMap
+          .getData()
+          .put("targets.json", fileContent); // Add the file content as data to the ConfigMap
+
+      // Create or update the ConfigMap in Kubernetes
+      ConfigMap createdConfigMap =
+          kubernetesClient.configMaps().inNamespace(namespace).createOrReplace(configMap);
+      LOG.info("ConfigMap updated namespace {} configmap {}", namespace, configMapName);
     }
   }
 

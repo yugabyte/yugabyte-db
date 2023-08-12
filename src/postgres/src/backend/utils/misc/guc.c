@@ -215,6 +215,7 @@ extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
 
+static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
@@ -1044,6 +1045,17 @@ static struct config_bool ConfigureNamesBool[] =
 						 "REPEATABLE READ and READ COMMITTED.")
 		},
 		&yb_lock_pk_single_rpc,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If enabled, planner will force a preference of batched" 
+						" nested loop join plans over classic nested loop"
+						" join plans."),
+			NULL
+		},
+		&yb_prefer_bnl,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2164,6 +2176,19 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+
+	{
+		/* Intended for rolling upgrade scenarios; tied to an auto-flag. */
+		{"yb_enable_index_aggregate_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported index aggregate operations to DocDB."),
+			gettext_noop("This affects IndexScan, not IndexOnlyScan."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_index_aggregate_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
 		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
@@ -2270,6 +2295,17 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_is_client_ysqlconnmgr,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables YB cost model for Sequential and Index scans. "
+			              "This feature is currently in preview."),
+			NULL
+		},
+		&yb_enable_base_scans_cost_model,
 		false,
 		NULL, NULL, NULL
 	},
@@ -4923,7 +4959,7 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	  {
-		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+		{"yb_pg_batch_detection_mechanism", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
 			gettext_noop("The drivers use message protocol to communicate "
 						 "with PG. The driver does not inform PG in advance "
 						 "about a Batch execution. We need to identify a batch "
@@ -4941,7 +4977,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&yb_pg_batch_detection_mechanism,
 		DETECT_BY_PEEKING,
 		yb_pg_batch_detection_mechanism_options,
-		NULL, NULL, NULL
+		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 
 	/* End-of-list marker */
@@ -12164,6 +12200,12 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
+}
+
+static void
+assign_yb_pg_batch_detection_mechanism(int new_value, void *extra)
+{
+	yb_pg_batch_detection_mechanism = new_value;
 }
 
 static void

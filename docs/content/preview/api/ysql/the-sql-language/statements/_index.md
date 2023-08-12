@@ -3,7 +3,7 @@ title: SQL statements [YSQL]
 headerTitle: Categorized list of SQL statements
 linkTitle: SQL statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: statements
@@ -12,9 +12,7 @@ menu:
 aliases:
   - /preview/api/ysql/commands/
 type: indexpage
-cascade:
-  rightNav:
-    hideH4: true
+showRightNav: true
 ---
 
 The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by category.
@@ -81,12 +79,16 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 ## Data manipulation language (DML)
 
-| Statement | Description |
-| :-------- | :---------- |
-| [`DELETE`](dml_delete/) | Delete rows from a table |
-| [`INSERT`](dml_insert/) | Insert rows into a table |
-| [`SELECT`](dml_select/) | Select rows from a table |
-| [`UPDATE`](dml_update/) | Update rows in a table |
+| Statement                 | Description                               |
+| :------------------------ | :---------------------------------------- |
+| [`CLOSE`](dml_close/)     | Remove a cursor                           |
+| [`DECLARE`](dml_declare/) | Create a cursor                           |
+| [`DELETE`](dml_delete/)   | Delete rows from a table                  |
+| [`FETCH`](dml_fetch/)     | Fetch rows from a cursor                  |
+| [`INSERT`](dml_insert/)   | Insert rows into a table                  |
+| [`MOVE`](dml_move/)       | Move the current position within a cursor |
+| [`SELECT`](dml_select/)   | Select rows from a table                  |
+| [`UPDATE`](dml_update/)   | Update rows in a table                    |
 
 ## Data control language (DCL)
 

@@ -117,6 +117,7 @@ static const char *explain_get_index_name(Oid indexId);
 static void show_buffer_usage(ExplainState *es, const BufferUsage *usage);
 static void show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
+						double estimated_num_nexts, double estimated_num_seeks,
 						ExplainState *es);
 static void ExplainScanTarget(Scan *plan, ExplainState *es);
 static void ExplainModifyTarget(ModifyTable *plan, ExplainState *es);
@@ -141,6 +142,8 @@ static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void
 YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 									 const YbInstrumentation *instr);
+static void YbExplainDistinctPrefixLen(
+	int yb_distinct_prefixlen, ExplainState *es);
 
 typedef enum YbStatLabel
 {
@@ -1300,9 +1303,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		case T_IndexScan:
 			pname = sname = "Index Scan";
+			if (((IndexScan *) plan)->yb_distinct_prefixlen > 0)
+				pname = sname = "Distinct Index Scan";
 			break;
 		case T_IndexOnlyScan:
 			pname = sname = "Index Only Scan";
+			if (((IndexOnlyScan *) plan)->yb_distinct_prefixlen > 0)
+				pname = sname = "Distinct Index Only Scan";
 			break;
 		case T_BitmapIndexScan:
 			pname = sname = "Bitmap Index Scan";
@@ -1532,6 +1539,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
+										indexscan->estimated_num_nexts,
+										indexscan->estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexscan, es);
 			}
@@ -1542,6 +1551,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
+										indexonlyscan->estimated_num_nexts,
+										indexonlyscan->estimated_num_seeks,
 										es);
 				ExplainScanTarget((Scan *) indexonlyscan, es);
 			}
@@ -1765,6 +1776,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 */
 			show_scan_qual(((IndexScan *) plan)->indexorderbyorig,
 						   "Order By", planstate, ancestors, es);
+			/*
+			 * YB: Distinct prefix during Distinct Index Scan.
+			 * Shown after ORDER BY clause and before remote filters since
+			 * that's currently the order of operations in DocDB.
+			 */
+			YbExplainDistinctPrefixLen(
+				((IndexScan *) plan)->yb_distinct_prefixlen, es);
 			show_scan_qual(((IndexScan *) plan)->yb_idx_pushdown.quals,
 						   "Remote Index Filter", planstate, ancestors, es);
 			show_scan_qual(((IndexScan *) plan)->yb_rel_pushdown.quals,
@@ -1775,6 +1793,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
+			if (es->verbose && yb_enable_base_scans_cost_model)
+			{
+				ExplainPropertyFloat(
+					"Estimated Seeks", NULL, 
+					((IndexScan *) plan)->estimated_num_seeks, 0, es);
+				ExplainPropertyFloat(
+					"Estimated Nexts", NULL, 
+					((IndexScan *) plan)->estimated_num_nexts, 0, es);
+			}
 			break;
 		case T_IndexOnlyScan:
 			show_scan_qual(((IndexOnlyScan *) plan)->indexqual,
@@ -1784,6 +1811,13 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
 						   "Order By", planstate, ancestors, es);
+			/*
+			 * YB: Distinct prefix during HybridScan.
+			 * Shown after ORDER BY clause and before remote filters since
+			 * that's currently the order of operations in DocDB.
+			 */
+			YbExplainDistinctPrefixLen(
+				((IndexOnlyScan *) plan)->yb_distinct_prefixlen, es);
 			/*
 			 * Remote filter is applied first, so it is output first.
 			 */
@@ -1798,6 +1832,15 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
+			if (es->verbose && yb_enable_base_scans_cost_model)
+			{
+				ExplainPropertyFloat(
+					"Estimated Seeks", NULL, 
+					((IndexOnlyScan *) plan)->estimated_num_seeks, 0, es);
+				ExplainPropertyFloat(
+					"Estimated Nexts", NULL, 
+					((IndexOnlyScan *) plan)->estimated_num_nexts, 0, es);
+			}
 			break;
 		case T_BitmapIndexScan:
 			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
@@ -3200,7 +3243,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 {
 	YbInstrumentation *yb_instr = &planstate->instrument->yb_instr;
 	double nloops = planstate->instrument->nloops;
-	
+
 	/* Read stats */
 	double table_reads = yb_instr->tbl_reads.count / nloops;
 	double table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
@@ -3232,6 +3275,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
+						double estimated_num_nexts, double estimated_num_seeks,
 						ExplainState *es)
 {
 	const char *indexname = explain_get_index_name(indexid);
@@ -3263,6 +3307,11 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
+		if (yb_enable_base_scans_cost_model)
+		{
+			ExplainPropertyFloat("Estimated Seeks", NULL, estimated_num_seeks, 0, es);
+			ExplainPropertyFloat("Estimated Nexts", NULL, estimated_num_nexts, 0, es);
+		}
 	}
 }
 
@@ -4229,4 +4278,23 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 	// Storage Flushes
 	es->yb_stats.flush.count += yb_instr->write_flushes.count;
 	es->yb_stats.flush.wait_time += yb_instr->write_flushes.wait_time;
+}
+
+/*
+ * YB:
+ * Explain Output
+ * --------------
+ * Distinct Index Scan
+ *       ...
+ * 	 Distinct Prefix: <prefix length>
+ *       ...
+ *
+ * Adds Distinct Prefix to explain info
+ */
+static void
+YbExplainDistinctPrefixLen(int yb_distinct_prefixlen, ExplainState *es)
+{
+	if (yb_distinct_prefixlen > 0)
+		ExplainPropertyInteger(
+			"Distinct Prefix", NULL, yb_distinct_prefixlen, es);
 }

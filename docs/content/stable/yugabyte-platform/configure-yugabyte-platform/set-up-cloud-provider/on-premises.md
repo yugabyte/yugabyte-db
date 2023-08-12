@@ -192,7 +192,7 @@ This step is only required if you set **Manually Provision Nodes** to true and t
 
 You can manually provision each node using the preprovisioning Python script, as follows:
 
-1. Login to YugabyteDB Anywhere virtual machine via SSH.
+1. Log in to YugabyteDB Anywhere virtual machine via SSH.
 
 1. Access the Docker `yugaware` container, as follows:
 
@@ -270,7 +270,7 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
@@ -1025,7 +1025,7 @@ To completely eliminate all traces of YugabyteDB Anywhere and configuration, you
 
 You can remove YugabyteDB components and configuration from the database server nodes as follows:
 
-- Login to the server node as the `yugabyte` user.
+- Log in to the server node as the `yugabyte` user.
 
 - Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 

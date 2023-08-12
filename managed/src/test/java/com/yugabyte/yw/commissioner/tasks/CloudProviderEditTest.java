@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
@@ -117,6 +118,44 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         "GET",
         "/api/customers/" + defaultCustomer.getUuid() + "/providers/" + providerUUID,
         user.createAuthToken());
+  }
+
+  private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
+  private Result editRegionV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
+  private Result addRegion(UUID providerUUID, JsonNode regionJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/" + defaultCustomer.getUuid() + "/providers/" + providerUUID + "/regions",
+        user.createAuthToken(),
+        regionJson);
+  }
+
+  private Result addRegionV2(UUID providerUUID, JsonNode regionJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/providers/"
+            + providerUUID
+            + "/provider_regions",
+        user.createAuthToken(),
+        regionJson);
   }
 
   @Override
@@ -850,6 +889,131 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertEquals("new name", Provider.getOrBadRequest(provider.getUuid()).getName());
   }
 
+  @Test
+  public void testImageBundleEditViaProviderRegionAdd() throws InterruptedException {
+    Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    ImageBundle.create(awsProvider, "ib-1", details, true);
+
+    Result providerRes = getProvider(awsProvider.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    awsProvider = Json.fromJson(bodyJson, Provider.class);
+
+    // Add a region to the provider
+    awsProvider.getRegions().add(Json.fromJson(getAWSRegionJson(), Region.class));
+    UUID taskUUID = doEditProvider(awsProvider, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+    ImageBundle ib1 = awsProvider.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Edit an existing region.
+    Region region = Region.getByCode(awsProvider, "us-west-2");
+    region.getDetails().getCloudInfo().getAws().setYbImage("Updated YB Image");
+    List<Region> regions = ImmutableList.of(region);
+    awsProvider.setRegions(regions);
+    taskUUID = doEditProvider(awsProvider, false);
+    taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+    ib1 = awsProvider.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+    ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testImageBundleEditRegionAdd() {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    // Ensure adding a region updates the imageBundle
+    JsonNode regionBody = getAWSRegionJson();
+    Result region = addRegionV2(p.getUuid(), regionBody);
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(region));
+    Region cRegion = Json.fromJson(bodyJson, Region.class);
+
+    Result providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib1 = p.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Ensure editing a region updates the imageBundle.
+    cRegion.getDetails().getCloudInfo().getAws().setYbImage("Updated YB Image");
+    region = editRegionV2(p.getUuid(), cRegion.getUuid(), Json.toJson(cRegion));
+    providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ib1 = p.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    ImageBundleDetails.BundleInfo bInfo = bundleInfoMap.get(cRegion.getCode());
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testImageBundleEditRegionAddLegacyPayload() {
+    JsonNode vpcInfo = Json.parse("{\"us-west-2\": {\"zones\": {\"us-west-2a\": \"subnet-1\"}}}");
+    when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
+    Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(p, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setGlobalYbImage("yb_image");
+    ImageBundle.create(p, "ib-1", details, true);
+
+    // Ensure adding a region using legacy region updates the imageBundle (YBM)
+    JsonNode regionBody = getAWSRegionJsonLegacy();
+    Result region = addRegion(p.getUuid(), regionBody);
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(region));
+    Region cRegion = Json.fromJson(bodyJson, Region.class);
+
+    Result providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ImageBundle ib1 = p.getImageBundles().get(0);
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = ib1.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+
+    // Ensure editing a region using legacy region updates the imageBundle (YBM)
+    ObjectNode regionEditFormData = Json.newObject();
+    regionEditFormData.put("ybImage", "Updated YB Image");
+    regionEditFormData.put("securityGroupId", "securityGroupId");
+    regionEditFormData.put("vnetName", "vnetName");
+    region = editRegion(p.getUuid(), cRegion.getUuid(), regionEditFormData);
+    providerRes = getProvider(p.getUuid());
+    bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    ib1 = p.getImageBundles().get(0);
+    bundleInfoMap = ib1.getDetails().getRegions();
+    ImageBundleDetails.BundleInfo bInfo = bundleInfoMap.get(cRegion.getCode());
+    assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
   private Provider createK8sProvider() {
     return createK8sProvider(true);
   }
@@ -915,5 +1079,41 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   private void verifyEditError(Provider provider, boolean validate, String error) {
     Result result = assertPlatformException(() -> editProvider(provider, validate));
     assertBadRequest(result, error);
+  }
+
+  private JsonNode getAWSRegionJson() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "us-west-2");
+    bodyJson.put("name", "us-west-2");
+    ObjectNode cloudInfo = Json.newObject();
+    ObjectNode aws = Json.newObject();
+    aws.put("vnet", "vnet");
+    aws.put("securityGroupId", "securityGroupId");
+    aws.put("ybImage", "ybImage");
+    cloudInfo.set("aws", aws);
+
+    ObjectNode details = Json.newObject();
+    details.set("cloudInfo", cloudInfo);
+    bodyJson.set("details", details);
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "us-west-2a");
+    zone.put("code", "us-west-2a");
+    zone.put("subnet", "subnet");
+    zones.add(zone);
+    bodyJson.set("zones", zones);
+
+    return bodyJson;
+  }
+
+  private JsonNode getAWSRegionJsonLegacy() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "us-west-2");
+    bodyJson.put("name", "us-west-2");
+    bodyJson.put("ybImage", "ybImage");
+    bodyJson.put("securityGroupId", "securityGroupId");
+    bodyJson.put("vnetName", "vnetName");
+
+    return bodyJson;
   }
 }

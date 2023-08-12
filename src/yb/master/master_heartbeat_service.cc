@@ -148,7 +148,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
     if (req->has_tablet_report()) {
       s = server_->catalog_manager_impl()->ProcessTabletReport(
-        ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);
+          ts_desc.get(), req->tablet_report(), l.epoch(), resp->mutable_tablet_report(), &rpc);
       if (!s.ok()) {
         rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
         return;

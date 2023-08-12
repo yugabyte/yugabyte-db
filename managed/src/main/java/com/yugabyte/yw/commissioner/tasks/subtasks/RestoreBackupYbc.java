@@ -92,7 +92,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
     try {
       if (StringUtils.isBlank(nodeIp)) {
         Pair<YbcClient, String> clientIPPair =
-            ybcManager.getAvailableYbcClientIpPair(taskParams().getUniverseUUID(), null);
+            ybcManager.getAvailableYbcClientIpPair(taskParams().getUniverseUUID(), true);
         ybcClient = clientIPPair.getFirst();
         nodeIp = clientIPPair.getSecond();
       } else {

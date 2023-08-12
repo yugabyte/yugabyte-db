@@ -25,13 +25,18 @@ import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.After;
@@ -131,6 +136,19 @@ public class RBACControllerTest extends FakeDBApplication {
         "DELETE",
         String.format(uri, customerUUID.toString(), roleUUID.toString()),
         user.createAuthToken());
+  }
+
+  private Result listRoleBindings(UUID customerUUID, UUID userUUID) {
+    String uri = "";
+    if (userUUID == null) {
+      uri = String.format("/api/customers/%s/rbac/role_binding", customerUUID.toString());
+    } else {
+      uri =
+          String.format(
+              "/api/customers/%s/rbac/role_binding?userUUID=%s",
+              customerUUID.toString(), userUUID.toString());
+    }
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
   /* ==== API Tests ==== */
@@ -435,5 +453,62 @@ public class RBACControllerTest extends FakeDBApplication {
     assertEquals(BAD_REQUEST, result.status());
     assertEquals(1, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testListRoleBindings() throws IOException {
+    // Create few test roles and insert into DB.
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "testSystemRole1",
+            "testDescription",
+            RoleType.System,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+    Role role2 =
+        Role.create(
+            customer.getUuid(),
+            "testCustomRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission2)));
+
+    // Create a few test role bindings and insert into DB.
+    RoleBinding roleBinding1 =
+        RoleBinding.create(
+            user,
+            RoleBindingType.Custom,
+            role1,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceDefinition.builder()
+                            .resourceType(ResourceType.DEFAULT)
+                            .allowAll(true)
+                            .build()))));
+    RoleBinding roleBinding2 =
+        RoleBinding.create(
+            user,
+            RoleBindingType.Custom,
+            role2,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceDefinition.builder()
+                            .resourceType(ResourceType.UNIVERSE)
+                            .allowAll(true)
+                            .build()))));
+
+    // Call API and assert if both role bindings are listed.
+    Result result = listRoleBindings(customer.getUuid(), user.getUuid());
+    assertEquals(OK, result.status());
+
+    JsonNode json = Json.parse(contentAsString(result));
+    ObjectReader reader = mapper.readerFor(new TypeReference<Map<UUID, List<RoleBinding>>>() {});
+    Map<UUID, List<RoleBinding>> roleBindingList = reader.readValue(json);
+
+    assertEquals(2, roleBindingList.get(user.getUuid()).size());
+    assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
+    assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
   }
 }

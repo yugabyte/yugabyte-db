@@ -32,6 +32,8 @@ func (yc *YbaCtlComponent) Setup() error {
 func (yc *YbaCtlComponent) Install() error {
 	log.Info("Installing yba-ctl")
 
+	os.Chdir(common.GetBinaryDir())
+
 	for _, file := range []string{common.GoBinaryName, common.VersionMetadataJSON} {
 		// Remove the existing file and ignore not exists errors.
 		err := os.Remove(filepath.Join(common.YbactlInstallDir(), file))

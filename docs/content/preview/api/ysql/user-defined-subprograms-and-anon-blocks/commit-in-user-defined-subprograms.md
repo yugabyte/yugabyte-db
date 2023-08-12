@@ -1,7 +1,8 @@
 ---
 title: Issuing "commit" in user-defined subprograms and anonymous blocks [YSQL]
 headerTitle: Issuing "commit" in user-defined subprograms and anonymous blocks
-linkTitle: «Commit» in user-defined subprograms
+linkTitle: >
+  "Commit" in user-defined subprograms
 description: Explains why you should should avoid issuing "commit" in user-defined subprograms and anonymous blocks [YSQL]
 menu:
   preview:
@@ -190,7 +191,7 @@ $body$;
 select s.f_bad(42);
 ```
 
-The _create_ statement succeeds. But the _select_ statement fails with the _2D000_ error (_invalid transaction termination_).  This arguably represents no practical problem because a function ought not to make data changes. If you want to report a status, you should use a procedure with an _inout_ formal argument.
+The _create_ statement succeeds. But the _select_ statement fails with the _2D000_ error (_invalid transaction termination_). This arguably represents no practical problem because a function ought not to make data changes. If you want to report a status, you should use a procedure with an _inout_ formal argument.
 
 ### Break "p_ok(): by changing it to "security definer"
 

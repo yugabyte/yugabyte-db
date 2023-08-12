@@ -68,7 +68,7 @@ You can install the YugabyteDB Anywhere Operator via the OpenShift web console o
 
 You can install the YugabyteDB Anywhere Operator as follows:
 
-- Login to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
+- Log in to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
 - Navigate to the **Operators > OperatorHub**, search for YugabyteDB Anywhere Operator, and then open it to display details about the operator, as shown in the following illustration:<br><br>
 
   ![Operator](/images/ee/openshift-operator.png)<br><br>

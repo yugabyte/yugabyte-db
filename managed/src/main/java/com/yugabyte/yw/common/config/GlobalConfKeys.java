@@ -308,6 +308,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for admin operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bootstrapProducerTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout_ms",
+          ScopeType.GLOBAL,
+          "Bootstrap producer timeout",
+          "Bootstrap producer timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
@@ -858,14 +866,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " concurrent provider tasks are completed ",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> useLegacyPayloadForRegionAndAZs =
-      new ConfKeyInfo<>(
-          "yb.provider.use_legacy_payload_region_zones",
-          ScopeType.GLOBAL,
-          "If required to use v1 api payload for region & az's",
-          "When enabled YBA will expect v1 API payload for region & az's",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.enabled",
@@ -952,4 +952,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If enabled YBA will install locales on the DB nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableImageBundleValidation =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.disable_image_bundle_validations",
+          ScopeType.GLOBAL,
+          "Image Bundle Validation",
+          "Disables Image Bundle Validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> devopsCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.devops.command_timeout",
+          ScopeType.GLOBAL,
+          "Devops command timeout",
+          "Devops command timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

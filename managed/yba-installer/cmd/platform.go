@@ -187,9 +187,11 @@ func (plat Platform) createNecessaryDirectories() error {
 				log.Error("failed to make " + dir + ": " + err.Error())
 				return mkErr
 			}
-			if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
-				log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
-				return chErr
+			if common.HasSudoAccess() {
+				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
+					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
+					return chErr
+				}
 			}
 		}
 	}

@@ -4,17 +4,17 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.UUID;
@@ -33,9 +33,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock RuntimeConfigFactory runtimeConfigFactory;
-
-  @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -55,7 +53,9 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
-    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
+        .thenReturn(Duration.ofHours(1));
   }
 
   private JsonNode runCommand(UUID regionUUID, boolean mimicError, CommandType command) {

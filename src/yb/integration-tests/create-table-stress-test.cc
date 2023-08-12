@@ -271,7 +271,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
 
   LOG(INFO) << "LOCK PROFILE\n" << profile.str();
   LOG(INFO) << "BENCHMARK HISTOGRAM:";
-  hist->histogram()->DumpHumanReadable(&LOG(INFO));
+  hist->underlying()->DumpHumanReadable(&LOG(INFO));
 }
 
 class CreateMultiHBTableStressTest : public CreateTableStressTest,
@@ -615,8 +615,12 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      master::SysCatalogLoadingState state;
-      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(0, &state));
+      master::SysCatalogLoadingState state{
+          .parent_to_child_tables = {},
+          .post_load_tasks = {},
+          .epoch = master::LeaderEpoch(1),
+      };
+      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(&state));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }

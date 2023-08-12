@@ -22,6 +22,7 @@
 #include "yb/server/server_fwd.h"
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_fwd.h"
@@ -41,13 +42,16 @@ struct RetryableRequestsCounts {
 // Holds information about retryable requests.
 class RetryableRequests {
  public:
-  explicit RetryableRequests(std::string log_prefix = std::string());
+  explicit RetryableRequests(const MemTrackerPtr& tablet_mem_tracker,
+                             std::string log_prefix = std::string());
   ~RetryableRequests();
 
   RetryableRequests(const RetryableRequests& rhs);
 
   RetryableRequests(RetryableRequests&& rhs);
   void operator=(RetryableRequests&& rhs);
+
+  void CopyFrom(const RetryableRequests& rhs);
 
   OpId GetMaxReplicatedOpId() const;
   void SetLastFlushedOpId(const OpId& op_id);
@@ -98,20 +102,26 @@ class RetryableRequestsManager {
   RetryableRequestsManager() {}
 
   RetryableRequestsManager(
-      const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir) :
-      tablet_id_(tablet_id), fs_manager_(fs_manager), dir_(wal_dir) {}
+      const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir,
+      const MemTrackerPtr& mem_tracker, std::string log_prefix)
+          : tablet_id_(tablet_id),
+            fs_manager_(fs_manager),
+            dir_(wal_dir),
+            retryable_requests_(
+                std::make_unique<RetryableRequests>(mem_tracker,
+                                                    std::move(log_prefix))) {}
 
   Status Init(const server::ClockPtr& clock);
 
   FsManager* fs_manager() const { return fs_manager_; }
-  const RetryableRequests& retryable_requests() const { return retryable_requests_; }
-  RetryableRequests& retryable_requests() { return retryable_requests_; }
+  const RetryableRequests& retryable_requests() const { return *retryable_requests_; }
+  RetryableRequests& retryable_requests() { return *retryable_requests_; }
 
   static std::string FilePath(const std::string& path) {
     return JoinPathSegments(path, FileName());
   }
 
-  bool HasUnflushedData() const { return retryable_requests_.HasUnflushedData(); }
+  bool HasUnflushedData() const { return retryable_requests_->HasUnflushedData(); }
 
   bool has_file_on_disk() const {
     return has_file_on_disk_;
@@ -154,7 +164,7 @@ class RetryableRequestsManager {
   TabletId tablet_id_;
   FsManager* fs_manager_ = nullptr;
   std::string dir_;
-  RetryableRequests retryable_requests_;
+  std::unique_ptr<RetryableRequests> retryable_requests_;
 
   static constexpr char kSuffixNew[] = ".NEW";
   static constexpr char kRetryableRequestsFileName[] = "retryable_requests";

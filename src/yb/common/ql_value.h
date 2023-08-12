@@ -217,14 +217,14 @@ class QLValue {
     return timeuuid_value(pb_);
   }
 
-  static util::VarInt varint_value(const QLValuePB& pb);
-  static util::VarInt varint_value(const LWQLValuePB& pb);
+  static VarInt varint_value(const QLValuePB& pb);
+  static VarInt varint_value(const LWQLValuePB& pb);
 
-  static util::VarInt varint_value(const QLValue& value) {
+  static VarInt varint_value(const QLValue& value) {
     return varint_value(value.pb_);
   }
 
-  util::VarInt varint_value() const {
+  VarInt varint_value() const {
     return varint_value(pb_);
   }
 
@@ -372,7 +372,7 @@ class QLValue {
   static void set_timeuuid_value(const Uuid& val, QLValuePB* out);
   static void set_timeuuid_value(const Uuid& val, QLValue* out);
 
-  void set_varint_value(const util::VarInt& val) {
+  void set_varint_value(const VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
   }
 

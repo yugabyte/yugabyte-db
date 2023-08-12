@@ -41,6 +41,7 @@
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -106,6 +107,8 @@ class ConflictResolverContext {
   virtual HybridTime GetResolutionHt() = 0;
 
   virtual void MakeResolutionAtLeast(const HybridTime& resolution_ht) = 0;
+
+  virtual tablet::TabletMetrics* GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -252,6 +255,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
             existing_value, nullptr /* verify_transaction_id_slice */,
             HasStrong(existing_intent.types)));
         auto transaction_id = decoded_value.transaction_id;
+        // TODO(tablelocks): If this is a table lock, we may want to handle as lock_only.
         bool lock_only = decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock);
         VLOG_WITH_PREFIX_AND_FUNC(4)
             << "Found conflict with exiting transaction: " << transaction_id
@@ -590,6 +594,13 @@ class WaitOnConflictResolver : public ConflictResolver {
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
+
+    if (wait_start_time_.Initialized()) {
+      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(wait_start_time_);
+      context_->GetTabletMetrics()->Increment(
+          tablet::TabletEventStats::kTotalWaitQueueTime,
+          make_unsigned(elapsed_time.ToMicroseconds()));
+    }
   }
 
   void Run() {
@@ -610,6 +621,12 @@ class WaitOnConflictResolver : public ConflictResolver {
     return true;
   }
 
+  void MaybeSetWaitStartTime() {
+    if (!wait_start_time_.Initialized()) {
+      wait_start_time_ = MonoTime::Now();
+    }
+  }
+
   void TryPreWait() {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
@@ -620,6 +637,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     } else if (!*did_wait_or_status) {
       ConflictResolver::Resolve();
     } else {
+      MaybeSetWaitStartTime();
       VLOG(3) << "Wait-on-Conflict resolution entered wait queue in PreWaitOn stage";
     }
   }
@@ -628,7 +646,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK_GT(conflict_data_->NumActiveTransactions(), 0);
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
-
+    MaybeSetWaitStartTime();
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
@@ -668,6 +686,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   uint64_t serial_no_;
   uint32_t wait_for_iters_ = 0;
   TabletId status_tablet_id_;
+  MonoTime wait_start_time_ = MonoTime::kUninitialized;
 };
 
 using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
@@ -718,6 +737,15 @@ class IntentProcessor {
     // - Weak intents with full_doc_key=true
     // - Strong intents with full_doc_key=true.
     i->second.full_doc_key = i->second.full_doc_key || full_doc_key;
+  }
+
+  void ProcessTableLockIntents(TableLockType lock_type) {
+    TableLockIntents table_lock_type_to_intent_mapping =
+        GetTableLockIntents(lock_type);
+    for (const auto& mapping : table_lock_type_to_intent_mapping) {
+      container_.try_emplace(KeyBuffer(mapping.first.as_slice()),
+                             IntentData{mapping.second, false});
+    }
   }
 
  private:
@@ -857,7 +885,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     resolution_ht_.MakeAtLeast(resolution_ht);
   }
 
-  tablet::TabletMetrics* GetTabletMetrics() {
+  tablet::TabletMetrics* GetTabletMetrics() override {
     return &tablet_metrics_;
   }
 
@@ -1003,6 +1031,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
           },
           resolver->partial_range_key_intents()));
     }
+
+    intent_processor.ProcessTableLockIntents(write_batch_.table_lock().table_lock_type());
 
     if (container.empty()) {
       return Status::OK();

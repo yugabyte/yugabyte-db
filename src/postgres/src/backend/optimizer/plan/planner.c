@@ -14,6 +14,7 @@
  */
 
 #include "postgres.h"
+#include "pg_yb_utils.h"
 
 #include <limits.h>
 #include <math.h>
@@ -4737,13 +4738,69 @@ create_distinct_paths(PlannerInfo *root,
 		{
 			Path	   *path = (Path *) lfirst(lc);
 
-			if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
+			if (IsYugaByteEnabled() &&
+				path->yb_path_info.yb_uniqpath_provisional)
+			{
+				/*
+				 * YB: Also consider distinct paths pushed to the storage layer.
+				 */
+				Path		 *path = (Path *) lfirst(lc);
+				YbUniqKeysCmp cmp;
+
+				if (input_rel->reloptkind != RELOPT_BASEREL)
+					break;
+
+				cmp = yb_has_sufficient_uniqkeys(root, path);
+
+				/*
+				 * YB: Validated yb_uniqkeys, so it is safe to make this
+				 * a regular path. Now, the path can be considered when
+				 * choosing the best costing path.
+				 */
+				path->yb_path_info.yb_uniqpath_provisional = false;
+
+				/*
+				 * YB: Can use the path when uniqkeys are exactly the same.
+				 * Order does not matter.
+				 *
+				 * It is sufficient that sort_pathkeys are contained
+				 * in path->pathkeys and not the entirety of needed_pathkeys
+				 * since yb_has_uniqkeys_for already verifies DISTINCTness
+				 * requirements.
+				 * Example: SELECT DISTINCT r1, r2
+				 * can be served by a distinct index scan path
+				 * on an index thats ordered ASC by r1 and DESC by r2.
+				 * Such cases would not be allowed if all of needed_pathkeys
+				 * were checked for containment in path->pathkeys.
+				 */
+				if (cmp == YB_UNIQKEYS_EXACT)
+				{
+					if (pathkeys_contained_in(root->sort_pathkeys,
+											path->pathkeys))
+						add_path(distinct_rel, path);
+					else
+						add_path(distinct_rel, (Path *)
+								create_sort_path(root, distinct_rel, path,
+												root->sort_pathkeys, -1.0));
+				}
+
+				/* YB: Update cheapest input path if a cheaper one found */
+				if (cmp == YB_UNIQKEYS_EXCESS &&
+					cheapest_input_path->total_cost > path->total_cost)
+					/*
+					 * YB: Does not match uniqkeys exactly.
+					 * However, a candidate for the cheapest input path.
+					 */
+					cheapest_input_path = path;
+			}
+			else if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
 			{
 				add_path(distinct_rel, (Path *)
-						 create_upper_unique_path(root, distinct_rel,
-												  path,
-												  list_length(root->distinct_pathkeys),
-												  numDistinctRows));
+						 create_upper_unique_path(
+							root, distinct_rel,
+							path,
+							list_length(root->distinct_pathkeys),
+							numDistinctRows));
 			}
 		}
 
@@ -4766,11 +4823,19 @@ create_distinct_paths(PlannerInfo *root,
 											 needed_pathkeys,
 											 -1.0);
 
-		add_path(distinct_rel, (Path *)
-				 create_upper_unique_path(root, distinct_rel,
-										  path,
-										  list_length(root->distinct_pathkeys),
-										  numDistinctRows));
+		/*
+		 * YB: Sometimes, path has a unique node by virtue of removing
+		 * duplicate rows from PgGate. Do not add another in that case.
+		 */
+		if (IsA(path, UpperUniquePath))
+			add_path(distinct_rel, path);
+		else
+			add_path(distinct_rel, (Path *)
+					create_upper_unique_path(
+						root, distinct_rel,
+						path,
+						list_length(root->distinct_pathkeys),
+						numDistinctRows));
 	}
 
 	/*
