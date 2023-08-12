@@ -299,7 +299,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Pull Secret Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -333,7 +333,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Kube Config Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -605,6 +605,11 @@ const constructProviderPayload = async (
     );
   }
 
+  const {
+    kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
+    kubernetesPullSecret: existingKubernetesPullSecret,
+    kubernetesPullSecretName: existingKubernetesPullSecretName
+  } = providerConfig?.details.cloudInfo.kubernetes;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
@@ -626,16 +631,27 @@ const constructProviderPayload = async (
               }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
-          ...(formValues.editPullSecretContent &&
-            formValues.kubernetesPullSecretContent && {
-              kubernetesPullSecretContent: kubernetesPullSecretContent,
-              ...(formValues.kubernetesPullSecretContent.name && {
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
-              }),
-              ...(kubernetesImagePullSecretName && {
-                kubernetesImagePullSecretName: kubernetesImagePullSecretName
+          ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
+            ? {
+                kubernetesPullSecretContent: kubernetesPullSecretContent,
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: kubernetesImagePullSecretName
+                })
+              }
+            : {
+                ...(existingKubernetesPullSecret && {
+                  kubernetesPullSecret: existingKubernetesPullSecret
+                }),
+                ...(existingKubernetesPullSecretName && {
+                  kubernetesPullSecretName: existingKubernetesPullSecretName
+                }),
+                ...(existingKubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+                })
               })
-            })
         }
       }
     },

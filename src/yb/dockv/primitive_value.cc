@@ -64,7 +64,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV1: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kPackedRowV2: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
@@ -284,7 +284,7 @@ std::string PrimitiveValue::ValueToString() const {
       return "l";
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
-    case ValueEntryType::kPackedRow:
+    case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
     case ValueEntryType::kPackedRowV2:
       return "<PACKED ROW V2>";
@@ -351,6 +351,8 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
     CASE_EMPTY_KEY_ENTRY_TYPES
       return;
 
+    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString:
       key_bytes->AppendString(str_val_);
@@ -819,6 +821,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     }
 
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: {
       if (out) {
         string result;
@@ -1335,7 +1339,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kInvalid: [[fallthrough]];
-    case ValueEntryType::kPackedRow: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
@@ -1558,7 +1562,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       break;
 
     case ValueEntryType::kInvalid: [[fallthrough]];
-    case ValueEntryType::kPackedRow: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kRowLock: [[fallthrough]];
     case ValueEntryType::kMaxByte:
@@ -2623,6 +2627,10 @@ KeyEntryValue KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB value) {
 
 std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
   switch (type_) {
+    case KeyEntryType::kWeakTableLock:
+      return "WeakTableLock";
+    case KeyEntryType::kStrongTableLock:
+      return "StrongTableLock";
     case KeyEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case KeyEntryType::kNullLow:
       return "null";
@@ -2762,6 +2770,8 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarIntDescending:
       return other.str_val_.compare(str_val_);
+    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
@@ -2976,6 +2986,8 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     CASE_EMPTY_KEY_ENTRY_TYPES
         return true;
 
+    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;

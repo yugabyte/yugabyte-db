@@ -129,7 +129,7 @@ DEFINE_UNKNOWN_bool(notify_peer_of_removal_from_cluster, true,
 TAG_FLAG(notify_peer_of_removal_from_cluster, hidden);
 TAG_FLAG(notify_peer_of_removal_from_cluster, advanced);
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   server, dns_resolve_latency_during_sys_catalog_setup,
   "yb.master.SysCatalogTable.SetupConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -183,7 +183,7 @@ SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
               .set_min_threads(1).Build(&log_sync_pool_));
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
 
-  setup_config_dns_histogram_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
+  setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
   peer_write_count = METRIC_sys_catalog_peer_write_count.Instantiate(metric_entity_);
 }
@@ -380,7 +380,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   RaftConfigPB resolved_config;
   resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-  ScopedDnsTracker dns_tracker(setup_config_dns_histogram_);
+  ScopedDnsTracker dns_tracker(setup_config_dns_stats_);
   for (const auto& list : *options.GetMasterAddresses()) {
     LOG(INFO) << "Determining permanent_uuid for " + yb::ToString(list);
     RaftPeerPB new_peer;
@@ -870,7 +870,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kEntries, description,
             yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
-    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateMetric<AtomicGauge<uint64_t>>(
         std::move(counter_gauge), static_cast<uint64>(0) /* initial_value */);
   }
   visitor_duration_metrics_[id]->IncrementBy(count);
@@ -882,7 +882,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
         std::make_unique<OwningGaugePrototype<uint64>>(
             "server", id, description, yb::MetricUnit::kMilliseconds, description,
             yb::MetricLevel::kInfo);
-    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateGauge(
+    visitor_duration_metrics_[id] = metric_entity_->FindOrCreateMetric<AtomicGauge<uint64_t>>(
         std::move(duration_gauge), static_cast<uint64>(0) /* initial_value */);
   }
   visitor_duration_metrics_[id]->IncrementBy(ToMilliseconds(duration));

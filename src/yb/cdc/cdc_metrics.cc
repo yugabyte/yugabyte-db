@@ -37,7 +37,7 @@
 
 // CDC Tablet metrics.
 // Todo(Rahul): Figure out appropriate aggregation functions for these metrics.
-METRIC_DEFINE_coarse_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
+METRIC_DEFINE_event_stats(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
     yb::MetricUnit::kBytes,
     "Payload size of responses to CDC GetChanges requests (only when records are included)",
     {0, yb::AggregationFunction::kSum, yb::AggregationMetricLevel::kStream} /* optional_args */);

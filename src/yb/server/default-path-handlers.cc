@@ -399,9 +399,19 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
     const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
     // GetPeakRootConsumption() in client-stress-test.cc depends on the HTML formatting.
     // Update the test, in case this changes in future.
-    *output << Format(
-      "  <tr data-depth=\"$0\" class=\"level$0 collapse\" style=\"display: table-row;\">\n",
-      data.depth);
+    if (data.depth < 2) {
+      *output << Format(
+        "  <tr data-depth=\"$0\" class=\"level$0 collapse\" style=\"display: table-row;\">\n",
+        data.depth);
+    } else if (data.depth == 2) {
+      *output << Format(
+        "  <tr data-depth=\"$0\" class=\"level$0 expand\" style=\"display: table-row;\">\n",
+        data.depth);
+    } else {
+      *output << Format(
+        "  <tr data-depth=\"$0\" class=\"level$0 expand\" style=\"display: none;\">\n",
+        data.depth);
+    }
     const auto next_tracker = std::next(it, 1);
     if (next_tracker != trackers.end() && (*next_tracker).depth > data.depth && data.depth != 0) {
       *output << "    <td><span class=\"toggle\"></span>" << tracker_id << "</td>";

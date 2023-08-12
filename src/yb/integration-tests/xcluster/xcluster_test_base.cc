@@ -199,34 +199,38 @@ Result<YBTableName> XClusterTestBase::CreateTable(
 
 Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& producer_table_ids) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_table_ids);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_table_ids);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_tables,
-      bootstrap_ids, opts);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      producer_tables, bootstrap_ids, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
-    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    SetupReplicationOptions opts) {
   return SetupUniverseReplication(kReplicationGroupId, producer_tables, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const cdc::ReplicationGroupId& replication_group_id,
-    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id, producer_tables,
-      {} /* bootstrap_ids */, opts);
+      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id,
+      producer_tables, {} /* bootstrap_ids */, opts);
 }
 
 Status XClusterTestBase::SetupReverseUniverseReplication(
     const std::vector<std::shared_ptr<client::YBTable>>& producer_tables) {
   return SetupUniverseReplication(
-      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId, producer_tables);
+      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId,
+      producer_tables);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
@@ -246,7 +250,8 @@ Status XClusterTestBase::SetupUniverseReplication(
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& producer_table_ids,
+    const cdc::ReplicationGroupId& replication_group_id,
+    const std::vector<TableId>& producer_table_ids,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
@@ -653,21 +658,22 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
 
 Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables, int proxy_tserver_index) {
   std::vector<string> table_ids;
   for (const auto& table : tables) {
     table_ids.push_back(table->id());
   }
 
-  return BootstrapProducer(producer_cluster, producer_client, table_ids);
+  return BootstrapProducer(producer_cluster, producer_client, table_ids, proxy_tserver_index);
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
-    MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<string>& table_ids) {
+    MiniCluster* producer_cluster, YBClient* producer_client, const std::vector<string>& table_ids,
+    int proxy_tserver_index) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &producer_client->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
+      HostPort::FromBoundEndpoint(
+          producer_cluster->mini_tablet_server(proxy_tserver_index)->bound_rpc_addr()));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 

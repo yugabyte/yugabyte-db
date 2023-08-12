@@ -449,6 +449,7 @@ typedef struct IndexScan
 	PushdownExprs yb_rel_pushdown;
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* skip scan prefix */
 } IndexScan;
 
 /* ----------------
@@ -485,6 +486,7 @@ typedef struct IndexOnlyScan
 	List	   *yb_indexqual_for_recheck;
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* skip scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -757,7 +759,7 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/* Operator to hash the outer side of this clause 
+	Oid hashOp;				/* Operator to hash the outer side of this clause
 							   with. */
 	int innerHashAttNo;		/* Attno of inner side variable. */
 	Expr *outerParamExpr;	/* Outer expression of this clause. */

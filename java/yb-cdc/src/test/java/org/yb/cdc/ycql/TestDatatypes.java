@@ -25,7 +25,7 @@ import org.yb.cdc.CDCConsoleSubscriber;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.ExpectedRecordYCQLGeneric;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 import org.yb.YBTestRunner;
 
 import java.math.BigInteger;
@@ -46,7 +46,7 @@ public class TestDatatypes {
 
   public void assertRecords(ExpectedRecordYCQLGeneric<?>[] expectedRecords) throws Exception{
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
-    CDCConsoleSubscriber cdcSubscriberObj = TestUtils.initJavaClient(outputList);
+    CDCConsoleSubscriber cdcSubscriberObj = CDCTestUtils.initJavaClient(outputList);
 
     assertEquals(expectedRecords.length, outputList.size());
 
@@ -59,7 +59,7 @@ public class TestDatatypes {
 
   @Before
   public void setUp() {
-    TestUtils.clearStreamId("");
+    CDCTestUtils.clearStreamId("");
     String createKeyspace = "create keyspace if not exists yugabyte;";
     String dropTable = "drop table if exists yugabyte.test;";
 

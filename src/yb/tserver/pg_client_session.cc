@@ -992,27 +992,36 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 }
 
 Result<PgClientSession::UsedReadTimePtr> PgClientSession::ProcessReadTimeManipulation(
-    ReadTimeManipulation manipulation) {
+    ReadTimeManipulation manipulation, uint64_t txn_serial_no) {
+  VLOG_WITH_PREFIX(2) << "ProcessReadTimeManipulation: " << manipulation
+                      << ", txn_serial_no: " << txn_serial_no
+                      << ", txn_serial_no_: " << txn_serial_no_;
+
+  auto& read_point = *Session(PgClientSessionKind::kPlain)->read_point();
   switch (manipulation) {
     case ReadTimeManipulation::RESET: {
-        auto* read_point = Session(PgClientSessionKind::kPlain)->read_point();
         if (FLAGS_ysql_rc_force_pick_read_time_on_pg_client ||
             Transaction(PgClientSessionKind::kPlain)) {
           // If a txn_ has been created, session_->read_point() returns the read point stored in
           // txn_.
-          read_point->SetCurrentReadTime();
-          VLOG(1) << "Setting current ht as read point " << read_point->GetReadTime();
+          read_point.SetCurrentReadTime();
+          VLOG(1) << "Setting current ht as read point " << read_point.GetReadTime();
           return PgClientSession::UsedReadTimePtr();
         }
         return VERIFY_RESULT(ResetReadPoint(PgClientSessionKind::kPlain));
       }
     case ReadTimeManipulation::RESTART: {
-        auto* rp = Session(PgClientSessionKind::kPlain)->read_point();
-        rp->Restart();
-
-        VLOG(1) << "Restarted read point " << rp->GetReadTime();
+        read_point.Restart();
+        VLOG(1) << "Restarted read point " << read_point.GetReadTime();
+        return PgClientSession::UsedReadTimePtr();
       }
-      return PgClientSession::UsedReadTimePtr();
+    case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET : {
+        if (!read_point.GetReadTime() || txn_serial_no_ != txn_serial_no) {
+          read_point.SetCurrentReadTime();
+          VLOG(1) << "Setting current ht as read point " << read_point.GetReadTime();
+        }
+        return PgClientSession::UsedReadTimePtr();
+      }
     case ReadTimeManipulation::NONE:
       return PgClientSession::UsedReadTimePtr();
     case ReadTimeManipulation::ReadTimeManipulation_INT_MIN_SENTINEL_DO_NOT_USE_:
@@ -1096,6 +1105,7 @@ PgClientSession::SetupSession(
 
   VLOG_WITH_PREFIX(4) << __func__ << ": " << options.ShortDebugString();
 
+  const auto txn_serial_no = options.txn_serial_no();
   UsedReadTimePtr used_read_time;
   if (options.restart_transaction()) {
     RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Restarting a DDL transaction not supported");
@@ -1112,14 +1122,15 @@ PgClientSession::SetupSession(
       RSTATUS_DCHECK(
           kind == PgClientSessionKind::kPlain, IllegalState,
           "Read time manipulation can't be specified for non kPlain sessions");
-      used_read_time = VERIFY_RESULT(ProcessReadTimeManipulation(options.read_time_manipulation()));
+      used_read_time = VERIFY_RESULT(ProcessReadTimeManipulation(
+          options.read_time_manipulation(), txn_serial_no));
     } else if (options.has_read_time() && options.read_time().has_read_ht()) {
       const auto read_time = ReadHybridTime::FromPB(options.read_time());
       session->SetReadPoint(read_time);
       VLOG_WITH_PREFIX(3) << "Read time: " << read_time;
     } else if (options.has_read_time() ||
                options.use_catalog_session() ||
-               (!transaction && (txn_serial_no_ != options.txn_serial_no()))) {
+               (!transaction && (txn_serial_no_ != txn_serial_no))) {
       used_read_time = VERIFY_RESULT(ResetReadPoint(kind));
     } else {
       if (!transaction && kind == PgClientSessionKind::kPlain) {
@@ -1147,7 +1158,7 @@ PgClientSession::SetupSession(
   // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
   // cause any issue, but should we reset for safety?
   if (!options.ddl_mode() && !options.use_catalog_session()) {
-    txn_serial_no_ = options.txn_serial_no();
+    txn_serial_no_ = txn_serial_no;
     if (in_txn_limit) {
       // TODO: Shouldn't the below logic for DDL transactions as well?
       session->SetInTxnLimit(in_txn_limit);

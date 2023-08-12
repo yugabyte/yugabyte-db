@@ -161,6 +161,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_memory_tracking, true,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVolatile, false, true,
+    "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
     "Push down strict inequality filters");
 
@@ -383,7 +386,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to read default postgres configuration '%s': errno=$0: $1",
+        "Failed to read default postgres configuration '$0': errno=$1: $2",
         default_conf_path,
         errno,
         ErrnoToString(errno));

@@ -90,12 +90,19 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
-DEPRECATE_FLAG(bool, ysql_catalog_preload_additional_tables, "07_2023");
+// This gflag should be deprecated but kept to avoid breaking some customer
+// clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
+DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
+    "If true, YB catalog preloads a default set of tables upon connection "
+    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_tablespace.");
 
 DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "A list of catalog tables that YSQL preloads additionally upon "
     "connection start-up and cache refreshes. Catalog table names must start with pg_."
-    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc");
+    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc."
+    "If both ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list are set, we take a union of "
+    "both the default list and the user-specified list.");
 
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
             "If true, disable global impact ddl statements in per database catalog "
@@ -1229,7 +1236,7 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) 
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
 }
 
-YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
+YBCStatus YBCPgUpdateConstBinary(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
@@ -1488,6 +1495,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   // clang-format off
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
+      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,

@@ -390,7 +390,7 @@ Result<bool> RowPackerBase::DoAddValueImpl(
 void RowPackerV1::Init(SchemaVersion version) {
   size_t prefix_len = packing_.prefix_len();
   auto* out = result_.GrowByAtLeast(1 + kMaxVarint32Length + prefix_len);
-  *out++ = ValueEntryTypeAsChar::kPackedRow;
+  *out++ = ValueEntryTypeAsChar::kPackedRowV1;
   out += FastEncodeUnsignedVarInt(version, out);
   var_header_start_ = out - pointer_cast<char*>(result_.mutable_data());
   prefix_end_ = var_header_start_ + prefix_len;

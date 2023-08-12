@@ -999,6 +999,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean deleteNode,
       boolean deleteRootVolumes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it, free up the onprem node
@@ -1044,6 +1045,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
+      params.useSystemd = userIntent.useSystemd;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);
@@ -1182,6 +1184,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createPauseServerTasks(Universe universe, Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PauseServer");
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to pause the node. Log it and skip the node.
@@ -1204,6 +1207,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to pause the node.
       params.nodeIP = node.cloudInfo.private_ip;
+      params.useSystemd = userIntent.useSystemd;
       // Create the task to pause the server.
       PauseServer task = createTask(PauseServer.class);
       task.initialize(params);
@@ -1219,6 +1223,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createResumeServerTasks(Universe universe) {
     Collection<NodeDetails> nodes = universe.getNodes();
     SubTaskGroup subTaskGroup = createSubTaskGroup("ResumeServer");
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to resume the node. Log it and skip the node.
@@ -1242,6 +1247,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       // Assign the node IP to resume the nodes.
       params.nodeIP = node.cloudInfo.private_ip;
+      params.useSystemd = userIntent.useSystemd;
       // Create the task to resume the server.
       ResumeServer task = createTask(ResumeServer.class);
       task.initialize(params);
@@ -2545,7 +2551,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createCreatePitrConfigTask(
-      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+      String keyspaceName,
+      TableType tableType,
+      long retentionPeriodSeconds,
+      @Nullable XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
     CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
     createPitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
@@ -2554,12 +2563,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createPitrConfigParams.keyspaceName = keyspaceName;
     createPitrConfigParams.tableType = tableType;
     createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
+    createPitrConfigParams.xClusterConfig = xClusterConfig;
 
     CreatePitrConfig task = createTask(CreatePitrConfig.class);
     task.initialize(createPitrConfigParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  protected SubTaskGroup createCreatePitrConfigTask(
+      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+    return createCreatePitrConfigTask(
+        keyspaceName, tableType, retentionPeriodSeconds, null /* xClusterConfig */);
   }
 
   protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
@@ -3298,12 +3314,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return loadBalancerMap;
   }
 
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType) {
+    return createSetFlagInMemoryTasks(nodes, serverType, true, (node) -> null, true);
+  }
+
   // Subtask to update gflags in memory.
   public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       boolean force,
-      Map<String, String> gflags,
+      Map<String, String> gflags) {
+    return createSetFlagInMemoryTasks(nodes, serverType, force, (n) -> gflags, false);
+  }
+
+  // Subtask to update gflags in memory.
+  public SubTaskGroup createSetFlagInMemoryTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      boolean force,
+      Function<NodeDetails, Map<String, String>> gflagsGetter,
       boolean updateMasterAddrs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InMemoryGFlagUpdate");
     for (NodeDetails node : nodes) {
@@ -3318,7 +3348,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // If the flags need to be force updated.
       params.force = force;
       // The flags to update.
-      params.gflags = gflags;
+      params.gflags = gflagsGetter.apply(node);
       // If only master addresses need to be updated.
       params.updateMasterAddrs = updateMasterAddrs;
 

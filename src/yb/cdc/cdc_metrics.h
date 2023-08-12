@@ -43,7 +43,7 @@ namespace yb {
 class Counter;
 template<class T>
 class AtomicGauge;
-class Histogram;
+class EventStats;
 class MetricEntity;
 
 namespace cdc {
@@ -56,7 +56,7 @@ class CDCTabletMetrics {
   // Reset all the metrics to 0, except for the rpc_* related metrics.
   void ClearMetrics();
 
-  scoped_refptr<Histogram> rpc_payload_bytes_responded;
+  scoped_refptr<EventStats> rpc_payload_bytes_responded;
   scoped_refptr<Counter> rpc_heartbeats_responded;
   // For rpc_latency & rpcs_responded_count, use 'handler_latency_yb_cdc_CDCService_GetChanges'.
 

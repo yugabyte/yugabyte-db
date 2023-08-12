@@ -89,7 +89,11 @@ public class CreatePitrConfig extends UniverseTaskBase {
       }
 
       UUID snapshotScheduleUUID = resp.getSnapshotScheduleUUID();
-      PitrConfig.create(snapshotScheduleUUID, taskParams());
+      PitrConfig pitrConfig = PitrConfig.create(snapshotScheduleUUID, taskParams());
+      if (Objects.nonNull(taskParams().xClusterConfig)) {
+        // This PITR config is created as part of an xCluster config.
+        taskParams().xClusterConfig.addPitrConfig(pitrConfig);
+      }
       waitFor(Duration.ofMillis(WAIT_DURATION_MS));
       ListSnapshotSchedulesResponse scheduleResp =
           client.listSnapshotSchedules(snapshotScheduleUUID);

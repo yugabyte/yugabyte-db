@@ -581,6 +581,9 @@ DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
 DEFINE_test_flag(bool, create_table_with_empty_pgschema_name, false,
     "Create YSQL tables with an empty pgschema_name field in their schema.");
 
+DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
+    "Create YSQL tables with an empty namespace_name field in their schema.");
+
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
@@ -1135,7 +1138,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     .epoch = LeaderEpoch(term, pitr_count()),
   };
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
-    Status status = VisitSysCatalog(term, &state);
+    Status status = VisitSysCatalog(&state);
     if (!status.ok()) {
       {
         std::lock_guard l(state_lock_);
@@ -1163,7 +1166,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     is_catalog_loaded_ = true;
     LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
   }
-  SysCatalogLoaded(term, state);
+  SysCatalogLoaded(state);
   // Once we have loaded the SysCatalog, reset and regenerate the yql partitions table in order to
   // regenerate entries for previous tables.
   GetYqlPartitionsVtable().ResetAndRegenerateCache();
@@ -1221,10 +1224,11 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* state) {
+Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
+  int64_t term = state->epoch.leader_term;
   LOG_WITH_PREFIX_AND_FUNC(INFO)
-      << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
+    << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
   auto start = std::chrono::steady_clock::now();
   std::lock_guard leader_lock_guard(leader_lock_);
   auto finish = std::chrono::steady_clock::now();
@@ -1247,7 +1251,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
     AbortAndWaitForAllTasksUnlocked();
 
     // Clear internal maps and run data loaders.
-    RETURN_NOT_OK(RunLoaders(term, state));
+    RETURN_NOT_OK(RunLoaders(state));
 
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
@@ -1295,7 +1299,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
             // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
             // instead of calling it here and above?
             state->Reset();
-            RETURN_NOT_OK(RunLoaders(term, state));
+            RETURN_NOT_OK(RunLoaders(state));
           }
         } else {
           LOG_WITH_PREFIX(WARNING)
@@ -1372,7 +1376,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* sta
 
 template <class Loader>
 Status CatalogManager::Load(
-    const std::string& title, SysCatalogLoadingState* state, const int64_t term) {
+    const std::string& title, SysCatalogLoadingState* state) {
   LOG_WITH_PREFIX(INFO) << __func__ << ": Loading " << title << " into memory.";
   std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, state);
   RETURN_NOT_OK_PREPEND(
@@ -1381,7 +1385,7 @@ Status CatalogManager::Load(
   return Status::OK();
 }
 
-Status CatalogManager::RunLoaders(int64_t term, SysCatalogLoadingState* state) {
+Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear the table and tablet state.
   table_names_map_.clear();
   transaction_table_ids_set_.clear();
@@ -1433,23 +1437,23 @@ Status CatalogManager::RunLoaders(int64_t term, SysCatalogLoadingState* state) {
 
     // Clear the roles mapping.
     permissions_manager()->ClearRolesUnlocked();
-    RETURN_NOT_OK(Load<RoleLoader>("roles", state, term));
-    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", state, term));
+    RETURN_NOT_OK(Load<RoleLoader>("roles", state));
+    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", state));
   }
   // Clear the hidden tablets vector.
   hidden_tablets_.clear();
 
-  RETURN_NOT_OK(Load<TableLoader>("tables", state, term));
-  RETURN_NOT_OK(Load<TabletLoader>("tablets", state, term));
-  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state, term));
-  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state, term));
-  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state, term));
-  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state, term));
-  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", state, term));
-  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", state, term));
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
+  RETURN_NOT_OK(Load<TableLoader>("tables", state));
+  RETURN_NOT_OK(Load<TabletLoader>("tablets", state));
+  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
+  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
+  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
+  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", state));
+  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", state));
 
   if (!transaction_tables_config_) {
-    RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
+    RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
   }
 
   // Clear the snapshots.
@@ -1763,6 +1767,7 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
     metadata.set_state(SysTablesEntryPB::RUNNING);
     metadata.set_namespace_id(kSystemSchemaNamespaceId);
+    metadata.set_namespace_name(kSystemSchemaNamespaceName);
     metadata.set_name(kSysCatalogTableName);
     metadata.set_table_type(TableType::YQL_TABLE_TYPE);
     SchemaToPB(sys_catalog_->schema(), metadata.mutable_schema());
@@ -5173,7 +5178,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_name(req.name());
   metadata->set_table_type(req.table_type());
   metadata->set_namespace_id(namespace_id);
-  metadata->set_namespace_name(namespace_name);
+  if (!FLAGS_TEST_create_table_with_empty_namespace_name) {
+    metadata->set_namespace_name(namespace_name);
+  }
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
@@ -13166,10 +13173,10 @@ void CatalogManager::Started() {
   snapshot_coordinator_.Start();
 }
 
-void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) {
+void CatalogManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
   StartXClusterSafeTimeServiceIfStopped();
   StartPostLoadTasks(state);
-  snapshot_coordinator_.SysCatalogLoaded(term);
+  snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
   ScheduleAddTableToXClusterTaskForAllTables(state.epoch);
 }
 
@@ -13267,14 +13274,29 @@ void CatalogManager::StartPostLoadTasks(const SysCatalogLoadingState& state) {
   }
 }
 
-void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
-  auto tablet_res = GetTabletInfo(tablet_id);
-  if (!tablet_res.ok()) {
-    LOG(WARNING) << Format("$0 could not find tablet $1 in tablet map.", __func__, tablet_id);
+void CatalogManager::WriteTableToSysCatalog(const TableId& table_id) {
+  auto table_ptr = GetTableInfo(table_id);
+  if (!table_ptr) {
+    LOG_WITH_FUNC(WARNING) << Format("Could not find table $0 in table map.", table_id);
     return;
   }
 
-  LOG(INFO) << Format("Writing tablet $0 to sys catalog as part of a migration.", tablet_id);
+  LOG_WITH_FUNC(INFO) << Format(
+      "Writing table $0 to sys catalog as part of a migration.", table_id);
+  auto l = table_ptr->LockForWrite();
+  WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), table_ptr),
+      "Failed to upsert migrated table into sys catalog.");
+}
+
+void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
+  auto tablet_res = GetTabletInfo(tablet_id);
+  if (!tablet_res.ok()) {
+    LOG_WITH_FUNC(WARNING) << Format("Could not find tablet $1 in tablet map.", tablet_id);
+    return;
+  }
+
+  LOG_WITH_FUNC(INFO) << Format(
+      "Writing tablet $0 to sys catalog as part of a migration.", tablet_id);
   auto l = (*tablet_res)->LockForWrite();
   WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), *tablet_res),
       "Failed to upsert migrated colocated tablet into sys catalog.");

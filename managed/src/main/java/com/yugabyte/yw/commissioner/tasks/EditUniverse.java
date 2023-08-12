@@ -442,12 +442,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             params.updateMasterAddrsOnly = true;
             params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
-      createSetFlagInMemoryTasks(
-              allTservers,
-              ServerType.TSERVER,
-              true /* force flag update */,
-              null /* no gflag to update */,
-              true /* updateMasterAddrs */)
+      createUpdateMasterAddrsInMemoryTasks(allTservers, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
       Set<NodeDetails> allMasters = new HashSet<>(newMasters);
@@ -471,12 +466,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             params.isMaster = true;
             params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
-      createSetFlagInMemoryTasks(
-              allMasters,
-              ServerType.MASTER,
-              true /* force flag update */,
-              null /* no gflag to update */,
-              true /* updateMasterAddrs */)
+      createUpdateMasterAddrsInMemoryTasks(allMasters, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
       // Update the master addresses on the target universes whose source universe belongs to

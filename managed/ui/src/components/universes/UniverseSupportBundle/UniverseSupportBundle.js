@@ -40,7 +40,7 @@ export const UniverseSupportBundle = (props) => {
   const [steps, setSteps] = useState(stepsObj.firstStep);
   const defaultOptions = updateOptions(
     filterTypes[0].value,
-    [true, true, true, true, true, true, true, true, true],
+    [true, true, true, true, true, true, true, true, true, true],
     () => {}
   );
   const [payload, setPayload] = useState(defaultOptions);

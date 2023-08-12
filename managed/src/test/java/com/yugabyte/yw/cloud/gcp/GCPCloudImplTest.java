@@ -177,6 +177,23 @@ public class GCPCloudImplTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEnsureHealthChecksNull() throws Exception {
+    String region = "us-west1";
+    String protocol = "TCP";
+    int port = 5433;
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, "");
+    String helathCheckName = UUID.randomUUID().toString();
+    String healthCheckUrl = GCPBaseUrl + "/regions/" + region + "/healthChecks/" + helathCheckName;
+    when(mockApiClient.createNewTCPHealthCheckForPort(anyString(), eq(5433)))
+        .thenReturn(healthCheckUrl);
+    List<String> finalHealthChecks =
+        gcpCloudImpl.ensureHealthChecks(mockApiClient, region, healthCheckConfiguration, null);
+    assertEquals(1, finalHealthChecks.size());
+    assertEquals(healthCheckUrl, finalHealthChecks.get(0));
+  }
+
+  @Test
   public void testEnsureHealthChecksIncorrectHealthCheck() throws Exception {
     String region = "us-west1";
     String protocol = "TCP";

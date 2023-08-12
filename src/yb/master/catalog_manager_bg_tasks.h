@@ -75,7 +75,7 @@ class CatalogManagerBgTasks final {
   scoped_refptr<yb::Thread> thread_;
   CatalogManager *catalog_manager_;
   bool was_leader_ = false;
-  scoped_refptr<Histogram> load_balancer_duration_;
+  scoped_refptr<EventStats> load_balancer_duration_;
 };
 
 }  // namespace master

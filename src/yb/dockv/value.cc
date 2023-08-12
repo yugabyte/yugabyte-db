@@ -47,11 +47,10 @@ namespace {
 
 Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
   static constexpr int kBytesPerInt64 = sizeof(int64_t);
-  if (slice->size() < kBytesPerInt64) {
-    return STATUS_FORMAT(
-        Corruption, "Failed to decode TTL from value, size too small: $1, need $2",
-        slice->size(), kBytesPerInt64);
-  }
+  RSTATUS_DCHECK_GE(
+      slice->size(), kBytesPerInt64, Corruption,
+      Format("Failed to decode TTL from value, size too small: $1, need $2",
+      slice->size(), kBytesPerInt64));
 
   auto result = BigEndian::Load64(slice->data());
   slice->remove_prefix(kBytesPerInt64);
@@ -215,11 +214,15 @@ Result<bool> Value::IsTombstoned(const Slice& slice) {
   return VERIFY_RESULT(DecodePrimitiveValueType(slice)) == ValueEntryType::kTombstone;
 }
 
-bool IsFullRowValue(const Slice& value) {
+bool IsFullRowValue(Slice value) {
   if (value.empty()) {
     return false;
   }
-  return static_cast<dockv::ValueEntryType>(value[0]) == dockv::ValueEntryType::kPackedRow;
+  return GetPackedRowVersion(static_cast<dockv::ValueEntryType>(value[0])).has_value();
+}
+
+Status UnexpectedPackedRowVersionStatus(PackedRowVersion version) {
+  return STATUS_FORMAT(Corruption, "Unexpected packed row version: $0", version);
 }
 
 }  // namespace yb::dockv

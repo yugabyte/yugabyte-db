@@ -64,7 +64,7 @@ void TestRowPacking(
     }
     buffer.Clear();
     switch (value_type) {
-      case ValueEntryType::kPackedRow:
+      case ValueEntryType::kPackedRowV1:
         AppendEncodedValue(value, &buffer);
         break;
       case ValueEntryType::kPackedRowV2:

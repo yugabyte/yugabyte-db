@@ -871,7 +871,14 @@ class EmptyScanChoices : public ScanChoices {
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
-  if (doc_spec.options() || doc_spec.range_bounds()) {
+  auto prefixlen = doc_spec.prefix_length();
+  auto num_hash_cols = doc_spec.schema().num_hash_key_columns();
+  auto has_prefixlen = prefixlen > 0 && prefixlen >= num_hash_cols;
+  // Prefix must span at least all the hash columns since the first column is a hash code of all
+  // hash columns in a hash partitioned table. And the hash code column cannot be skip'ed without
+  // skip'ing all hash columns as well.
+  DCHECK(prefixlen == 0 || has_prefixlen);
+  if (doc_spec.options() || doc_spec.range_bounds() || has_prefixlen) {
     return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
   }
 

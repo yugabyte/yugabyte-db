@@ -20,8 +20,11 @@
 #include <unordered_map>
 
 #include "yb/gutil/callback_forward.h"
+#include "yb/gutil/map-util.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 
@@ -128,24 +131,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   typedef std::function<void (PrometheusWriter* writer, const MetricPrometheusOptions& opts)>
     ExternalPrometheusMetricsCb;
 
-  scoped_refptr<Counter> FindOrCreateCounter(const CounterPrototype* proto);
-  scoped_refptr<Counter> FindOrCreateCounter(std::unique_ptr<CounterPrototype> proto);
-  scoped_refptr<MillisLag> FindOrCreateMillisLag(const MillisLagPrototype* proto);
-  scoped_refptr<AtomicMillisLag> FindOrCreateAtomicMillisLag(const MillisLagPrototype* proto);
-  scoped_refptr<Histogram> FindOrCreateHistogram(const HistogramPrototype* proto);
-  scoped_refptr<Histogram> FindOrCreateHistogram(std::unique_ptr<HistogramPrototype> proto);
-
-  template<typename T>
-  scoped_refptr<AtomicGauge<T>> FindOrCreateGauge(const GaugePrototype<T>* proto,
-                                                  const T& initial_value);
-
-  template<typename T>
-  scoped_refptr<AtomicGauge<T>> FindOrCreateGauge(std::unique_ptr<GaugePrototype<T>> proto,
-                                                  const T& initial_value);
-
-  template<typename T>
-  scoped_refptr<FunctionGauge<T> > FindOrCreateFunctionGauge(const GaugePrototype<T>* proto,
-                                                             const Callback<T()>& function);
+  template<typename Metric, typename PrototypePtr, typename ...Args>
+  scoped_refptr<Metric> FindOrCreateMetric(PrototypePtr proto, Args&&... args);
 
   // Return the metric instantiated from the given prototype, or NULL if none has been
   // instantiated. Primarily used by tests trying to read metric values.
@@ -215,7 +202,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // type defined within the metric prototype.
   void CheckInstantiation(const MetricPrototype* proto) const;
 
-  void AddConsumption(int64_t consumption) REQUIRES(lock_);
+  template<typename Pointer>
+  void AddConsumption(const Pointer& value) REQUIRES(lock_);
 
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
@@ -239,6 +227,26 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // Callbacks fired each time WriteForPrometheus is called.
   std::vector<ExternalPrometheusMetricsCb> external_prometheus_metrics_cbs_;
 };
+
+template<typename T>
+void MetricEntity::AddConsumption(const T& value) {
+  if (auto mem_tracker = mem_tracker_.lock()) {
+    mem_tracker->Consume(DynamicMemoryUsageOrSizeOf(value));
+  }
+}
+
+template<typename Metric, typename PrototypePtr, typename ...Args>
+scoped_refptr<Metric> MetricEntity::FindOrCreateMetric(PrototypePtr proto, Args&&... args) {
+  CheckInstantiation(std::to_address(proto));
+  std::lock_guard l(lock_);
+  auto m = down_cast<Metric*>(FindPtrOrNull(metric_map_, std::to_address(proto)).get());
+  if (!m) {
+    m = new Metric(std::move(proto), std::forward<Args>(args)...);
+    InsertOrDie(&metric_map_, m->prototype(), m);
+    AddConsumption(*m);
+  }
+  return m;
+}
 
 void WriteRegistryAsJson(JsonWriter* writer);
 
