@@ -2974,6 +2974,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 	ExprState  *onConflictSetWhere = resultRelInfo->ri_onConflict->oc_WhereClause;
 	HeapTuple	oldtuple = NULL;
+	bool 		shouldFree = true;
 	TupleTableSlot *existing = resultRelInfo->ri_onConflict->oc_Existing;
 	TM_FailureData tmfd;
 	LockTupleMode lockmode;
@@ -3127,7 +3128,6 @@ yb_skip_transaction_control_check:
 		ExecCheckTupleVisible(context->estate, relation, existing);
 	else
 	{
-		bool shouldFree = true;
 		oldtuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &shouldFree);
 		ExecStoreBufferHeapTuple(oldtuple, existing, InvalidBuffer);
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(oldtuple);
@@ -3185,11 +3185,15 @@ yb_skip_transaction_control_check:
 	 * wCTE in the ON CONFLICT's SET.
 	 */
 
+	ItemPointer tid = IsYugaByteEnabled() ? NULL : conflictTid;
 	/* Execute UPDATE with projection */
 	*returning = ExecUpdate(context, resultRelInfo,
-							conflictTid, oldtuple,
+							tid, oldtuple,
 							resultRelInfo->ri_onConflict->oc_ProjSlot,
 							canSetTag);
+
+	if (shouldFree)
+		pfree(oldtuple);
 
 	/*
 	 * Clear out existing tuple, as there might not be another conflict among
