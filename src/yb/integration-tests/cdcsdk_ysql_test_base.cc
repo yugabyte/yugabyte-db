@@ -3087,5 +3087,32 @@ namespace cdc {
       }
     }
   }
+
+  Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecords(
+      GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, const CDCSDKCheckpointPB* cp, const int& tablet_idx,
+      const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
+    int actual_count = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto get_changes_resp_result = GetChangesFromCDC(
+              stream_id, tablets, cp, tablet_idx, safe_hybrid_time, wal_segment_index);
+          if (get_changes_resp_result.ok()) {
+            *get_changes_resp = (*get_changes_resp_result);
+            for (const auto& record : get_changes_resp->cdc_sdk_proto_records()) {
+              if (record.row_message().op() == RowMessage::INSERT ||
+                  record.row_message().op() == RowMessage::UPDATE ||
+                  record.row_message().op() == RowMessage::DELETE) {
+                actual_count += 1;
+              }
+            }
+          }
+          return actual_count == expected_count;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
 } // namespace cdc
 } // namespace yb

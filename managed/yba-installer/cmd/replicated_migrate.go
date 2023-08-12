@@ -81,12 +81,28 @@ var replicatedMigrationStart = &cobra.Command{
 	},
 }
 
+var replicatedMigrationConfig = &cobra.Command{
+	Use:	 	"config",
+	Short:	"generated yba-ctl.yml equivalent of replicated config",
+	Run: func(cmd *cobra.Command, args[]string) {
+		ctl := replicatedctl.New(replicatedctl.Config{})
+		config, err := ctl.AppConfigExport()
+		if err != nil {
+			log.Fatal("failed to export replicated app config: " + err.Error())
+		}
+		err = config.ExportYbaCtl()
+		if err != nil {
+			log.Fatal("failed to migrated replicated config to yba-ctl: " + err.Error())
+		}
+	},
+}
+
 func init() {
 	replicatedMigrationStart.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip by name")
 	replicatedMigrationStart.Flags().StringVarP(&licensePath, "license-path", "l", "",
 		"path to license file")
 
-	baseReplicatedMigration.AddCommand(replicatedMigrationStart)
+	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig)
 	rootCmd.AddCommand(baseReplicatedMigration)
 }

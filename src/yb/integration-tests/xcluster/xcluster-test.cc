@@ -321,7 +321,7 @@ class XClusterTestNoParam : public XClusterTestBase {
   }
   Result<SessionTransactionPair> CreateSessionWithTransaction(
       YBClient* client, client::TransactionManager* txn_mgr) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     auto transaction = std::make_shared<client::YBTransaction>(txn_mgr);
     ReadHybridTime read_time;
     RETURN_NOT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
@@ -605,7 +605,7 @@ class XClusterTestNoParam : public XClusterTestBase {
   Status WriteWorkload(
       uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
       bool delete_op = false) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     RETURN_NOT_OK(table_handle.Open(table->name(), client));
     std::vector<client::YBOperationPtr> ops;
@@ -643,12 +643,18 @@ class XClusterTestNoParam : public XClusterTestBase {
 
   Status VerifyNumRecords(
       const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size) {
-    return LoggedWaitFor(
-        [table, client, expected_size]() -> Result<bool> {
+    size_t found_size = 0;
+    Status s = LoggedWaitFor(
+        [table, client, expected_size, &found_size]() -> Result<bool> {
           auto results = ScanTableToStrings(table->name(), client);
-          return results.size() == expected_size;
+          found_size = results.size();
+          return found_size == expected_size;
         },
         MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
+    if (!s.ok()) {
+      LOG(WARNING) << "Only found " << found_size << " records, expected " << expected_size;
+    }
+    return s;
   }
 
   server::ClockPtr clock_{new server::HybridClock()};
@@ -2296,7 +2302,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
   // Write some data with the New Schema on the Producer.
   {
-    auto session = producer_client()->NewSession();
+    auto session = producer_client()->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -2370,7 +2376,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
   // Write some data with the New Schema on the Producer.
   {
-    auto session = producer_client()->NewSession();
+    auto session = producer_client()->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -3651,6 +3657,36 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
   ASSERT_OK(VerifyRowsMatch());
   ASSERT_OK(wait_for_checkpoint());
   ASSERT_GE(max_found_checkpoint, min_expected_checkpoint);
+}
+
+TEST_F_EX(XClusterTest, FetchBootstrapCheckpointsFromLeaders, XClusterTestNoParam) {
+  // Setup with many tablets to increase the chance that we hit any ordering issues.
+  const uint32_t kReplicationFactor = 3, kTabletCount = 10, kNumMasters = 1, kNumTservers = 3;
+  ASSERT_OK(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ASSERT_TRUE(FLAGS_enable_update_local_peer_min_index);
+
+  ASSERT_OK(InsertRowsInProducer(0, 2));
+
+  ASSERT_OK(producer_cluster()->AddTabletServer());
+  ASSERT_OK(producer_cluster()->WaitForTabletServerCount(4));
+
+  // Bootstrap producer tables.
+  // Force using the tserver we just added as the cdc service proxy. Since load balancing is off,
+  // this node will not have any tablet peers, so we will have to fetch all the bootstrap ids from
+  // other nodes.
+  auto bootstrap_ids = ASSERT_RESULT(BootstrapProducer(
+      producer_cluster(), producer_client(), producer_tables_, /* proxy_tserver_index */ 3));
+
+  // Set up replication with bootstrap IDs.
+  ASSERT_OK(SetupUniverseReplication(producer_tables_, bootstrap_ids));
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
+  ASSERT_OK(InsertRowsInProducer(3, 100));
+  ASSERT_OK(VerifyNumRecordsOnConsumer(97));
 }
 
 }  // namespace yb

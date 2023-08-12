@@ -414,12 +414,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		if (ybscan->quit_scan)
 			return NULL;
 
-		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.
-		 */
-		Assert(ybscan->prepare_params.index_only_scan);
-
 		scan->xs_recheck = YbNeedsRecheck(ybscan);
 		if (!ybscan->is_exec_done)
 		{
@@ -433,17 +427,9 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		/*
 		 * Aggregate pushdown directly modifies the scan slot rather than
 		 * passing it through xs_hitup or xs_itup.
-		 *
-		 * The index id passed into ybFetchNext is likely not going to be used
-		 * as it is only used for system table scans, which have oid, and there
-		 * shouldn't exist any system table secondary indexes that index the
-		 * oid column.
-		 * TODO(jason): deduplicate with ybcingettuple.
 		 */
-		scan->yb_agg_slot =
-			ybFetchNext(ybscan->handle, scan->yb_agg_slot,
-						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
+		return ybc_getnext_aggslot(scan, ybscan->handle,
+								   ybscan->prepare_params.index_only_scan);
 	}
 
 	/*

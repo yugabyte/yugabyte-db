@@ -9,13 +9,13 @@
  */
 package com.yugabyte.yw.common.alerts;
 
+import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutorIF;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionLabel;
-import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +36,7 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
   public static final String AFFECTED_NODE_NAMES = "affected_node_names";
   public static final String AFFECTED_NODE_ADDRESSES = "affected_node_addresses";
   public static final String AFFECTED_NODE_IDENTIFIERS = "affected_node_identifiers";
+  public static final String AFFECTED_VOLUMES = "affected_volumes";
 
   private final Map<String, String> labels;
 
@@ -44,6 +45,7 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
   private final PlaceholderSubstitutor placeholderSubstitutor;
 
   public AlertRuleTemplateSubstitutor(
+      RuntimeConfGetter confGetter,
       AlertTemplateDescription templateDescription,
       AlertConfiguration configuration,
       AlertDefinition definition,
@@ -51,6 +53,18 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
       AlertTemplateSettings templateSettings) {
     Map<String, String> definitionLabels =
         getLabels(templateDescription, configuration, templateSettings, definition, severity);
+
+    if (configuration.getTemplate() == AlertTemplate.NODE_DISK_USAGE) {
+      UUID universeUuid = UUID.fromString(definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      definitionLabels.put("mount_points", MetricQueryHelper.getDataMountPoints(universe));
+    }
+    if (configuration.getTemplate() == AlertTemplate.NODE_SYSTEM_DISK_USAGE) {
+      UUID universeUuid = UUID.fromString(definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      definitionLabels.put(
+          "system_mount_points", MetricQueryHelper.getOtherMountPoints(confGetter, universe));
+    }
 
     AlertConfigurationLabelProvider labelProvider =
         new AlertConfigurationLabelProvider(definition.getUuid(), definitionLabels);

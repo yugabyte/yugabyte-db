@@ -116,7 +116,7 @@ DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
 DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
                  "Probability for simulating the partition list mismatch error on tablet lookup.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   server, dns_resolve_latency_during_init_proxy,
   "yb.client.MetaCache.InitProxy DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -193,10 +193,10 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
     return Status::OK();
   }
 
-  if (!dns_resolve_histogram_) {
+  if (!dns_resolve_stats_) {
     auto metric_entity = client->metric_entity();
     if (metric_entity) {
-      dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);
     }
   }
@@ -207,7 +207,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
       client->data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
-  ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
+  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
   proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
   proxy_endpoint_ = hostport;
 

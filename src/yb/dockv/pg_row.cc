@@ -20,6 +20,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
@@ -94,6 +95,53 @@ size_t AppendString(Slice slice, ValueBuffer* buffer, bool append_zero) {
     out[length] = 0;
   }
   return result;
+}
+
+struct VisitDoDecodeValueV2 {
+  PackedValueV2 input;
+  PgValueDatum* value;
+  ValueBuffer* buffer;
+
+  Status Binary() const {
+    *value = AppendString(*input, buffer, false);
+    return Status::OK();
+  }
+
+  Status Decimal() const {
+    return String();
+  }
+
+  Status String() const {
+    *value = AppendString(*input, buffer, true);
+    return Status::OK();
+  }
+
+  template <class T>
+  Status Primitive() const {
+#ifdef IS_LITTLE_ENDIAN
+    *value = 0;
+    memcpy(value, input->data(), sizeof(T));
+    return Status::OK();
+#else
+    #error "Big endian not implemented"
+#endif
+  }
+};
+
+Status DoDecodeValueV2(
+    PackedValueV2 input, DataType data_type,
+    bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
+  if (input.IsNull()) {
+    *is_null = true;
+    return Status::OK();
+  }
+  *is_null = false;
+  VisitDoDecodeValueV2 visitor {
+    .input = input,
+    .value = value,
+    .buffer = buffer,
+  };
+  return VisitDataType(data_type, visitor);
 }
 
 Status DoDecodeValue(
@@ -414,9 +462,16 @@ void PgTableRow::SetNull(size_t column_idx) {
   is_null_[column_idx] = true;
 }
 
-Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
+Status PgTableRow::DecodeValue(size_t column_idx, PackedValueV1 value) {
   DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeValue(
+      *value, projection_->columns[column_idx].data_type,
+      &is_null_[column_idx], &values_[column_idx], &buffer_);
+}
+
+Status PgTableRow::DecodeValue(size_t column_idx, PackedValueV2 value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
+  return DoDecodeValueV2(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }

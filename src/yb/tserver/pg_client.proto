@@ -407,6 +407,7 @@ enum ReadTimeManipulation {
   NONE = 0;
   RESET = 1;
   RESTART = 2;
+  ENSURE_READ_TIME_IS_SET = 3;
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow

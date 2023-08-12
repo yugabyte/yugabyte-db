@@ -578,7 +578,7 @@ scoped_refptr<Histogram> Master::GetMetric(
           "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
           description, yb::MetricLevel::kInfo, 0, 10000000, 2);
       scoped_refptr<Histogram> temp =
-          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+          metric_entity()->FindOrCreateMetric<Histogram>(std::move(histogram));
       (*master_metrics_ptr)[temp_metric_identifier] = temp;
       return temp;
     }

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <optional>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 
@@ -37,15 +39,16 @@
 using namespace std::literals;
 
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
+DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 DECLARE_uint64(ysql_packed_row_size_limit);
-DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
-DECLARE_bool(ysql_enable_pack_full_row_update);
 
 namespace yb {
 namespace pgwrapper {
@@ -367,13 +370,13 @@ TEST_F(PgPackedRowTest, SchemaGC) {
         int key = ASSERT_RESULT(GetValue<int>(res.get(), row, 0));
         int idx = 0;
         for (const auto& p : columns) {
-          auto is_null = PQgetisnull(res.get(), row, ++idx);
+          auto opt_value = ASSERT_RESULT(GetValue<std::optional<int>>(res.get(), row, ++idx));
+          const auto is_null = !opt_value;
           ASSERT_EQ(is_null, key < p.second) << ", key: " << key << ", p.second: " << p.second;
           if (is_null) {
             continue;
           }
-          auto value = ASSERT_RESULT(GetValue<int>(res.get(), row, idx));
-          ASSERT_EQ(value, p.first * kModifications + key);
+          ASSERT_EQ(*opt_value, p.first * kModifications + key);
         }
       }
     }
@@ -912,6 +915,7 @@ TEST_F(PgPackedRowTest, SstDump) {
 
 TEST_F(PgPackedRowTest, SstDumpNoMetadata) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = false;
 
   std::string output;
   ASSERT_NO_FATALS(TestSstDump(false, &output));

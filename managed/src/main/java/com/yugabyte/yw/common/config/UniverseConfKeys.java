@@ -709,7 +709,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls whether or not to perform the checkUnderReplicatedTablets subtask",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<Duration> changeMasterConfigCheckTimeout =
       new ConfKeyInfo<>(
           "yb.checks.change_master_config.timeout",
@@ -726,7 +725,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls whether or not to wait for master config change to finish",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
+  public static final ConfKeyInfo<Boolean> followerLagCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.enabled",
+          ScopeType.UNIVERSE,
+          "Enabling follower lag check",
+          "Controls whether or not to perform the follower lag checks",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.timeout",
+          ScopeType.UNIVERSE,
+          "Follower lag check timeout",
+          "Controls the max time out when performing follower lag checks",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
@@ -813,5 +827,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Network Load balancer health check path",
           "Path probed by HTTP/HTTPS health checks performed by the network load balancer",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.pitr.default_retention_period",
+          ScopeType.UNIVERSE,
+          "Default PITR retention period for txn xCluster",
+          "The default retention period used to create PITR configs for transactional "
+              + "xCluster replication; it will be used when there is no existing PITR configs "
+              + "and it is not specified in the task parameters",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

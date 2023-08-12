@@ -54,6 +54,10 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
+// Represents STATUS_* definitions from src/postgres/src/include/c.h.
+#define YBC_STATUS_OK     (0)
+#define YBC_STATUS_ERROR  (-1)
+
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------
@@ -291,16 +295,7 @@ typedef struct PgExecParameters {
   //     to Postgres code layer.
   // For now we only support one rowmark.
 
-  // yb_can_pushdown_distinct is true only when the DISTINCT operation can be pushed down
-  // - Param can be false when the operation is SELECT DISTINCT and
-  //   the operation cannot be pushed down.
-  //   examples:
-  //   - yb_enable_distinct_pushdown is switched off
-  //   - aggregate queries (cannot push down DISTINCT)
-  // - The operation may not be pushed down even when the param is true.
-  //   examples:
-  //   - index is secondary
-  //   - non key columns referenced in the query
+  // yb_distinct_prefixlen - prefix for distinct index scan
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
@@ -317,7 +312,7 @@ typedef struct PgExecParameters {
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
-  bool yb_can_pushdown_distinct = false;
+  int yb_distinct_prefixlen = 0;
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
@@ -337,7 +332,7 @@ typedef struct PgExecParameters {
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
-  bool yb_can_pushdown_distinct;
+  int yb_distinct_prefixlen;
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
@@ -366,10 +361,13 @@ typedef struct PgCallbacks {
   int64_t (*PostgresEpochToUnixEpoch)(int64_t);
   int64_t (*UnixEpochToPostgresEpoch)(int64_t);
   void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
+  /* hba.c */
+  int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
+  const bool*     ysql_catalog_preload_additional_tables;
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
@@ -465,6 +463,17 @@ typedef struct PgSessionTxnInfo {
   YBCPgUuid txn_id;
   bool is_not_null;
 } YBCPgSessionTxnInfo;
+
+typedef struct PgJwtAuthOptions {
+  char* jwks;
+  char* matching_claim_key;
+  char** allowed_issuers;
+  size_t allowed_issuers_length;
+  char** allowed_audiences;
+  size_t allowed_audiences_length;
+  char* username;
+  char* usermap;
+} YBCPgJwtAuthOptions;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154

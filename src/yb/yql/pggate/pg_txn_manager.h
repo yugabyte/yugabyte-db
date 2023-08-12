@@ -31,8 +31,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
 // XACT_SERIALIZABLE from xact.h. Please do not change this enum.
@@ -43,6 +42,8 @@ YB_DEFINE_ENUM(
   ((REPEATABLE_READ, 2))
   ((SERIALIZABLE, 3))
 );
+
+YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
@@ -75,7 +76,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
-  uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
+  void SetupPerformOptions(
+      tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time);
 
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
@@ -130,5 +132,4 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

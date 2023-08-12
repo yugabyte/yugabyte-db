@@ -413,7 +413,7 @@ class SysCatalogTable {
   // in flight sys catalog writes are complete before PITR updates any state.
   mutable std::shared_mutex pitr_count_lock_;
 
-  scoped_refptr<Histogram> setup_config_dns_histogram_;
+  scoped_refptr<EventStats> setup_config_dns_stats_;
 
   scoped_refptr<Counter> peer_write_count;
 

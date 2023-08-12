@@ -536,7 +536,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
   Result<tablet::TabletPeerPtr> DoGetServingTablet(const Key& tablet_id) const;

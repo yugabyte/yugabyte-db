@@ -28,6 +28,7 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -76,6 +77,7 @@
 #include "commands/variable.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "libpq/hba.h"
 #include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -659,6 +661,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
 		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -1091,13 +1094,16 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_distinct_pushdown = true;
+bool yb_enable_index_aggregate_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
+bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
+bool yb_prefer_bnl = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -3638,4 +3644,79 @@ bool YbIsStickyConnection(int *change)
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
 	return (yb_committed_sticky_object_count > 0);
+}
+
+void**
+YbPtrListToArray(const List* str_list, size_t* length) {
+	void		**buf;
+	ListCell	*lc;
+
+	/* Assumes that the pointer sizes are equal for every type */
+	buf = (void **) palloc(sizeof(void *) * list_length(str_list));
+	*length = 0;
+	foreach (lc, str_list)
+	{
+		buf[(*length)++] = (void *) lfirst(lc);
+	}
+
+	return buf;
+}
+
+/*
+ * This function is almost equivalent to the `read_whole_file` function of
+ * src/postgres/src/backend/commands/extension.c. It differs only in its error
+ * handling. The original read_whole_file function logs errors elevel ERROR
+ * while this function accepts the elevel as the argument for better control
+ * over error handling.
+ */
+char *
+YbReadWholeFile(const char *filename, int* length, int elevel)
+{
+	char	   *buf;
+	FILE	   *file;
+	size_t		bytes_to_read;
+	struct stat fst;
+
+	if (stat(filename, &fst) < 0)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	if (fst.st_size > (MaxAllocSize - 1))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("file \"%s\" is too large", filename)));
+		return NULL;
+	}
+	bytes_to_read = (size_t) fst.st_size;
+
+	if ((file = AllocateFile(filename, PG_BINARY_R)) == NULL)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\" for reading: %m",
+						filename)));
+		return NULL;
+	}
+
+	buf = (char *) palloc(bytes_to_read + 1);
+
+	*length = fread(buf, 1, bytes_to_read, file);
+
+	if (ferror(file))
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not read file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	FreeFile(file);
+
+	buf[*length] = '\0';
+	return buf;
 }

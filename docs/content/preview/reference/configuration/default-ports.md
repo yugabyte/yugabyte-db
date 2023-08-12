@@ -47,7 +47,7 @@ Admin web server UI can be viewed at the following addresses:
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
 | YB-Master  | 7000  |  [--webserver_interface 0.0.0.0](../yb-master/#webserver-interface)<br>[--webserver_port 7000](../yb-master/#webserver-port) |
-| YB-TServer | 9000  |  [--webserver_interface 0.0.0.0](../yb-master/#webserver-interface)<br>[--webserver_port 9000](../yb-master/#webserver-port) |
+| YB-TServer | 9000  |  [--webserver_interface 0.0.0.0](../yb-tserver/#webserver-interface)<br>[--webserver_port 9000](../yb-tserver/#webserver-port) |
 
 For clusters started using [yugabyted](../yugabyted/), the YugabyteDB UI can be viewed at the following address:
 

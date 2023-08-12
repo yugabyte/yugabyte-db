@@ -77,7 +77,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 class Counter;
 
 namespace docdb {
@@ -106,11 +106,30 @@ struct PrepareDocWriteOperationResult {
   bool need_read_snapshot = false;
 };
 
+typedef std::pair<RefCntPrefix, dockv::IntentTypeSet> TableLockIntent;
+typedef std::vector<TableLockIntent> TableLockIntents;
+
+// This method returns the table lock keys and IntentTypeSet values for a given table lock type.
+//
+// Input: table lock type
+// Context: docdb
+// Output: a vector of pairs, where each pair contains a table lock key
+// and its corresponding IntentTypeSet
+TableLockIntents GetTableLockIntents(TableLockType lock_type);
+
+// This method constructs the prefix key which will be used for acquiring a table level lock.
+//
+// Input: whether the key is for a strong table lock or weak table lock.
+// Context: docdb
+// Output: The prefix for acquiring a table level lock
+RefCntPrefix GetTableLockPrefix(bool is_strong);
+
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     tablet::TabletMetrics* tablet_metrics,
     IsolationLevel isolation_level,
+    TableLockType table_lock_type,
     RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,

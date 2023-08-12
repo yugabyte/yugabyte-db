@@ -8,7 +8,7 @@ import (
 
 const (
 	StateFileName     = ".yba_installer.state"
-	schemaVersion int = 1
+	schemaVersion int = 3
 )
 
 type State struct {
@@ -24,6 +24,7 @@ type State struct {
 type PostgresState struct {
 	UseExisting bool `json:"UseExisting"`
 	IsEnabled   bool `json:"enabled"`
+	LdapEnabled	bool `json:"ldap_enabled"`
 }
 
 func New() *State {
@@ -34,6 +35,7 @@ func New() *State {
 		Postgres: PostgresState{
 			UseExisting: viper.GetBool("postgres.useExisting.enabled"),
 			IsEnabled:   common.IsPostgresEnabled(),
+			LdapEnabled: viper.GetBool("postgres.install.ldap_enabled"),
 		},
 		Ybdb: YbdbState{
 			IsEnabled: viper.GetBool("ybdb.install.enabled"),

@@ -818,6 +818,8 @@ class DB {
 
   virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
+  // Might return stale frontiers if invoked after records have been written to the memtable, but
+  // before frontiers are updated.
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
 
   virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {

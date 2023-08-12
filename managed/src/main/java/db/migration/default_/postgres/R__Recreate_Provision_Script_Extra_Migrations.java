@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default_.common;
+package db.migration.default_.postgres;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.yugabyte.yw.common.AppConfigHelper;

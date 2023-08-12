@@ -26,6 +26,8 @@ Result<size_t> GetMetric(const MetricWatcherDescriptor& desc) {
   const auto& metric = *item->second;
   switch(metric.prototype()->type()) {
     case MetricType::kHistogram: return down_cast<const Histogram&>(metric).TotalCount();
+    case MetricType::kEventStats:
+        return down_cast<const EventStats&>(metric).TotalCount();
     case MetricType::kCounter: return down_cast<const Counter&>(metric).value();
 
     case MetricType::kGauge: break;

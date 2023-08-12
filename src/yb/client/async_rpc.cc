@@ -47,19 +47,19 @@
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_write_remote, "yb.client.Write remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_read_remote, "yb.client.Read remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_write_local, "yb.client.Write local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_read_local, "yb.client.Read local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
     "Microseconds spent before sending the request to the server");
@@ -600,9 +600,9 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
 
 WriteRpc::~WriteRpc() {
   if (async_rpc_metrics_) {
-    scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
-                                              async_rpc_metrics_->local_write_rpc_time :
-                                              async_rpc_metrics_->remote_write_rpc_time;
+    scoped_refptr<EventStats> write_rpc_time = IsLocalCall() ?
+                                                    async_rpc_metrics_->local_write_rpc_time :
+                                                    async_rpc_metrics_->remote_write_rpc_time;
     write_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
 
@@ -736,9 +736,9 @@ ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_lev
 ReadRpc::~ReadRpc() {
   // Get locality metrics if enabled, but skip for system tables as those go to the master.
   if (async_rpc_metrics_ && !table()->name().is_system()) {
-    scoped_refptr<Histogram> read_rpc_time = IsLocalCall() ?
-                                             async_rpc_metrics_->local_read_rpc_time :
-                                             async_rpc_metrics_->remote_read_rpc_time;
+    scoped_refptr<EventStats> read_rpc_time = IsLocalCall() ?
+                                                   async_rpc_metrics_->local_read_rpc_time :
+                                                   async_rpc_metrics_->remote_read_rpc_time;
 
     read_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
