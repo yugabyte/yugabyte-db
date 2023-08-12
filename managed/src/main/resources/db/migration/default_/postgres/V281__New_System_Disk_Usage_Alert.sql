@@ -23,11 +23,17 @@ select
   'UNIVERSE',
   '{"all":true}',
   '{"SEVERE":{"condition":"GREATER_THAN","threshold":80.0}}',
-  'COUNT',
+  'PERCENT',
   'NODE_SYSTEM_DISK_USAGE',
   0,
   true,
   true
-from customer;
+from customer
+where not exists(
+  select * from alert_configuration WHERE template = 'NODE_SYSTEM_DISK_USAGE'
+);
+
+-- This is to handle a partial commit with an incorrect threshold unit
+update alert_configuration set threshold_unit = 'PERCENT'  WHERE template = 'NODE_SYSTEM_DISK_USAGE';
 
 select create_universe_alert_definitions('DB node system disk usage');
