@@ -662,6 +662,9 @@ void WriteQuery::CompleteExecute(HybridTime safe_time) {
 
 Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
+  if (prepare_result_.need_read_snapshot && !read_time_) {
+    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+  }
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
