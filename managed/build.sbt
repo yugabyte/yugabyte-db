@@ -160,6 +160,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
+  "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -168,7 +169,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.27.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
   "javax.mail" % "mail" % "1.4.7",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -191,6 +192,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "com.google.cloud" % "google-cloud-kms" % "2.4.4",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.14.5",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
@@ -474,7 +476,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.62-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b7"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(

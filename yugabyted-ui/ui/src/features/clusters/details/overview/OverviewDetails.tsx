@@ -5,7 +5,7 @@ import { NodesTab } from "../nodes/NodesTab";
 import { useTranslation } from "react-i18next";
 import { ActivityTab } from "../activities/ActivityTab";
 import { SettingsTab } from "../settings/SettingsTab";
-import { StringParam, useQueryParams, withDefault } from "use-query-params";
+import { StringParam, useQueryParam, useQueryParams, withDefault } from "use-query-params";
 import { YBButton } from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import {
@@ -91,6 +91,7 @@ export const OverviewDetails: FC = () => {
     { query: { enabled: false } }
   );
   const { refetch: refetchAlerts } = useGetClusterAlertsQuery({ query: { enabled: false } });
+  const [ refreshChartController, setRefreshChartController ] = useQueryParam<boolean | undefined>("refreshChartController");
 
   const refetch = () => {
     refetchNodes();
@@ -100,7 +101,8 @@ export const OverviewDetails: FC = () => {
     refetchLoadBalancer();
     refetchActivities();
     refetchAlerts();
-  };
+    setRefreshChartController(!refreshChartController, "replaceIn");
+  }
 
   const TabComponent = tabList.find((tab) => tab.name === currentTab)?.component;
 

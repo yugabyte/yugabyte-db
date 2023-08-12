@@ -23,7 +23,8 @@ export const selectionOptions = [
   { label: 'G-Flag configurations', value: 'GFlags' },
   { label: 'Instance files', value: 'Instance' },
   { label: 'Consensus meta files', value: 'ConsensusMeta' },
-  { label: 'Tablet meta files', value: 'TabletMeta' }
+  { label: 'Tablet meta files', value: 'TabletMeta' },
+  { label: 'Node agent logs', value: 'NodeAgent' }
 ];
 
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };

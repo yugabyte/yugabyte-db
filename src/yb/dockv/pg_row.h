@@ -113,7 +113,8 @@ class PgTableRow {
   void SetNull();
   void SetNull(size_t column_idx);
 
-  Status DecodeValue(size_t column_idx, Slice value);
+  Status DecodeValue(size_t column_idx, PackedValueV1 value);
+  Status DecodeValue(size_t column_idx, PackedValueV2 value);
 
   bool IsNull(size_t index) const {
     return is_null_[index];

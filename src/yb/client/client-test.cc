@@ -263,9 +263,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     if (client == nullptr) {
       client = client_.get();
     }
-    std::shared_ptr<YBSession> session = client->NewSession();
-    session->SetTimeout(10s * kTimeMultiplier);
-    return session;
+    return client->NewSession(10s * kTimeMultiplier);
   }
 
   // Inserts 'num_rows' test rows using 'client'
@@ -372,8 +370,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddInt32Condition(condition, "key", QL_OP_GREATER_THAN_EQUAL, 5);
     client_table_.AddInt32Condition(condition, "key", QL_OP_LESS_THAN_EQUAL, 10);
     client_table_.AddColumns({"key"}, req);
-    auto session = client_->NewSession();
-    session->SetTimeout(60s);
+    auto session = client_->NewSession(60s);
     ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -1416,7 +1413,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
   {
     string huge_string(10 * 1024 * 1024, 'x');
 
-    shared_ptr<YBSession> session = client_->NewSession();
+    auto session = CreateSession();
     ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
   }
 }
@@ -2071,8 +2068,7 @@ int CheckRowsEqual(const TableHandle& tbl, int32_t expected) {
 shared_ptr<YBSession> LoadedSession(YBClient* client,
                                     const TableHandle& tbl,
                                     bool fwd, int max, MonoDelta timeout) {
-  shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeout(timeout);
+  shared_ptr<YBSession> session = client->NewSession(timeout);
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
     ApplyUpdateToSession(session.get(), tbl, key, fwd);

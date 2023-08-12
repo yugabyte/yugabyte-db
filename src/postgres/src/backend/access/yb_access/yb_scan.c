@@ -2106,8 +2106,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * attribute numbers from table-based numbers to index-based ones.
  */
 void
-YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-							Relation index, YBCPgStatement handle)
+YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
+							bool xs_want_itup, YBCPgStatement handle)
 {
 	ListCell   *lc;
 
@@ -2171,10 +2171,10 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 					 */
 					int attno = castNode(Var, tle->expr)->varoattno;
 					/*
-					 * For index (only) scans, translate the table-based
+					 * For index only scans, translate the table-based
 					 * attribute number to an index-based one.
 					 */
-					if (index)
+					if (index && xs_want_itup)
 						attno = YbGetIndexAttnum(attno, index);
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
@@ -2199,6 +2199,11 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 		/* Add aggregate operator as scan target. */
 		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
 	}
+
+	/* Set ybbasectid in case of non-primary secondary index scan. */
+	if (index && !xs_want_itup && !index->rd_index->indisprimary)
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								handle);
 }
 
 /*
@@ -2368,7 +2373,7 @@ ybcBeginScan(Relation relation,
 	 */
 	if (aggrefs != NIL)
 		YbDmlAppendTargetsAggregate(aggrefs, ybScan->target_desc, index,
-									ybScan->handle);
+									xs_want_itup, ybScan->handle);
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
@@ -2480,12 +2485,19 @@ YbNeedsRecheck(YbScanDesc ybScan)
 	if (ybScan->hash_code_keys != NIL)
 		return true;
 
+	/*
+	 * In case ordinary keys are bound (and no yb_hash_code pushdown),
+	 * everything is pushed down.
+	 */
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
+
 	if (ybScan->prepare_params.index_only_scan)
 	{
 		/*
 		 * For IndexOnlyScan, always recheck if any ordinary key was not bound.
 		 */
-		return !ybScan->all_ordinary_keys_bound;
+		return true;
 	}
 	else
 	{
@@ -2539,6 +2551,27 @@ ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 		return NULL;
 	*recheck = YbNeedsRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
+}
+
+bool
+ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+					bool index_only_scan)
+{
+	/*
+	 * As of 2023-08-10, the relid passed into ybFetchNext is not going to
+	 * be used as it is only used when there are system targets, not
+	 * counting the internal ybbasectid lookup to the index.
+	 * YbDmlAppendTargetsAggregate only adds that ybbasectid plus operator
+	 * targets.
+	 * TODO(jason): this may need to be revisited when supporting GROUP BY
+	 * aggregate pushdown where system columns are directly targeted.
+	 */
+	scan->yb_agg_slot = ybFetchNext(handle, scan->yb_agg_slot,
+									InvalidOid /* relid */);
+	/* For IndexScan, hack to make index_getnext think there are tuples. */
+	if (!index_only_scan)
+		scan->xs_hitup = (HeapTuple) 1;
+	return !scan->yb_agg_slot->tts_isempty;
 }
 
 void ybc_free_ybscan(YbScanDesc ybscan)
@@ -2910,8 +2943,8 @@ Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 }
 
 void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-						  Selectivity *selectivity, Cost *startup_cost,
-						  Cost *total_cost)
+							Selectivity *selectivity, Cost *startup_cost,
+							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;
@@ -3348,9 +3381,10 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * lifetime of that context is appropriate.
  *
  * By default the slot holds a virtual tuple, a heap tuple is only formed if
- * the DocDB returns oid. If heap tuple is formed, its t_tableOid field is
- * updated with provided relid and t_ybctid field is set to returned ybctid
- * value. The heap tuple is allocated in the slot's memory context.
+ * the DocDB returns system columns. Virtual tuple has no storage for system
+ * attributes. If heap tuple is formed, its t_tableOid field is updated with
+ * provided relid and t_ybctid field is set to returned ybctid value. The heap
+ * tuple is allocated in the slot's memory context.
  */
 TupleTableSlot *
 ybFetchNext(YBCPgStatement handle,
@@ -3372,14 +3406,17 @@ ybFetchNext(YBCPgStatement handle,
 								 &has_data));
 	if (has_data)
 	{
+		bool has_syscols;
 		slot->tts_nvalid = tupdesc->natts;
 		slot->tts_isempty = false;
 		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
-		if (syscols.oid != InvalidOid)
+		HandleYBStatus(YBCPgDmlHasSystemTargets(handle, &has_syscols));
+		if (has_syscols)
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
 			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
-			HeapTupleSetOid(tuple, syscols.oid);
+			if (OidIsValid(syscols.oid))
+				HeapTupleSetOid(tuple, syscols.oid);
 			tuple->t_tableOid = relid;
 			tuple->t_ybctid = slot->tts_ybctid;
 			slot = ExecStoreHeapTuple(tuple, slot, true);

@@ -58,9 +58,11 @@
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
 
@@ -83,12 +85,12 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_group_replicate_batch_size);
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
-
 DECLARE_bool(quick_leader_election_on_create);
 
 namespace yb {
 namespace tablet {
 
+using namespace std::literals;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::RaftPeerPB;
@@ -184,6 +186,13 @@ class TabletPeerTest : public YBTabletTest {
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
                         /* pre_log_rollover_callback = */ {}, new_segment_allocation_callback));
 
+    consensus::RetryableRequestsManager retryable_requests_manager(
+        tablet()->tablet_id(),
+        metadata->fs_manager(),
+        metadata->wal_dir(),
+        MemTracker::FindOrCreateTracker(tablet()->tablet_id()),
+        "");
+    ASSERT_OK(retryable_requests_manager.Init(clock()));
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
@@ -194,7 +203,7 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests_manager */,
+                                           &retryable_requests_manager,
                                            nullptr /* consensus_meta */,
                                            multi_raft_manager_.get(),
                                            nullptr /* flush_retryable_requests_pool */));
@@ -260,6 +269,46 @@ class TabletPeerTest : public YBTabletTest {
     rpc_latch.Wait();
     CHECK(!resp.has_error())
         << "\nResp:\n" << resp.DebugString() << "Req:\n" << req.DebugString();
+  }
+
+  void TryAcquireTableLevelLockIntents(TabletPeer* tablet_peer, Slice key,
+                                       TableLockType lock_type1, TableLockType lock_type2,
+                                       bool lock_types_conflict) {
+    int64_t failed_batch_lock_prev =
+        tablet_peer->tablet()->metrics()->Get(tablet::TabletCounters::kFailedBatchLock);
+    WriteResponsePB resp1, resp2;
+    auto query1 = std::make_unique<WriteQuery>(
+        /* leader_term */ 1, CoarseMonoClock::now(), tablet_peer,
+        tablet(), nullptr, &resp1);
+    auto& write1 = *query1->operation().AllocateRequest();
+    write1.mutable_write_batch()->mutable_table_lock()->set_table_lock_type(lock_type1);
+    CountDownLatch rpc_latch1(1);
+    query1->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch1, &resp1));
+
+    auto query2 = std::make_unique<WriteQuery>(
+        /* leader_term */ 1, CoarseMonoClock::now(), tablet_peer,
+        tablet(), nullptr, &resp2);
+    auto& write2 = *query2->operation().AllocateRequest();
+    write2.mutable_write_batch()->mutable_table_lock()->set_table_lock_type(lock_type2);
+    CountDownLatch rpc_latch2(1);
+    query2->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch2, &resp2));
+
+    tablet_peer->WriteAsync(std::move(query1));
+    tablet_peer->WriteAsync(std::move(query2));
+
+    rpc_latch1.Wait();
+    rpc_latch2.Wait();
+    int64_t failed_batch_lock_curr =
+        tablet_peer->tablet()->metrics()->Get(tablet::TabletCounters::kFailedBatchLock);
+    if (lock_types_conflict) {
+      ASSERT_EQ(failed_batch_lock_curr, failed_batch_lock_prev + 1);
+      CHECK(!resp1.has_error()) << "Unexpected error: " << resp1.DebugString();
+      CHECK(resp2.has_error()) << "Expected error, got: " << resp2.DebugString();
+    } else {
+      ASSERT_EQ(failed_batch_lock_curr, failed_batch_lock_prev);
+      CHECK(!resp1.has_error()) << "Unexpected error: " << resp1.DebugString();
+      CHECK(!resp2.has_error()) << "Unexpected error: " << resp2.DebugString();
+    }
   }
 
   Status RollLog(TabletPeer* tablet_peer) {
@@ -480,6 +529,77 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   OpId op_id(100, 5);
   ASSERT_OK(tablet->AddTable(table_info, op_id));
   ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
+}
+
+
+// Test the process of acquiring intents for table level locks in YSQL.
+// The lock conflict matrix is defined below and is sourced from
+// the postgres documentation on table level locks.
+// This test creates two WriteQuery objects which try to acquire intents for
+// different table lock modes and validates that conflicting intents cannot
+// be acquired.
+TEST_F(TabletPeerTest, TestTableLevelLocks) {
+  const std::unordered_map<TableLockType, std::vector<TableLockType>> kTableLockTypeConflicts {
+      {TableLockType::ACCESS_SHARE,
+          {TableLockType::ACCESS_EXCLUSIVE}},
+      {TableLockType::ROW_SHARE,
+          {TableLockType::ACCESS_EXCLUSIVE,
+          TableLockType::EXCLUSIVE}},
+      {TableLockType::ROW_EXCLUSIVE,
+          {TableLockType::ACCESS_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::SHARE,
+          TableLockType::SHARE_ROW_EXCLUSIVE}},
+      {TableLockType::SHARE_UPDATE_EXCLUSIVE,
+          {TableLockType::ACCESS_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::SHARE,
+          TableLockType::SHARE_ROW_EXCLUSIVE,
+          TableLockType::SHARE_UPDATE_EXCLUSIVE}},
+      {TableLockType::SHARE,
+          {TableLockType::ACCESS_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::SHARE_ROW_EXCLUSIVE,
+          TableLockType::SHARE_UPDATE_EXCLUSIVE,
+          TableLockType::ROW_EXCLUSIVE}},
+      {TableLockType::SHARE_ROW_EXCLUSIVE,
+          {TableLockType::ACCESS_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::SHARE,
+          TableLockType::SHARE_ROW_EXCLUSIVE,
+          TableLockType::SHARE_UPDATE_EXCLUSIVE,
+          TableLockType::ROW_EXCLUSIVE}},
+      {TableLockType::EXCLUSIVE,
+          {TableLockType::ROW_SHARE,
+          TableLockType::ROW_EXCLUSIVE,
+          TableLockType::SHARE_UPDATE_EXCLUSIVE,
+          TableLockType::SHARE,
+          TableLockType::SHARE_ROW_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::ACCESS_EXCLUSIVE}},
+      {TableLockType::ACCESS_EXCLUSIVE,
+          {TableLockType::ACCESS_SHARE,
+          TableLockType::ROW_SHARE,
+          TableLockType::ROW_EXCLUSIVE,
+          TableLockType::SHARE_UPDATE_EXCLUSIVE,
+          TableLockType::SHARE,
+          TableLockType::SHARE_ROW_EXCLUSIVE,
+          TableLockType::EXCLUSIVE,
+          TableLockType::ACCESS_EXCLUSIVE }},
+  };
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+  for (auto it1 : kTableLockTypeConflicts) {
+    for (auto it2 : kTableLockTypeConflicts) {
+      LOG(INFO) << "Testing compatibility of " << TableLockType_Name(it1.first)
+                << " and " << TableLockType_Name(it2.first);
+      bool types_conflict = (std::find(kTableLockTypeConflicts.at(it1.first).begin(),
+                                       kTableLockTypeConflicts.at(it1.first).end(), it2.first)
+                                      != kTableLockTypeConflicts.at(it1.first).end());
+      TryAcquireTableLevelLockIntents(
+          tablet_peer_.get(), Slice("kKey1"), it1.first, it2.first, types_conflict);
+    }
+  }
 }
 
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {

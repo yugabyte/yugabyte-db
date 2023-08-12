@@ -379,4 +379,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom JSON of Azure parameters to apply on top of network interface creation.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> monitoredMountRoots =
+      new ConfKeyInfo<>(
+          "yb.provider.monitored_mount_roots",
+          ScopeType.PROVIDER,
+          "Monitored mount roots",
+          "Mount roots, which we show on the merics dashboard and which we're alerting on.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

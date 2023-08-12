@@ -65,6 +65,13 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
+// TODO: Convert this to an autoflag.
+DEFINE_RUNTIME_bool(ysql_enable_table_level_locks_for_dml_reads, false,
+                    "Whether to acquire table level locks for DML read queries "
+                    "that either have a row mark or are at serializable isolation.");
+TAG_FLAG(ysql_enable_table_level_locks_for_dml_reads, hidden);
+TAG_FLAG(ysql_enable_table_level_locks_for_dml_reads, experimental);
+
 namespace yb {
 namespace tserver {
 
@@ -332,11 +339,20 @@ Status ReadQuery::DoPerform() {
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();
+
   // Should not pick read time for serializable isolation, since it is picked after read intents
   // are added. Also conflict resolution for serializable isolation should be done without read time
   // specified. So we use max hybrid time for conflict resolution in such case.
   // It was implemented as part of #655.
-  if (!serializable_isolation) {
+  //
+  // Similarly, for explicit row locking, if no read time is specified by the query layer, we can
+  // avoid picking one before conflict resolution. Instead we can pick one while reading i.e., after
+  // writing intents (see PickReadTime() in Run()). This helps in Wait-on-Conflict concurrency
+  // control mode by allowing retrying of conflict resolution on the tserver once the waiting
+  // transaction exits a wait queue, instead of throwing a kConflict error and expecting the query
+  // layer to maybe retry. It also helps retry kReadRestart errors which might occur during the
+  // reading phase in the context of this operation.
+  if (!serializable_isolation && !has_row_mark) {
     RETURN_NOT_OK(PickReadTime(server_.Clock()));
   }
 
@@ -368,6 +384,14 @@ Status ReadQuery::DoPerform() {
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();
     *write_batch.mutable_transaction() = req_->transaction();
+    if (GetAtomicFlag(&FLAGS_ysql_enable_table_level_locks_for_dml_reads) &&
+        !tablet()->metadata()->primary_table_info()->schema()
+            .table_properties().is_ysql_catalog_table()) {
+      write_batch.mutable_table_lock()->set_table_lock_type(
+          has_row_mark ?
+          TableLockType::ROW_SHARE :
+          TableLockType::ACCESS_SHARE);
+    }
     if (has_row_mark) {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);
@@ -443,7 +467,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
     metrics->Increment(
-         tablet::TabletHistograms::kReadTimeWait,
+         tablet::TabletEventStats::kReadTimeWait,
          make_unsigned(safe_time_wait.ToMicroseconds()));
   }
   return Status::OK();

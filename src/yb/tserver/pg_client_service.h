@@ -75,6 +75,7 @@ class PgMutationCounter;
     (GetTserverCatalogVersionInfo) \
     (WaitForBackendsCatalogVersion) \
     (CancelTransaction) \
+    (GetActiveTransactionList) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {

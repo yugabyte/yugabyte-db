@@ -406,6 +406,23 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         },
         wait_time * kTimeMultiplier, description);
   }
+  // Waits for snapshot count to increase from current to current + delta.
+  Status WaitForMoreSnapshots(
+      const std::string& schedule_id, MonoDelta wait_time, uint32_t delta,
+      const std::string& description) {
+    // Get current count.
+    auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+    const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+    auto current_count = snapshots.GetArray().Size();
+    return WaitFor(
+        [this, &schedule_id, delta, current_count]() -> Result<bool> {
+          auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+          snapshots.IsArray();
+          return current_count + delta <= snapshots.GetArray().Size();
+        },
+        wait_time * kTimeMultiplier, description);
+  }
 
   // Note: Only populates interval and retention_duration.
   Result<master::SnapshotScheduleOptionsPB> GetSnapshotScheduleOptions(
@@ -475,7 +492,6 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
-    opts->extra_master_flags.emplace_back("--vmodule=master_heartbeat_service=1");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
     opts->num_masters = 3;
   }
@@ -628,7 +644,7 @@ TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
 TEST_F(YbAdminSnapshotScheduleTest, Delete) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -839,7 +855,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalLargerThanRetention) {
 void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
   auto schedule_id = ASSERT_RESULT(PrepareQl());
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -897,7 +913,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -2898,6 +2914,38 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetention,
   }
 }
 
+TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
+          YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 30s, 600s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Create 10 tables.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Enable fast pitr.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_fast_pitr", "true"));
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+
+  // Wait for at least one more snapshot.
+  ASSERT_OK(WaitForMoreSnapshots(schedule_id, 300s, 2, "Wait for 2 more snapshots"));
+
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Tables should exist now.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
 class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
@@ -3231,7 +3279,7 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
   const auto retention = 30s * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));

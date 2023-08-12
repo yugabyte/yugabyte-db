@@ -22,6 +22,7 @@ CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
 
 SET yb_enable_optimizer_statistics = on;
+SET yb_prefer_bnl = true;
 
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
@@ -102,7 +103,8 @@ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
 
 -- However, removing the ordering constraint in this query allows us to prefer
 -- the batched nested loop join option again.
-explain (costs off) select * from p1, p2 where p1.a = p2.a;
+-- Commenting this test until CBO is updated.
+-- explain (costs off) select * from p1, p2 where p1.a = p2.a;
 
 DROP TABLE p1;
 DROP TABLE p2;

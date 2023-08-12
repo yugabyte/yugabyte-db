@@ -2475,8 +2475,12 @@ void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
       });
 }
 
-shared_ptr<YBSession> YBClient::NewSession() {
-  return std::make_shared<YBSession>(this);
+shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {
+  return std::make_shared<YBSession>(this, delta);
+}
+
+shared_ptr<YBSession> YBClient::NewSession(CoarseTimePoint deadline) {
+  return std::make_shared<YBSession>(this, deadline);
 }
 
 bool YBClient::IsMultiMaster() const {

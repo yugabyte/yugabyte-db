@@ -216,10 +216,17 @@ extern void estimate_hash_bucket_stats(PlannerInfo *root,
 						   Selectivity *bucketsize_frac);
 
 extern List *deconstruct_indexquals(IndexPath *path);
+
+extern int yb_batch_expr_size(PlannerInfo *root,
+							  Index path_relid,
+							  Node *batched_expr);
+
 extern void genericcostestimate(PlannerInfo *root, IndexPath *path,
 					double loop_count,
 					List *qinfos,
 					GenericCosts *costs);
+
+double get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
 
 /* Functions in array_selfuncs.c */
 

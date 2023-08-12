@@ -51,7 +51,7 @@
 using std::shared_ptr;
 using std::vector;
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, load_balancer_duration, "Load balancer duration",
     yb::MetricUnit::kMilliseconds, "Duration of one load balancer run (in milliseconds)");
 

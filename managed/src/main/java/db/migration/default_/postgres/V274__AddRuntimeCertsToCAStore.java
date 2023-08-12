@@ -88,6 +88,7 @@ public class V274__AddRuntimeCertsToCAStore extends BaseJavaMigration {
         boolean doesPemStoreExist = new File(pemStorePath).exists();
         if (!doesPemStoreExist) {
           File sysTrustStoreFile = new File(pemStorePath);
+          sysTrustStoreFile.getParentFile().mkdirs();
           sysTrustStoreFile.createNewFile();
           log.debug("Created an empty YBA PEM trust-store");
         }
@@ -95,6 +96,7 @@ public class V274__AddRuntimeCertsToCAStore extends BaseJavaMigration {
         boolean doesPkcs12StoreExist = new File(pkcs12StorePath).exists();
         if (!doesPkcs12StoreExist) {
           File trustStoreFile = new File(pkcs12StorePath);
+          trustStoreFile.getParentFile().mkdirs();
           trustStoreFile.createNewFile();
           log.debug("Created an empty YBA pkcs12 trust-store");
         }

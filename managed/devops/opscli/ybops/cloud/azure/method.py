@@ -10,7 +10,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ChangeInstanceTypeMethod, ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError
 import logging
 import json
@@ -326,6 +326,14 @@ class AzurePauseInstancesMethod(AbstractInstancesMethod):
         if host_info is None:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         self.cloud.stop_instance(host_info)
+
+
+class AzureHardRebootInstancesMethod(HardRebootInstancesMethod):
+    def __init__(self, base_command):
+        super(AzureHardRebootInstancesMethod, self).__init__(base_command)
+        self.valid_states = ('running', 'starting', 'stopped', 'stopping', 'deallocated',
+                             'deallocating')
+        self.valid_stoppable_states = ('running', 'stopping')
 
 
 class AzureResumeInstancesMethod(AbstractInstancesMethod):

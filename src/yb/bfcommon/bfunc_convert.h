@@ -719,7 +719,7 @@ inline Result<BFRetValue> ConvertI8ToVarint(BFParam source, BFFactory factory) {
     return source;
   }
   BFRetValue result = factory();
-  result.set_varint_value(util::VarInt(source.int8_value()).EncodeToComparable());
+  result.set_varint_value(VarInt(source.int8_value()).EncodeToComparable());
   return result;
 }
 
@@ -728,7 +728,7 @@ inline Result<BFRetValue> ConvertI16ToVarint(BFParam source, BFFactory factory) 
     return source;
   }
   BFRetValue result = factory();
-  result.set_varint_value(util::VarInt(source.int16_value()).EncodeToComparable());
+  result.set_varint_value(VarInt(source.int16_value()).EncodeToComparable());
   return result;
 }
 
@@ -737,7 +737,7 @@ inline Result<BFRetValue> ConvertI32ToVarint(BFParam source, BFFactory factory) 
     return source;
   }
   BFRetValue result = factory();
-  result.set_varint_value(util::VarInt(source.int32_value()).EncodeToComparable());
+  result.set_varint_value(VarInt(source.int32_value()).EncodeToComparable());
   return result;
 }
 
@@ -746,7 +746,7 @@ inline Result<BFRetValue> ConvertI64ToVarint(BFParam source, BFFactory factory) 
     return source;
   }
   BFRetValue result = factory();
-  result.set_varint_value(util::VarInt(source.int64_value()).EncodeToComparable());
+  result.set_varint_value(VarInt(source.int64_value()).EncodeToComparable());
   return result;
 }
 
@@ -892,7 +892,7 @@ inline Result<BFRetValue> ConvertToDecimal(BFParam source, BFFactory factory) {
       RETURN_NOT_OK(d.DecodeFromComparable(source.decimal_value()));
       break;
     case ConvertDecimalVia::kInt64:
-      RETURN_NOT_OK(d.FromVarInt(util::VarInt(int_num)));
+      RETURN_NOT_OK(d.FromVarInt(VarInt(int_num)));
       break;
     case ConvertDecimalVia::kDouble:
       RETURN_NOT_OK(d.FromDouble(double_num));

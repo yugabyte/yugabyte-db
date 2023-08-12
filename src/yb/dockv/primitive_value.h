@@ -307,7 +307,8 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
 void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, std::string* out);
+void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out);
 size_t EncodedValueSize(const QLValuePB& value);
-
+size_t EncodedValueSize(const LWQLValuePB& value);
 
 }  // namespace yb::dockv

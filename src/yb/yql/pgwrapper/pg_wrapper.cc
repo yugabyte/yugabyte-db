@@ -161,6 +161,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_memory_tracking, true,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVolatile, false, true,
+    "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
     "Push down strict inequality filters");
 
@@ -212,6 +215,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_wait_for_backends_catalog_version, false
     " issues, which could be mitigated by setting high ysql_yb_index_state_flags_update_delay."
     " Although it is runtime-settable, the effects won't take place for any in-progress"
     " queries.");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
+    "Enable cost model enhancements");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
@@ -380,7 +386,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to read default postgres configuration '%s': errno=$0: $1",
+        "Failed to read default postgres configuration '$0': errno=$1: $2",
         default_conf_path,
         errno,
         ErrnoToString(errno));

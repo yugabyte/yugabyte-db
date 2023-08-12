@@ -209,7 +209,7 @@ extern Path *get_cheapest_fractional_path_for_pathkeys(List *paths,
 										  double fraction);
 extern Path *get_cheapest_parallel_safe_total_inner(List *paths);
 extern List *build_index_pathkeys(PlannerInfo *root, IndexOptInfo *index,
-					 ScanDirection scandir);
+					 ScanDirection scandir, int *yb_distinct_nkeys);
 extern List *build_expression_pathkey(PlannerInfo *root, Expr *expr,
 						 Relids nullable_relids, Oid opno,
 						 Relids rel, bool create_it);
@@ -241,12 +241,27 @@ extern List *trim_mergeclauses_for_inner_pathkeys(PlannerInfo *root,
 									 List *pathkeys);
 extern List *truncate_useless_pathkeys(PlannerInfo *root,
 						  RelOptInfo *rel,
-						  List *pathkeys);
+						  List *pathkeys,
+						  int yb_distinct_nkeys);
 extern bool has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel);
 extern PathKey *make_canonical_pathkey(PlannerInfo *root,
 					   EquivalenceClass *eclass, Oid opfamily,
 					   int strategy, bool nulls_first);
 extern void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 						List *live_childrels);
+extern List *yb_get_distinct_prefix(IndexOptInfo *index, List *index_clauses);
+
+/*
+ * YB: Enum representing if the uniqkeys of a pathnode is sufficient to
+ * satisfy the distinctness requirements of a query.
+ */
+typedef enum {
+	YB_UNIQKEYS_NONE, /* path must be dropped since it skipped some rows */
+	YB_UNIQKEYS_EXACT, /* path satisfies the query requirements exactly */
+	YB_UNIQKEYS_EXCESS /* path is only partially distinct */
+} YbUniqKeysCmp;
+
+extern YbUniqKeysCmp yb_has_sufficient_uniqkeys(PlannerInfo *root,
+												Path *pathnode);
 
 #endif							/* PATHS_H */

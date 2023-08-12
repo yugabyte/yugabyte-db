@@ -17,7 +17,7 @@ GET     /fetch_jwt_token                                                       c
 + forceAudit
 GET     /insecure_login                                                        com.yugabyte.yw.controllers.SessionController.insecure_login(request: Request)
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID, request: Request)
-PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID, apiTokenVersion: java.lang.Long ?= null, request: Request)
 GET     /logout                                                                com.yugabyte.yw.controllers.SessionController.logout()
 + nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: java.lang.Boolean ?= false, request: Request)
@@ -72,11 +72,15 @@ PUT     /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule/:sUUID c
 
 GET     /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/providers/:pUUID/provider_regions                    com.yugabyte.yw.controllers.RegionController.createRegionNew(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID             com.yugabyte.yw.controllers.RegionController.editRegionNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID/region_zones                com.yugabyte.yw.controllers.AvailabilityZoneController.createZoneNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID/region_zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.editZoneNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 
 GET     /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String)
@@ -287,6 +291,7 @@ DELETE  /customers/:cUUID/universes/:uniUUID                                   c
 
 # Universe Info like status, cost, query stats, health, resource usage
 GET     /customers/:cUUID/universes/:uniUUID/status                            com.yugabyte.yw.controllers.UniverseInfoController.universeStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/spot_status                       com.yugabyte.yw.controllers.UniverseInfoController.spotInstanceStatus(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/health_check                      com.yugabyte.yw.controllers.UniverseInfoController.healthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/trigger_health_check              com.yugabyte.yw.controllers.UniverseInfoController.triggerHealthCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/cost                                                 com.yugabyte.yw.controllers.UniverseInfoController.universeListCost(cUUID: java.util.UUID)
@@ -351,6 +356,12 @@ POST    /customers/:cUUID/xcluster_configs/:xccUUID                            c
 DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 POST    /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap             com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    com.yugabyte.yw.controllers.XClusterConfigController.needBootstrapTable(cUUID: java.util.UUID, uniUUID: java.util.UUID, configType: String ?= null, request: Request)
+
+# Disaster Recovery API
+POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.get(cUUID: java.util.UUID, drUUID: java.util.UUID)
+DELETE  /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.delete(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
+
 
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -575,8 +586,18 @@ POST /customers/:cUUID/universes/:univUUID/configure/ysql                      c
 
 # New RBAC APIs
 GET /customers/:cUUID/rbac/permissions                                         com.yugabyte.yw.controllers.RBACController.listPermissions(cUUID: java.util.UUID, resourceType: String ?= null)
+# Role APIs
 POST /customers/:cUUID/rbac/role                                               com.yugabyte.yw.controllers.RBACController.createRole(cUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/rbac/role                                                com.yugabyte.yw.controllers.RBACController.listRoles(cUUID: java.util.UUID, roleType: String ?= null)
 GET /customers/:cUUID/rbac/role/:rUUID                                         com.yugabyte.yw.controllers.RBACController.getRole(cUUID: java.util.UUID, rUUID: java.util.UUID)
 PUT /customers/:cUUID/rbac/role/:rUUID                                         com.yugabyte.yw.controllers.RBACController.editRole(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/rbac/role/:rUUID                                      com.yugabyte.yw.controllers.RBACController.deleteRole(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+# RoleBinding APIs
+GET /customers/:cUUID/rbac/role_binding                                        com.yugabyte.yw.controllers.RBACController.listRoleBinding(cUUID: java.util.UUID, userUUID: java.util.UUID ?= null)
+POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)
+
+# Telemetry Provider APIs 
+GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)
+GET /customers/:cUUID/telemetry_provider                                       com.yugabyte.yw.controllers.TelemetryProviderController.listTelemetryProviders(cUUID: java.util.UUID)
+POST /customers/:cUUID/telemetry_provider                                      com.yugabyte.yw.controllers.TelemetryProviderController.createTelemetryProvider(cUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/telemetry_provider/:intUUID                           com.yugabyte.yw.controllers.TelemetryProviderController.deleteTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID, request: Request)

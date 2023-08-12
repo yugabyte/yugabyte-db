@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -463,7 +464,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                     buildProviderReq("aws", "Amazon"),
                     ImmutableList.of("region1", "region2"),
                     UUID.randomUUID()));
-    assertBadRequest(result, "Provider with the name Amazon already exists");
+    assertConflict(result, "Provider with the name Amazon already exists");
   }
 
   @Test

@@ -848,6 +848,20 @@ Status WaitForAllPeersToCatchup(const TabletId& tablet_id,
       timeout, "Waiting for all replicas to have the same committed op id");
 }
 
+Status GetReplicaStatus(
+    const TServerDetails* replica, const string& tablet_id, const MonoDelta& timeout) {
+  ConsensusStatePB cstate;
+  LeaderLeaseStatus leader_lease_status;
+  Status s = GetConsensusState(
+      replica, tablet_id, CONSENSUS_CONFIG_ACTIVE, timeout, &cstate, &leader_lease_status);
+  if (PREDICT_FALSE(!s.ok())) {
+    VLOG(1) << "Error getting consensus state from replica: "
+            << replica->instance_id.permanent_uuid();
+    return STATUS(NotFound, "Error connecting to replica", s.ToString());
+  }
+  return Status::OK();
+}
+
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
@@ -957,6 +971,26 @@ Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
     }
   }
   return Status::OK();
+}
+
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const vector<TServerDetails*>& tservers, const string& tablet_id, const MonoDelta& timeout) {
+  MonoTime deadline = MonoTime::Now();
+  std::unordered_set<TServerDetails*> peers;
+  deadline.AddDelta(timeout);
+  for (auto& tserver : tservers) {
+    MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now());
+    auto s = GetReplicaStatus(tserver, tablet_id, remaining_timeout);
+    if (s.ok()) {
+      peers.insert(tserver);
+    }
+  }
+  return peers;
+}
+
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const TabletServerMap& tablet_servers, const std::string& tablet_id, const MonoDelta& timeout) {
+  return FindTabletPeers(TServerDetailsVector(tablet_servers), tablet_id, timeout);
 }
 
 Status StartElection(const TServerDetails* replica,

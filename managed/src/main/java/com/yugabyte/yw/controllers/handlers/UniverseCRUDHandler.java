@@ -639,17 +639,9 @@ public class UniverseCRUDHandler {
       try {
         if (userIntent.enableYSQLAuth) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
-          if (confGetter.getConfForScope(
-              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
-            passwordPolicyService.validatePasswordNotLeaked("YSQL", userIntent.ysqlPassword);
-          }
         }
         if (userIntent.enableYCQLAuth) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
-          if (confGetter.getConfForScope(
-              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
-            passwordPolicyService.validatePasswordNotLeaked("YCQL", userIntent.ycqlPassword);
-          }
         }
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());

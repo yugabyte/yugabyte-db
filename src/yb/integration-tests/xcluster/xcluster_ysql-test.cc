@@ -1863,7 +1863,9 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
     LOG(INFO) << "Checking records for table " << consumer_table_->name().ToString();
     auto consumer_results = ScanToStrings(consumer_table_->name(), &consumer_cluster_);
     auto consumer_results_size = PQntuples(consumer_results.get());
-    LOG(INFO) << "data_replicated_correctly Found = " << consumer_results_size;
+    LOG(INFO)
+        << "data_replicated_correctly Found = " << consumer_results_size << ", expected: "
+        << num_results;
     if (num_results != consumer_results_size) {
       return false;
     }
@@ -1871,6 +1873,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
     for (int i = 0; i < num_results; ++i) {
       result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
       if (i != result) {
+        LOG(INFO) << "Different value for key " << i << ": " << result;
         return false;
       }
     }

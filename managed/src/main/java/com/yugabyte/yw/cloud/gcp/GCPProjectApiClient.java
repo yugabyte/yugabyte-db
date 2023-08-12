@@ -15,6 +15,7 @@ import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.ForwardingRule;
 import com.google.api.services.compute.model.ForwardingRuleList;
+import com.google.api.services.compute.model.HTTPHealthCheck;
 import com.google.api.services.compute.model.HealthCheck;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.InstanceGroup;
@@ -30,6 +31,7 @@ import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -269,18 +271,15 @@ public class GCPProjectApiClient {
    * Creates a new regional TCP health check on the specified port, with default parameters
    *
    * @param region Region for which the health check needs to be created
-   * @param protocol Protocol that needs to be supported by the health check. For now, we only
-   *     support "TCP"
    * @param port Port at which the health check will probe to check for the health of the VM
    * @return URL for the newly created health check
    * @throws IOException when connection to GCP fails
    */
-  public String createNewHealthCheckForPort(String region, String protocol, Integer port)
-      throws IOException {
+  public String createNewTCPHealthCheckForPort(String region, Integer port) throws IOException {
     String healthCheckName = "hc-" + port.toString() + UUID.randomUUID().toString();
     HealthCheck healthCheck = new HealthCheck();
     healthCheck.setName(healthCheckName);
-    healthCheck.setType(protocol);
+    healthCheck.setType(Protocol.TCP.name());
     TCPHealthCheck tcpHealthCheck = new TCPHealthCheck();
     tcpHealthCheck.setPort(port);
     healthCheck.setTcpHealthCheck(tcpHealthCheck);
@@ -288,7 +287,47 @@ public class GCPProjectApiClient {
     Operation response =
         compute.regionHealthChecks().insert(project, region, healthCheck).execute();
     operationPoller.waitForOperationCompletion(response);
-    log.info("Sucessfully created new health check for port " + port);
+    log.info("Sucessfully created new TCP health check for port " + port);
+    return response.getTargetLink();
+  }
+
+  /**
+   * Creates a new regional HTTP health check on the specified port, with default parameters
+   *
+   * @param region Region for which the health check needs to be created
+   * @param port Port at which the health check will probe to check for the health of the VM
+   * @param requestPath Path at which the health check will probe to check status
+   * @return URL for the newly created health check
+   * @throws IOException when connection to GCP fails
+   */
+  public String createNewHTTPHealthCheckForPort(String region, Integer port, String requestPath)
+      throws IOException {
+    String healthCheckName = "hc-" + port.toString() + UUID.randomUUID().toString();
+    HealthCheck healthCheck = new HealthCheck();
+    healthCheck.setName(healthCheckName);
+    healthCheck.setType(Protocol.HTTP.name());
+    HTTPHealthCheck httpHealthCheck = new HTTPHealthCheck();
+    httpHealthCheck.setPort(port);
+    httpHealthCheck.setRequestPath(requestPath);
+    healthCheck.setHttpHealthCheck(httpHealthCheck);
+    log.debug("Creating new health check " + healthCheck);
+    Operation response =
+        compute.regionHealthChecks().insert(project, region, healthCheck).execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info("Sucessfully created new HTTP health check for port " + port);
+    return response.getTargetLink();
+  }
+
+  public String updateHealthCheck(String region, HealthCheck healthCheck) throws IOException {
+    String healthCheckName = healthCheck.getName();
+    log.debug("Updating health check " + healthCheck);
+    Operation response =
+        compute
+            .regionHealthChecks()
+            .update(project, region, healthCheckName, healthCheck)
+            .execute();
+    operationPoller.waitForOperationCompletion(response);
+    log.info("Sucessfully updated health check " + healthCheckName);
     return response.getTargetLink();
   }
 
