@@ -3,7 +3,7 @@ title: Time series data model
 headerTitle: Time series data model
 linkTitle: Time series
 description: Explore the Time series data model
-headcontent: Explore the time series data model
+headcontent: Handle large amounts of data ordered by time
 menu:
   preview:
     identifier: common-patterns-timeseries

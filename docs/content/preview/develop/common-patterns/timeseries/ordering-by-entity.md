@@ -3,7 +3,7 @@ title: Order by entity
 headerTitle: Order by entity
 linkTitle: Order by entity
 description: Distribute your time-ordered data and retrieve fast
-headcontent: Distribute your time-ordered data and retrieve fast
+headcontent: Keep entity data together in a time series data model
 menu:
   preview:
     identifier: timeseries-entity-ordering
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In a time series data model, to enforce that all data for an entity stays together and at the same time maintains the timestamp-based ordering, you have to distribute the data by the entity and order it by time.
+In a time series data model, to enforce that all data for an entity stays together while maintaining the timestamp-based ordering, you have to distribute the data by the entity and order it by time.
 
 The following sections describe how to order by entity with a few examples.
 
@@ -35,7 +35,7 @@ CREATE TABLE entity_order1 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-{{<note>}}Note that the table is explicitly split into 3 tablets to view the tablet information for the following examples.{{</note>}}
+{{<note>}}The table is explicitly split into three tablets to better view the tablet information in the following examples.{{</note>}}
 
 When you insert data, it is distributed on the value of `yb_hash_code(car)`, but within a car the data is ordered by timestamp.
 
@@ -68,7 +68,7 @@ SELECT *, yb_hash_code(car) % 3 as tablet FROM entity_order1;
  2023-07-01 00:00:06 | car-1 |    10 |      2
 ```
 
-Notice that the data for each car is together (in the same tablet) but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car (say `car-1`) will be located in the same tablet (`2`), because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`).
+Notice that the data for each car is together (in the same tablet), but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car (say `car-1`) will be located in the same tablet (`2`), because you have defined the data to be distributed on the hash of `car` (`PRIMARY KEY(car HASH, ts ASC)`).
 
 Distributing the data by the entity (`car`) and ordering the data by timestamp for each entity solves the problem of keeping data together for an entity and at the same time maintains a global distribution across different entities across the different tablets. But this could lead to a hot shard problem if there are too many operations on the same car.
 

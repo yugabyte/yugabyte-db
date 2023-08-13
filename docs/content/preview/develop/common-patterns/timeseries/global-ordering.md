@@ -97,9 +97,7 @@ CREATE TABLE global_order2 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-{{<note>}}
-The table is explicitly split into 3 tablets to better view the tablet information for the following examples.
-{{</note>}}
+{{<note>}}The table is explicitly split into three tablets to better view the tablet information in the following examples.{{</note>}}
 
 This adds a `bucketid` to your data, consisting of a random number between `0` and `7`, and which you will use to distribute the data on the entity and `bucketid`.
 

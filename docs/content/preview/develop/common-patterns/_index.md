@@ -14,7 +14,7 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB is a distributed database that provides data access via the YSQL and YCQL APIs. Although it supports these complex APIs, underneath it is a NoSQL store. This makes YugabyteDB a natural fit for multiple data models like time series, key-value, wide-column, and so on.
+YugabyteDB is a distributed database that provides data access via the YSQL and YCQL APIs. Although it supports these complex APIs, underneath it is a NoSQL store. This makes YugabyteDB a natural fit for multiple data models such as time series, key-value, and wide-column.
 
 The following sections describe how you can leverage common data models to design robust and efficient applications.
 
@@ -39,9 +39,9 @@ For more information on storing and retrieving such vast amounts of ordered data
 
 ## Key-value
 
-In the key-value data model, each key is associated with one and only one value. YugabyteDB internally stores data as a collection of key-value pairs and hence automatically excels as a key-value store. Because in a key-value store, each key has exactly one value, it is typical to define the key as a combination of multiple parameters.
+In the key-value data model, each key is associated with one and only one value. YugabyteDB internally stores data as a collection of key-value pairs and hence automatically excels as a key-value store.
 
-For example, to store the details of a user, you can choose to adopt the following schema:
+Because in a key-value store, each key has exactly one value, keys are typically defined as a combination of multiple parameters. For example, to store the details of a user, you could adopt the following schema:
 
 ```json
 user1.name = "John Wick"

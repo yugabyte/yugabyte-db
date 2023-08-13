@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Partitioning refers to splitting what is logically one large table into smaller physical pieces. The key advantage of partitioning in YugabyteDB is that each partition is a separate table and it would be efficient to keep the most significant data in one partition and not-so-important data in other partitions so that they can be dropped easily.
+Partitioning refers to splitting what is logically one large table into smaller physical pieces. The key advantage of partitioning in YugabyteDB is that, because each partition is a separate table, it is efficient to keep the most significant (for example, most recent) data in one partition, and not-so-important data in other partitions so that they can be dropped easily.
 
 The following example describes the advantages of partitions in more detail.
 
@@ -50,7 +50,6 @@ CREATE TABLE part_9_23 PARTITION OF part_demo
     FOR VALUES FROM ('2023-09-01') TO ('2023-10-01');
 
 CREATE TABLE def_part_demo PARTITION OF part_demo DEFAULT;
-
 ```
 
 Insert some data into the main table `part_demo`:
