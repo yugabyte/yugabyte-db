@@ -39,6 +39,9 @@ Revision history for pgTAP
   that common aliases for standard types can be specified as, e.g., `int` and
   `bool` rather than `integer` and `boolean`. Thanks to @wphilips53 for the
   suggestion (#292).
+* Tweaked the installation docs for Docker, binary Linux distributions, and
+  downloading the source from PGXN. Thanks to @jed-walker-icd (#275) and
+  @machineghost (#301) for the suggestions!
 
 1.2.0 2021-12-05T18:08:13Z
 --------------------------
