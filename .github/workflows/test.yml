@@ -68,5 +68,5 @@ jobs:
         # See also https://askubuntu.com/a/104912 for --force options
         run: |
           make install
-          apt-get install -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql-${{ matrix.upgrade_to }} postgresql-server-dev-${{ matrix.upgrade_to }}
+          apt-get install -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql-${{ matrix.upgrade_to }}
           sudo -u postgres test/test_MVU.sh -s 55432 55433 "${{ matrix.version }}" "${{ matrix.upgrade_to }}"
