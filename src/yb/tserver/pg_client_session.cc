@@ -933,6 +933,11 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
     if (wait_state) {
       wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .method = "Perform"});
     }
+    auto &op0 = data->req.ops(0);
+    auto &table_id = (op0.has_write() ? op0.write().table_id() : op0.read().table_id());
+    VLOG_IF(0, !options.auh_metadata().has_query_id()) << "Perform rpc: namespace_id: " << data->req.options().namespace_id()
+    << " table_id: " << yb::ToString(table_id) 
+    << " Auh metadata : " << yb::ToString(options.auh_metadata());
   }
   if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {

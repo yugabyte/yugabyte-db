@@ -7045,6 +7045,11 @@ yb_pgstat_add_session_info(uint64_t session_id)
 	if (MyBEEntry == NULL)
 	{
 		/* Must be an auxiliary process */
+		if(MyAuxProcType == NotAnAuxProcess) {
+			elog(FATAL, "unrecognized process type: %d at %s",
+					(int) MyAuxProcType, YBCGetStackTrace());
+		}
+
 		Assert(MyAuxProcType != NotAnAuxProcess);
 		return;
 	}

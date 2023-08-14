@@ -1632,6 +1632,15 @@ void YBCRegisterSysTableForPrefetching(
 
 YBCStatus YBCPrefetchRegisteredSysTables() {
   return ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
+	// const int64 old_query_id = MyProc->queryid;
+	// if (YBCPgIsYugaByteEnabled())
+	// {
+	// 	const int64 kCatalogQueryId = -3;
+	// 	YBCSetQueryId(kCatalogQueryId);
+	// }
+  // auto s = ToYBCStatus(pgapi->PrefetchRegisteredSysTables());
+  // YBCSetQueryId(old_query_id);
+  // return s;
 }
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
