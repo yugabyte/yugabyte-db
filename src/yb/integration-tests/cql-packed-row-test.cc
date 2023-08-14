@@ -18,6 +18,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
@@ -287,6 +288,25 @@ TEST_F(CqlPackedRowTest, CompactUpdateToNull) {
   ASSERT_EQ(lines.size(), 1);
   ASSERT_TRUE(boost::algorithm::ends_with(
       lines[0], Format("{ $0: NULL }\n", kFirstColumnId + 1))) << lines[0];
+}
+
+TEST_F(CqlPackedRowTest, CompactAfterTransaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_keep_intent_doc_ht) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) "
+      "WITH tablets = 1 AND transactions = {'enabled' : true};"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX t_v1 ON t(v1)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
+
+  ASSERT_OK(session.ExecuteQueryFormat("UPDATE t SET v2 = 'dva' WHERE key = 1"));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(CheckTableContent(&session, "1,one,dva"));
 }
 
 } // namespace yb
