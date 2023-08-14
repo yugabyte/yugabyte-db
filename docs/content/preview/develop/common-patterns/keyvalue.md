@@ -15,7 +15,7 @@ type: indexpage
 In the key-value data model, each key is associated with one and only one value. Key-value stores expose three basic APIs:
 
 - `GET` to fetch the value of a key (for example, `GET('name')`)
-- `SET` to store the value of a key (for example, `PUT('name', 'yugabyte')`)
+- `SET` to store the value of a key (for example, `SET('name', 'yugabyte')`)
 - `DEL` to delete a key and its value (for example, `DEL('name')`)
 
 With these three simple functionalities, key-value stores have carved themselves a niche in modern infrastructure because of their speed and simplicity.
@@ -23,7 +23,7 @@ With these three simple functionalities, key-value stores have carved themselves
 YugabyteDB provides several advantages when used as a key-value store:
 
 - YugabyteDB internally [stores data](../../../architecture/docdb/persistence/) as a collection of key-value pairs and therefore automatically excels as a key-value store.
-- Being [distributed by design](../../../architecture/docdb-replication/), YugabyteDB also naturally acts as a distributed key-value store.
+- Being [distributed by design](../../../architecture/transactions/distributed-txns/), YugabyteDB also naturally acts as a distributed key-value store.
 - YugabyteDB inherently provides consistency of data because of RAFT replication, which is typically not guaranteed by other key-value stores.
 
 ## Setup
@@ -32,7 +32,7 @@ YugabyteDB provides several advantages when used as a key-value store:
 
 ## Store user data
 
-For example, to store the details of a user, you can choose to adopt a schema where each attribute is a separate key. For example:
+For example, to store the details of a user, you could adopt a schema where each attribute is a separate key, such as the following:
 
 ```json{.nocopy}
 user1.name = "John Wick"
