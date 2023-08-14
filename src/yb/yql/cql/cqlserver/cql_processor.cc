@@ -412,8 +412,9 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
   VLOG(1) << "Generated Query Id = " << query_id;
-  // Can the CQLMessage::QueryId fit inside a 64 bit uint?
-  ql_env_.auh_metadata().query_id = std::stoull(query_id);
+  ql_env_.auh_metadata().query_id = std::stoull(
+    b2a_hex(query_id).substr(0, std::min(16, (int)query_id.size())), 0, 16);
+  // LOG(ERROR) << " ------------ " << query_id << " " << ql_env_.auh_metadata().query_id;
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -450,7 +451,9 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
-  ql_env_.auh_metadata().SetQueryIdFromHex(req.query_id());
+  LOG(ERROR) << req.query_id();
+  ql_env_.auh_metadata().query_id = std::stoull(
+    b2a_hex(req.query_id()).substr(0, std::min(16, (int)req.query_id().size())), 0, 16);
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
   if (!stmt_res.ok()) {
@@ -463,9 +466,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
-  // recalculating query id, expensive?
-  ql_env_.auh_metadata().SetQueryIdFromHex(CQLStatement::GetQueryId(
-      ql_env_.CurrentKeyspace(), req.query()));
   VLOG(1) << "QUERY " << req.query();
   if (service_impl_->system_cache() != nullptr) {
     auto cached_response = service_impl_->system_cache()->Lookup(req.query());
@@ -480,6 +480,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   const CQLMessage::QueryId query_id =
       CQLStatement::GetQueryId(ql_env_.CurrentKeyspace(), req.query());
   // Allocates space to unprepared statements in the cache.
+  ql_env_.auh_metadata().query_id = std::stoull(
+    b2a_hex(query_id).substr(0, std::min(16, (int)query_id.size())), 0, 16);
   const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
       query_id, req.query(), &ql_env_, IsPrepare::kFalse);
 
