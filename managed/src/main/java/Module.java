@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -49,6 +52,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -78,9 +82,16 @@ import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.Security;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.http.url.DefaultUrlResolver;
@@ -210,10 +221,27 @@ public class Module extends AbstractModule {
 
   @Provides
   protected OidcClient<OidcConfiguration> provideOidcClient(
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfigFactory runtimeConfigFactory, CustomCAStoreManager customCAStoreManager) {
     com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
     String securityType = config.getString("yb.security.type");
     if (securityType.equals("OIDC")) {
+      if (customCAStoreManager.isEnabled()) {
+        KeyStore ybaAndJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+        try {
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaAndJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          SecureRandom secureRandom = new SecureRandom();
+          SSLContext sslContext = SSLContext.getInstance("TLS");
+          sslContext.init(null, ybaJavaTrustManagers, secureRandom);
+          SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
+        }
+      }
       OidcConfiguration oidcConfiguration = new OidcConfiguration();
       oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
       oidcConfiguration.setSecret(config.getString("yb.security.secret"));
