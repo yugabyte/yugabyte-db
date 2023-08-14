@@ -17,34 +17,16 @@ import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.CustomerTaskFormData;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.ResizeNodeParams;
-import com.yugabyte.yw.forms.SubTaskFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -187,10 +169,23 @@ public class CustomerTaskController extends AuthenticatedController {
                     (c1, c2) -> c1.getCompletionTime().after(c2.getCompletionTime()) ? c1 : c2));
     Map<UUID, String> updatingTaskByTargetMap =
         commissioner.getUpdatingTaskUUIDsForTargets(customer.getId());
+    Map<UUID, String> placementModificationTaskByTargetMap =
+        commissioner.getPlacementModificationTaskUUIDsForTargets(customer.getId());
+    Map<UUID, Set<String>> allowRetryTasksByTargetMap = new HashMap<>();
+    updatingTaskByTargetMap.forEach(
+        (universeUUID, taskUUID) ->
+            allowRetryTasksByTargetMap
+                .computeIfAbsent(universeUUID, k -> new HashSet<>())
+                .add(taskUUID));
+    placementModificationTaskByTargetMap.forEach(
+        (universeUUID, taskUUID) ->
+            allowRetryTasksByTargetMap
+                .computeIfAbsent(universeUUID, k -> new HashSet<>())
+                .add(taskUUID));
     for (CustomerTask task : customerTaskList) {
       TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
       commissioner
-          .buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap)
+          .buildTaskStatus(task, taskInfo, allowRetryTasksByTargetMap, lastTaskByTargetMap)
           .ifPresent(
               taskProgress -> {
                 CustomerTaskFormData taskData =
@@ -440,7 +435,8 @@ public class CustomerTaskController extends AuthenticatedController {
     if (taskParams instanceof UniverseTaskParams) {
       targetUUID = ((UniverseTaskParams) taskParams).getUniverseUUID();
       Universe universe = Universe.getOrBadRequest(targetUUID);
-      if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+      if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)
+          && !taskUUID.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
         String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }

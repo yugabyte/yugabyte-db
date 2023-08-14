@@ -461,7 +461,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> DEL
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> DEL
       )#",
       R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
       )#");
 }
 
@@ -469,7 +469,7 @@ TEST_F(DocOperationTest, WritePackedNulls) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
   TestWriteNulls();
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
   )#");
 }
 

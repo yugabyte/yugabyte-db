@@ -64,6 +64,11 @@
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
+ * Check if (const char *)FLAG is non-empty.
+ */
+#define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -439,6 +444,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_distinct_pushdown;
 
 /*
+ * Enables index aggregate pushdown (IndexScan only, not IndexOnlyScan).
+ * If true, request aggregated results from DocDB when possible.
+ */
+extern bool yb_enable_index_aggregate_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'
@@ -485,9 +496,20 @@ extern bool yb_enable_sequence_pushdown;
 extern bool yb_disable_wait_for_backends_catalog_version;
 
 /*
+ * Enables YB cost model for Sequential and Index scans
+ */
+extern bool yb_enable_base_scans_cost_model;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;
+
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern bool yb_prefer_bnl;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -789,7 +811,7 @@ uint32_t YbGetNumberOfDatabases();
  */
 void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy);
 
-const char* yb_fetch_current_transaction_priority(void);
+const char *yb_fetch_current_transaction_priority(void);
 
 void GetStatusMsgAndArgumentsByCode(
 	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
@@ -919,5 +941,19 @@ extern void decrement_sticky_object_count();
 extern bool YbIsStickyConnection(int *change);
 
 extern bool yb_is_client_ysqlconnmgr;
+
+/*
+ * Creates a shallow copy of the pointer list.
+ */
+extern void** YbPtrListToArray(const List* str_list, size_t* length);
+
+/*
+ * Reads the contents of the given file assuming that the filename is an
+ * absolute path.
+ *
+ * The file contents are returned as a single palloc'd chunk with an extra \0
+ * byte added to the end.
+ */
+extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
 #endif /* PG_YB_UTILS_H */

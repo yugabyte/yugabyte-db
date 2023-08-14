@@ -25,10 +25,12 @@
 
 #include <inttypes.h>
 #include <algorithm>
+
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
+
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/format.h"
-#include "yb/util/hdr_histogram.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 
@@ -36,26 +38,17 @@ namespace rocksdb {
 
 namespace {
 
-constexpr int kHistogramMaxTrackableValue = 2;
-constexpr int kHistogramNumSigDigits = 1;
-
 using yb::GaugePrototype;
-using yb::HistogramPrototype;
+using yb::EventStatsPrototype;
 using yb::MetricEntity;
 using yb::MetricRegistry;
 
-void PopulateHistogramData(const yb::HdrHistogram& hist, HistogramData* const data) {
+void PopulateHistogramData(const yb::AggregateStats& hist, HistogramData* const data) {
   data->count = hist.CurrentCount();
   data->sum = hist.CurrentSum();
   data->min = hist.MinValue();
   data->max = hist.MaxValue();
-  data->median = hist.ValueAtPercentile(50);
-  data->percentile95 = hist.ValueAtPercentile(95);
-  data->percentile99 = hist.ValueAtPercentile(99);
   data->average = hist.MeanValue();
-  // Computing standard deviation is not supported by HdrHistogram.
-  // We don't use it for Yugabyte anyways.
-  data->standard_deviation = -1;
 }
 
 } // namespace
@@ -98,12 +91,11 @@ class StatisticsMetricPrototypes {
           yb::Format("Per-table Regular Rocksdb Histogram for $0", hist_name_regular));
       const auto& description_regular = descriptions_.back();
 
-     regular_hist_prototypes_.emplace_back(std::make_unique<HistogramPrototype>(
+     regular_hist_prototypes_.emplace_back(std::make_unique<EventStatsPrototype>(
           ::yb::MetricPrototype::CtorArgs(
               "table", hist_name_regular.c_str(), description_regular.c_str(),
               yb::MetricUnit::kMicroseconds, description_regular.c_str(),
-              yb::MetricLevel::kInfo),
-          kHistogramMaxTrackableValue, kHistogramNumSigDigits));
+              yb::MetricLevel::kInfo)));
 
       metric_names_.emplace_back(yb::Format("intentsdb_$0", HistogramsNameMap[i].second));
       const auto& hist_name_intents = metric_names_.back();
@@ -112,12 +104,11 @@ class StatisticsMetricPrototypes {
           yb::Format("Per-table Intents Rocksdb Histogram for $0", hist_name_intents));
       const auto& description_intents = descriptions_.back();
 
-      intents_hist_prototypes_.emplace_back(std::make_unique<HistogramPrototype>(
+      intents_hist_prototypes_.emplace_back(std::make_unique<EventStatsPrototype>(
           ::yb::MetricPrototype::CtorArgs(
               "table", hist_name_intents.c_str(), description_intents.c_str(),
               yb::MetricUnit::kMicroseconds, description_intents.c_str(),
-              yb::MetricLevel::kInfo),
-          kHistogramMaxTrackableValue, kHistogramNumSigDigits));
+              yb::MetricLevel::kInfo)));
     }
 
     for (size_t i = 0; i < kNumTickers; i++) {
@@ -150,10 +141,10 @@ class StatisticsMetricPrototypes {
     }
   }
 
-  const std::vector<std::unique_ptr<HistogramPrototype>>& regular_hist_prototypes() const {
+  const std::vector<std::unique_ptr<EventStatsPrototype>>& regular_hist_prototypes() const {
     return regular_hist_prototypes_;
   }
-  const std::vector<std::unique_ptr<HistogramPrototype>>& intents_hist_prototypes() const {
+  const std::vector<std::unique_ptr<EventStatsPrototype>>& intents_hist_prototypes() const {
     return intents_hist_prototypes_;
   }
   const std::vector<std::unique_ptr<GaugePrototype<uint64_t>>>& regular_ticker_prototypes() const {
@@ -164,8 +155,8 @@ class StatisticsMetricPrototypes {
   }
 
  private:
-  std::vector<std::unique_ptr<HistogramPrototype>> regular_hist_prototypes_;
-  std::vector<std::unique_ptr<HistogramPrototype>> intents_hist_prototypes_;
+  std::vector<std::unique_ptr<EventStatsPrototype>> regular_hist_prototypes_;
+  std::vector<std::unique_ptr<EventStatsPrototype>> intents_hist_prototypes_;
   std::vector<std::unique_ptr<GaugePrototype<uint64_t>>> regular_ticker_prototypes_;
   std::vector<std::unique_ptr<GaugePrototype<uint64_t>>> intents_ticker_prototypes_;
   // store the names and descriptions generated because the MetricPrototypes only keep
@@ -228,7 +219,7 @@ void StatisticsMetricImpl::histogramData(
   if (!histograms_.empty()) {
     assert(histogram_type < histograms_.size());
     assert(data);
-    PopulateHistogramData(*histograms_[histogram_type]->histogram(), data);
+    PopulateHistogramData(*histograms_[histogram_type]->underlying(), data);
   }
 }
 

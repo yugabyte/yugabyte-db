@@ -21,8 +21,9 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/entity_ids.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/master/master_types.pb.h"
-#include "yb/util/locks.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
@@ -61,12 +62,15 @@ class CDCRpcTasks {
   Result<TableBootstrapIdsMap> BootstrapProducer(
       const NamespaceIdentifierPB& producer_namespace,
       const std::vector<client::YBTableName>& tables);
+  Result<SnapshotInfoPB> CreateSnapshot(
+      const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id);
   client::YBClient* client() const { return yb_client_.get(); }
   Result<client::YBClient*> UpdateMasters(const std::string& master_addrs);
 
  private:
   Result<TableBootstrapIdsMap> BootstrapProducerCallback(
       client::BootstrapProducerResult bootstrap_result);
+  Result<SnapshotInfoPB> CreateSnapshotCallback(const TxnSnapshotId& snapshot_id);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;

@@ -119,7 +119,15 @@ message ChangeConfigResponsePB {
 // Required by HistoryCutoffOperation.
 message HistoryCutoffPB {
   option (yb.rpc.lightweight_message).force_arena = true;
-  optional fixed64 history_cutoff = 1;
+  // History cutoff of all the tables of this tablet.
+  // On the master, this field is used for the sys catalog table.
+  // For cotables i.e. ysql system tables, the cotables_cutoff_ht field
+  // is used. On tservers, this field is used everywhere i.e. for both
+  // colocated and non-colocated tables. In such cases, the
+  // cotables_cutoff_ht is invalid.
+  optional fixed64 primary_cutoff_ht = 1;
+  // Set only on the master for cotables.
+  optional fixed64 cotables_cutoff_ht = 2;
 }
 
 // A Replicate message, sent to replicas by leader to indicate this operation must be stored in the

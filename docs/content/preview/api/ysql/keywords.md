@@ -4,7 +4,6 @@ headerTitle: Keywords
 linkTitle: Keywords
 description: YSQL API keywords.
 summary: Reference for YSQL API
-image: /images/section_icons/api/ysql.png
 menu:
   preview:
     identifier: api-ysql-keywords

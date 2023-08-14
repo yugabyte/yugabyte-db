@@ -90,7 +90,10 @@ const CREATE = 'CREATE';
 const EDIT = 'EDIT';
 
 export type AddGFlagObject = { [SERVER: string]: any; Name: string };
-export type GFlagConfServerProps = { ConfValue: GFlagRowProps[]; PreviewConfValue: string };
+export type GFlagConfServerProps = {
+  ConfValue: GFlagRowProps[];
+  PreviewConfValue: string;
+};
 export type GFlagConf = {
   tserverFlagDetails?: GFlagConfServerProps;
   masterFlagDetails?: GFlagConfServerProps;
@@ -113,6 +116,7 @@ export const GFlagsField = ({
   });
   const [selectedProps, setSelectedProps] = useState<SelectedOption | null>(null);
   const [toggleModal, setToggleModal] = useState(false);
+  const [isJWKSKeyDialogOpen, setIsJWKSKeyDialogOpen] = useState<boolean>(false);
   const [validationError, setValidationError] = useState([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
@@ -506,6 +510,7 @@ export const GFlagsField = ({
         return (
           <AddGFlag
             formProps={formProps}
+            updateJWKSDialogStatus={updateJWKSDialogStatus}
             gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
           />
         );
@@ -513,6 +518,10 @@ export const GFlagsField = ({
       default:
         return null;
     }
+  };
+
+  const updateJWKSDialogStatus = (status: boolean) => {
+    setIsJWKSKeyDialogOpen(status);
   };
 
   const renderModal = () => {
@@ -554,7 +563,13 @@ export const GFlagsField = ({
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties: any) => renderOption(properties)}
-        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        dialogClassName={
+          toggleModal
+            ? isJWKSKeyDialogOpen
+              ? 'gflag-modal modal-fade partial'
+              : 'gflag-modal modal-fade in'
+            : 'modal-fade'
+        }
         headerClassName="add-flag-header"
         showBackButton={true}
       />

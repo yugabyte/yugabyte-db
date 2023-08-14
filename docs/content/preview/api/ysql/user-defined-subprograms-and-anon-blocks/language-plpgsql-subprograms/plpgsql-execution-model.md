@@ -9,6 +9,7 @@ menu:
     parent: language-plpgsql-subprograms
     weight: 10
 type: docs
+showRightNav: true
 ---
 
 ## What does creating or replacing a subprogram do?
@@ -241,7 +242,7 @@ alter table s.t alter column c2 set data type text;
 alter table s.t alter column dummy set data type text;
 ```
 
-Notice that because _alter table... alter column... set data type_ leaves the data in place in the column whose datatype is altered, this implies _implicit_ data conversion using the typecast from the pre-_alter_ data type to the post-_alter_ data type. The DDL has no option to allow you to specify your own conversion method. In contrast, the method that you must use in YSQL necessitates an explicit DML to copy the data from the pre-_alter_ data type in the starting column to the post-_alter_ datatype in the replacement column. And this would allow you, if it suited your purpose, to use your own method to convert the data values. (For example, you might want to use _to_char_ and specify a fixed number of decimal digits.) In other words, YSQL forces you to use a more general approach.
+Notice that because _alter table... alter column... set data type_ leaves the data in place in the column whose data type is altered, this implies _implicit_ data conversion using the typecast from the pre-_alter_ data type to the post-_alter_ data type. The DDL has no option to allow you to specify your own conversion method. In contrast, the method that you must use in YSQL necessitates an explicit DML to copy the data from the pre-_alter_ data type in the starting column to the post-_alter_ data type in the replacement column. And this would allow you, if it suited your purpose, to use your own method to convert the data values. (For example, you might want to use _to_char_ and specify a fixed number of decimal digits.) In other words, YSQL forces you to use a more general approach.
 
 Now repeat _"_\\_sf s.f"_. The output starts with this:
 
@@ -249,7 +250,7 @@ Now repeat _"_\\_sf s.f"_. The output starts with this:
 CREATE OR REPLACE FUNCTION s.f(k_in integer, dummy integer DEFAULT 0)
 ```
 
-You can see that the user's intention, that the data type of the _dummy_ formal argument should be whatever the column _s.t.dummy_ has, is no longer honored. It's clear how this happened: it flows from the PostgreSQL design concept, inherited by YSQL, that parses out the meaning of all the user text that follows _create [or replace]_, apart from the PL/pgSQL source text, at the time that the DDL is issued and stores this as atomic facts in _pg_proc_. The net effect is that using _%type_ to define the datatype of a subprogram's formal argument has only documentation value.
+You can see that the user's intention, that the data type of the _dummy_ formal argument should be whatever the column _s.t.dummy_ has, is no longer honored. It's clear how this happened: it flows from the PostgreSQL design concept, inherited by YSQL, that parses out the meaning of all the user text that follows _create [or replace]_, apart from the PL/pgSQL source text, at the time that the DDL is issued and stores this as atomic facts in _pg_proc_. The net effect is that using _%type_ to define the data type of a subprogram's formal argument has only documentation value.
 
 Notice that _%type_ works differently in PL/pgSQL source text. See the section [How PL/pgSQL's "create" time and execution model informs the approach to patching a database application's artifacts](#how-pl-pgsql-s-create-time-and-execution-model-informs-the-approach-to-patching-a-database-application-s-artifacts).
 
@@ -398,7 +399,7 @@ alter table s.t add column dummy_new text;
 
 But this DDL statement, critical for the approach that this section describes, currently fails:
 
-```plpgql
+```plpgsql
 alter table s.t add column v_new s.num_new;
 ```
 
@@ -415,7 +416,7 @@ The hint refers you to [GitHub issue #13278](https://github.com/yugabyte/yugabyt
 Notice that this error occurs only if the domain definition for the to-be-added column specifies a constraint. Notice, too, that when _%type_ is used in a declaration, only the _data type_ is inherited and constraints that might have been defined on the column to which _%type_ refers are ignored. It's therefore still better to use a domain where you might have thought of using _%type_.
 {{< /note >}}
 
-You can use _%type_ and _%rowtype_ for specifying the data type of a subprogram's formal argument  or return value for both _language plpgsql_ subprograms and _language sql_ subprograms. And you can use the same syntax for specifying the data type of a local variable in PL/pgSQL source text. The aim of the syntax is, of course, to give you a single point of definition fr the datatype that can be referred to from many sites where it's needed. However, there are many use cases where these referring sites occur for the columns in two or several tables. For example:
+You can use _%type_ and _%rowtype_ for specifying the data type of a subprogram's formal argument  or return value for both _language plpgsql_ subprograms and _language sql_ subprograms. And you can use the same syntax for specifying the data type of a local variable in PL/pgSQL source text. The aim of the syntax is, of course, to give you a single point of definition fr the data type that can be referred to from many sites where it's needed. However, there are many use cases where these referring sites occur for the columns in two or several tables. For example:
 
 - The data type(s) of the column(s) on which a foreign key constraint is defined must match the data type(s) of the column(s) on which the primary key constraint is defined in the referenced table.
 - A numeric quantity like the route distance between two points on the Earth's surface will ideally be defined in the same way (for example, must be expressed in kilometers with three decimal digits of precision, must not be negative, must not be greater than, say, the Earth's circumference) and might appear in several different tables for different kinds of routes.

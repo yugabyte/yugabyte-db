@@ -351,7 +351,7 @@ typedef struct PlannerInfo
 	 * available from the outer path of a particular Batched Nested Loop join
 	 * node.
 	 */
-	List		*yb_availBatchedRelids; 
+	List		*yb_availBatchedRelids;
 
 	int yb_cur_batch_no;		/* Used in replace_nestloop_params to keep
 								 * track of current batch */
@@ -1102,9 +1102,18 @@ typedef enum YbLockMechanism {
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
+ * 'yb_uniqpath_provisional' indicates whether the path includes a
+ * distinct pushdown scan and whether it is provisional. false by default.
+ * XXX: Use caution when using this flag. Paths that are not provisional must
+ * must be ignored unless distinct can be pushed down. See set_cheapest.
+ * 'yb_uniqkeys' List of exprs that represent the Distinct Index Scan prefix.
+ * NIL by default.
  */
 typedef struct YbPathInfo {
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+	bool			yb_uniqpath_provisional;
+										/* path is provisional */
+	List		   *yb_uniqkeys;		/* list keys that are distinct */
 } YbPathInfo;
 
 
@@ -1233,6 +1242,9 @@ typedef struct IndexPath
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int			yb_distinct_prefixlen;
 } IndexPath;
 
 /*

@@ -1832,7 +1832,8 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
   ASSERT_EQ(new_consensus_frontier.op_id().term, consensus_frontier.op_id().term);
   ASSERT_LT(new_consensus_frontier.op_id().index, consensus_frontier.op_id().index);
   ASSERT_EQ(new_consensus_frontier.hybrid_time(), consensus_frontier.hybrid_time());
-  ASSERT_EQ(new_consensus_frontier.history_cutoff(), consensus_frontier.history_cutoff());
+  ASSERT_EQ(new_consensus_frontier.history_cutoff(),
+            consensus_frontier.history_cutoff());
   rocksdb::UserFrontierPtr new_user_frontier_ptr(new ConsensusFrontier(new_consensus_frontier));
 
   LOG(INFO) << "Attempting to change flushed frontier from " << consensus_frontier
@@ -2398,6 +2399,312 @@ TEST_P(DocDBTestWrapper, DISABLED_KeyBuffer) {
   TestKeyBytes<ByteBuffer<16>>("ByteBuffer<16>");
   TestKeyBytes<ByteBuffer<32>>("ByteBuffer<32>");
   TestKeyBytes<ByteBuffer<64>>("ByteBuffer<64>");
+}
+
+TEST_F(DocDBTestWrapper, HistoryRetentionWithCotables) {
+  // One key with cotable.
+  DocKeyHash key_hash = 1;
+  uint32_t db_oid = 16386;
+  uint32_t table_oid = 16389;
+  dockv::KeyEntryValues hash_components =
+      dockv::MakeKeyEntryValues("cotablekey", 10000);
+  std::string table_id = GetPgsqlTableId(db_oid, table_oid);
+  Uuid cotable_id = ASSERT_RESULT(Uuid::FromHexString(table_id));
+  auto encoded_doc_key = dockv::DocKey(cotable_id, key_hash, hash_components).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value4"), 4000_usec_ht));
+  // Another cotable.
+  DocKeyHash key_hash2 = 3;
+  uint32_t db_oid2 = 16389;
+  uint32_t table_oid2 = 16389;
+  dockv::KeyEntryValues hash_components2 =
+      dockv::MakeKeyEntryValues("cotablekey2", 10000);
+  std::string table_id2 = GetPgsqlTableId(db_oid2, table_oid2);
+  Uuid cotable_id2 = ASSERT_RESULT(Uuid::FromHexString(table_id2));
+  auto encoded_doc_key2 = dockv::DocKey(cotable_id2, key_hash2, hash_components2).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key2, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  // Another key without cotable.
+  DocKeyHash non_cotable_hash = 2;
+  dockv::KeyEntryValues non_cotable_hash_components =
+      dockv::MakeKeyEntryValues("noncotablekey", 10000);
+  auto encoded_non_cotable_key =
+      dockv::DocKey(non_cotable_hash, non_cotable_hash_components).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value4"), 4000_usec_ht));
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+
+  std::unordered_set<std::string> expected;
+  expected = {
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id.ToString()),
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"", cotable_id.ToString()),
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToString()),
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToString()),
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0003, [\"cotablekey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToString()) };
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  ASSERT_OK(FlushRocksDbAndWait());
+  auto frontier = rocksdb()->GetFlushedFrontier();
+  ASSERT_EQ(frontier.get(), nullptr);
+  HistoryCutoff cutoff = { 3000_usec_ht, 2000_usec_ht };
+  FullyCompactHistoryBefore(cutoff);
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+  // For non-cotable, records inserted at 2000, 3000 and 4000 should exist.
+  // For cotable, records inserted at 3000 and 4000 should exist.
+  expected = {
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", cotable_id.ToString()),
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0001, [\"cotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", cotable_id.ToString()),
+    Format(
+      "SubDocKey(DocKey(CoTableId=$0, 0x0003, [\"cotablekey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", cotable_id2.ToString()) };
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  frontier = rocksdb()->GetFlushedFrontier();
+  auto consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after compaction "
+            << consensus_frontier.ToString();
+  LOG(INFO) << "Reopening RocksDB";
+  ASSERT_OK(ReopenRocksDB());
+  frontier = rocksdb()->GetFlushedFrontier();
+  consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after restart "
+            << consensus_frontier.ToString();
+}
+
+TEST_F(DocDBTestWrapper, HistoryRetentionWithColocatedTables) {
+  // One key with colocation.
+  DocKeyHash key_hash = 1;
+  dockv::KeyEntryValues hash_components =
+      dockv::MakeKeyEntryValues("colocationkey", 10000);
+  uint32_t colocation_id = 16384;
+  auto encoded_doc_key = dockv::DocKey(colocation_id, key_hash, hash_components).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_doc_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value4"), 4000_usec_ht));
+  // Another key with a different colocation.
+  DocKeyHash hash2 = 2;
+  dockv::KeyEntryValues hash_components2 =
+      dockv::MakeKeyEntryValues("colocationkey2", 10000);
+  uint32_t colocation_id2 = 16389;
+  auto encoded_key2 =
+      dockv::DocKey(colocation_id2, hash2, hash_components2).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_key2, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_key2, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_key2, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_key2, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value4"), 4000_usec_ht));
+  // Third key with just one record.
+  DocKeyHash hash3 = 3;
+  dockv::KeyEntryValues hash_components3 =
+      dockv::MakeKeyEntryValues("colocationkey3", 10000);
+  uint32_t colocation_id3 = 16394;
+  auto encoded_key3 =
+      dockv::DocKey(colocation_id3, hash3, hash_components3).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_key3, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+
+  std::unordered_set<std::string> expected;
+  expected = {
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0003, [\"colocationkey3\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", colocation_id3) };
+
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  ASSERT_OK(FlushRocksDbAndWait());
+  auto frontier = rocksdb()->GetFlushedFrontier();
+  ASSERT_EQ(frontier.get(), nullptr);
+  HistoryCutoff cutoff = { HybridTime::kInvalid, 3000_usec_ht };
+  FullyCompactHistoryBefore(cutoff);
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+  // records inserted at 3000, and 4000 should exist.
+  expected = {
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0001, [\"colocationkey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", colocation_id),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0002, [\"colocationkey2\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"", colocation_id2),
+    Format(
+      "SubDocKey(DocKey(ColocationId=$0, 0x0003, [\"colocationkey3\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"", colocation_id3) };
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  frontier = rocksdb()->GetFlushedFrontier();
+  auto consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after compaction "
+            << consensus_frontier.ToString();
+  LOG(INFO) << "Reopening RocksDB";
+  ASSERT_OK(ReopenRocksDB());
+  frontier = rocksdb()->GetFlushedFrontier();
+  consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after restart "
+            << consensus_frontier.ToString();
+}
+
+TEST_F(DocDBTestWrapper, HistoryRetentionWithNonColocatedTables) {
+  // key without prefix.
+  DocKeyHash non_cotable_hash = 2;
+  dockv::KeyEntryValues non_cotable_hash_components =
+      dockv::MakeKeyEntryValues("noncotablekey", 10000);
+  auto encoded_non_cotable_key =
+      dockv::DocKey(non_cotable_hash, non_cotable_hash_components).Encode();
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value2"), 2000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value3"), 3000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey1")),
+      QLValue::Primitive("value4"), 4000_usec_ht));
+  ASSERT_OK(SetPrimitive(
+      DocPath(encoded_non_cotable_key, KeyEntryValue("subkey2")),
+      QLValue::Primitive("value1"), 1000_usec_ht));
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+
+  std::unordered_set<std::string> expected;
+  expected = {
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 1000 }]) -> \"value1\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey2\"; HT{ physical: 1000 }]) -> \"value1\"" };
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  ASSERT_OK(FlushRocksDbAndWait());
+  auto frontier = rocksdb()->GetFlushedFrontier();
+  ASSERT_EQ(frontier.get(), nullptr);
+  HistoryCutoff cutoff = { HybridTime::kInvalid, 2000_usec_ht };
+  FullyCompactHistoryBefore(cutoff);
+  LOG(INFO) << "Expected records " << DocDBDebugDumpToStr();
+  // For non-cotable, records inserted at 2000, 3000 and 4000 should exist.
+  expected = {
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 2000 }]) -> \"value2\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 3000 }]) -> \"value3\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey1\"; HT{ physical: 4000 }]) -> \"value4\"",
+      "SubDocKey(DocKey(0x0002, [\"noncotablekey\", 10000], []), "
+      "[\"subkey2\"; HT{ physical: 1000 }]) -> \"value1\"" };
+  ASSERT_OK(ValidateRocksDbEntriesUnordered(&expected));
+  frontier = rocksdb()->GetFlushedFrontier();
+  auto consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after compaction "
+            << consensus_frontier.ToString();
+  LOG(INFO) << "Reopening RocksDB";
+  ASSERT_OK(ReopenRocksDB());
+  frontier = rocksdb()->GetFlushedFrontier();
+  consensus_frontier = down_cast<ConsensusFrontier&>(*frontier);
+  ASSERT_EQ(consensus_frontier.history_cutoff(), cutoff);
+  LOG(INFO) << "Frontier obtained after restart "
+            << consensus_frontier.ToString();
 }
 
 } // namespace docdb

@@ -20,6 +20,10 @@ func (s State) ValidateReconfig() error {
 	if viper.GetString("service_username") != s.Username {
 		return fmt.Errorf("cannot change service username from %s", s.Username)
 	}
+
+	if viper.GetBool("postgres.install.ldap_enabled") != s.Postgres.LdapEnabled {
+		return fmt.Errorf("cannot change postgres ldap configuration")
+	}
 	return nil
 }
 

@@ -222,6 +222,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     boolean instanceTypeChanged = false;
+    // TODO Support overriden instance types
     if (!curIntent.instanceType.equals(newIntent.instanceType)) {
       List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
       // If the instance type changed from dev/xsmall to anything else,
@@ -449,11 +450,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Perform adds.
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
     // Perform removes.
     for (int idx = 0; idx < mastersToRemove.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

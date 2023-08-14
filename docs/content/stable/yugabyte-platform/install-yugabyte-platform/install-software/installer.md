@@ -264,10 +264,10 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
-$ sudo yba-ctl clean -all
+$ sudo yba-ctl clean --all
 ```
 
 ```output
@@ -338,7 +338,7 @@ You can configure the following YBA configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | Specify a custom port for the YBA UI to run on.
+| `port` | Specify a custom port for the YBA UI to run on.
 | `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
 | `appSecret` | Play framework crypto secret. Auto-generated if left empty.
 
@@ -372,13 +372,13 @@ Http and Https proxy settings are described in the following table.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | External Prometheus port
+| `port` | External Prometheus port
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
 | `scrapeInterval` | How often Prometheus scrapes for database metrics.
 | `scrapeTimeout` | Timeout for inactivity during scraping.
 | `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus.
 | `maxSamples` | Maximum number of samples that a single query can load into memory.
-| `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
+| `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
 
 ### Configure PostgreSQL
 
@@ -395,15 +395,15 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |
 | :--- | :--- |
-| Port | Port PostgreSQL is listening to.
-| restartSecond | Wait time to restart PostgreSQL if the service crashes.
-| locale | locale is used during initialization of the db.
+| `port` | Port PostgreSQL is listening to.
+| `restartSecond` | Wait time to restart PostgreSQL if the service crashes.
+| `locale` | locale is used during initialization of the db.
 
 **useExisting options**
 
 | Option | Description |
 | :--- | :--- |
-| Host | IP address/domain name of the PostgreSQL server.
-| Port | Port PostgreSQL is running on.
-| Username and password | Used to authenticate with PostgreSQL.
-| Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
+| `host` | IP address/domain name of the PostgreSQL server.
+| `port` | Port PostgreSQL is running on.
+| `username` and `password` | Used to authenticate with PostgreSQL.
+| `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.

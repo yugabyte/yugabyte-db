@@ -127,6 +127,13 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                                                                       config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
+  consensus::RetryableRequestsManager retryable_requests_manager(
+      tablet_id,
+      fs_manager(),
+      fs_manager()->GetWalRootDirs()[0],
+      MemTracker::FindOrCreateTracker(tablet_id),
+      "");
+  Status s = retryable_requests_manager.Init(clock());
   ASSERT_OK(tablet_peer_->SetBootstrapping());
   ASSERT_OK(tablet_peer_->InitTabletPeer(
       tablet(),
@@ -138,7 +145,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests_manager */,
+      &retryable_requests_manager,
       nullptr /* consensus_meta */,
       multi_raft_manager_.get(),
       nullptr /* flush_retryable_requests_pool */));

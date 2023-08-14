@@ -5,9 +5,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -33,10 +35,13 @@ import com.amazonaws.services.ec2.model.Image;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.Subnet;
 import com.amazonaws.services.ec2.model.Vpc;
+import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
+import com.amazonaws.services.elasticloadbalancingv2.model.Listener;
 import com.amazonaws.services.route53.AmazonRoute53;
 import com.amazonaws.services.route53.model.GetHostedZoneResult;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -47,10 +52,14 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
+import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -61,10 +70,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
   private AWSCloudImpl awsCloudImpl;
   private Customer customer;
   private Provider defaultProvider;
+  private NLBHealthCheckConfiguration defaultNlbHealthCheckConfiguration;
   private Region defaultRegion;
   @Mock private AmazonEC2 mockEC2Client;
   @Mock private AmazonRoute53 mockRoute53Client;
   @Mock private AWSSecurityTokenService mockSTSService;
+  @Mock private AmazonElasticLoadBalancing mockElbClient;
 
   private String AMAZON_COMMON_ERROR_MSG =
       "(Service: null; Status Code: 0;" + " Error Code: null; Request ID: null; Proxy: null)";
@@ -73,6 +84,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
   public void setup() {
     awsCloudImpl = spy(new AWSCloudImpl(null));
     mockEC2Client = mock(AmazonEC2.class);
+    mockElbClient = mock(AmazonElasticLoadBalancing.class);
     mockRoute53Client = mock(AmazonRoute53.class);
     mockSTSService = mock(AWSSecurityTokenService.class);
     customer = ModelFactory.testCustomer();
@@ -92,6 +104,32 @@ public class AWSCloudImplTest extends FakeDBApplication {
     cloudInfo.aws.setAwsAccessKeySecret("accessKeySecret");
     providerDetails.setCloudInfo(cloudInfo);
     defaultProvider.setDetails(providerDetails);
+    defaultNlbHealthCheckConfiguration =
+        new NLBHealthCheckConfiguration(Arrays.asList(5433), Protocol.TCP, Arrays.asList());
+  }
+
+  @Test
+  public void ensureConnectionTerminationOnDeregistrationEnabled() {
+    Mockito.doReturn(mockElbClient).when(awsCloudImpl).getELBClient(any(), anyString());
+    Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
+    Mockito.doReturn(Arrays.asList("")).when(awsCloudImpl).getInstanceIDs(any(), any());
+    // Mockito.doNothing().when(awsCloudImpl).ensureLoadBalancerAttributes(any(), any());
+    Mockito.doReturn(new Listener().withListenerArn("listener1"))
+        .when(awsCloudImpl)
+        .getListenerByPort(any(), any(), anyInt());
+    Mockito.doReturn("tg-test").when(awsCloudImpl).getListenerTargetGroup(any());
+    Mockito.doNothing().when(awsCloudImpl).ensureTargetGroupAttributes(any(), any());
+    Mockito.doNothing()
+        .when(awsCloudImpl)
+        .checkNodeGroup(any(), any(), any(), anyInt(), any(), any());
+    awsCloudImpl.manageNodeGroup(
+        defaultProvider,
+        defaultRegion.getCode(),
+        "lb-test",
+        new HashMap<AvailabilityZone, Set<NodeID>>(),
+        Arrays.asList(5433),
+        defaultNlbHealthCheckConfiguration);
+    verify(awsCloudImpl).ensureTargetGroupAttributes(mockElbClient, "tg-test");
   }
 
   @Test

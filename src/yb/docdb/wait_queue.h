@@ -120,7 +120,7 @@ class WaitQueue {
   // which are requested by the given set of transactions.
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        const TableInfoProvider& table_info_provider,
-                       TabletLockInfoPB* tablet_lock_info) const;
+                       TransactionLockInfoManager* lock_info_manager) const;
 
  private:
   class Impl;

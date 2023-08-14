@@ -5,12 +5,19 @@ import { CACert } from './ICerts';
 import { isDefinedNotNull } from '../../utils/ObjectUtils';
 import { createErrorMessage } from '../../redesign/features/universe/universe-form/utils/helpers';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../redesign/features/universe/universe-form/utils/constants';
+import { RunTimeConfig } from '../../redesign/features/universe/universe-form/utils/dto';
 
 const CACertErrorPatterns = [
   'PKIX path building failed',
   'No trust manager was able to validate this certificate chain',
   'ERR_04104_NULL_CONNECTION_CANNOT_CONNECT'
 ];
+
+export const CA_CERT_RUNTIME_CONFIG_KEY = 'yb.customCATrustStore.enabled';
+
+export function isCertCAEnabledInRuntimeConfig (runtimeConfig: RunTimeConfig) {
+  return runtimeConfig?.configEntries?.find((c: any) => c.key === CA_CERT_RUNTIME_CONFIG_KEY)?.value === 'true' ?? false;
+};
 
 export const LDAP_CA_CERT_ERR_MSG = (
   <span>

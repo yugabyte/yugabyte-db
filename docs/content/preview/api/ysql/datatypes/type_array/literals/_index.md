@@ -3,7 +3,7 @@ title: Creating an array value using a literal
 linkTitle: Literals
 headerTitle: Creating an array value using a literal
 description: Creating an array value using a literal
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: array-literals

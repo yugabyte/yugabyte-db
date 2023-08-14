@@ -20,7 +20,7 @@ ysql_dump only dumps a single database. To backup global objects that are common
 
 Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [`ysqlsh \i`](../ysqlsh-meta-commands/#-i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
-While running ysql_dump, you should examine the output for any warnings (printed on standard error), especially in light of the limitations listed below.
+While running ysql_dump, you should examine the output for any warnings (printed on standard error).
 
 The ysql_dump utility is derived from the PostgreSQL [pg_dump](https://www.postgresql.org/docs/10/app-pgdump.html) utility.
 
@@ -338,7 +338,7 @@ $ ysql_dump -t mytable mydb > mytable_mydb.sql
 
 #### Dump schemas based on filters
 
-This example command dumps all schemas whose names start with `east` or `west` and end in `gsm`, excluding any schema whose names contain the word `test`
+The following command dumps all schemas whose names start with `east` or `west` and end in `gsm`, excluding any schema whose names contain the word `test`:
 
 ```sh
 $ ysql_dump -n 'east*gsm' -n 'west*gsm' -N '*test*' mydb > myschemas_mydb.sql
@@ -352,7 +352,7 @@ $ ysql_dump -n '(east|west)*gsm' -N '*test*' mydb > myschemas_mydb.sql
 
 #### Dump all database objects based on a filter
 
-This example command dumps all database objects except for tables whose names begin with `ts_`.
+The following command dumps all database objects except for tables whose names begin with `ts_`:
 
 ```sh
 $ ysql_dump -T 'ts_*' mydb > objects_mydb.sql

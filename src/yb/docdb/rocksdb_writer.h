@@ -90,6 +90,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
       const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
+  Status AddTableLockIntent(TableLockType lock_type);
 
   const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime hybrid_time_;

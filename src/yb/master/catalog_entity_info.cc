@@ -111,8 +111,10 @@ void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
 }
 
 void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
-  bool initialized = leader_lease_info.initialized;
+  const bool initialized = leader_lease_info.initialized;
+  const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
+  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
   leader_lease_info.initialized = initialized || info.initialized;
 }
 

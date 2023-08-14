@@ -127,7 +127,7 @@ class RpcClient(object):
                     cmd_args_list = cmd
             for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
-                    timeout=timeout_sec):
+                    timeout=timeout_sec, wait_for_ready=True):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -167,12 +167,12 @@ class RpcClient(object):
             cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
                                                    commandInput=cmd_input),
-                                 timeout=timeout_sec)
+                                 timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
-                            timeout=timeout_sec):
+                            timeout=timeout_sec, wait_for_ready=True):
                         if response.HasField('error'):
                             output.rc = response.error.code
                             output.stderr = response.error.message
@@ -203,7 +203,7 @@ class RpcClient(object):
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
             request = SubmitTaskRequest(user=self.user, taskId=task_id)
             self._set_request_oneof_field(request, param)
-            self.stub.SubmitTask(request, timeout=timeout_sec)
+            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -261,7 +261,7 @@ class RpcClient(object):
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                             timeout=timeout_sec)
+                             timeout=timeout_sec, wait_for_ready=True)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -270,7 +270,8 @@ class RpcClient(object):
 
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         for response in self.stub.DownloadFile(
-                DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
+                DownloadFileRequest(filename=in_path, user=self.user),
+                timeout=timeout_sec, wait_for_ready=True):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
 

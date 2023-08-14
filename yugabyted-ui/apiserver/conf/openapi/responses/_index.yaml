@@ -77,10 +77,13 @@ ClusterTableListResponse:
         title: Cluster table list response
         type: object
         properties:
-          data:
+          tables:
+            $ref: '../schemas/_index.yaml#/ClusterTableData'
+          indexes:
             $ref: '../schemas/_index.yaml#/ClusterTableData'
         required:
-          - data
+          - tables
+          - indexes
 ClusterResponse:
   description: Cluster response
   content:

@@ -82,7 +82,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
   // and without the cotable id.
-  Result<Slice> GetTupleId() const override;
+  Slice GetTupleId() const override;
 
   // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
   // the cotable id.

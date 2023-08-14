@@ -163,6 +163,8 @@ using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
 using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
@@ -2801,6 +2803,18 @@ Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
   }));
 
   cout << "Deleted snapshot: " << snapshot_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id) {
+  AbortSnapshotRestoreResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    AbortSnapshotRestoreRequestPB req;
+    req.set_restoration_id(restoration_id.data(), restoration_id.size());
+    return master_backup_proxy_->AbortSnapshotRestore(req, &resp, rpc);
+  }));
+
+  cout << "Aborted snapshot restore: " << restoration_id.ToString() << endl;
   return Status::OK();
 }
 

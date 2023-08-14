@@ -82,11 +82,13 @@ public class UniverseControllerRequestBinder {
           JsonNode tserverGFlagsNode = null;
           JsonNode instanceTagsNode = null;
           JsonNode specificGFlags = null;
+          JsonNode userIntentOverrides = null;
           if (userIntent != null) {
             masterGFlagsNode = userIntent.remove("masterGFlags");
             tserverGFlagsNode = userIntent.remove("tserverGFlags");
             instanceTagsNode = userIntent.remove("instanceTags");
             specificGFlags = userIntent.remove("specificGFlags");
+            userIntentOverrides = userIntent.remove("userIntentOverrides");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
           if (clusterJson.has("uuid")) {
@@ -131,6 +133,11 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
           if (specificGFlags != null) {
             cluster.userIntent.specificGFlags = Json.fromJson(specificGFlags, SpecificGFlags.class);
+          }
+          if (userIntentOverrides != null) {
+            cluster.userIntent.setUserIntentOverrides(
+                Json.fromJson(
+                    userIntentOverrides, UniverseDefinitionTaskParams.UserIntentOverrides.class));
           }
           clusters.add(cluster);
         }

@@ -47,7 +47,7 @@ DEFINE_UNKNOWN_bool(force_global_transactions, false,
 DEFINE_test_flag(bool, track_last_transaction, false,
                  "Keep track of the last transaction taken from pool for testing");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, transaction_pool_cache, "Rate of hitting transaction pool cache",
     yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache");
 
@@ -80,7 +80,7 @@ class SingleLocalityPool {
                      TransactionLocality locality)
       : manager_(*manager), locality_(locality) {
     if (metric_entity) {
-      cache_histogram_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
+      cache_stats_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
       cache_hits_ = METRIC_transaction_pool_cache_hits.Instantiate(metric_entity);
       cache_queries_ = METRIC_transaction_pool_cache_queries.Instantiate(metric_entity);
       gauge_preparing_ = METRIC_transaction_pool_preparing.Instantiate(metric_entity, 0);
@@ -115,12 +115,12 @@ class SingleLocalityPool {
         // Transaction is automatically prepared when batcher is executed, so we don't have to
         // prepare newly created transaction, since it is anyway too late.
         result = std::make_shared<YBTransaction>(&manager_, locality_);
-        IncrementHistogram(cache_histogram_, 0);
+        IncrementStats(cache_stats_, 0);
       } else {
         result = Pop();
         // Cache histogram should show number of cache hits in percents, so we put 100 in case of
         // hit.
-        IncrementHistogram(cache_histogram_, 100);
+        IncrementStats(cache_stats_, 100);
         IncrementCounter(cache_hits_);
       }
       new_txn = std::make_shared<YBTransaction>(&manager_, locality_);
@@ -246,7 +246,7 @@ class SingleLocalityPool {
 
   TransactionManager& manager_;
   TransactionLocality locality_;
-  scoped_refptr<Histogram> cache_histogram_;
+  scoped_refptr<EventStats> cache_stats_;
   scoped_refptr<Counter> cache_hits_;
   scoped_refptr<Counter> cache_queries_;
   scoped_refptr<AtomicGauge<uint32_t>> gauge_preparing_;

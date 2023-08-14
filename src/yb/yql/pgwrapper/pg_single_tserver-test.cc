@@ -60,8 +60,9 @@ class PgSingleTServerTest : public PgMiniTestBase {
     ASSERT_OK(conn.Execute(create_table_cmd));
 
     {
-      auto write_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
-          &METRIC_handler_latency_yb_tserver_TabletServerService_Write)->histogram();
+      auto write_histogram =
+          cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
+              &METRIC_handler_latency_yb_tserver_TabletServerService_Write)->underlying();
       auto metric_start = write_histogram->TotalSum();
       auto start = MonoTime::Now();
       auto last_row = 0;
@@ -98,8 +99,9 @@ class PgSingleTServerTest : public PgMiniTestBase {
       google::SetVLOGLevel("docdb", 4);
     }
 
-    auto read_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
-        &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->histogram();
+    auto read_histogram =
+        cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
+            &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->underlying();
 
     for (int i = 0; i != reads; ++i) {
       int64_t fetched_rows;

@@ -20,6 +20,8 @@
 namespace yb {
 
 class AtomicMillisLag;
+class EventStats;
+class EventStatsPrototype;
 class Counter;
 class CounterPrototype;
 class Gauge;
@@ -35,6 +37,7 @@ class MillisLag;
 class MillisLagPrototype;
 class NMSWriter;
 class PrometheusWriter;
+class StatsOnlyHistogram;
 
 struct MetricJsonOptions;
 struct MetricPrometheusOptions;

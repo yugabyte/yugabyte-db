@@ -117,6 +117,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 
@@ -233,6 +234,9 @@ DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, f
 DEFINE_test_flag(
     bool, skip_force_superblock_flush, false,
     "Used in tests to skip superblock flush on tablet flush.");
+
+DEFINE_test_flag(
+    uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -929,6 +933,43 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
         return;
       }
     }
+  }
+  // Execute a WriteQuery to acquire table level lock intents for an ALTER TABLE query
+  if (req->has_table_lock_type()) {
+    auto query = std::make_unique<tablet::WriteQuery>(
+      tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
+      tablet.tablet, nullptr);
+    auto& write = *query->operation().AllocateRequest();
+    auto& write_batch = *write.mutable_write_batch();
+    *write_batch.mutable_transaction() = req->transaction();
+    write.mutable_write_batch()->mutable_table_lock()->set_table_lock_type(
+        req->table_lock_type());
+    auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+    query->set_callback([resp, context_ptr, req, this](const Status& status) {
+      auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context_ptr.get());
+      if (!tablet) {
+        return;
+      }
+      if (!status.ok()) {
+        SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(TryAgain, "Could not acquire table level lock"), context_ptr.get());
+        return;
+      } else {
+        // TODO(tablelocks): Consolidate this logic with the code below.
+        auto operation = std::make_unique<ChangeMetadataOperation>(
+            tablet.tablet, tablet.peer->log());
+        operation->AllocateRequest()->CopyFrom(*req);
+
+        operation->set_completion_callback(
+          MakeRpcOperationCompletionCallback(std::move(*context_ptr), resp, server_->Clock()));
+
+        tablet.peer->Submit(std::move(operation), tablet.leader_term);
+      }
+    });
+    tablet.peer->WriteAsync(std::move(query));
+    return;
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
@@ -2055,6 +2096,22 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
+#ifndef NDEBUG
+  if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {
+    for (const auto& pgsql_req : req->pgsql_batch()) {
+      if (pgsql_req.has_row_mark_type() &&
+          pgsql_req.row_mark_type() == RowMarkType::ROW_MARK_EXCLUSIVE) {
+        static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
+        row_mark_exclusive_latch.CountDown();
+        row_mark_exclusive_latch.Wait();
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        break;
+      }
+    }
+  }
+#endif // NDEBUG
+
   if (FLAGS_TEST_tserver_noop_read_write) {
     context.RespondSuccess();
     return;
@@ -2883,6 +2940,32 @@ void TabletServiceImpl::CancelTransaction(
     DCHECK_EQ(res->status, TransactionStatus::ABORTED);
   }
 
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::StartRemoteSnapshotTransfer(
+    const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "StartRemoteSnapshotTransfer", req, resp, &context)) {
+    return;
+  }
+
+  Status s = server_->tablet_manager()->StartRemoteSnapshotTransfer(*req);
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote snapshot transfer operation that is already in
+    // progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote snapshot transfer failed: " << s;
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS, &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote snapshot transfer failed: " << s;
+    }
+  }
+
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }
 

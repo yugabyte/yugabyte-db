@@ -193,4 +193,23 @@ bool TransactionOperationContext::transactional() const {
   return !transaction_id.IsNil();
 }
 
+TransactionLockInfoManager::TransactionLockInfoManager(
+    TabletLockInfoPB* tablet_lock_info): tablet_lock_info_(tablet_lock_info) {}
+
+TabletLockInfoPB::TransactionLockInfoPB* TransactionLockInfoManager::GetOrAddTransactionLockInfo(
+    const TransactionId& id) {
+  auto it = transaction_lock_infos_.find(id);
+  if (it != transaction_lock_infos_.end()) {
+    return it->second;
+  }
+  auto* transaction_lock_info = tablet_lock_info_->add_transaction_locks();
+  transaction_lock_info->set_id(id.data(), id.size());
+  transaction_lock_infos_.emplace(id, transaction_lock_info);
+  return transaction_lock_info;
+}
+
+TabletLockInfoPB::WaiterInfoPB* TransactionLockInfoManager::GetSingleShardLockInfo() {
+  return tablet_lock_info_->add_single_shard_waiters();
+}
+
 } // namespace yb

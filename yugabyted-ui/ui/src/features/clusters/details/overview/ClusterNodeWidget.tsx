@@ -2,11 +2,12 @@ import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, Link, makeStyles, Typography } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { HealthCheckInfo, useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery } from '@app/api/src';
+import type { HealthCheckInfo } from '@app/api/src';
 import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
 import { ClusterTabletWidget } from './ClusterTabletWidget';
 import { STATUS_TYPES, YBStatus } from '@app/components';
+import { useNodes } from '../nodes/NodeHooks';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -71,37 +72,17 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
   const { t } = useTranslation();
 
   // Get nodes
-  const { data: nodesResponse, isFetching: fetchingNodes } = useGetClusterNodesQuery();
-
-  // We get load balancer separately for now since we rely on yb-admin which is slow
-  const {
-    data: isLoadBalancerIdleResponse,
-    isFetching: fetchingIsLoadBalancerIdle,
-  } = useGetIsLoadBalancerIdleQuery();
+  const { data: nodesResponse, isFetching: fetchingNodes } = useNodes();
 
   const nodesData = nodesResponse?.data;
 
-  const numNodes = nodesData ? nodesData.length : 0;
-  const deadNodes =
-    nodesData ? nodesData.filter(node => !node.is_node_up) : [];
-  const bootstrappingNodes = nodesData
-    ? nodesData.filter(node => {
-        return fetchingIsLoadBalancerIdle
-        ? false
-        : !node.is_node_up || !node.is_master_up
-        ? false
-        : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse ||
-          (!node.is_read_replica ? 
-            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
-            :
-            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
-          );
-    })
-    : [];
-  const healthyNodes = numNodes - deadNodes.length;
+  const numNodes = nodesData?.length ?? 0;
+  const deadNodes = nodesData?.filter(node => !node.is_node_up) ?? [];
+  const bootstrappingNodes = nodesData?.filter(node => node.is_bootstrapping) ?? [];
+  const numHealthyNodes = numNodes - deadNodes.length;
 
   return (
-    <Box flex={1}>
+    <Box>
       <Link className={classes.link} component={RouterLink} to="?tab=tabNodes">
         <Box display="flex" alignItems="center">
           <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
@@ -120,9 +101,9 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
             <div className={clsx(classes.section, classes.sectionBorder)}>
               <Box display="flex" gridGap={7}>
                 <Typography variant="h4" className={classes.value}>
-                  {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
+                  {fetchingNodes ? <div className={classes.loadingCount} /> : numHealthyNodes}
                 </Typography>
-                <YBStatus value={fetchingNodes ? 0 : healthyNodes} type={STATUS_TYPES.SUCCESS} tooltip />
+                <YBStatus value={fetchingNodes ? 0 : numHealthyNodes} type={STATUS_TYPES.SUCCESS} tooltip />
               </Box>
               <Typography variant="body2" className={classes.label}>
                 {t('clusterDetail.nodes.running')}
@@ -156,7 +137,9 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
             </div>
           </Link>
         </Grid>
-        <Divider orientation="horizontal" variant="middle" className={classes.divider} />
+      </Link>
+      <Divider orientation="horizontal" variant="middle" className={classes.divider} />
+      <Link className={classes.link} component={RouterLink} to="/databases/tabYsql">
         <ClusterTabletWidget health={health} />
       </Link>
     </Box>

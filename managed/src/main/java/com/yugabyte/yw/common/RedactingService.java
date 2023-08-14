@@ -71,6 +71,12 @@ public class RedactingService {
           // Hashicorp token
           .add("$..HC_VAULT_TOKEN")
           .add("$..vaultToken")
+          // Hashicorp RoleID
+          .add("$..HC_VAULT_ROLE_ID")
+          .add("$..vaultRoleID")
+          // Hashicorp SecretID
+          .add("$..HC_VAULT_SECRET_ID")
+          .add("$..vaultSecretID")
           .add("$..token")
           // Custom hooks
           .add("$..hook.hookText")

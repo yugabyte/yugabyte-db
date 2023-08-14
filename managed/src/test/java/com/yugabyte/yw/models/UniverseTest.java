@@ -55,6 +55,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -763,7 +764,11 @@ public class UniverseTest extends FakeDBApplication {
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Stopped) {
           assertEquals(
-              ImmutableSet.of(NodeActionType.START, NodeActionType.REMOVE, NodeActionType.QUERY),
+              ImmutableSet.of(
+                  NodeActionType.START,
+                  NodeActionType.REMOVE,
+                  NodeActionType.QUERY,
+                  NodeActionType.REPROVISION),
               allowedActions);
         } else if (nodeState == NodeDetails.NodeState.Removed) {
           assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
@@ -896,5 +901,68 @@ public class UniverseTest extends FakeDBApplication {
     // Cannot decommission first tserver node
     actions = new AllowedActionsHelper(u, tserverNodes.get(0)).listAllowedActions();
     assertFalse(actions.contains(NodeActionType.DELETE));
+  }
+
+  @Test
+  public void testUserIntentOverridesClone() {
+    UserIntent intent = new UserIntent();
+    intent.regionList = new ArrayList<>();
+    intent.universeName = "univ";
+    intent.instanceType = "instType";
+    intent.provider = "aws";
+    intent.ybSoftwareVersion = "1.2.3";
+    UserIntent newIntent = intent.clone();
+    intent.setUserIntentOverrides(new UniverseDefinitionTaskParams.UserIntentOverrides());
+    intent
+        .getUserIntentOverrides()
+        .setAzOverrides(
+            constructOverrides(UUID.randomUUID(), "az1type", UUID.randomUUID(), "az2type"));
+    newIntent = intent.clone();
+    assertTrue(intent.equals(newIntent));
+    assertFalse(newIntent.getUserIntentOverrides() == intent.getUserIntentOverrides());
+    assertTrue(Objects.equals(newIntent.getUserIntentOverrides(), intent.getUserIntentOverrides()));
+  }
+
+  private Map<UUID, UniverseDefinitionTaskParams.AZOverrides> constructOverrides(
+      UUID az1, String type, UUID az2, String type1) {
+    UniverseDefinitionTaskParams.AZOverrides azOverrides1 =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides1.setInstanceType(type);
+    UniverseDefinitionTaskParams.AZOverrides azOverrides2 =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides2.setInstanceType(type1);
+    return ImmutableMap.of(az1, azOverrides1, az2, azOverrides2);
+  }
+
+  @Test
+  public void testUserIntentOverrides() {
+    UniverseDefinitionTaskParams.UserIntentOverrides overrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UUID az1 = UUID.randomUUID();
+    UUID az2 = UUID.randomUUID();
+    overrides.setAzOverrides(constructOverrides(az1, "instType1", az2, "instType2"));
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "instType";
+    userIntent.masterInstanceType = "masterInstType";
+    // No overrides
+    assertEquals("instType", userIntent.getInstanceType(az1));
+    assertEquals("instType", userIntent.getInstanceType(az2));
+    assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
+    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, null));
+    assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, null));
+    userIntent.dedicatedNodes = true;
+    assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, null));
+    assertEquals(
+        "masterInstType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, null));
+    // With overrides
+    userIntent.setUserIntentOverrides(overrides);
+    assertEquals("instType1", userIntent.getInstanceType(az1));
+    assertEquals("instType2", userIntent.getInstanceType(az2));
+    assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
+    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType1", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, az1));
+    assertEquals(
+        "masterInstType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, az1));
   }
 }
