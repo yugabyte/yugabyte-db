@@ -97,7 +97,9 @@ class CDCMasterReplicationServiceImpl : public MasterServiceBase, public MasterR
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
-    (GetXClusterSafeTime))
+    (GetXClusterSafeTime)
+    (IsObjectPartOfXRepl)
+    (SetupNamespaceReplicationWithBootstrap))
 };
 
 } // namespace

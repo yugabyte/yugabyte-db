@@ -152,7 +152,7 @@ class CDCMasterClientServiceImpl : public MasterServiceBase, public MasterClient
                          rpc::RpcContext rpc) override {
     // We can't use the HANDLE_ON_LEADER_WITH_LOCK macro here because we have to inject latency
     // before acquiring the leader lock.
-    HandleOnLeader(req, resp, &rpc, [&]() -> Status {
+    HandleOnLeader(resp, &rpc, [&]() -> Status {
       if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
         SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
       }
