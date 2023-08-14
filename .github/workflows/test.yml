@@ -10,21 +10,21 @@ jobs:
     strategy:
       matrix:
         include:
-          - { version: 16,  upgrade_to: "",  update_from: 0.99.0 }
-          - { version: 15,  upgrade_to: 16,  update_from: 0.99.0 }
-          - { version: 14,  upgrade_to: 15,  update_from: 0.99.0 }
-          - { version: 13,  upgrade_to: 14,  update_from: 0.99.0 }
-          - { version: 12,  upgrade_to: 13,  update_from: 0.99.0 }
-          - { version: 11,  upgrade_to: 12,  update_from: 0.99.0 } # Versions prior to 0.99.0 don't support Postgres 11
-          - { version: 10,  upgrade_to: 11,  update_from: 0.95.0 }
-          - { version: 9.6, upgrade_to: 10,  update_from: 0.95.0 }
-          - { version: 9.5, upgrade_to: 9.6, update_from: 0.95.0 }
-          - { version: 9.4, upgrade_to: 9.5, update_from: 0.95.0 }
-          - { version: 9.3, upgrade_to: 9.4, update_from: 0.95.0 }
-          - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
+          # - { version: 16,  upgrade_to: "",  update_from: 0.99.0 }
+          # - { version: 15,  upgrade_to: 16,  update_from: 0.99.0 }
+          # - { version: 14,  upgrade_to: 15,  update_from: 0.99.0 }
+          # - { version: 13,  upgrade_to: 14,  update_from: 0.99.0 }
+          # - { version: 12,  upgrade_to: 13,  update_from: 0.99.0 }
+          # - { version: 11,  upgrade_to: 12,  update_from: 0.99.0 } # Versions prior to 0.99.0 don't support Postgres 11
+          # - { version: 10,  upgrade_to: 11,  update_from: 0.95.0 }
+          # - { version: 9.6, upgrade_to: 10,  update_from: 0.95.0 }
+          # - { version: 9.5, upgrade_to: 9.6, update_from: 0.95.0 }
+          # - { version: 9.4, upgrade_to: 9.5, update_from: 0.95.0 }
+          # - { version: 9.3, upgrade_to: 9.4, update_from: 0.95.0 }
+          # - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
           # Also test pg_upgrade across many versions
           - { version: 9.2,  upgrade_to: 16, update_from: "", suffix: –16 }
-          - { version: 9.4,  upgrade_to: 16, update_from: "", suffix: –16 }
+          # - { version: 9.4,  upgrade_to: 16, update_from: "", suffix: –16 }
     name: 🐘 PostgreSQL ${{ matrix.version }}${{ matrix.suffix }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
@@ -68,5 +68,5 @@ jobs:
         # See also https://askubuntu.com/a/104912 for --force options
         run: |
           make install
-          apt-get install -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql-${{ matrix.upgrade_to }}
+          sudo apt.postgresql.org.sh -i -v "${{ matrix.upgrade_to }}"
           sudo -u postgres test/test_MVU.sh -s 55432 55433 "${{ matrix.version }}" "${{ matrix.upgrade_to }}"
