@@ -106,7 +106,6 @@ Here are the steps to take to make a release of pgTAP:
 *   Push the `gh-pages` branch:
 
         git push
-        git push origin up/gh-pages:gh-pages
 
 *   Increment the minor version to kick off development for the next release.
     The version should be added to the `Changes` file, and incremented in the
