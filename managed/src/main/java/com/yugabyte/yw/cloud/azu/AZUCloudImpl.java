@@ -247,7 +247,9 @@ public class AZUCloudImpl implements CloudAPI {
     // Not deleting probes as they can be used by user for other purposes
     for (ProbeInner probe : probes) {
       if (portsToVerify.contains(probe.port()) && healthCheckProtocol == Protocol.HTTP) {
-        probe = probe.withRequestPath(healthCheckConfiguration.getHealthCheckPath());
+        probe =
+            probe.withRequestPath(
+                healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(probe.port()));
       }
     }
     for (Integer port : newPortsNeeded) {
@@ -257,7 +259,8 @@ public class AZUCloudImpl implements CloudAPI {
           break;
         case HTTP:
           probes.add(
-              createNewHttpProbeForPort(port, healthCheckConfiguration.getHealthCheckPath()));
+              createNewHttpProbeForPort(
+                  port, healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(port)));
           break;
         default:
           throw new PlatformServiceException(BAD_REQUEST, "Only TCP and HTTP probes are supported");
@@ -395,9 +398,8 @@ public class AZUCloudImpl implements CloudAPI {
         } else {
           // If there is no health probe corrosponding to the port that is being forwareded, we
           // select the 0th indexed port as the default health check for that forwarding rule
-          // This is because this case would only arise in case of custom health checks, and for
-          // now, the runtime configuration only allows a single port to be selected to configure
-          // custom health checks
+          // This is because this case would only arise in case of custom health checks
+          // TODO: Find a way to link the correct custom health check to the correct forwarding rule
           loadBalancingRule =
               loadBalancingRule.withProbe(
                   portToProbeMap.get(healthCheckConfiguration.getHealthCheckPorts().get(0)));

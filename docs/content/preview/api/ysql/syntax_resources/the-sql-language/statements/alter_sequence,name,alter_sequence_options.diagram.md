@@ -4,7 +4,7 @@
 
 #### name
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="115" height="35" viewbox="0 0 115 35"><path class="connector" d="M0 22h15m85 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../../../syntax_resources/grammar_diagrams#text-literal"><rect class="rule" x="15" y="5" width="85" height="25"/><text class="text" x="25" y="22">text_literal</text></a><polygon points="111,29 115,29 115,15 111,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="537" height="35" viewbox="0 0 537 35"><path class="connector" d="M0 22h15m507 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="507" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal as specified in [Names and identifiers](../../names-and-identifiers/)&gt;</text><polygon points="533,29 537,29 537,15 533,15" style="fill:black;stroke-width:0"/></svg>
 
 #### alter_sequence_options
 

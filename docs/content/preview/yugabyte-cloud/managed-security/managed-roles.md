@@ -5,10 +5,12 @@ linkTitle: Manage account roles
 description: Manage user roles using RBAC in YugabyteDB Managed accounts.
 headcontent: Create custom roles for team members
 image: /images/section_icons/secure/create-roles.png
+aliases:
+  - /preview/yugabyte-cloud/cloud-admin/managed-roles/
 menu:
   preview_yugabyte-cloud:
     identifier: managed-roles
-    parent: cloud-admin
+    parent: managed-security
     weight: 150
 type: docs
 ---
@@ -29,7 +31,7 @@ Account users and roles are distinct from the users and roles on your YugabyteDB
 
 The **Roles** tab displays a list of roles that are defined for your account, including the role name, description, type, the number of users assigned the role, and the number of API keys created for the role.
 
-![Admin Roles page](/images/yb-cloud/managed-admin-roles.png)
+![Roles page](/images/yb-cloud/managed-admin-roles.png)
 
 To view role details, select the role in the list.
 

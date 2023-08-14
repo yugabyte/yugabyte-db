@@ -10,17 +10,17 @@ create_function ::= CREATE [ OR REPLACE ] FUNCTION subprogram_name (
 
 arg_decl_with_dflt ::= arg_decl [ { DEFAULT | = } expression ]
 
-arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
+arg_decl ::= [ formal_arg ] [ arg_mode ] arg_type
 
 subprogram_signature ::= arg_decl [ , ... ]
 
 unalterable_fn_attribute ::= WINDOW
                              | LANGUAGE lang_name
-                             | AS implementation_definition
+                             | AS subprogram_implementation
 
 lang_name ::= SQL | PLPGSQL | C
 
-implementation_definition ::= ' sql_stmt_list '
+subprogram_implementation ::= ' sql_stmt_list '
                               | ' plpgsql_block_stmt '
                               | ' obj_file ' [ , ' link_symbol ' ]
 

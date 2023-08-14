@@ -107,26 +107,39 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
 
   NLBHealthCheckConfiguration getNlbHealthCheckConfiguration(
       Universe universe, List<Integer> ports) {
-    List<Integer> healthCheckPorts = new ArrayList<>();
-    Integer healthCheckPort =
-        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPort);
-    if (healthCheckPort < -1 || healthCheckPort == 0 || healthCheckPort > 65535) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Custom health check port should be a valid port number, or -1.");
-    }
-    if (healthCheckPort > 0) {
-      healthCheckPorts.add(healthCheckPort);
-    } else {
-      healthCheckPorts.addAll(ports);
-    }
+    List<Integer> healthCheckPorts =
+        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPorts);
+    List<String> healthCheckPaths =
+        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPaths);
     Protocol healthCheckProtocol =
         confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckProtocol);
-    String healthCheckPath =
-        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPath);
+    if (healthCheckProtocol == Protocol.TCP) {
+      if (healthCheckPorts.isEmpty()) {
+        healthCheckPorts.addAll(ports);
+      } else {
+        healthCheckPorts =
+            healthCheckPorts.stream()
+                .distinct()
+                .filter(port -> (port > 0 && port <= 65535))
+                .collect(Collectors.toList());
+      }
+    } else {
+      if (healthCheckPorts.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "For HTTP health checks, custom health check ports and paths both must be specified.");
+      } else if (healthCheckPorts.size() != healthCheckPaths.size()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "For HTTP health checks, custom health check ports paths must be of the same size,"
+                + " with one to one corrospondence.");
+      }
+    }
+
     log.debug(
-        "Heach check config = {}, {}, {}", healthCheckPorts, healthCheckProtocol, healthCheckPath);
+        "Heach check config = {}, {}, {}", healthCheckPorts, healthCheckProtocol, healthCheckPaths);
     NLBHealthCheckConfiguration healthCheckConfiguration =
-        new NLBHealthCheckConfiguration(healthCheckPorts, healthCheckProtocol, healthCheckPath);
+        new NLBHealthCheckConfiguration(healthCheckPorts, healthCheckProtocol, healthCheckPaths);
     return healthCheckConfiguration;
   }
 

@@ -10,19 +10,18 @@ plpgsql_bounded_loop_defn ::= plpgsql_integer_for_loop_defn
                               | plpgsql_array_foreach_loop_defn
                               | plpgsql_query_for_loop_defn
 
-plpgsql_integer_for_loop_defn ::= FOR variable_name IN  [ REVERSE ] 
+plpgsql_integer_for_loop_defn ::= FOR variable IN  [ REVERSE ] 
                                   int_expression .. int_expression  
                                   [ BY int_expression ]
 
-plpgsql_array_foreach_loop_defn ::= FOREACH variable_name  
+plpgsql_array_foreach_loop_defn ::= FOREACH variable  
                                     [ SLICE int_literal ] IN ARRAY 
                                     array_expression
 
-plpgsql_query_for_loop_defn ::= FOR variable_name 
-                                [ variable_name [ , ... ] ] IN  
-                                { subquery
-                                  | plpgsql_bound_refcursor_name
-                                  | plpgsql_dynamic_subquery }
+plpgsql_query_for_loop_defn ::= FOR variable [ variable [ , ... ] ] IN 
+                                 { subquery
+                                   | plpgsql_bound_refcursor_name
+                                   | plpgsql_dynamic_subquery }
 
 plpgsql_dynamic_subquery ::= EXECUTE text_expression 
                              [ USING expression [ , ... ] ]

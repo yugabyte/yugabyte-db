@@ -162,7 +162,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
     String protocol = "TCP";
     int port = 5433;
     NLBHealthCheckConfiguration healthCheckConfiguration =
-        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, "");
+        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, new ArrayList<>());
     String helathCheckName = UUID.randomUUID().toString();
     String healthCheckUrl = GCPBaseUrl + "/regions/" + region + "/healthChecks/" + helathCheckName;
     List<String> healthCheckUrls = new ArrayList();
@@ -182,7 +182,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
     String protocol = "TCP";
     int port = 5433;
     NLBHealthCheckConfiguration healthCheckConfiguration =
-        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, "");
+        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, Arrays.asList());
     String helathCheckName = UUID.randomUUID().toString();
     String healthCheckUrl = GCPBaseUrl + "/regions/" + region + "/healthChecks/" + helathCheckName;
     when(mockApiClient.createNewTCPHealthCheckForPort(anyString(), eq(5433)))
@@ -220,7 +220,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
         .thenReturn(newHealthCheckUrl);
     NLBHealthCheckConfiguration healthCheckConfiguration =
         new NLBHealthCheckConfiguration(
-            Arrays.asList(newHealthCheckPort), Protocol.valueOf(protocol), "");
+            Arrays.asList(newHealthCheckPort), Protocol.valueOf(protocol), Arrays.asList());
     List<String> finalHealthChecks =
         gcpCloudImpl.ensureHealthChecks(
             mockApiClient, region, healthCheckConfiguration, incorrectHealthCheckUrls);
@@ -318,7 +318,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
     ports.add(5433);
     ports.add(9042);
     NLBHealthCheckConfiguration healthCheckConfiguration =
-        new NLBHealthCheckConfiguration(ports, Protocol.TCP, "");
+        new NLBHealthCheckConfiguration(ports, Protocol.TCP, Arrays.asList());
     gcpCloudImpl.manageNodeGroup(
         defaultProvider,
         region,

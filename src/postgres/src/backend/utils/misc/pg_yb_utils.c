@@ -172,6 +172,7 @@ int ybc_disable_pg_locking = -1;
 
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
+static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
@@ -460,22 +461,128 @@ YBSavepointsEnabled()
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
+/*
+ * Return true if we are in per-database catalog version mode. In order to
+ * use per-database catalog version mode, two conditions must be met:
+ *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * the table pg_yb_catalog_version has one row per database. 
+ * This function takes care of the YSQL upgrade from global catalog version
+ * mode to per-database catalog version mode when the default value of
+ * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * true before the table pg_yb_catalog_version is updated to have one row per
+ * database.
+ * This function does not consider going from per-database catalog version
+ * mode back to global catalog version mode.
+ */
 bool
 YBIsDBCatalogVersionMode()
 {
-	static int cached_value = -1;
-	if (cached_value == -1)
+	static bool cached_is_db_catalog_version_mode = false;
+	static int cached_gflag = -1;
+
+	if (cached_is_db_catalog_version_mode)
+		return true;
+
+	if (cached_gflag == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault(
+		cached_gflag = YBCIsEnvVarTrueWithDefault(
 			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
+
 	/*
-	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
 	 * for catalog version type.
 	 */
-	return IsYugaByteEnabled() &&
-		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
-		   cached_value;
+	if (!IsYugaByteEnabled() ||
+		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
+		!cached_gflag)
+		return false;
+
+	/*
+	 * During second phase of initdb, per-db catalog version mode is supported.
+	 */
+	if (YBCIsInitDbModeEnvVarSet())
+	{
+		cached_is_db_catalog_version_mode = true;
+		return true;
+	}
+
+	/*
+	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * turned on. However in case of YSQL upgrade we may not be ready to enable
+	 * per-db catalog version mode yet. Note that we only provide support where
+	 * we go from global catalog version mode to per-db catalog version mode,
+	 * not for the opposite direction.
+	 */
+	if (YBCanEnableDBCatalogVersionMode())
+	{
+		cached_is_db_catalog_version_mode = true;
+		/*
+		 * Switching to per-db mode and set catalog version to 1, which is the
+		 * initial per-database catalog version value after the table
+		 * pg_yb_catalog_version is upgraded to have one row per database.
+		 * Note that we assume there are no DDL statements running during
+		 * YSQL upgrade and in particular we do not support concurrent DDL
+		 * statements when switching from global catalog version mode to
+		 * per-database catalog version mode. As of 2023-08-07, this is not
+		 * enforced and therefore if a concurrent DDL statement is executed:
+		 * (1) if this DDL statement also increments a table schema, we still
+		 * have the table schema version mismatch check as a safety net to
+		 * reject stale read/write RPCs;
+		 * (2) if this DDL statement only increments the catalog version,
+		 * then stale read/write RPCs are possible which can lead to wrong
+		 * results;
+		 */
+		yb_last_known_catalog_cache_version = 1;
+		YbUpdateCatalogCacheVersion(1);
+		elog(DEBUG3, "switching to per-db mode");
+		return true;
+	}
+
+	/* We cannot enable per-db catalog version mode yet. */
+	return false;
+}
+
+static bool
+YBCanEnableDBCatalogVersionMode()
+{
+	/*
+	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * cannot simply enable per-database catalog mode if the table
+	 * pg_yb_catalog_version does not have one row for each database.
+	 * Consider YSQL upgrade, it happens after cluster software upgrade and
+	 * can take time. During YSQL upgrade we need to wait until the
+	 * pg_yb_catalog_version table is updated to have one row per database.
+	 * In addition, we do not want to switch to per-database catalog version
+	 * mode at any moment to prevent the following case:
+	 *
+	 * (1) At time t1, pg_yb_catalog_version is prefetched and there is only
+	 * one row in the table because the table has not been upgraded yet.
+	 * (2) At time t2 > t1, pg_yb_catalog_version is transactionally upgraded
+	 * to have one row per database.
+	 * (3) At time t3 > t2, assume that we already switched to per-database
+	 * catalog version mode, then we will try to find the row of MyDatabaseId
+	 * from the pg_yb_catalog_version data prefetched in step (1). That row
+	 * would not exist because at time t1 pg_yb_catalog_version only had one
+	 * row for template1. This is going to cause a user visible exception.
+	 *
+	 * Therefore after the pg_yb_catalog_version is upgraded, we may continue
+	 * to remain on global catalog version mode until we are not doing
+	 * prefetching.
+	 */
+	if (YBCIsSysTablePrefetchingStarted())
+		return false;
+
+	/*
+	 * We assume that the table pg_yb_catalog_version has either exactly
+	 * one row in global catalog version mode, or one row per database in
+	 * per-database catalog version mode. It is unexpected if it has more
+	 * than one rows but not exactly one row per database. During YSQL
+	 * upgrade, the pg_yb_catalog_version is transactionally updated
+	 * to have one row per database.
+	 */
+	return (YbGetNumberOfDatabases() > 1);
 }
 
 void
@@ -3555,10 +3662,14 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 
 uint32_t YbGetNumberOfDatabases()
 {
-	Assert(YBIsDBCatalogVersionMode());
 	uint32_t num_databases = 0;
 	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
-	Assert(num_databases > 0);
+	/*
+	 * It is possible that at the beginning master has not passed back the
+	 * contents of pg_yb_catalog_versions back to tserver yet so that tserver's
+	 * ysql_db_catalog_version_map_ is still empty. In this case we get 0
+	 * databases back.
+	 */
 	return num_databases;
 }
 

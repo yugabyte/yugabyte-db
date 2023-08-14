@@ -255,6 +255,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
             existing_value, nullptr /* verify_transaction_id_slice */,
             HasStrong(existing_intent.types)));
         auto transaction_id = decoded_value.transaction_id;
+        // TODO(tablelocks): If this is a table lock, we may want to handle as lock_only.
         bool lock_only = decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock);
         VLOG_WITH_PREFIX_AND_FUNC(4)
             << "Found conflict with exiting transaction: " << transaction_id
@@ -738,6 +739,15 @@ class IntentProcessor {
     i->second.full_doc_key = i->second.full_doc_key || full_doc_key;
   }
 
+  void ProcessTableLockIntents(TableLockType lock_type) {
+    TableLockIntents table_lock_type_to_intent_mapping =
+        GetTableLockIntents(lock_type);
+    for (const auto& mapping : table_lock_type_to_intent_mapping) {
+      container_.try_emplace(KeyBuffer(mapping.first.as_slice()),
+                             IntentData{mapping.second, false});
+    }
+  }
+
  private:
   IntentTypesContainer& container_;
 };
@@ -1021,6 +1031,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
           },
           resolver->partial_range_key_intents()));
     }
+
+    intent_processor.ProcessTableLockIntents(write_batch_.table_lock().table_lock_type());
 
     if (container.empty()) {
       return Status::OK();

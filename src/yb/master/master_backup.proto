@@ -142,6 +142,14 @@ message DeleteSnapshotResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message AbortSnapshotRestoreRequestPB {
+  optional bytes restoration_id = 1; // 16 bytes UUID
+}
+
+message AbortSnapshotRestoreResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message ImportSnapshotMetaRequestPB {
   optional SnapshotInfoPB snapshot = 1;
 }
@@ -268,6 +276,7 @@ service MasterBackup {
       returns (ListSnapshotRestorationsResponsePB);
   rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
   rpc DeleteSnapshot(DeleteSnapshotRequestPB) returns (DeleteSnapshotResponsePB);
+  rpc AbortSnapshotRestore(AbortSnapshotRestoreRequestPB) returns (AbortSnapshotRestoreResponsePB);
   rpc ImportSnapshotMeta(ImportSnapshotMetaRequestPB) returns (ImportSnapshotMetaResponsePB);
   rpc CreateSnapshotSchedule(CreateSnapshotScheduleRequestPB)
       returns (CreateSnapshotScheduleResponsePB);

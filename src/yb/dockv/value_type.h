@@ -72,6 +72,8 @@ namespace yb::dockv {
     /* Forward and reverse mappings for sorted sets. */ \
     ((kSSForward, '&')) /* ASCII code 38 */ \
     ((kSSReverse, '\'')) /* ASCII code 39 */ \
+    ((kWeakTableLock, '*')) /* ASCII code 42 */\
+    ((kStrongTableLock, '+')) /* ASCII code 43 */\
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
     ((kColocationId, '0')) /* ASCII code 48 */ \
@@ -262,7 +264,9 @@ constexpr inline bool IsPrimitiveValueType(const ValueEntryType value_type) {
 constexpr inline bool IsSpecialKeyEntryType(KeyEntryType value_type) {
   return value_type == KeyEntryType::kLowest || value_type == KeyEntryType::kHighest ||
          value_type == KeyEntryType::kMaxByte || value_type == KeyEntryType::kIntentTypeSet ||
-         value_type == KeyEntryType::kGreaterThanIntentType;
+         value_type == KeyEntryType::kGreaterThanIntentType ||
+         value_type == KeyEntryType::kWeakTableLock ||
+         value_type == KeyEntryType::kStrongTableLock;
 }
 
 // Decode the first byte of the given slice as a ValueType.

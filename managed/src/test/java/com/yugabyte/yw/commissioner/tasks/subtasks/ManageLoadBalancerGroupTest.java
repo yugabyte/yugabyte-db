@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
@@ -46,18 +47,18 @@ public class ManageLoadBalancerGroupTest extends FakeDBApplication {
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
     when(baseTaskDependencies.getConfGetter()).thenReturn(runtimeConfGetter);
     when(runtimeConfGetter.getConfForScope(
-            eq(universe), eq(UniverseConfKeys.customHealthCheckPath)))
-        .thenReturn("/");
+            eq(universe), eq(UniverseConfKeys.customHealthCheckPaths)))
+        .thenReturn(Arrays.asList("/"));
     when(runtimeConfGetter.getConfForScope(
-            eq(universe), eq(UniverseConfKeys.customHealthCheckPort)))
-        .thenReturn(-1);
+            eq(universe), eq(UniverseConfKeys.customHealthCheckPorts)))
+        .thenReturn(new ArrayList<Integer>());
     when(runtimeConfGetter.getConfForScope(
             eq(universe), eq(UniverseConfKeys.customHealthCheckProtocol)))
         .thenReturn(Protocol.TCP);
 
     task = new ManageLoadBalancerGroup(baseTaskDependencies, cloudAPIFactory);
-    portsToForward = new ArrayList<>();
-    portsToForward.add(0, 5433);
+    portsToForward = new ArrayList<Integer>();
+    portsToForward.add(5433);
   }
 
   @Test
@@ -65,7 +66,7 @@ public class ManageLoadBalancerGroupTest extends FakeDBApplication {
     NLBHealthCheckConfiguration config =
         task.getNlbHealthCheckConfiguration(universe, portsToForward);
     assertEquals(Protocol.TCP, config.getHealthCheckProtocol());
-    assert (config.getHealthCheckPath().equals("/"));
+    assert (config.getHealthCheckPaths().equals(Arrays.asList("/")));
     assertEquals(1, config.getHealthCheckPorts().size());
     assertEquals(5433, config.getHealthCheckPorts().get(0).intValue());
   }
@@ -73,12 +74,12 @@ public class ManageLoadBalancerGroupTest extends FakeDBApplication {
   @Test
   public void testGetNlbHealthCheckConfigCustomPort() {
     when(runtimeConfGetter.getConfForScope(
-            eq(universe), eq(UniverseConfKeys.customHealthCheckPort)))
-        .thenReturn(5432);
+            eq(universe), eq(UniverseConfKeys.customHealthCheckPorts)))
+        .thenReturn(Arrays.asList(5432));
     NLBHealthCheckConfiguration config =
         task.getNlbHealthCheckConfiguration(universe, portsToForward);
     assertEquals(Protocol.TCP, config.getHealthCheckProtocol());
-    assert (config.getHealthCheckPath().equals("/"));
+    assert (config.getHealthCheckPaths().equals(Arrays.asList("/")));
     assertEquals(1, config.getHealthCheckPorts().size());
     assertEquals(5432, config.getHealthCheckPorts().get(0).intValue());
   }
@@ -86,12 +87,12 @@ public class ManageLoadBalancerGroupTest extends FakeDBApplication {
   @Test
   public void testGetNlbHealthCheckConfigCustomPath() {
     when(runtimeConfGetter.getConfForScope(
-            eq(universe), eq(UniverseConfKeys.customHealthCheckPath)))
-        .thenReturn("/path");
+            eq(universe), eq(UniverseConfKeys.customHealthCheckPaths)))
+        .thenReturn(Arrays.asList("/path"));
     NLBHealthCheckConfiguration config =
         task.getNlbHealthCheckConfiguration(universe, portsToForward);
     assertEquals(Protocol.TCP, config.getHealthCheckProtocol());
-    assert (config.getHealthCheckPath().equals("/path"));
+    assert (config.getHealthCheckPaths().equals(Arrays.asList("/path")));
     assertEquals(1, config.getHealthCheckPorts().size());
     assertEquals(5433, config.getHealthCheckPorts().get(0).intValue());
   }
@@ -101,10 +102,13 @@ public class ManageLoadBalancerGroupTest extends FakeDBApplication {
     when(runtimeConfGetter.getConfForScope(
             eq(universe), eq(UniverseConfKeys.customHealthCheckProtocol)))
         .thenReturn(Protocol.HTTP);
+    when(runtimeConfGetter.getConfForScope(
+            eq(universe), eq(UniverseConfKeys.customHealthCheckPorts)))
+        .thenReturn(Arrays.asList(5433));
     NLBHealthCheckConfiguration config =
         task.getNlbHealthCheckConfiguration(universe, portsToForward);
     assertEquals(Protocol.HTTP, config.getHealthCheckProtocol());
-    assert (config.getHealthCheckPath().equals("/"));
+    assert (config.getHealthCheckPaths().equals(Arrays.asList("/")));
     assertEquals(1, config.getHealthCheckPorts().size());
     assertEquals(5433, config.getHealthCheckPorts().get(0).intValue());
   }

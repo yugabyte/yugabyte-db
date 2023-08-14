@@ -461,6 +461,31 @@ class MasterSnapshotCoordinator::Impl {
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
+  // Abort tasks on each tablet and mark them as FAILED to ensure that we dont create
+  // AsyncSnapshotOps for them later on.
+  Status AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+      int64_t leader_term, CoarseTimePoint deadline) {
+    VLOG_WITH_FUNC(4) << restoration_id.ToString() << ", " << leader_term;
+    {
+      std::lock_guard lock(mutex_);
+      auto restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
+      RETURN_NOT_OK_PREPEND(restoration_ptr->Abort(), "Failed to abort tasks");
+
+      // Update restoration entry to sys catalog.
+      LOG(INFO) << Format(
+          "Marking restoration $0 as FAILED in sys catalog", restoration_id.ToString());
+      docdb::KeyValueWriteBatchPB write_batch;
+      RETURN_NOT_OK_PREPEND(
+          restoration_ptr->StoreToWriteBatch(&write_batch),
+          "Failed to prepare write batch for snapshot");
+      RETURN_NOT_OK_PREPEND(
+          SubmitWrite(std::move(write_batch), leader_term, &context_),
+          "Failed to submit snapshot abort operation");
+    }
+
+    return Status::OK();
+  }
+
   Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
@@ -2071,6 +2096,11 @@ Status MasterSnapshotCoordinator::ListSnapshots(
 Status MasterSnapshotCoordinator::Delete(
     const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline) {
   return impl_->Delete(snapshot_id, leader_term, deadline);
+}
+
+Status MasterSnapshotCoordinator::AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+    int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->AbortRestore(restoration_id, leader_term, deadline);
 }
 
 Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(

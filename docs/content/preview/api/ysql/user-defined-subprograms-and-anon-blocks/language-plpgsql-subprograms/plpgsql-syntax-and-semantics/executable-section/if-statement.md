@@ -199,7 +199,7 @@ end case;
 
 This is the critical difference:
 
-- The _case_ formulation tells the reader, without requiring analysis of the _guard_expressions_, that if none of the these evaluates to _true_, then the _case_not_found_ error will be raised.
+- The _case_ formulation tells the reader, without requiring analysis of the _guard_expressions_, that if none of these evaluates to _true_, then the _case_not_found_ error will be raised.
 
 - The _if_ formulation requires the reader to look at the joint effect of all the tests in order to determine if they do, or do not, cover all possible values of _i_.
 

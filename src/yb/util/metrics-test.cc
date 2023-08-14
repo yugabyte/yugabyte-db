@@ -667,7 +667,7 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
       "# HELP t_hist_sum Test histogram description\n# TYPE t_hist_sum counter"));
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_hist_count Test histogram description\n# TYPE t_hist_count counter"));
-  EXPECT_EQ(5, StringOccurence(output_str,
+  EXPECT_EQ(6, StringOccurence(output_str,
       "# HELP t_hist Test histogram description\n# TYPE t_hist gauge"));
   // Check coarse histogram output.
   EXPECT_EQ(1, StringOccurence(output_str,

@@ -92,7 +92,7 @@ cascade:
   {{< sections/3-box-card
   title="Manage your account"
   linkText1="Add Users to your account"
-  linkUrl1="cloud-admin/manage-access/"
+  linkUrl1="managed-security/manage-access/"
   linkText2="Manage billing"
   linkUrl2="cloud-admin/cloud-billing-profile/"
   linkText3="Automation"

@@ -578,30 +578,33 @@ public class AWSCloudImpl implements CloudAPI {
         new ModifyTargetGroupRequest().withTargetGroupArn(targetGroup.getTargetGroupArn());
     Protocol healthCheckProtocol = healthCheckConfiguration.getHealthCheckProtocol();
     List<Integer> healthCheckPorts = healthCheckConfiguration.getHealthCheckPorts();
-    if (!(healthCheckConfiguration.getHealthCheckPorts().contains(port))) {
-      // This is the custom health check case
-      if (!targetGroup.getHealthCheckProtocol().equals(healthCheckProtocol.name())) {
-        modifyTargetGroupRequest =
-            modifyTargetGroupRequest.withHealthCheckProtocol(healthCheckProtocol.name());
-        healthCheckModified = true;
-      }
-      if (!targetGroup.getHealthCheckPort().equals(healthCheckPorts.get(0))) {
-        modifyTargetGroupRequest =
-            modifyTargetGroupRequest.withHealthCheckPort(healthCheckPorts.get(0).toString());
-        healthCheckModified = true;
-      }
-      if (healthCheckProtocol == Protocol.HTTP
-          && (targetGroup.getHealthCheckPath() == null
-              || !targetGroup
-                  .getHealthCheckPath()
-                  .equals(healthCheckConfiguration.getHealthCheckPath()))) {
-        modifyTargetGroupRequest =
-            modifyTargetGroupRequest
-                .withHealthCheckPath(healthCheckConfiguration.getHealthCheckPath())
-                .withMatcher(new Matcher().withHttpCode("200"));
-        healthCheckModified = true;
-      }
+    // If there is no health probe corrosponding to the port that is being forwareded, we
+    // select the 0th indexed port as the default health check for that forwarding rule
+    // This is because this case would only arise in case of custom health checks
+    // TODO: Find a way to link the correct custom health check to the correct forwarding rule
+    Integer healthCheckPort = healthCheckPorts.isEmpty() ? port : healthCheckPorts.get(0);
+    String healthCheckPath =
+        healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort);
+    if (!targetGroup.getHealthCheckProtocol().equals(healthCheckProtocol.name())) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest.withHealthCheckProtocol(healthCheckProtocol.name());
+      healthCheckModified = true;
     }
+    if (!targetGroup.getHealthCheckPort().equals(Integer.toString(healthCheckPort))) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest.withHealthCheckPort(Integer.toString(healthCheckPort));
+      healthCheckModified = true;
+    }
+    if (healthCheckProtocol == Protocol.HTTP
+        && (targetGroup.getHealthCheckPath() == null
+            || !targetGroup.getHealthCheckPath().equals(healthCheckPath))) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest
+              .withHealthCheckPath(healthCheckPath)
+              .withMatcher(new Matcher().withHttpCode("200"));
+      healthCheckModified = true;
+    }
+
     if (healthCheckModified) {
       try {
         ModifyTargetGroupResult result = lbClient.modifyTargetGroup(modifyTargetGroupRequest);
@@ -717,24 +720,16 @@ public class AWSCloudImpl implements CloudAPI {
             .withProtocol(protocol)
             .withPort(port)
             .withVpcId(vpc)
-            .withTargetType(TargetTypeEnum.Instance);
-    if (!healthCheckConfiguration.getHealthCheckPorts().contains(port)) {
-      // This means it is custom health check, and so ports would have only one entry, as runtime
-      // configuration currently does not allow multiple ports to be configured
+            .withTargetType(TargetTypeEnum.Instance)
+            .withHealthCheckProtocol(healthCheckConfiguration.getHealthCheckProtocol().name())
+            .withHealthCheckPort(Integer.toString(port));
+    if (healthCheckConfiguration.getHealthCheckProtocol().equals(Protocol.HTTP)) {
       targetGroupRequest =
           targetGroupRequest
-              .withHealthCheckProtocol(healthCheckConfiguration.getHealthCheckProtocol().name())
-              .withHealthCheckPort(
-                  healthCheckConfiguration.getHealthCheckPorts().get(0).toString());
-      if (healthCheckConfiguration.getHealthCheckProtocol() == Protocol.HTTP) {
-        targetGroupRequest =
-            targetGroupRequest
-                .withHealthCheckPath(healthCheckConfiguration.getHealthCheckPath())
-                .withMatcher(new Matcher().withHttpCode("200"));
-      }
+              .withHealthCheckPath(
+                  healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(port))
+              .withMatcher(new Matcher().withHttpCode("200"));
     }
-    // If we don't have custom health checks, there is no need to specify health checks explicitly,
-    // as AWS would by default create TCP helath checks with the port of the target group
     TargetGroup targetGroup =
         lbClient.createTargetGroup(targetGroupRequest).getTargetGroups().get(0);
     String targetGroupArn = targetGroup.getTargetGroupArn();

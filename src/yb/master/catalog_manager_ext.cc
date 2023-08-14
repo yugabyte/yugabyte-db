@@ -732,6 +732,23 @@ Status CatalogManager::RestoreEntry(
   return Status::OK();
 }
 
+Status CatalogManager::AbortSnapshotRestore(
+    const AbortSnapshotRestoreRequestPB* req, AbortSnapshotRestoreResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto txn_restoration_id = TryFullyDecodeTxnSnapshotRestorationId(req->restoration_id());
+
+  if (txn_restoration_id) {
+    LOG(INFO) << Substitute(
+        "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
+        txn_restoration_id.ToString(), req->ShortDebugString());
+    return snapshot_coordinator_.AbortRestore(
+        txn_restoration_id, leader_ready_term(), rpc->GetClientDeadline());
+  }
+
+  return STATUS(
+      NotSupported, Format("Invalid restoration id: $0", req->restoration_id()));
+}
+
 Status CatalogManager::DeleteSnapshot(
     const DeleteSnapshotRequestPB* req,
     DeleteSnapshotResponsePB* resp,

@@ -347,6 +347,7 @@ class ClusterAdminClient {
       std::optional<MonoDelta> new_retention);
 
   Status DeleteSnapshot(const std::string& snapshot_id);
+  Status AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
                                 const std::string& file_name);
