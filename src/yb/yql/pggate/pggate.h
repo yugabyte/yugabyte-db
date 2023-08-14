@@ -319,7 +319,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);

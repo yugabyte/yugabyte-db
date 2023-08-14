@@ -79,12 +79,12 @@ class PgDdlAtomicityTest : public LibPqTestBase {
     return Format("ALTER TABLE $0 RENAME TO $1", tablename, table_new_name);
     }
 
-  string AddColumnStmt(const string& tablename) {
-    return AddColumnStmt(tablename, "value2");
-  }
-
-  string AddColumnStmt(const string& tablename, const string& col_name_to_add) {
-    return Format("ALTER TABLE $0 ADD COLUMN $1 TEXT", tablename, col_name_to_add);
+  string AddColumnStmt(const string& tablename, const string& col_name_to_add = "value2",
+      const string& default_val = "") {
+    return default_val.empty() ?
+        Format("ALTER TABLE $0 ADD COLUMN $1 TEXT", tablename, col_name_to_add) :
+        Format("ALTER TABLE $0 ADD COLUMN $1 TEXT DEFAULT '$2'",
+            tablename, col_name_to_add, default_val);
   }
 
   string DropColumnStmt(const string& tablename) {
@@ -971,6 +971,48 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithDropTableTest) {
   // Conn2 must also commit successfully.
   ASSERT_OK(conn2.Execute("INSERT INTO " + table + " VALUES (4)"));
   ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+// Test that we are able to rollback DROP COLUMN on a column with a missing
+// default value.
+TEST_F(PgDdlAtomicitySanityTest, DropColumnWithMissingDefaultTest) {
+  const string& table = "drop_column_missing_default_test";
+  CreateTable(table);
+  auto conn = ASSERT_RESULT(Connect());
+  // Write some rows to the table.
+  ASSERT_OK(conn.Execute("INSERT INTO " + table + "(key) VALUES (generate_series(1, 3))"));
+  // Add column with missing default value.
+  ASSERT_OK(conn.Execute(Format(AddColumnStmt(table, "value2", "default"))));
+  // Insert rows with the new column set to null.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(4, 6), null)"));
+  // Insert rows with the new column set to a non-default value.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(7, 9), 'not default')"));
+  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
+  // Verify data.
+  auto check_result = [&res] {
+    for (int i = 1; i <= 9; ++i) {
+      const auto value1 = ASSERT_RESULT(GetInt32(res.get(), i - 1, 0));
+      ASSERT_EQ(value1, i);
+      const auto value2 = ASSERT_RESULT(GetString(res.get(), i - 1, 1));
+      if (i <= 3) {
+        ASSERT_EQ(value2, "default");
+      } else if (i <= 6) {
+        ASSERT_EQ(value2, "");
+      } else {
+        ASSERT_EQ(value2, "not default");
+      }
+    }
+  };
+  check_result();
+  // Fail drop column.
+  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(table)));
+  // Insert more rows.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO " + table + "(key) VALUES (generate_series(10, 12))"));
+  res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
+  check_result();
 }
 
 class PgDdlAtomicityNegativeTestBase : public PgDdlAtomicitySanityTest {

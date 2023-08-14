@@ -81,6 +81,7 @@ struct DocDBTableReaderData {
   const TableType table_type;
   const dockv::SchemaPackingStorage& schema_packing_storage;
   std::unique_ptr<PackedRowData> packed_row;
+  const Schema& schema;
 
   std::vector<dockv::KeyBytes> encoded_projection;
   EncodedDocHybridTime table_tombstone_time{EncodedDocHybridTime::kMin};
@@ -90,7 +91,8 @@ struct DocDBTableReaderData {
       IntentAwareIterator* iter_, CoarseTimePoint deadline,
       const dockv::ReaderProjection* projection_,
       TableType table_type_,
-      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_);
+      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
+      std::reference_wrapper<const Schema> schema);
   ~DocDBTableReaderData();
 };
 

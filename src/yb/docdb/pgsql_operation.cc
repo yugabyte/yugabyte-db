@@ -539,6 +539,7 @@ class DocKeyColumnPathBuilder {
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
+  const Schema& schema;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestPB& request, const DocReadContext& read_context) {
@@ -546,6 +547,7 @@ struct RowPackerData {
     return RowPackerData {
       .schema_version = schema_version,
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
+      .schema = read_context.schema()
     };
   }
 
@@ -561,7 +563,7 @@ struct RowPackerData {
   dockv::RowPackerVariant MakePackerHelper() const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice());
+        Slice(), schema);
   }
 };
 
@@ -839,9 +841,13 @@ Status PgsqlWriteOperation::InsertColumn(
   if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+    // If the column has a missing value, we don't want any null values that are inserted to be
+    // compacted away. So we store kNullLow instead of kTombstone.
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, ValueRef(value, column.sorting_type()), data.read_operation_data,
-        request_.stmt_id()));
+        sub_path,
+        IsNull(value) && !IsNull(column.missing_value()) ?
+            ValueRef(dockv::ValueEntryType::kNullLow) : ValueRef(value, column.sorting_type()),
+        data.read_operation_data, request_.stmt_id()));
   }
 
   return Status::OK();
@@ -944,9 +950,14 @@ Status PgsqlWriteOperation::UpdateColumn(
   if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, result->Value()))) {
     // Inserting into specified column.
     DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+    // If the column has a missing value, we don't want any null values that are inserted to be
+    // compacted away. So we store kNullLow instead of kTombstone.
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-        sub_path, ValueRef(result->Value(), column.sorting_type()), data.read_operation_data,
-        request_.stmt_id()));
+        sub_path,
+        IsNull(result->Value()) && !IsNull(column.missing_value()) ?
+            ValueRef(dockv::ValueEntryType::kNullLow) :
+            ValueRef(result->Value(), column.sorting_type()),
+        data.read_operation_data, request_.stmt_id()));
   }
 
   return Status::OK();
@@ -1048,8 +1059,13 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
         // Inserting into specified column.
         DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+        // If the column has a missing value, we don't want any null values that are inserted to be
+        // compacted away. So we store kNullLow instead of kTombstone.
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
-            sub_path, ValueRef(expr_result.Value(), column.sorting_type()),
+            sub_path,
+            IsNull(expr_result.Value()) && !IsNull(column.missing_value()) ?
+                ValueRef(dockv::ValueEntryType::kNullLow) :
+                ValueRef(expr_result.Value(), column.sorting_type()),
             data.read_operation_data, request_.stmt_id()));
         skipped = false;
       }

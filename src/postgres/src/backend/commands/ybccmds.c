@@ -59,10 +59,13 @@
 #include "pg_yb_utils.h"
 
 #include "access/nbtree.h"
+#include "catalog/heap.h"
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/planner.h"
 #include "parser/parser.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
@@ -1089,10 +1092,37 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			Assert(list_length(handles) == 1);
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
+
+			YBCPgExpr res = NULL;
+			if (colDef->raw_default && yb_enable_add_column_missing_default)
+			{
+				ParseState *pstate = make_parsestate(NULL);
+				pstate->p_sourcetext = NULL;
+				RangeTblEntry *rte = addRangeTableEntryForRelation(pstate,
+																   rel,
+																   NULL,
+																   false,
+																   true);
+				addRTEtoQuery(pstate, rte, true, true, true);
+				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
+												  typeOid, typmod,
+												  colDef->colname);
+				expr = expression_planner(expr);
+				EState *estate = CreateExecutorState();
+				ExprState *exprState = ExecPrepareExpr(expr, estate);
+				ExprContext *econtext = GetPerTupleExprContext(estate);
+				bool missingIsNull;
+				Datum missingval = ExecEvalExpr(exprState, econtext,
+												&missingIsNull);
+				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
+									 missingval, missingIsNull);
+				FreeExecutorState(estate);
+			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
-													col_type));
+													col_type,
+													res));
 			++(*col);
 			*needsYBAlter = true;
 
