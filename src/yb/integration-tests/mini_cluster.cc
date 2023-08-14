@@ -192,7 +192,8 @@ MiniCluster::~MiniCluster() {
   Shutdown();
 }
 
-Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
+Status MiniCluster::StartAsync(
+    const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
   CHECK(!fs_root_.empty()) << "No Fs root was provided";
   CHECK(!running_);
 
@@ -251,9 +252,6 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
         RETURN_NOT_OK_PREPEND(AddTabletServer(), Substitute("Error adding TS $0", i));
       }
     }
-    RETURN_NOT_OK_PREPEND(
-        WaitForTabletServerCount(options_.num_tablet_servers),
-        "Waiting for tablet servers to start");
   } else {
     for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
       RETURN_NOT_OK(tablet_server->Start());
@@ -305,15 +303,9 @@ Status MiniCluster::StartMasters() {
   return Status::OK();
 }
 
-Status MiniCluster::StartSync() {
-  RETURN_NOT_OK(Start());
-  int count = 0;
-  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-    RETURN_NOT_OK_PREPEND(tablet_server->WaitStarted(),
-                          Substitute("TabletServer $0 failed to start.", count));
-    count++;
-  }
-  return Status::OK();
+Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
+  RETURN_NOT_OK(StartAsync(extra_tserver_options));
+  return WaitForAllTabletServers();
 }
 
 Status MiniCluster::RestartSync() {
@@ -688,6 +680,11 @@ Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
 }
 
 Status MiniCluster::WaitForAllTabletServers() {
+  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK_PREPEND(
+        tablet_server->WaitStarted(), Format("TabletServer $0 failed to start.", tablet_server));
+  }
+  // Wait till all tablet servers are registered with master.
   return WaitForTabletServerCount(num_tablet_servers());
 }
 
