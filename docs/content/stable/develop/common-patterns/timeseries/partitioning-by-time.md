@@ -5,7 +5,7 @@ linkTitle: Partition data by time
 description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
 menu:
-  preview:
+  stable:
     identifier: timeseries-partition-by-time
     parent: common-patterns-timeseries
     weight: 400

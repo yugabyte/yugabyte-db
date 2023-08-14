@@ -5,7 +5,7 @@ linkTitle: Order by entity
 description: Distribute your time-ordered data and retrieve fast
 headcontent: Keep entity data together in a time series data model
 menu:
-  preview:
+  stable:
     identifier: timeseries-entity-ordering
     parent: common-patterns-timeseries
     weight: 200
