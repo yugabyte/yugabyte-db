@@ -31,6 +31,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 
 #define SET_WAIT_STATUS_TO(ptr, state) \
   if (ptr) ptr->set_state(state)
@@ -173,7 +174,7 @@ struct AUHMetadata {
     if (!other.top_level_request_id.empty()) {
       top_level_request_id = other.top_level_request_id;
     }
-    if (!other.top_level_node_id.empty()) {
+    if (!other.top_level_node_id != 0) {
       top_level_node_id = other.top_level_node_id;
     }
     if (other.query_id != 0) {
