@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-1.2.1
+1.3.0 2023-08-14T22:14:20Z
 --------------------------
 * Fixed an issue with xUnit tests where they would exit immediately on
   unexpected errors (aside from PL/pgSQL RAISE errors) rather than exit just the
