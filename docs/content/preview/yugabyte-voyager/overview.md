@@ -28,8 +28,8 @@ YugabyteDB Voyager has the following features:
 - Free and completely open source.
 - Supports widely-used databases for migration and, in most cases, doesn't require changes to the [source databases](#source-databases).
 - Supports all YugabyteDB products as the [target database](#target-database). The target needs to be running YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
-- Unified [CLI](../reference/yb-voyager-cli/) experience for all different source databases.
-- Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
+- [Unified CLI](../reference/yb-voyager-cli/) experience for all different source databases.
+- [Auto-tuneable](../performance/) based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Progress monitoring, including the expected time for data export and import to complete, using progress bars.
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
@@ -48,7 +48,9 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 ## Target database
 
-You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/). YugabyteDB Voyager supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
+You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/).
+
+YugabyteDB Voyager supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
 
 | Product | Deployment instructions |
 | :--- | :--- |
@@ -68,12 +70,12 @@ A typical migration workflow using yb-voyager consists of the steps shown in the
 | [Prepare source](../migrate-steps/#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | [Prepare target](../migrate-steps/#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | [Export schema](../migrate-steps/#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| [Analyze schema ](../migrate-steps/#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| [Analyze schema](../migrate-steps/#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | [Modify schema](../migrate-steps/#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
 | [Export data](../migrate-steps/#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | [Import schema](../migrate-steps/#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | [Import data](../migrate-steps/#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| [Import&nbsp;indexes/triggers](../migrate-steps/#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+| [Import&nbsp;indexes&nbsp;and triggers](../migrate-steps/#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 
 <!--
 <div class="row">
