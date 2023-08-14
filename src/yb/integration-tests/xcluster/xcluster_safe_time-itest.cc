@@ -80,13 +80,13 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       producer_table_name_ = VERIFY_RESULT(
-          CreateTable(producer_client(), kNamespaceName, kTableName, kTabletCount, &schema));
+          CreateTable(producer_client(), namespace_name, kTableName, kTabletCount, &schema));
       return producer_client()->OpenTable(producer_table_name_, &producer_table_);
     });
 
     auto consumer_cluster_future = std::async(std::launch::async, [&] {
       consumer_table_name_ = VERIFY_RESULT(
-          CreateTable(consumer_client(), kNamespaceName, kTableName, kTabletCount, &schema));
+          CreateTable(consumer_client(), namespace_name, kTableName, kTabletCount, &schema));
       return consumer_client()->OpenTable(consumer_table_name_, &consumer_table_);
     });
 
@@ -129,7 +129,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     master::GetNamespaceInfoResponsePB resp;
 
     RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        std::string() /* namespace_id */, kNamespaceName, YQL_DATABASE_CQL, &resp));
+        std::string() /* namespace_id */, namespace_name, YQL_DATABASE_CQL, &resp));
 
     namespace_id_ = resp.namespace_().id();
     return OK();

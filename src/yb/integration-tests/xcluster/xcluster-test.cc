@@ -207,20 +207,24 @@ class XClusterTestNoParam : public XClusterTestBase {
                             num_consumer_tablets.size(), num_producer_tablets.size()));
     }
 
-    std::vector<YBTableName> tables;
-    for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], producer_client(), &tables));
+    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+      const auto* num_tablets = &num_producer_tablets;
+      const auto* schema = &schema_;
+      if (cluster == &consumer_cluster_) {
+        num_tablets = &num_consumer_tablets;
+        schema = &consumer_schema;
+      }
+      for (uint32_t i = 0; i < num_tablets->size(); i++) {
+        auto table_name =
+            VERIFY_RESULT(CreateTable(i, num_tablets->at(i), cluster->client_.get(), *schema));
 
-      std::shared_ptr<client::YBTable> producer_table;
-      RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
-      producer_tables_.push_back(producer_table);
+        std::shared_ptr<client::YBTable> table;
+        RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
+        cluster->tables_.emplace_back(std::move(table));
+      }
+      return Status::OK();
+    }));
 
-      RETURN_NOT_OK(
-          CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema, &tables));
-      std::shared_ptr<client::YBTable> consumer_table;
-      RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
-      consumer_tables_.push_back(consumer_table);
-    }
     if (!producer_tables_.empty()) {
       producer_table_ = producer_tables_.front();
     }
@@ -241,21 +245,10 @@ class XClusterTestNoParam : public XClusterTestBase {
     return XClusterTestBase::CreateTable(client, namespace_name, table_name, num_tablets, &schema_);
   }
 
-  Status CreateTable(
-      uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
-    auto table = VERIFY_RESULT(
-        CreateTable(client, kNamespaceName, Format("test_table_$0", idx), num_tablets));
-    tables->push_back(table);
-    return Status::OK();
-  }
-
-  Status CreateTable(
-      uint32_t idx, uint32_t num_tablets, YBClient* client, YBSchema schema,
-      std::vector<YBTableName>* tables) {
-    auto table = VERIFY_RESULT(XClusterTestBase::CreateTable(
-        client, kNamespaceName, Format("test_table_$0", idx), num_tablets, &schema));
-    tables->push_back(table);
-    return Status::OK();
+  Result<YBTableName> CreateTable(
+      uint32_t idx, uint32_t num_tablets, YBClient* client, YBSchema schema) {
+    return XClusterTestBase::CreateTable(
+        client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema);
   }
 
   Status InsertRowsInProducer(
@@ -545,7 +538,7 @@ class XClusterTestNoParam : public XClusterTestBase {
     std::vector<std::string> table_names = {"test_table_0", "test_table_1"};
     for (uint32_t i = 0; i < table_names.size(); i++) {
       auto t = VERIFY_RESULT(
-          CreateTable(producer_client(), kNamespaceName, table_names[i], num_tablets_per_table));
+          CreateTable(producer_client(), namespace_name, table_names[i], num_tablets_per_table));
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(t, &producer_table));
       producer_tables.push_back(producer_table);
@@ -596,10 +589,6 @@ class XClusterTestNoParam : public XClusterTestBase {
         Format("Expected $0 snapshots but received $1", num_snapshots, snapshots.size()));
     return Status::OK();
   }
-
-  YBTables producer_tables_, consumer_tables_;
-  // The first table in producer_tables_ and consumer_tables_ is the default table.
-  std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
 
  private:
   Status WriteWorkload(
@@ -1040,14 +1029,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationMultipleTables) {
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   for (int i = 0; i < 2; i++) {
-    auto t = ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, table_names[i], 3));
+    auto t = ASSERT_RESULT(CreateTable(producer_client(), namespace_name, table_names[i], 3));
     std::shared_ptr<client::YBTable> producer_table;
     ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
     producer_tables.push_back(producer_table);
   }
 
   for (int i = 0; i < 2; i++) {
-    ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, table_names[i], 3));
+    ASSERT_RESULT(CreateTable(consumer_client(), namespace_name, table_names[i], 3));
   }
 
   // Setup universe replication on both these tables.
@@ -1088,8 +1077,8 @@ TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
       for (int i = 0; i < table_count * amplification[a]; i++) {
         std::string cur_table =
             table_prefix + std::to_string(amplification[a]) + "-" + std::to_string(i);
-        ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, cur_table, 3));
-        auto t = ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, cur_table, 3));
+        ASSERT_RESULT(CreateTable(consumer_client(), namespace_name, cur_table, 3));
+        auto t = ASSERT_RESULT(CreateTable(producer_client(), namespace_name, cur_table, 3));
         std::shared_ptr<client::YBTable> producer_table;
         ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
         producer_tables.push_back(producer_table);
@@ -1231,9 +1220,9 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
       for (int i = 0; i < table_count * amplification[a]; i++) {
         std::string cur_table =
             table_prefix + std::to_string(amplification[a]) + "-" + std::to_string(i);
-        ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, cur_table, tablet_count));
+        ASSERT_RESULT(CreateTable(consumer_client(), namespace_name, cur_table, tablet_count));
         auto t =
-            ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, cur_table, tablet_count));
+            ASSERT_RESULT(CreateTable(producer_client(), namespace_name, cur_table, tablet_count));
         std::shared_ptr<client::YBTable> producer_table;
         ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
         producer_tables.push_back(producer_table);
@@ -2235,7 +2224,7 @@ TEST_P(XClusterTest, TestWalRetentionSet) {
 
   cdc::VerifyWalRetentionTime(producer_cluster(), "test_table_", FLAGS_cdc_wal_retention_time_secs);
 
-  YBTableName table_name(YQL_DATABASE_CQL, kNamespaceName, "test_table_0");
+  YBTableName table_name(YQL_DATABASE_CQL, namespace_name, "test_table_0");
 
   // Issue an ALTER TABLE request on the producer to verify that it doesn't crash.
   auto table_alterer = producer_client()->NewTableAlterer(table_name);
@@ -2970,7 +2959,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   // Create 2 more consumer tables.
   for (int i = 2; i < 4; i++) {
     auto t = ASSERT_RESULT(CreateTable(
-        consumer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+        consumer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
     consumer_tables_.push_back({});
     ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables_.back()));
   }
@@ -2979,7 +2968,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_retry_secs) = 1;
   ASSERT_OK(SetupNSUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
-      kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+      namespace_name, YQLDatabase::YQL_DATABASE_CQL));
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId,
       narrow_cast<int>(producer_tables_.size())));
@@ -2987,7 +2976,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraConsumerTables) {
   // Create the additional 2 tables on producer. Verify that they are added automatically.
   for (int i = 2; i < 4; i++) {
     auto t = ASSERT_RESULT(CreateTable(
-        producer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+        producer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
     producer_tables_.push_back({});
     ASSERT_OK(producer_client()->OpenTable(t, &producer_tables_.back()));
   }
@@ -3011,7 +3000,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   // Create 2 more producer tables.
   for (int i = 2; i < 4; i++) {
     auto t = ASSERT_RESULT(CreateTable(
-        producer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+        producer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
     producer_tables_.push_back({});
     ASSERT_OK(producer_client()->OpenTable(t, &producer_tables_.back()));
   }
@@ -3020,7 +3009,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ns_replication_sync_backoff_secs) = 1;
   ASSERT_OK(SetupNSUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
-      kNamespaceName, YQLDatabase::YQL_DATABASE_CQL));
+      namespace_name, YQLDatabase::YQL_DATABASE_CQL));
   ASSERT_OK(VerifyNSUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId,
       narrow_cast<int>(consumer_tables_.size())));
@@ -3028,7 +3017,7 @@ TEST_P(XClusterTest, SetupNSUniverseReplicationExtraProducerTables) {
   // Create the additional 2 tables on consumer. Verify that they are added automatically.
   for (int i = 2; i < 4; i++) {
     auto t = ASSERT_RESULT(CreateTable(
-        consumer_client(), kNamespaceName, Format("test_table_$0", i), kNTabletsPerTable));
+        consumer_client(), namespace_name, Format("test_table_$0", i), kNTabletsPerTable));
     consumer_tables_.push_back({});
     ASSERT_OK(consumer_client()->OpenTable(t, &consumer_tables_.back()));
   }

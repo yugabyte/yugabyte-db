@@ -67,7 +67,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
           &producer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName,
           {} /*tablegroup_name*/,
@@ -76,7 +76,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       auto table_name2 = ASSERT_RESULT(CreateYsqlTable(
           &producer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName2,
           {} /*tablegroup_name*/,
@@ -87,7 +87,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     auto consumer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
           &consumer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName,
           {} /*tablegroup_name*/,
@@ -96,7 +96,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       auto table_name2 = ASSERT_RESULT(CreateYsqlTable(
           &consumer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName2,
           {} /*tablegroup_name*/,
@@ -455,7 +455,7 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
 
     auto table_name = ASSERT_RESULT(CreateYsqlTable(
         &producer_cluster_,
-        kDatabaseName,
+        namespace_name,
         "" /* schema_name */,
         kTableName,
         {} /*tablegroup_name*/,
