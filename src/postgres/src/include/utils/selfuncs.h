@@ -104,27 +104,6 @@ typedef struct VariableStatData
 			(vardata).freefunc((vardata).statsTuple); \
 	} while(0)
 
-
-#ifdef YB_TODO
-/* YB_TODO(Tanuj@yugabyte) IndexQualInfo is no longer in Pg13. Need to introduce `is_hashed` in
- * the PG13 structures.
- */
-/*
- * deconstruct_indexquals is a simple function to examine the indexquals
- * attached to a proposed IndexPath.  It returns a list of IndexQualInfo
- * structs, one per qual expression.
- */
-typedef struct
-{
-	RestrictInfo *rinfo;		/* the indexqual itself */
-	int			indexcol;		/* zero-based index column number */
-	bool		varonleft;		/* true if index column is on left of qual */
-	bool		is_hashed;		/* true if the variable is hashed */
-	Oid			clause_op;		/* qual's operator OID, if relevant */
-	Node	   *other_operand;	/* non-index operand of qual's operator */
-} IndexQualInfo;
-#endif
-
 /*
  * genericcostestimate is a general-purpose estimator that can be used for
  * most index types.  In some cases we use genericcostestimate as the base

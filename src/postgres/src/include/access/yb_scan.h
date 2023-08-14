@@ -140,7 +140,7 @@ typedef struct YbScanDescData
 	bool quit_scan;
 } YbScanDescData;
 
-/* TODO(neil) Reorganize code so that description can be placed at appropriate places.
+/* YB_TODO(neil) Reorganize code so that description can be placed at appropriate places.
 typedef struct YbScanDescData *YbScanDesc;
  */
 

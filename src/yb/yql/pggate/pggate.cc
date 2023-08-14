@@ -1451,12 +1451,14 @@ Status PgApiImpl::NewSample(const PgObjectId& table_id,
   return Status::OK();
 }
 
-Status PgApiImpl::InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state) {
+Status PgApiImpl::InitRandomState(
+    PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->InitRandomState(rstate_w, rand_state));
+  RETURN_NOT_OK(
+      down_cast<PgSample *>(handle)->InitRandomState(rstate_w, rand_state_s0, rand_state_s1));
   return Status::OK();
 }
 

@@ -460,7 +460,8 @@ YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          bool is_region_local,
                          YBCPgStatement *handle);
 
-YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t rand_state);
+YBCStatus YBCPgInitRandomState(
+    YBCPgStatement handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more);
 
