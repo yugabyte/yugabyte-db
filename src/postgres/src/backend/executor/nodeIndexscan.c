@@ -172,8 +172,7 @@ IndexNext(IndexScanState *node)
 
 		// Add row marks.
 		plan = castNode(IndexScan, node->ss.ps.plan);
-		if (plan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
-			plan->scan.yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
+		if (IsolationIsSerializable() || plan->yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
 		{
 			/*
 			 * In case of SERIALIZABLE isolation level we have to take prefix range locks to disallow

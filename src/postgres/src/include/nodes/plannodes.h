@@ -358,9 +358,8 @@ typedef struct BitmapOr
  */
 typedef struct Scan
 {
-	Plan			plan;
-	Index			scanrelid;		/* relid is index into the range table */
-	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
+	Plan		plan;
+	Index		scanrelid;		/* relid is index into the range table */
 } Scan;
 
 /* ----------------
@@ -450,6 +449,7 @@ typedef struct IndexScan
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* skip scan prefix */
+	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
 } IndexScan;
 
 /* ----------------

@@ -419,7 +419,6 @@ CopyScanFields(const Scan *from, Scan *newnode)
 	CopyPlanFields((const Plan *) from, (Plan *) newnode);
 
 	COPY_SCALAR_FIELD(scanrelid);
-	COPY_SCALAR_FIELD(yb_lock_mechanism);
 }
 
 /*
@@ -523,6 +522,7 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(yb_rel_pushdown.quals);
 	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
 	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_SCALAR_FIELD(yb_lock_mechanism);
 
 	return newnode;
 }

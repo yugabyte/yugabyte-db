@@ -85,6 +85,11 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 SELECT * FROM yb_locks_tasc FOR UPDATE;
 /*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
 
+-- For an ASC table, should lock inline, with no LockRows node.
+EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+
 COMMIT;
 
 -- Test with single-RPC select+lock turned off.

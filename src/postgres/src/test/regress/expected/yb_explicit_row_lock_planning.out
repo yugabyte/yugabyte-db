@@ -236,6 +236,22 @@ SELECT * FROM yb_locks_tasc FOR UPDATE;
  3
 (3 rows)
 
+-- For an ASC table, should lock inline, with no LockRows node.
+EXPLAIN (COSTS OFF)
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Index Scan (Locked FOR UPDATE) using yb_locks_tasc_pkey on yb_locks_tasc
+(1 row)
+
+SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
 COMMIT;
 -- Test with single-RPC select+lock turned off.
 SET yb_lock_pk_single_rpc TO OFF;
