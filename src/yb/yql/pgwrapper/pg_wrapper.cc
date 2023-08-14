@@ -86,7 +86,7 @@ DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
 DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_PREVIEW_string(ysql_ident_conf_csv, "",
+DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_UNKNOWN_string(ysql_pg_conf, "",
