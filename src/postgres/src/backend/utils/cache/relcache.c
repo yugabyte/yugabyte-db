@@ -5515,6 +5515,12 @@ RelationCacheInitializePhase3(void)
 	   */
 	  RelationMapInitializePhase3();
 	}
+	const int64 old_query_id = MyProc->queryid;
+	if (IsYugaByteEnabled() && old_query_id == 0)
+	{
+		const int64 kCatalogQueryId = -3;
+		YBCSetQueryId(kCatalogQueryId);
+	}
 
 	/*
 	 * switch to cache memory context
@@ -5824,6 +5830,10 @@ RelationCacheInitializePhase3(void)
 		/* now write the files */
 		write_relcache_init_file(true);
 		write_relcache_init_file(false);
+	}
+	if (IsYugaByteEnabled() && old_query_id == 0)
+	{
+		YBCSetQueryId(0);
 	}
 }
 
