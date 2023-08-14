@@ -28,6 +28,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/wait_state.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
@@ -206,6 +207,10 @@ class QLEnv {
     return ql_session_;
   }
 
+  util::AUHMetadata& auh_metadata() {
+    return auh_metadata_;
+  }
+
  private:
   //------------------------------------------------------------------------------------------------
   // Persistent attributes.
@@ -230,6 +235,8 @@ class QLEnv {
 
   // The QL session processing the statement.
   mutable QLSession::SharedPtr ql_session_;
+
+  util::AUHMetadata auh_metadata_;
 };
 
 }  // namespace ql
