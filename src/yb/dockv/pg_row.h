@@ -22,7 +22,7 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
-#include "yb/dockv/value_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
@@ -149,6 +149,9 @@ class PgTableRow {
       size_t column_idx, const char* input, const char* end, bool append_zero,
       SortOrder sort_order);
   void SetBinary(size_t column_idx, Slice value, bool append_zero);
+
+  static PackedColumnDecoder GetPackedColumnDecoder(
+      PackedRowVersion version, bool last, DataType data_type);
 
  private:
   PgValueDatum GetDatum(size_t idx) const;
