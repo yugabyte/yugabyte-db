@@ -573,11 +573,6 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)
 			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
-#ifdef YB_TODO
-		/* YB_TODO(jasonk@yugabyte) Set & get OID is no longer valid */
-		if (syscols.oid != InvalidOid)
-			HeapTupleSetOid(tuple, syscols.oid);
-#endif
 	}
 	pfree(values);
 	pfree(nulls);

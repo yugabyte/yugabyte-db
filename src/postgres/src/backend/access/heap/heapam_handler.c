@@ -1290,7 +1290,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 		snapshot = scan->rs_snapshot;
 	}
 
-	/* YB_TODO(arpan): scan can be instance of YBScanDesc as well. */
+	/* YB_TODO(arpan): scan can be instance of YBScanDesc as well. hscan is only
+	 * used in non YB code path except for one place. See hscan usages. */
 	hscan = (HeapScanDesc) scan;
 
 	/*

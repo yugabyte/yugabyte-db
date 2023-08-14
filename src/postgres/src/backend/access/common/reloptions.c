@@ -1011,28 +1011,6 @@ add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_
 	add_reloption((relopt_gen *) newoption);
 }
 
-#ifdef YB_TODO
-/* YB_TODO(alex@yugabyte) This function is no longer needed? */
-/*
- * add_oid_reloption
- *		Add a new OID reloption
- */
-void
-add_oid_reloption(bits32 kinds, const char *name, const char *desc, Oid default_val,
-				  Oid min_val, Oid max_val)
-{
-	relopt_oid *newoption;
-
-	newoption = (relopt_oid *) allocate_reloption(kinds, RELOPT_TYPE_OID,
-												  name, desc);
-	newoption->default_val = default_val;
-	newoption->min = min_val;
-	newoption->max = max_val;
-
-	add_reloption((relopt_gen *) newoption);
-}
-#endif
-
 /*
  * add_local_int_reloption
  *		Add a new local integer reloption

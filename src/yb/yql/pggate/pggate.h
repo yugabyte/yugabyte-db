@@ -568,7 +568,8 @@ class PgApiImpl {
                    bool is_region_local,
                    PgStatement **handle);
 
-  Status InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
+  Status InitRandomState(
+      PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
   Status SampleNextBlock(PgStatement *handle, bool *has_more);
 
