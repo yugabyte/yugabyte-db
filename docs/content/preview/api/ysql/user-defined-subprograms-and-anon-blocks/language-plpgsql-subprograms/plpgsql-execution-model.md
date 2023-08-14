@@ -9,6 +9,7 @@ menu:
     parent: language-plpgsql-subprograms
     weight: 10
 type: docs
+showRightNav: true
 ---
 
 ## What does creating or replacing a subprogram do?

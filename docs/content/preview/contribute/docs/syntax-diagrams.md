@@ -200,7 +200,7 @@ This material is not relevant for the present account.
 
 _Singleton exception:_ The [_diagram definition file_](#diagram-definition-file), on the [_syntax resources directory_](#syntax-resources-directory), is a plain text file that is typed up manually.
 
-Exception class: The [_grammar diagrams file_](#grammar-diagrams-file) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
+_Exception class:_ The [_grammar diagrams file_](#grammar-diagrams-file) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
 
 With just a few on the [_ysql directory_](#ysql-directory) itself, the [_humanly typed documentation source_](#humanly-typed-documentation-source) files are located in directory trees that start at the _ysql directory._ The top-of-section `_index.md` for the YSQL subsystem is among the few [_humanly typed documentation source_](#humanly-typed-documentation-source) files that are located directly on the [_ysql directory_](#ysql-directory).
 
