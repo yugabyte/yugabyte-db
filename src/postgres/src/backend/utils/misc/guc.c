@@ -2310,6 +2310,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_add_column_missing_default", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable using the default value for existing rows"
+						 " after an ADD COLUMN ... DEFAULT operation."),
+			NULL
+		},
+		&yb_enable_add_column_missing_default,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

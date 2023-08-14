@@ -257,9 +257,10 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   }
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
+  const Schema schema;
   DocDBTableReader doc_reader(
       iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
-      schema_packing_storage);
+      schema_packing_storage, schema);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
   SubDocument result;
@@ -325,7 +326,7 @@ class PackedRowData {
     }
     auto& decoder = decoders_[id];
     if (!decoder.Valid()) {
-      decoder.Init(version_, *data_.projection, *schema_packing_, context);
+      decoder.Init(version_, *data_.projection, *schema_packing_, context, data_.schema);
     }
 
     return decoder.Apply(value, context->Context());
@@ -362,12 +363,14 @@ DocDBTableReaderData::DocDBTableReaderData(
     IntentAwareIterator* iter_, CoarseTimePoint deadline,
     const dockv::ReaderProjection* projection_,
     TableType table_type_,
-    std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_)
+    std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
+    std::reference_wrapper<const Schema> schema_)
     : iter(iter_),
       deadline_info(deadline),
       projection(projection_),
       table_type(table_type_),
-      schema_packing_storage(schema_packing_storage_) {
+      schema_packing_storage(schema_packing_storage_),
+      schema(schema_) {
 }
 
 DocDBTableReaderData::~DocDBTableReaderData() = default;
@@ -531,10 +534,18 @@ Result<bool> TryDecodePrimitiveValueOnly(
   return true;
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* out) {
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* out,
+    const Schema& schema) {
   for (const auto& column : projection.value_columns()) {
-    out->MarkTombstoned(column.id);
+    const auto& missing_value =
+        VERIFY_RESULT_REF(schema.GetMissingValueByColumnId(column.id));
+    if (QLValue::IsNull(missing_value)) {
+      out->MarkTombstoned(column.id);
+    } else {
+      out->AllocColumn(column.id).value = missing_value;
+    }
   }
+  return Status::OK();
 }
 
 class DocDbToQLTableRowConverter {
@@ -566,6 +577,15 @@ class DocDbToQLTableRowConverter {
     return Status::OK();
   }
 
+  Status Decode(const QLValuePB& value, DataType data_type) {
+    // Nothing to decode. Set column value.
+    if (!IsNull(value)) {
+      row_.AllocColumn(column_).value = value;
+    }
+    row_.MarkTombstoned(column_);
+    return Status::OK();
+  }
+
  private:
   qlexpr::QLTableRow& row_;
   ColumnId column_;
@@ -582,8 +602,9 @@ auto DecodePackedColumn(
   return MakeConverter(row, index, projected_column.id).Decode(value, projected_column.data_type);
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, dockv::PgTableRow* out) {
-  out->SetNull();
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, dockv::PgTableRow* out,
+    const Schema& schema) {
+  return out->SetNullOrMissingResult(schema);
 }
 
 class DocDbToPgTableRowConverter {
@@ -615,6 +636,11 @@ class DocDbToPgTableRowConverter {
     return row_.DecodeValue(column_index_, value);
   }
 
+  Status Decode(const QLValuePB& value, DataType data_type) {
+    // Nothing to decode. Set column value.
+    return row_.SetValueByColumnIdx(column_index_, value);
+  }
+
  private:
   dockv::PgTableRow& row_;
   size_t column_index_;
@@ -641,6 +667,11 @@ class NullPtrRowConverter {
   Status Decode(dockv::PackedValueV2 value, DataType = DataType::NULL_VALUE_TYPE) {
     return Status::OK();
   }
+
+  Status Decode(const QLValuePB& value, DataType = DataType::NULL_VALUE_TYPE) {
+    return Status::OK();
+  }
+
 };
 
 inline auto MakeConverter(std::nullptr_t row, size_t column_index, ColumnId) {
@@ -653,7 +684,9 @@ auto DecodePackedColumn(
   return NullPtrRowConverter().Decode(value);
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, std::nullptr_t out) {
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, std::nullptr_t out,
+    const Schema& schema) {
+  return Status::OK();
 }
 
 template <class Value, class Converter> requires (!std::is_pointer_v<Converter>)
@@ -940,8 +973,9 @@ Status DecodePackedColumn(GetHelper<ResultType>* helper, size_t index, Value val
 }
 
 template <class ResultType>
-void SkipPackedColumn(GetHelper<ResultType>* helper, size_t index) {
-  helper->DecodePackedColumn(std::nullopt, &helper->projection().columns[index]);
+Status SkipPackedColumn(GetHelper<ResultType>* helper, size_t index,
+    const QLValuePB& missing_value) {
+  return helper->DecodePackedColumn(missing_value, &helper->projection().columns[index]);
 }
 
 template <class ResultType, class Value>
@@ -951,12 +985,13 @@ Status DecodePackedColumn(
 }
 
 template <class ResultType>
-void SkipPackedColumn(FlatGetHelper<ResultType>* helper, size_t index) {
-  docdb::DecodePackedColumn(helper->result(), index, std::nullopt, helper->projection());
+Status SkipPackedColumn(FlatGetHelper<ResultType>* helper, size_t index,
+    const QLValuePB& missing_value) {
+  return docdb::DecodePackedColumn(helper->result(), index, missing_value, helper->projection());
 }
 
-void SkipPackedColumn(dockv::PgTableRow* row, size_t index) {
-  row->SetNull(index);
+Status SkipPackedColumn(dockv::PgTableRow* row, size_t index, const QLValuePB& missing_value) {
+  return row->SetValueByColumnIdx(index, missing_value);
 }
 
 template <class Extractor, bool kLast, class ContextType>
@@ -995,7 +1030,19 @@ template <bool kLast, class ContextType>
 UnsafeStatus SkippedColumnDecoder(
     const dockv::PackedColumnDecoderData& data, size_t projection_index,
     const dockv::PackedColumnDecoderEntry* chain) {
-  SkipPackedColumn(static_cast<ContextType*>(data.context), projection_index);
+  auto* helper = static_cast<ContextType*>(data.context);
+  // Fill in missing value (if any) for skipped columns.
+  DCHECK_ONLY_NOTNULL(data.schema);
+  const auto& missing_value =
+      data.schema->GetMissingValueByColumnId(helper->projection().columns[projection_index].id);
+  if (PREDICT_FALSE(!missing_value.ok())) {
+    auto status = missing_value.status();
+    return status.UnsafeRelease();
+  }
+  auto status = SkipPackedColumn(helper, projection_index, *missing_value);
+  if (PREDICT_FALSE(!status.ok())) {
+    return status.UnsafeRelease();
+  }
   return CallNextDecoder<kLast>(data, projection_index, chain);
 }
 
@@ -1147,6 +1194,17 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
       Value value, const dockv::ProjectedColumn* projected_column) {
     return DoDecodePackedColumn(
         value, projected_column, AllocateChild(result_, projected_column->subkey));
+  }
+
+  Status DecodePackedColumn(
+      const QLValuePB& value, const dockv::ProjectedColumn* projected_column) {
+    // Nothing to decode. Set column value.
+    dockv::PrimitiveValue *out = AllocateChild(result_, projected_column->subkey);
+    if (out && !IsNull(value)) {
+      *out = dockv::PrimitiveValue::FromQLValuePB(value);
+      found_ = true;
+    }
+    return Status::OK();
   }
 
   size_t Id() override {
@@ -1412,8 +1470,7 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
     DCHECK_ONLY_NOTNULL(data_.projection);
     auto packed_row_version = dockv::GetPackedRowVersion(row_value);
     if (!packed_row_version) {
-      SetNullResult(*data_.projection, result_);
-      return Status::OK();
+      return SetNullOrMissingResult(*data_.projection, result_, data_.schema);
     }
     found_ = true;
     if (Base::kCheckExistOnly) {

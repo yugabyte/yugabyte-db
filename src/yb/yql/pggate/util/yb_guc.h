@@ -94,6 +94,12 @@ extern bool yb_run_with_explain_analyze;
 extern bool yb_enable_hash_batch_in;
 
 /*
+ * GUC variable that enables using the default value for existing rows after
+ * an ADD COLUMN ... DEFAULT operation.
+ */
+extern bool yb_enable_add_column_missing_default;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

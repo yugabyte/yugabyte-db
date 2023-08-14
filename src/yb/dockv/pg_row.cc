@@ -717,8 +717,14 @@ void PgTableRow::Reset() {
   buffer_.clear();
 }
 
-void PgTableRow::SetNull() {
-  memset(is_null_.data(), 1, is_null_.size() * sizeof(is_null_[0]));
+Status PgTableRow::SetNullOrMissingResult(const Schema& schema) {
+  for (size_t i = 0; i != is_null_.size(); ++i) {
+    const auto& column_schema =
+        VERIFY_RESULT_REF(schema.column_by_id(projection_->columns[i].id));
+    const auto& missing_value = column_schema.missing_value();
+    RETURN_NOT_OK(SetValueByColumnIdx(i, missing_value));
+  }
+  return Status::OK();
 }
 
 void PgTableRow::SetNull(size_t column_idx) {
@@ -750,6 +756,10 @@ PgValue PgTableRow::TrimString(size_t idx, size_t skip_prefix, size_t new_len) {
 
 Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   const size_t idx = projection_->ColumnIdxById(column_id);
+  return SetValueByColumnIdx(idx, value);
+}
+
+Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
   if (yb::IsNull(value)) {
     is_null_[idx] = true;
     return Status::OK();

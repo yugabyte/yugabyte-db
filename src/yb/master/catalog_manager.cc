@@ -593,6 +593,11 @@ DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
     "from the table. This is more useful when there are many databases and/or "
     "many tservers in the cluster.");
 
+DEFINE_test_flag(string, block_alter_table, "",
+    "If non-empty, the specified alter table step is blocked. Possible values are "
+    "\"alter_schema\" (blocks the schema from being altered) and \"completion\","
+    "(blocks the service completion of the alter table request)");
+
 DECLARE_int32(heartbeat_interval_ms);
 
 #define RETURN_FALSE_IF(cond) \
@@ -6735,6 +6740,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   const NamespaceId namespace_id = l->namespace_id();
   const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
 
+  while (FLAGS_TEST_block_alter_table == "alter_schema") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
+
   // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
   Schema previous_schema;
@@ -6919,6 +6930,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
             << table->ToString() << " per request from " << RequestorString(rpc);
+
+  while (FLAGS_TEST_block_alter_table == "completion") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
+
   return Status::OK();
 }
 

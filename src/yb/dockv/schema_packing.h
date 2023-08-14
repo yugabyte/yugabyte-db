@@ -140,6 +140,7 @@ class PackedRowDecoderFactory {
 struct PackedColumnDecoderData {
   PackedRowDecoderBase* decoder;
   void* context;
+  const Schema* schema;
 };
 
 using PackedColumnDecoder = UnsafeStatus(*)(
@@ -165,13 +166,14 @@ class PackedRowDecoder {
 
   void Init(
       PackedRowVersion version, const ReaderProjection& projection, const SchemaPacking& packing,
-      PackedRowDecoderFactory* callback);
+      PackedRowDecoderFactory* callback, const Schema& schema);
 
   Status Apply(Slice value, void* context);
 
  private:
   PackedRowVersion version_;
   const SchemaPacking* schema_packing_ = nullptr;
+  const Schema* schema_ = nullptr;
   size_t num_key_columns_ = 0;
   boost::container::small_vector<PackedColumnDecoderEntry, 0x10> decoders_;
 };
@@ -263,6 +265,8 @@ class PackedRowDecoderV1 : public PackedRowDecoderBase {
   PackedValueV1 FetchValue(size_t idx);
   PackedValueV1 FetchValue(ColumnId column_id);
 
+  int64_t GetPackedIndex(ColumnId column_id);
+
   // Returns the pointer to the first byte after the specified column in input data.
   const uint8_t* GetEnd(ColumnId column_id);
 
@@ -285,6 +289,8 @@ class PackedRowDecoderV2 : public PackedRowDecoderBase {
 
   PackedValueV2 FetchValue(size_t idx);
   PackedValueV2 FetchValue(ColumnId column_id);
+
+  int64_t GetPackedIndex(ColumnId column_id);
 
   // Returns the pointer to the first byte after the specified column in input data.
   const uint8_t* GetEnd(ColumnId column_id);

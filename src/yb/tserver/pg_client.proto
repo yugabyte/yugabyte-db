@@ -176,6 +176,7 @@ message PgCreateColumnPB {
   bool is_range = 5;
   int32 sorting_type = 6;
   int32 attr_pgoid = 7;
+  QLValuePB attr_missing_val = 8;
 }
 
 message PgCreateSplitBoundaryPB {
