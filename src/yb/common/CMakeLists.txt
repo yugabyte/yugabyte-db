@@ -114,6 +114,7 @@ set(COMMON_LIBS
 
 if (NOT APPLE)
   list(APPEND COMMON_LIBS libuuid)
+  list(APPEND COMMON_LIBS absl)
 endif()
 
 ADD_YB_LIBRARY(yb_common

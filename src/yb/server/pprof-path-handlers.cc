@@ -60,6 +60,7 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/server/pprof-path-handlers_util.h"
 #include "yb/server/webserver.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
@@ -69,6 +70,7 @@
 #include "yb/util/tcmalloc_impl_util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
+DECLARE_bool(enable_process_lifetime_heap_sampling);
 DECLARE_string(heap_profile_path);
 
 
@@ -103,6 +105,13 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
   *output << executable_path;
 }
 
+SampleOrder ParseSampleOrder(const Webserver::ArgumentMap& parsed_args) {
+  if (FindWithDefault(parsed_args, "order_by", "") == "bytes") {
+    return SampleOrder::kBytes;
+  }
+  return SampleOrder::kCount;
+}
+
 // pprof asks for the url /pprof/heap to get heap information. This should be implemented
 // by calling HeapProfileStart(filename), continue to do work, and then, some number of
 // seconds later, call GetHeapProfile() followed by HeapProfilerStop().
@@ -134,6 +143,27 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   HeapProfilerStop();
   (*output) << profile;
   delete profile;
+#endif  // YB_TCMALLOC_ENABLED
+}
+
+static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
+                                     Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+#if !YB_TCMALLOC_ENABLED
+  (*output) << "Heap snapshot is only available if tcmalloc is enabled.";
+  return;
+#else
+  if (!FLAGS_enable_process_lifetime_heap_sampling) {
+    (*output) << "FLAGS_enable_process_lifetime_heap_sampling must be set to true to for heap "
+              << "snapshot to work.";
+    return;
+  }
+
+  SampleOrder order = ParseSampleOrder(req.parsed_args);
+  string title = "Current heap snapshot";
+  vector<Sample> samples = GetAggregateAndSortHeapSnapshot(order);
+
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
 #endif // YB_TCMALLOC_ENABLED
 }
 
@@ -271,12 +301,20 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
 void AddPprofPathHandlers(Webserver* webserver) {
   // Path handlers for remote pprof profiling. For information see:
   // https://gperftools.googlecode.com/svn/trunk/doc/pprof_remote_servers.html
-  webserver->RegisterPathHandler("/pprof/cmdline", "", PprofCmdLineHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/growth", "", PprofGrowthHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/profile", "", PprofCpuProfileHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/symbol", "", PprofSymbolHandler, false, false);
-  webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler, false, false);
+  webserver->RegisterPathHandler("/pprof/cmdline", "", PprofCmdLineHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/heap", "", PprofHeapHandler, false,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/growth", "", PprofGrowthHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/profile", "", PprofCpuProfileHandler,
+      false /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/symbol", "", PprofSymbolHandler, false /* is_styled */,
+      false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler,
+      false /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/heap_snapshot", "", PprofHeapSnapshotHandler,
+      true /* is_styled */, false /* is_on_nav_bar */);
 }
 
 } // namespace yb
