@@ -5,33 +5,30 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collections;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
- * This task will be deprecated for upgrading universe having version greater or equal to 2.20.x,
- * please ensure any new changes here should also be made on new task SoftwareUpgradeYB.
+ * Use this task to upgrade software yugabyte DB version if universe is already on version greater
+ * or equal to 2.20.x
  */
-@Slf4j
-public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
-
-  private final XClusterUniverseService xClusterUniverseService;
+public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   @Inject
-  protected SoftwareUpgrade(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+  protected SoftwareUpgradeYB(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.xClusterUniverseService = xClusterUniverseService;
+  }
+
+  public NodeState getNodeState() {
+    return NodeState.UpgradeSoftware;
   }
 
   @Override
@@ -69,7 +66,8 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
 
           // Re-provisioning the nodes if ybc needs to be installed and systemd is already enabled
           // to register newly introduced ybc service if it is missing in case old universes.
-          // We would skip ybc installation in case of manually provisioned systemd enabled on-prem
+          // We would skip ybc installation in case of manually provisioned systemd enabled
+          // on-prem
           // universes as we may not have sudo permissions.
           if (taskParams().installYbc
               && !isUniverseOnPremManualProvisioned
@@ -98,28 +96,13 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
-          if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-            // Promote Auto flags on compatible versions.
-            if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
-                && CommonUtils.isAutoFlagSupported(newVersion)) {
-              createCheckSoftwareVersionTask(allNodes, newVersion)
-                  .setSubTaskGroupType(getTaskSubGroupType());
-              createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-                  Collections.singleton(universe.getUniverseUUID()),
-                  Collections.singleton(universe.getUniverseUUID()),
-                  xClusterUniverseService,
-                  new HashSet<>(),
-                  universe,
-                  newVersion);
-            }
+          createCheckSoftwareVersionTask(allNodes, newVersion);
+          createPromoteAutoFlagTask(
+              universe.getUniverseUUID(),
+              true /* ignoreErrors*/,
+              AutoFlagUtil.LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
-            if (taskParams().upgradeSystemCatalog) {
-              // Run YSQL upgrade on the universe.
-              createRunYsqlUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
-            }
-          }
-
-          // Update software version in the universe metadata.
+          // Update Software version
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
         });

@@ -151,6 +151,9 @@ public class CustomerTask extends Model {
     @EnumValue("SoftwareUpgrade")
     SoftwareUpgrade,
 
+    @EnumValue("SoftwareUpgradeYB")
+    SoftwareUpgradeYB,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -349,6 +352,8 @@ public class CustomerTask extends Model {
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
+        case SoftwareUpgradeYB:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
