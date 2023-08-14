@@ -55,10 +55,10 @@ Status PgSample::Prepare() {
   return Status::OK();
 }
 
-Status PgSample::InitRandomState(double rstate_w, uint64 rand_state) {
+Status PgSample::InitRandomState(double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
   SCHECK(secondary_index_query_ != nullptr, RuntimeError, "PgSample has not been prepared");
   return down_cast<PgSamplePicker*>(secondary_index_query_.get())
-      ->PrepareSamplingState(targrows_, rstate_w, rand_state);
+      ->PrepareSamplingState(targrows_, rstate_w, rand_state_s0, rand_state_s1);
 }
 
 Status PgSample::SampleNextBlock(bool *has_more) {
@@ -101,14 +101,17 @@ Status PgSamplePicker::Prepare() {
   return Status::OK();
 }
 
-Status PgSamplePicker::PrepareSamplingState(int targrows, double rstate_w, uint64 rand_state) {
+Status PgSamplePicker::PrepareSamplingState(
+    int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
   auto* sampling_state = read_req_->mutable_sampling_state();
   sampling_state->set_targrows(targrows);      // target sample size
   sampling_state->set_numrows(0);              // current number of rows selected
   sampling_state->set_samplerows(0);           // rows scanned so far
   sampling_state->set_rowstoskip(-1);          // rows to skip before selecting another
   sampling_state->set_rstate_w(rstate_w);      // Vitter algorithm's W
-  sampling_state->set_rand_state(rand_state);  // random generator's state
+  auto* rand_state = sampling_state->mutable_rand_state();
+  rand_state->set_s0(rand_state_s0);
+  rand_state->set_s1(rand_state_s1);
   reservoir_ = std::make_unique<std::string[]>(targrows);
   return Status::OK();
 }

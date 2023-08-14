@@ -42,13 +42,6 @@ extern TupleConversionMap *convert_tuples_by_position(TupleDesc indesc,
 extern TupleConversionMap *convert_tuples_by_name(TupleDesc indesc,
 												  TupleDesc outdesc);
 
-#ifdef YB_TODO
-/* YB_TODO(neil) This function is not found here in Pg15 */
-extern AttrNumber *convert_tuples_by_name_map(TupleDesc	  indesc,
-											  TupleDesc	  outdesc,
-											  const char *msg,
-#endif
-
 extern HeapTuple execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map);
 extern TupleTableSlot *execute_attr_map_slot(AttrMap *attrMap,
 											 TupleTableSlot *in_slot,
