@@ -725,7 +725,8 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  void GetRPCsWaitStates(tserver::PgActiveUniverseHistoryResponsePB* resp, rpc::Messenger* messenger) {
+  void GetRPCsWaitStates(
+      tserver::PgActiveUniverseHistoryResponsePB* resp, yb::util::MessengerType messenger_type) {
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
 
@@ -733,11 +734,17 @@ class PgClientServiceImpl::Impl {
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
 
+    auto messenger = tablet_server_.GetMessenger(messenger_type);
+
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
     
     for (auto conns : dump_resp.inbound_connections()) {
       for (auto call : conns.calls_in_flight()) {
-        resp->add_wait_states()->CopyFrom(call.wait_state());
+        if (messenger_type == util::MessengerType::kTserver) {
+          resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
+        } else {
+          resp->add_cql_wait_states()->CopyFrom(call.wait_state());
+        }
       }
     }
   }
@@ -745,13 +752,13 @@ class PgClientServiceImpl::Impl {
   Status ActiveUniverseHistory(
       const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
       rpc::RpcContext* context) {
-    GetRPCsWaitStates(resp, tablet_server_.GetMessenger(util::MessengerType::kTserver));
-    GetRPCsWaitStates(resp, tablet_server_.GetMessenger(util::MessengerType::kCQLServer));
+    GetRPCsWaitStates(resp, util::MessengerType::kTserver);
+    GetRPCsWaitStates(resp, util::MessengerType::kCQLServer);
 
     auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
 
     for (auto wait_state : bg_wait_states) {
-      wait_state->ToPB(resp->add_wait_states());
+      wait_state->ToPB(resp->add_bg_wait_states());
     }
 
     return Status::OK();
