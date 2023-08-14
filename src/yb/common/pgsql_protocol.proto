@@ -148,6 +148,12 @@ message PgsqlPartitionBound {
   optional bool is_inclusive = 2;
 }
 
+// YB_UPGRADE_TODO: Breaking change for upgrades, handle in upgrade path.
+message PgsqlRandState {
+  required uint64 s0 = 1;
+  required uint64 s1 = 2;
+}
+
 // Random sampling state
 message PgsqlSamplingStatePB {
   // target number of rows to collect
@@ -161,7 +167,7 @@ message PgsqlSamplingStatePB {
   // reservoir state W
   optional double rstate_w = 5;
   // 48 bits of sampler random state
-  optional uint64 rand_state = 6;
+  optional PgsqlRandState rand_state = 6;
 }
 
 message PgsqlFetchSequenceParamsPB {

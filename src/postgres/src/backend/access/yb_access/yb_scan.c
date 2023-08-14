@@ -42,8 +42,10 @@
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "access/relation.h"
+#include "nodes/nodeFuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
+#include "optimizer/paths.h"
 #include "utils/datum.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
@@ -138,14 +140,6 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	{
 		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, attnum);
 	}
-
-#ifdef NEIL_OID
-	/* OID is now a regular column */
-	if (relation->rd_rel->relhasoids)
-	{
-		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, ObjectIdAttributeNumber);
-	}
-#endif
 }
 
 static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
@@ -443,14 +437,6 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	if (has_data)
 	{
 		tuple = heap_form_tuple(tupdesc, values, nulls);
-
-#ifdef NEIL_OID
-		/* OID is now a regular column */
-		if (syscols.oid != InvalidOid)
-		{
-			HeapTupleSetOid(tuple, syscols.oid);
-		}
-#endif
 		if (syscols.ybctid != NULL)
 		{
 			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
@@ -1946,15 +1932,6 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		}
 	}
 
-#ifdef NEIL_OID
-	/* OID is now a regular column */
-	if (scan_plan->target_relation->rd_rel->relhasoids)
-	{
-		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybScan->handle);
-		target_added = true;
-	}
-#endif
-
 	if (is_index_only_scan)
 	{
 		/*
@@ -2687,18 +2664,12 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	*total_cost   = *startup_cost + cost_per_tuple * baserel->tuples * selectivity;
 }
 
-#ifdef YB_TODO
-/* YB_TODO(ram kannan@yugabyte) Reimplement cost functions.
- * - PG13 removed IndexQualInfo.
- * - PG13 introduced IndexClause.
- * - Yugabyte needs to reimplement the cost calculation using IndexClause.
- */
 /*
  * Evaluate the selectivity for yb_hash_code qualifiers.
  * Returns 1.0 if there are no yb_hash_code comparison expressions for this
  * index.
  */
-static double ybcEvalHashSelectivity(List *hashed_qinfos)
+static double ybcEvalHashSelectivity(List *hashed_rinfos)
 {
 	bool greatest_set = false;
 	int greatest = 0;
@@ -2708,13 +2679,16 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
 	double selectivity;
 	ListCell * lc;
 
-	foreach(lc, hashed_qinfos)
+	foreach(lc, hashed_rinfos)
 	{
-		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-		RestrictInfo *rinfo = qinfo->rinfo;
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		Expr	   *clause = rinfo->clause;
 
-		if (!IsA(qinfo->other_operand, Const))
+		Assert(IsA(clause, OpExpr));
+		OpExpr	   *op = (OpExpr *) clause;
+		Node *other_operand = (Node *) lsecond(op->args);
+
+		if (!IsA(other_operand, Const))
 		{
 			continue;
 		}
@@ -2729,7 +2703,7 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
 								   &lefttype,
 								   &righttype);
 
-		int signed_val = ((Const*) qinfo->other_operand)->constvalue;
+		int signed_val = ((Const*) other_operand)->constvalue;
 		signed_val = signed_val < 0 ? 0 : signed_val;
 		uint32_t val = signed_val > USHRT_MAX ? USHRT_MAX : signed_val;
 
@@ -2783,7 +2757,6 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
 #endif
 	return selectivity;
 }
-#endif
 
 /*
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
@@ -2826,16 +2799,48 @@ Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 	return attnum > 0 ? TupleDescAttr(desc, attnum - 1)->attcollation : InvalidOid;
 }
 
+bool
+yb_is_hashed(Expr *clause, IndexOptInfo *index)
+{
+	bool is_hashed = false;
+	Node	   *leftop;
+
+	if (IsA(clause, OpExpr))
+	{
+		leftop = get_leftop(clause);
+		if (IsA(leftop, FuncExpr))
+		{
+			is_hashed =
+				(((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID);
+			ListCell *ls;
+			if (is_hashed)
+			{
+				/*
+				 * YB: We aren't going to push down a yb_hash_code call
+				 * if we matched the call against an expression
+				 */
+				foreach (ls, index->indexprs)
+				{
+					Node *indexpr = (Node *) lfirst(ls);
+					if (indexpr && IsA(indexpr, RelabelType))
+						indexpr = (Node *) ((RelabelType *) indexpr)->arg;
+					if (equal(indexpr, leftop))
+					{
+						is_hashed = false;
+						break;
+					}
+				}
+			}
+		}
+	}
+	return is_hashed;
+}
+
+
 void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 						  Selectivity *selectivity, Cost *startup_cost,
 						  Cost *total_cost)
 {
-	/* YB_TODO(ram kannan@yugabyte) Reimplement cost functions.
-	 * - PG13 removed IndexQualInfo.
-	 * - PG13 introduced IndexClause.
-	 * - Yugabyte needs to reimplement the cost calculation using IndexClause.
-	 */
-
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;
 	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
@@ -2845,9 +2850,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	bool        is_unique = index->rd_index->indisunique;
 	bool        is_partial_idx = path->indexinfo->indpred != NIL && path->indexinfo->predOK;
 	Bitmapset  *const_quals = NULL;
-	#ifdef YB_TODO
-	List	   *hashed_qinfos = NIL;
-	#endif
+	List	   *hashed_rinfos = NIL;
 	List	   *clauses = NIL;
 	double 		baserel_rows_estimate;
 
@@ -2865,11 +2868,14 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
 		int			indexcol = iclause->indexcol;
-		ListCell   *lc2;
+		ListCell *lc2, *lci;
+		List* indexcols = iclause->indexcols == NIL ? list_make1_int(indexcol) : iclause->indexcols;
 
-		foreach(lc2, iclause->indexquals)
+		Assert(iclause->indexquals->length == indexcols->length);
+		forboth(lc2, iclause->indexquals, lci, indexcols)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			int			  indexcol = lfirst_int(lci);
 			AttrNumber	 attnum = isprimary ? index->rd_index->indkey.values[indexcol]
 											: (indexcol + 1);
 			Expr	   *clause = rinfo->clause;
@@ -2894,28 +2900,23 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 				}
 			}
 
-			#ifdef YB_TODO
-			if (qinfo->is_hashed)
+			if (yb_is_hashed(clause, path->indexinfo))
 			{
-				hashed_qinfos = lappend(hashed_qinfos, qinfo);
+				hashed_rinfos = lappend(hashed_rinfos, rinfo);
 			}
 			else
 			{
 				clauses = lappend(clauses, rinfo);
 			}
-			#endif
-			clauses = lappend(clauses, rinfo);
 		}
 	}
-	#ifdef YB_TODO
-	if (hashed_qinfos != NIL)
+	if (hashed_rinfos != NIL)
 	{
-		*selectivity = ybcEvalHashSelectivity(hashed_qinfos);
+		*selectivity = ybcEvalHashSelectivity(hashed_rinfos);
 		baserel_rows_estimate = baserel->tuples * (*selectivity);
 	}
 	else
 	{
-	#endif
 		if (yb_enable_optimizer_statistics)
 		{
 			*selectivity = clauselist_selectivity(root /* PlannerInfo */,
@@ -2937,9 +2938,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 														scan_plan.primary_key);
 			baserel_rows_estimate = baserel->tuples * (*selectivity);
 		}
-	#ifdef YB_TODO
 	}
-	#endif
 
 	path->path.rows = baserel_rows_estimate;
 
@@ -3003,14 +3002,6 @@ YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
 	/*
 	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
 	 */
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte)
-	 * - OID is now a regular column.
-	 * - Yugabyte code might need modification when selecting column 'oid'
-	 */
-	if (RelationGetForm(relation)->relhasoids)
-		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybc_stmt);
-#endif
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
@@ -3041,9 +3032,11 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 	bool has_data = false;
 	YBCPgStatement ybc_stmt;
 
+	Assert(slot != NULL);
+	Assert(slot->tts_values != NULL);
+	Assert(slot->tts_isnull != NULL);
+
 	TupleDesc tupdesc = RelationGetDescr(relation);
-	slot->tts_values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
-	slot->tts_isnull  = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
 
 	/* Read data */
@@ -3066,11 +3059,6 @@ YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
 		}
 	}
 
-	#ifdef YB_TODO
-	/* YB_TODO(neil): pfree values and nulls at appropriate place. */
-	pfree(values);
-	pfree(nulls);
-	#endif
 	YBCPgDeleteStatement(ybc_stmt);
 	return has_data;
 }
@@ -3098,16 +3086,6 @@ YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
 	if (has_data)
 	{
 		*tuple = heap_form_tuple(tupdesc, values, nulls);
-#ifdef YB_TODO
-		/* YB_TODO(neil@yugabyte)
-		 * - OID is now a regular column.
-		 * - Yugabyte code might need modification when selecting column 'oid'
-		 */
-		if (syscols.oid != InvalidOid)
-		{
-			HeapTupleSetOid(tuple, syscols.oid);
-		}
-#endif
 		(*tuple)->t_tableOid = RelationGetRelid(relation);
 		if (syscols.ybctid != NULL)
 		{
@@ -3232,15 +3210,6 @@ ybBeginSample(Relation rel, int targrows)
 								  targrows,
 								  YBCIsRegionLocal(rel),
 								  &ybSample->handle));
-
-#ifdef YB_TODO
-	/* YB_TODO(neil) OID is now a regular column */
-	/*
-	 * Set up the scan targets. We need to return all "real" columns.
-	 */
-	if (RelationGetForm(ybSample->relation)->relhasoids)
-		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybSample->handle);
-#endif
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
@@ -3251,12 +3220,10 @@ ybBeginSample(Relation rel, int targrows)
 	 * Initialize sampler random state
 	 */
 	reservoir_init_selection_state(&rstate, targrows);
-#ifdef YB_TODO
-	/* YB_TODO(neil) Random state is no longer an array */
 	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
 										rstate.W,
-										SamplerRandomStateToUint64(rstate.randstate)));
-#endif
+										rstate.randstate.s0,
+										rstate.randstate.s1));
 
 	return ybSample;
 }
@@ -3326,13 +3293,6 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 
 		/* Make a heap tuple in current memory context */
 		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
-#ifdef NEIL_OID
-		/* OID is now a regular column */
-		if (syscols.oid != InvalidOid)
-		{
-			HeapTupleSetOid(rows[numrows], syscols.oid);
-		}
-#endif
 		if (syscols.ybctid != NULL)
 		{
 			HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
@@ -3399,7 +3359,7 @@ ybFetchNext(YBCPgStatement handle,
 			MemoryContextSwitchTo(oldcontext);
 		}
 #endif
+		slot->tts_tableOid = relid;
 	}
-
 	return slot;
 }

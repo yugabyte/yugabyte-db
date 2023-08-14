@@ -208,11 +208,6 @@ extern void add_bool_reloption(bits32 kinds, const char *name, const char *desc,
 extern void add_int_reloption(bits32 kinds, const char *name, const char *desc,
 							  int default_val, int min_val, int max_val,
 							  LOCKMODE lockmode);
-#ifdef YB_TODO
-/* YB_TODO(alex@yugabyte) This function is no longer needed? */
-extern void add_oid_reloption(bits32 kinds, const char *name, const char *desc,
-							  Oid default_val, Oid min_val, Oid max_val);
-#endif
 extern void add_real_reloption(bits32 kinds, const char *name, const char *desc,
 							   double default_val, double min_val, double max_val,
 							   LOCKMODE lockmode);

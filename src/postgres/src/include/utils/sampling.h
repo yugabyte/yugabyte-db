@@ -16,18 +16,6 @@
 #include "common/pg_prng.h"
 #include "storage/block.h"		/* for typedef BlockNumber */
 
-
-/* Random generator for sampling code */
-#define SamplerRandomStateToUint64(randstate) \
-	(((uint64) (randstate)[0] << 32) | \
-	 ((uint64) (randstate)[1] << 16) | \
-	 ((uint64) (randstate)[2]))
-
-#define Uint64ToSamplerRandomState(randstate, value) \
-	((randstate)[0] = (unsigned short) ((value) >> 32), \
-	 (randstate)[1] = (unsigned short) ((value) >> 16), \
-	 (randstate)[2] = (unsigned short) (value))
-
 extern void sampler_random_init_state(uint32 seed,
 									  pg_prng_state *randstate);
 extern double sampler_random_fract(pg_prng_state *randstate);

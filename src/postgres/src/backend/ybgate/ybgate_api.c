@@ -765,38 +765,31 @@ struct YbgReservoirStateData {
 	ReservoirStateData rs;
 };
 
-YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs)
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate_s0, uint64_t randstate_s1, YbgReservoirState *yb_rs)
 {
 	PG_SETUP_ERROR_REPORTING();
 	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
 	rstate->rs.W = rstate_w;
-#ifdef YB_TODO
-	/* YB_TODO(neil) Random state is no longer an array */
-	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
-#endif
+	rstate->rs.randstate.s0 = randstate_s0;
+	rstate->rs.randstate.s1 = randstate_s1;
 	*yb_rs = rstate;
 	PG_STATUS_OK();
 }
 
-YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate_s0, uint64_t *randstate_s1)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*rstate_w = yb_rs->rs.W;
-#ifdef YB_TODO
-	/* YB_TODO(neil) Random state is no longer an array */
-	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
-#endif
+	*randstate_s0 = yb_rs->rs.randstate.s0;
+	*randstate_s1 = yb_rs->rs.randstate.s1;
 	PG_STATUS_OK();
 }
 
 YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 {
 	PG_SETUP_ERROR_REPORTING();
-#ifdef YB_TODO
-	/* YB_TODO(neil) This function needs reimplementation */
 	ReservoirState rs = &yb_rs->rs;
-	*value = sampler_random_fract(rs->randstate);
-#endif
+	*value = sampler_random_fract(&rs->randstate);
 	PG_STATUS_OK();
 }
 

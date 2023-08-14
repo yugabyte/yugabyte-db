@@ -37,7 +37,7 @@ class PgSample : public PgDmlRead {
   Status Prepare() override;
 
   // Prepare PgSamplePicker's random state
-  Status InitRandomState(double rstate_w, uint64 rand_state);
+  Status InitRandomState(double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
   // Make PgSamplePicker to process next block of rows in the table.
   // The has_more parameter is set to true if table has and needs more blocks.
@@ -66,7 +66,8 @@ class PgSamplePicker : public PgSelectIndex {
   Status Prepare() override;
 
   // Seed random numbers generator before execution
-  Status PrepareSamplingState(int targrows, double rstate_w, uint64 rand_state);
+  Status PrepareSamplingState(
+      int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
   // Process next block of table rows and update the reservoir with ybctids of randomly selected
   // rows from the block. Returns true if there is another block to process.

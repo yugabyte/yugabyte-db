@@ -527,10 +527,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		}
 	}
 
-#ifdef YB_TODO
-	/* YB_TODO(neil) Recheck this change */
-	return scan->xs_heaptid.yb_item.ybctid != 0;
-#endif
 	return has_tuple;
 }
 
