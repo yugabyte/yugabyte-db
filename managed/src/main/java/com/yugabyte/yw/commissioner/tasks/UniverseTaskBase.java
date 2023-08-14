@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.TablesController.NamespaceInfoResp;
 import com.yugabyte.yw.forms.*;
@@ -835,12 +836,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Create a task to promote auto flag on the universe. */
+  /**
+   * @deprecated Create a task to promote external class auto flags on a universe.
+   * @param universeUUID
+   * @param ignoreErrors
+   * @return
+   */
+  @Deprecated
   public SubTaskGroup createPromoteAutoFlagTask(UUID universeUUID, boolean ignoreErrors) {
+    return createPromoteAutoFlagTask(
+        universeUUID, ignoreErrors, AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME);
+  }
+
+  /**
+   * Create a task to promote autoflags upto a maxClass on a universe.
+   *
+   * @param universeUUID
+   * @param ignoreErrors
+   * @param maxClass
+   * @return
+   */
+  public SubTaskGroup createPromoteAutoFlagTask(
+      UUID universeUUID, boolean ignoreErrors, String maxClass) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteAutoFlag");
     PromoteAutoFlags task = createTask(PromoteAutoFlags.class);
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.ignoreErrors = ignoreErrors;
+    params.maxClass = maxClass;
     params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -880,7 +902,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /** Create a task to check memory limit on the universe nodes. */
-  public SubTaskGroup createAvailabeMemoryCheck(
+  public SubTaskGroup createAvailableMemoryCheck(
       Collection<NodeDetails> nodes, String memoryType, Long memoryLimitKB) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckMemory");
     CheckMemory task = createTask(CheckMemory.class);
