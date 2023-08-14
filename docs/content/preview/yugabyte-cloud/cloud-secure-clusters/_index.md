@@ -27,7 +27,7 @@ YugabyteDB Managed clusters include the following security features:
 
 YugabyteDB Managed clusters all feature essential security features, such as encryption at rest, encryption in transit, RBAC, and auditing.
 
-To comply with the Payment Card Industry Data Security Standard (PCI-DSS), you can create clusters using the **Advanced** security profile, which additionally enforces the following security features:
+You can also create clusters using the **Advanced** security profile, which additionally enforces the following security features:
 
 - The cluster must be deployed in a VPC.
 - Public access can't be enabled; clusters can only be accessed from private addresses inside the VPC network.
