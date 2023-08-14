@@ -1086,22 +1086,20 @@ typedef struct ParamPathInfo
 
 
 /*
- * Indicates what kind of locking happens during execution. For locking in
- * SERIALIZABLE isolation level, the mode is propagated throughout relevant
- * paths. YB_LOCK_CLAUSE_ON_PK is to lock during SELECT in some locking clause
- * cases, avoiding a second RPC.
+ * Outside of isolation level SERIALIZABLE, indicates whether locking happens
+ * during an index scan, avoiding a second RPC to lock. For locking in
+ * SERIALIZABLE isolation level, range locks are always taken, and the scan
+ * code sees the isolation level directly.
  */
-typedef enum YbLockMechanism {
+typedef enum YbLockMechanism
+{
 	YB_NO_SCAN_LOCK,		/* no locks taken in this scan */
-	YB_RANGE_LOCK_ON_SCAN,	/* range locks will be taken for SERIALIZABLE */
 	YB_LOCK_CLAUSE_ON_PK,	/* may take locks on PK for locking clause */
 } YbLockMechanism;
 
 /*
- * Info propagated for YugabyteDB.
+ * Info propagated for YugabyteDB, for scans.
  *
- * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
- * of a scan.
  * 'yb_uniqpath_provisional' indicates whether the path includes a
  * distinct pushdown scan and whether it is provisional. false by default.
  * XXX: Use caution when using this flag. Paths that are not provisional must
@@ -1109,12 +1107,23 @@ typedef enum YbLockMechanism {
  * 'yb_uniqkeys' List of exprs that represent the Distinct Index Scan prefix.
  * NIL by default.
  */
-typedef struct YbPathInfo {
-	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	bool			yb_uniqpath_provisional;
-										/* path is provisional */
-	List		   *yb_uniqkeys;		/* list keys that are distinct */
+typedef struct YbPathInfo
+{
+	bool	yb_uniqpath_provisional;	/* path is provisional */
+	List   *yb_uniqkeys;				/* list keys that are distinct */
 } YbPathInfo;
+
+/*
+ * Info propagated for YugabyteDB, for index scans.
+ *
+ * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
+ * of a scan.
+ */
+typedef struct YbIndexPathInfo
+{
+	int				yb_distinct_prefixlen;
+	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+} YbIndexPathInfo;
 
 
 /*
@@ -1228,23 +1237,25 @@ typedef struct Path
  * we need not recompute them when considering using the same index in a
  * bitmap index/heap scan (see BitmapHeapPath).  The costs of the IndexPath
  * itself represent the costs of an IndexScan or IndexOnlyScan plan type.
+ *
+ * 'yb_index_path_info' contains info propagated for YugabyteDB.
  *----------
  */
 typedef struct IndexPath
 {
-	Path		path;
-	IndexOptInfo *indexinfo;
-	List	   *indexclauses;
-	List	   *indexquals;
-	List	   *indexqualcols;
-	List	   *indexorderbys;
-	List	   *indexorderbycols;
-	ScanDirection indexscandir;
-	Cost		indextotalcost;
-	Selectivity indexselectivity;
-	double		estimated_num_nexts;
-	double		estimated_num_seeks;
-	int			yb_distinct_prefixlen;
+	Path				path;
+	IndexOptInfo	   *indexinfo;
+	List			   *indexclauses;
+	List			   *indexquals;
+	List			   *indexqualcols;
+	List			   *indexorderbys;
+	List			   *indexorderbycols;
+	ScanDirection		indexscandir;
+	Cost				indextotalcost;
+	Selectivity			indexselectivity;
+	double				estimated_num_nexts;
+	double				estimated_num_seeks;
+	YbIndexPathInfo		yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 
 /*

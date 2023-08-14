@@ -263,7 +263,10 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 	ListCell   *l;
 	const char *lock_mode;
 
-	if (yb_lock_mechanism == YB_NO_SCAN_LOCK)
+	if (!es->pstmt->rowMarks)
+		return;
+
+	if (!IsolationIsSerializable() && yb_lock_mechanism == YB_NO_SCAN_LOCK)
 		return;
 
 	foreach(l, es->pstmt->rowMarks)
@@ -1523,12 +1526,12 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
-			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+			YbExplainScanLocks(YB_NO_SCAN_LOCK, es);
 			ExplainScanTarget((Scan *) plan, es);
 			break;
 		case T_ForeignScan:
 		case T_CustomScan:
-			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+			YbExplainScanLocks(YB_NO_SCAN_LOCK, es);
 			if (((Scan *) plan)->scanrelid > 0)
 				ExplainScanTarget((Scan *) plan, es);
 			break;
@@ -1536,7 +1539,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				IndexScan  *indexscan = (IndexScan *) plan;
 
-				YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
 										indexscan->estimated_num_nexts,

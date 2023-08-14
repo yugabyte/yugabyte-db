@@ -1511,6 +1511,18 @@ TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsYbSeq, PgLibPqFailOnConflictTes
       "/*+ SeqScan(t) */ SELECT * FROM t FOR UPDATE" /* query_statement */);
 }
 
+// Test for ensuring that transaction conflicts work as expected for Tablegroups, where the SELECT
+// is done with an ORDER BY clause.
+TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsOrdered, PgLibPqFailOnConflictTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */, true, /* colocated */
+      "test_tgroup" /* tablegroup_name */,
+      "SELECT * FROM t ORDER BY a FOR UPDATE" /* query_statement */);
+}
+
 Result<PGConn> PgLibPqTest::RestartTSAndConnectToPostgres(
     int ts_idx, const std::string& db_name) {
   cluster_->tablet_server(ts_idx)->Shutdown();

@@ -35,6 +35,7 @@
 #include "lib/knapsack.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "pg_yb_utils.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -65,6 +66,9 @@
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
+
+/* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
+bool yb_lock_pk_single_rpc = true;
 
 /* Hook for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
@@ -1665,6 +1669,146 @@ inheritance_planner(PlannerInfo *root)
 									 assign_special_exec_param(root)));
 }
 
+/*
+ * Returns whether the given IndexOptInfo represents the primary index in
+ * YugabyteDB (i.e., contains the primary source of truth for the data).
+ */
+static bool
+yb_is_main_table(IndexOptInfo *indexinfo)
+{
+	Relation indrel;
+	bool is_main_table = false;
+
+	if (!IsYugaByteEnabled())
+		return false;
+
+	if (indexinfo->rel->reloptkind != RELOPT_BASEREL)
+		return false;
+
+	indrel = RelationIdGetRelation(indexinfo->indexoid);
+	if (indrel != NULL && indrel->rd_index != NULL)
+		is_main_table = indrel->rd_index->indisprimary;
+	if (indrel != NULL)
+		RelationClose(indrel);
+	return is_main_table;
+}
+
+/* Returns whether the given index_path matches the primary key exactly. */
+static bool
+yb_ipath_matches_pk(IndexPath *index_path) {
+	ListCell   *values;
+	Bitmapset  *primary_key_attrs = NULL;
+	List	   *qinfos = NIL;
+	ListCell   *lc = NULL;
+
+	/*
+	 * Verify no non-primary-key filters are specified. There is one
+	 * indrestrictinfo per query term.
+	 */
+	foreach(values, index_path->indexinfo->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
+		/*
+		 * There is one indexquals per key that has a query term. Note this
+		 * means we can't simply compare indrestrictinfo count to indexquals,
+		 * because if there is only one query term, both structures will contain
+		 * one item, even if there are more columns in the primary key.
+		 */
+		if (!list_member_ptr(index_path->indexquals, rinfo))
+			return false;
+	}
+
+	/*
+	 * Check that all WHERE clause conditions in the query use the equality
+	 * operator, and count the number of primary keys used.
+	 */
+	qinfos = deconstruct_indexquals(index_path);
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		clause_op = qinfo->clause_op;
+		if (!OidIsValid(clause_op))
+			return false;
+
+		op_strategy = get_op_opfamily_strategy(
+			clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
+		Assert(op_strategy != 0);  /* not a member of opfamily?? */
+		if (op_strategy != BTEqualStrategyNumber)
+			return false;
+		/* Just used for counting, not matching. */
+		primary_key_attrs = bms_add_member(primary_key_attrs, qinfo->indexcol);
+	}
+
+	/*
+	 * After checking all queries are for equality on primary keys, now we just
+	 * have to ensure we've covered all the primary keys.
+	 */
+	return bms_num_members(primary_key_attrs) ==
+		   index_path->indexinfo->nkeycolumns;
+}
+
+/*
+ * Checks if conditions are suitable to create a path with a single-RPC
+ * lock+select, and creates that path.
+ */
+static void
+yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
+{
+	IndexPath  *new_path = NULL;
+	ListCell   *lc;
+
+	/*
+	 * This optimization only happens if there are rowMarks in the parse
+	 * (meaning locking).
+	 */
+	if (!root->parse->rowMarks)
+		return;
+
+	/* Isolation level SERIALIZABLE is handled by checking for the level. */
+	if (IsolationIsSerializable())
+		return;
+
+	foreach(lc, final_rel->pathlist)
+	{
+		Path	   *path = (Path *) lfirst(lc);
+		LockRowsPath *lr_path;
+		IndexPath *original_index_path;
+		if (!IsA(path, LockRowsPath))
+			continue;
+		lr_path = castNode(LockRowsPath, path);
+		if (!IsA(lr_path->subpath, IndexPath))
+			continue;
+		original_index_path = castNode(IndexPath, lr_path->subpath);
+		if (original_index_path->indexclauses != NIL && yb_lock_pk_single_rpc &&
+			yb_is_main_table(original_index_path->indexinfo) &&
+			yb_ipath_matches_pk(original_index_path))
+		{
+			/*
+			 * We can't use create_index_path directly, Instead we do a
+			 * hack as in reparameterize_paths: flat-copy the path node,
+			 * add the lock mechanism, and redo the cost estimate.
+			 */
+			new_path = makeNode(IndexPath);
+			memcpy(new_path, original_index_path, sizeof(IndexPath));
+			new_path->yb_index_path_info.yb_lock_mechanism = YB_LOCK_CLAUSE_ON_PK;
+			cost_index(new_path, root, /*loop_count=*/ 1.0, false);
+		}
+	}
+
+	/* The new path should dominate the old one because LockRows adds cost. */
+	if (new_path)
+		add_path(final_rel, (Path *) new_path);
+}
+
 /*--------------------
  * grouping_planner
  *	  Perform planning steps related to grouping, aggregation, etc.
@@ -2173,10 +2317,9 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * handled by the ModifyTable node instead.  However, root->rowMarks
 		 * is what goes into the LockRows node.)
 		 *
-		 * For Yugabyte, some locks can be pushed down into an underlying scan.
-		 * We avoid adding a LockRows node in this case.
+		 * In isolation level SERIALIZABLE, locking is done in the scans.
 		 */
-		if (parse->rowMarks && path->yb_path_info.yb_lock_mechanism == YB_NO_SCAN_LOCK)
+		if (parse->rowMarks && !IsolationIsSerializable())
 		{
 			path = (Path *) create_lockrows_path(root, final_rel, path,
 												 root->rowMarks,
@@ -2274,6 +2417,12 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		final_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_FINAL,
 													current_rel, final_rel,
 													NULL);
+
+	/*
+	 * If YugabyteDB can create a more efficient path, let it do so.
+	 */
+	if (IsYugaByteEnabled())
+		yb_consider_locking_scan(root, final_rel);
 
 	/* Let extensions possibly add some more paths */
 	if (create_upper_paths_hook)
