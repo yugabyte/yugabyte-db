@@ -1,9 +1,9 @@
 ```output.ebnf
 subprogram_signature ::= arg_decl [ , ... ]
 
-arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
+arg_decl ::= [ formal_arg ] [ arg_mode ] arg_type
 
-arg_name ::= name
+formal_arg ::= name
 
 arg_mode ::= IN | OUT | INOUT | VARIADIC
 
