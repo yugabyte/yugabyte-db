@@ -348,58 +348,102 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    try {
-      Map<String, ReplicationStatusPB> streamIdReplicationStatusMap =
-          this.xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
-              .collect(
-                  Collectors.toMap(
-                      status -> status.getStreamId().toStringUtf8(), status -> status));
-      for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
-        if (tableConfig.getStatus().equals(Status.Running)) {
-          ReplicationStatusPB replicationStatus =
-              streamIdReplicationStatusMap.get(tableConfig.getStreamId());
-          if (Objects.isNull(replicationStatus)) {
-            tableConfig.setStatus(Status.UnableToFetch);
-          } else {
-            List<ReplicationStatusErrorPB> replicationErrors = replicationStatus.getErrorsList();
-            if (replicationErrors.size() > 0) {
-              String errorsString =
-                  replicationErrors.stream()
-                      .map(
-                          replicationError ->
-                              "ErrorCode="
-                                  + replicationError.getError()
-                                  + " ErrorMessage='"
-                                  + replicationError.getErrorDetail()
-                                  + "'")
-                      .collect(Collectors.joining("\n"));
-              log.error(
-                  "Replication stream for the tableId {} (stream id {}) has the following "
-                      + "errors {}",
-                  tableConfig.getTableId(),
-                  tableConfig.getStreamId(),
-                  errorsString);
-              // Only set the status to error for the case of WALs GC-ed (REPLICATION_MISSING_OP_ID)
-              // for UI compatibility.
-              if (replicationErrors.stream()
-                  .anyMatch(
-                      replicationError ->
-                          replicationError
-                              .getError()
-                              .equals(ReplicationErrorPb.REPLICATION_MISSING_OP_ID))) {
-                // We do not update the xCluster config object in the DB intentionally because
-                // `Error` is only a user facing status.
-                tableConfig.setStatus(Status.Error);
+    if (XClusterConfigTaskBase.supportsGetReplicationStatus(
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()))) {
+      try {
+        Map<String, ReplicationStatusPB> streamIdReplicationStatusMap =
+            this.xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
+                .collect(
+                    Collectors.toMap(
+                        status -> status.getStreamId().toStringUtf8(), status -> status));
+        for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
+          if (tableConfig.getStatus().equals(Status.Running)) {
+            ReplicationStatusPB replicationStatus =
+                streamIdReplicationStatusMap.get(tableConfig.getStreamId());
+            if (Objects.isNull(replicationStatus)) {
+              tableConfig.setStatus(Status.UnableToFetch);
+            } else {
+              List<ReplicationStatusErrorPB> replicationErrors = replicationStatus.getErrorsList();
+              if (replicationErrors.size() > 0) {
+                String errorsString =
+                    replicationErrors.stream()
+                        .map(
+                            replicationError ->
+                                "ErrorCode="
+                                    + replicationError.getError()
+                                    + " ErrorMessage='"
+                                    + replicationError.getErrorDetail()
+                                    + "'")
+                        .collect(Collectors.joining("\n"));
+                log.error(
+                    "Replication stream for the tableId {} (stream id {}) has the following "
+                        + "errors {}",
+                    tableConfig.getTableId(),
+                    tableConfig.getStreamId(),
+                    errorsString);
+                // Only set the status to error for the case of WALs GC-ed
+                // (REPLICATION_MISSING_OP_ID)
+                // for UI compatibility.
+                if (replicationErrors.stream()
+                    .anyMatch(
+                        replicationError ->
+                            replicationError
+                                .getError()
+                                .equals(ReplicationErrorPb.REPLICATION_MISSING_OP_ID))) {
+                  // We do not update the xCluster config object in the DB intentionally because
+                  // `Error` is only a user facing status.
+                  tableConfig.setStatus(Status.Error);
+                }
               }
             }
           }
         }
+      } catch (Exception e) {
+        log.error("xClusterUniverseService.getReplicationStatus hit error : {}", e.getMessage());
+        xClusterConfig.getTableDetails().stream()
+            .filter(tableConfig -> tableConfig.getStatus().equals(Status.Running))
+            .forEach(tableConfig -> tableConfig.setStatus(Status.UnableToFetch));
       }
-    } catch (Exception e) {
-      log.error("xClusterUniverseService.getReplicationStatus hit error : {}", e.getMessage());
-      xClusterConfig.getTableDetails().stream()
-          .filter(tableConfig -> tableConfig.getStatus().equals(Status.Running))
-          .forEach(tableConfig -> tableConfig.setStatus(Status.UnableToFetch));
+    } else { // Fall back to IsBootstrapRequired API for older universes.
+      Set<String> tableIdsInRunningStatus =
+          xClusterConfig.getTableIdsInStatus(
+              xClusterConfig.getTableIds(), XClusterTableConfig.Status.Running);
+      try {
+        Map<String, Boolean> isBootstrapRequiredMap =
+            xClusterUniverseService.isBootstrapRequired(
+                tableIdsInRunningStatus,
+                xClusterConfig,
+                xClusterConfig.getSourceUniverseUUID(),
+                true /* ignoreErrors */);
+
+        // If IsBootstrapRequired API returns null, set the statuses to UnableToFetch.
+        if (Objects.isNull(isBootstrapRequiredMap)) {
+          xClusterConfig.getTableDetails().stream()
+              .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.getTableId()))
+              .forEach(
+                  tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
+        } else {
+          Set<String> tableIdsInErrorStatus =
+              isBootstrapRequiredMap.entrySet().stream()
+                  .filter(Entry::getValue)
+                  .map(Map.Entry::getKey)
+                  .collect(Collectors.toSet());
+          xClusterConfig.getTableDetails().stream()
+              .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
+              .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
+
+          // Set the status for the rest of tables where isBootstrapRequired RPC failed.
+          xClusterConfig.getTableDetails().stream()
+              .filter(
+                  tableConfig ->
+                      tableIdsInRunningStatus.contains(tableConfig.getTableId())
+                          && !isBootstrapRequiredMap.containsKey(tableConfig.getTableId()))
+              .forEach(
+                  tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
+        }
+      } catch (Exception e) {
+        log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+      }
     }
 
     // Wrap XClusterConfig with lag metric data.

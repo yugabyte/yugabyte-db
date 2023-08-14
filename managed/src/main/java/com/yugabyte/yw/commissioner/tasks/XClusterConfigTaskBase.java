@@ -738,6 +738,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         < 0;
   }
 
+  public static boolean supportsGetReplicationStatus(Universe universe) {
+    // The minimum YBDB version that supports GetReplicationStatus RPC is 2.18.0.0-b1.
+    return Util.compareYbVersions(
+            "2.18.0.0-b1",
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true /* suppressFormatError */)
+        < 0;
+  }
+
   public static boolean supportsTxnXCluster(Universe universe) {
     // The minimum YBDB version that supports transactional xCluster is 2.17.3.0-b2.
     return Util.compareYbVersions(
