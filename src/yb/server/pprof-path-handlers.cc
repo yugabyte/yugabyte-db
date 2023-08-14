@@ -71,6 +71,7 @@
 #include "yb/util/tcmalloc_impl_util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
+DECLARE_bool(enable_process_lifetime_heap_sampling);
 DECLARE_string(heap_profile_path);
 
 
@@ -105,6 +106,13 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
   *output << executable_path;
 }
 
+SampleOrder ParseSampleOrder(const Webserver::ArgumentMap& parsed_args) {
+  if (FindWithDefault(parsed_args, "order_by", "") == "bytes") {
+    return SampleOrder::kBytes;
+  }
+  return SampleOrder::kCount;
+}
+
 // pprof asks for the url /pprof/heap to get heap information. This should be implemented
 // by calling HeapProfileStart(filename), continue to do work, and then, some number of
 // seconds later, call GetHeapProfile() followed by HeapProfilerStop().
@@ -114,17 +122,16 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 #if !YB_TCMALLOC_ENABLED
   (*output) << "Heap profiling is only available if tcmalloc is enabled.";
   return;
-#endif
-
-#if YB_TCMALLOC_ENABLED
+#else
   int seconds = ParseLeadingInt32Value(
       FindWithDefault(req.parsed_args, "seconds", ""), PPROF_DEFAULT_SAMPLE_SECS);
-#endif
 
 #if YB_GOOGLE_TCMALLOC
   // Whether to only report allocations that do not have a corresponding deallocation.
   bool only_growth = ParseLeadingBoolValue(
       FindWithDefault(req.parsed_args, "only_growth", ""), false);
+
+  SampleOrder order = ParseSampleOrder(req.parsed_args);
 
   // Set the sample frequency to this value for the duration of the sample.
   int64_t sample_freq_bytes = ParseLeadingInt64Value(
@@ -137,15 +144,11 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   const string title = only_growth ? "In use profile" : "Allocation profile";
 
   auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
-  auto samples = AggregateAndSortProfile(profile, only_growth);
+  auto samples = AggregateAndSortProfile(profile, only_growth, order);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks*/);
 #endif  // YB_GOOGLE_TCMALLOC
 
 #if YB_GPERFTOOLS_TCMALLOC
-  LOG(INFO) << "Starting a heap profile:"
-            << " seconds=" << seconds
-            << " path prefix=" << FLAGS_heap_profile_path;
-
   // Remote (on-demand) profiling is disabled for gperftools tcmalloc if the process is already
   // being profiled.
   if (FLAGS_enable_process_lifetime_heap_profiling) {
@@ -153,6 +156,10 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
               << "profile.";
     return;
   }
+
+  LOG(INFO) << "Starting a heap profile:"
+            << " seconds=" << seconds
+            << " path prefix=" << FLAGS_heap_profile_path;
 
   HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   // Sleep to allow for some samples to be collected.
@@ -162,27 +169,40 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   (*output) << profile;
   delete profile;
 #endif  // YB_GPERFTOOLS_TCMALLOC
+#endif  // YB_TCMALLOC_ENABLED
 }
 
 static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
                                      Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#if YB_GOOGLE_TCMALLOC
-  if (!FLAGS_enable_process_lifetime_heap_profiling) {
-    (*output) << "FLAGS_enable_process_lifetime_heap_profiling must be set to true to for heap "
+#if !YB_TCMALLOC_ENABLED
+  (*output) << "Heap snapshot is only available if tcmalloc is enabled.";
+  return;
+#else
+  if (!FLAGS_enable_process_lifetime_heap_sampling) {
+    (*output) << "FLAGS_enable_process_lifetime_heap_sampling must be set to true to for heap "
               << "snapshot to work.";
     return;
   }
 
   bool peak_heap = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "peak_heap", ""), false);
+  SampleOrder order = ParseSampleOrder(req.parsed_args);
+
   string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
+#ifdef YB_GOOGLE_TCMALLOC
   auto profile = peak_heap ? GetHeapSnapshot(HeapSnapshotType::PEAK_HEAP) :
                              GetHeapSnapshot(HeapSnapshotType::CURRENT_HEAP);
-  auto samples = AggregateAndSortProfile(profile, false /* only_growth */);
+  vector<Sample> samples = AggregateAndSortProfile(profile, false /* only_growth */, order);
+#elif YB_GPERFTOOLS_TCMALLOC
+  if (peak_heap) {
+    (*output) << "peak_heap is not supported with gperftools tcmalloc";
+    return;
+  }
+  vector<Sample> samples = GetAggregateAndSortHeapSnapshot(order);
+#endif // YB_GPERFTOOLS_TCMALLOC
+
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
-#else
-  (*output) << "Heap snapshot is only available with Google tcmalloc.";
-#endif  // YB_GOOGLE_TCMALLOC
+#endif // YB_TCMALLOC_ENABLED
 }
 
 // pprof asks for the url /pprof/profile?seconds=XX to get cpu-profiling information.

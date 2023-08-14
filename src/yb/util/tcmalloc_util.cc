@@ -37,11 +37,21 @@ DEFINE_NON_RUNTIME_int32(tcmalloc_max_per_cpu_cache_bytes, -1,
     "Sets the maximum cache size per CPU cache if Google TCMalloc is being used. If this is zero "
     "or less, it has no effect.");
 
-DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
-    "profiling for the lifetime of the process. If gperftools TCMalloc is being used, profile "
-    "output will be stored in the directory specified by -heap_profile_path, and enabling this "
-    "option will disable the on-demand profiling in /pprof/heap. If Google TCMalloc is being used, "
-    "the sample rate will be set to profiler_sample_freq_bytes.");
+DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_sampling,
+    true,
+    "Enables heap sampling for the lifetime of the process, at a rate specified by "
+    "profiler_sample_freq_bytes.");
+TAG_FLAG(enable_process_lifetime_heap_sampling, stable);
+TAG_FLAG(enable_process_lifetime_heap_sampling, advanced);
+
+DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling,
+    false,
+    "WARNING: This flag will cause tcmalloc to sample every allocation. This can significantly "
+    "impact performance. For a lighter approach, use enable_process_lifetime_heap_sampling. "
+    "This option is only supported with gperftools tcmalloc. "
+    "Enables heap profiling for the lifetime of the process. Profile output will be stored in the "
+    "directory specified by -heap_profile_path, and enabling this option will disable the "
+    "on-demand profiling in /pprof/heap.");
 TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
 TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
 
@@ -51,8 +61,11 @@ DEFINE_RUNTIME_string(heap_profile_path, "",
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at which Google "
-    "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
+// Assuming 30 lines per stack trace line * 20 bytes for the stack ptr, each sample costs 600 bytes.
+// With 1 MB sampling, a 64 GB server would have ~65536 samples, so the samples take ~39 MB, which
+// is a reasonable amount of overhead.
+DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which Google "
+    "TCMalloc should sample allocations (if enable_process_lifetime_heap_sampling is set to "
     "true).");
 
 DEFINE_RUNTIME_bool(mem_tracker_include_pageheap_free_in_root_consumption, false,
@@ -234,16 +247,21 @@ void ConfigureTCMalloc(int64_t mem_limit) {
         strings::Substitute("/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
     CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
   }
-  if (FLAGS_enable_process_lifetime_heap_profiling) {
-#if YB_GOOGLE_TCMALLOC
+  if (FLAGS_enable_process_lifetime_heap_sampling) {
     LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
         FLAGS_profiler_sample_freq_bytes);
+#if YB_GOOGLE_TCMALLOC
     tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
-#endif  // YB_GOOGLE_TCMALLOC
-#if YB_GPERFTOOLS_TCMALLOC
-    HeapProfilerStart(FLAGS_heap_profile_path.c_str());
+#elif YB_GPERFTOOLS_TCMALLOC
+    MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
 #endif
   }
+
+#if YB_GPERFTOOLS_TCMALLOC
+  if (FLAGS_enable_process_lifetime_heap_profiling) {
+    HeapProfilerStart(FLAGS_heap_profile_path.c_str());
+  }
+#endif
 }
 
 }  // namespace yb
