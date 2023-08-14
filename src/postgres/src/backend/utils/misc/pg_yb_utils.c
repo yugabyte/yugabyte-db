@@ -659,7 +659,7 @@ YBInitPostgresBackend(
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.SignalWaitStart = &pgstat_report_wait_start;
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
-		callbacks.ProcSetNodeUUID = &ProcSetNodeUUID;
+		callbacks.ProcSetTopLevelNodeId = &ProcSetTopLevelNodeId;
 		callbacks.ProcSetTopRequestId = &ProcSetTopRequestId;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
@@ -3575,7 +3575,7 @@ void YbSetIsBatchedExecution(bool value)
 	yb_is_batched_execution = value;
 }
 
-void ProcSetNodeUUID(const char *node_uuid) {
+void ProcSetTopLevelNodeId(const char *node_uuid) {
 	strcpy(MyProc->node_uuid, node_uuid);
 }
 
@@ -3584,8 +3584,7 @@ void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
 }
 
-void
-top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2])
+void top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2])
 {
     uint64_t nth_request_id = top_level_request_id_uint[0];
     int index = 15;
@@ -3599,6 +3598,85 @@ top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top
         top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
       nth_request_id /= 10;
     }
+}
+
+uint32 remote_host_port_to_uint(const char* remote_host)
+{
+	uint32 client_node_ip = 0;
+	int bit_position = 0, index;
+	for (index = strlen(remote_host) - 1; index >= 0; index--, bit_position += 8)
+	{
+		int power = 1, octate = 0, bit;
+		while (index >= 0 && remote_host[index] != '.')
+		{
+			octate += power * (remote_host[index--] - '0');
+			power *= 10;
+		}
+		for (bit = 0; bit < 8; bit++)
+		{
+			if ((octate >> bit) & 1)
+			{
+				client_node_ip ^= (1 << (bit_position + bit));
+			}
+		}
+	}
+	return client_node_ip;
+}
+
+int num_digits(uint16 digit)
+{
+	int digits = 0;
+	while (digit > 0)
+	{
+		digits++;
+		digit /= 10;
+	}
+	return digits;
+}
+
+void client_node_ip_to_string(char *client_node_ip,
+							  uint32 client_node_host,
+							  uint16 client_node_port)
+{
+	int octate_start_bit, index = -1;
+	for (octate_start_bit = 0; octate_start_bit < 32; octate_start_bit += 8)
+	{
+		/*
+		 * First right shift client node host to disable all the bits after the current octate
+		 * Then bitwise AND with 255 to disable all the bits before the current octate
+		 */
+		int octate = (client_node_host >> (24 - octate_start_bit)) & ((1 << 8) - 1);
+		int new_index;
+		if (octate == 0)
+		{
+			client_node_ip[index + 1] = '0';
+			new_index = index + 1;
+		}
+		else
+		{
+			int octate_num_digits = num_digits(octate);
+			new_index = index + octate_num_digits;
+			while (octate > 0)
+			{
+				client_node_ip[index + octate_num_digits] = '0' + (octate % 10);
+				octate /= 10;
+				octate_num_digits--;
+			}
+		}
+		if (octate_start_bit == 24)
+			client_node_ip[++new_index] = ':';
+		else
+		 	client_node_ip[++new_index] = '.';
+		index = new_index;
+	}
+	int port_num_digits = num_digits(client_node_port);
+	client_node_ip[index + port_num_digits] = '\0';
+	while (client_node_port > 0)
+	{
+		client_node_ip[index + port_num_digits] = '0' + (client_node_port % 10);
+		client_node_port /= 10;
+		port_num_digits--;
+	}
 }
 
 OptSplit *

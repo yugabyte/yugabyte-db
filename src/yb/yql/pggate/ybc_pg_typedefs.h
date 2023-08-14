@@ -364,7 +364,7 @@ typedef struct PgCallbacks {
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
   void (*SignalWaitStart)(uint32_t);
   void (*SignalWaitEnd)();
-  void (*ProcSetNodeUUID)(const char *);
+  void (*ProcSetTopLevelNodeId)(const char *);
   void (*ProcSetTopRequestId)(const uint64_t *);
   /* yb_type.c */
   int64_t (*PostgresEpochToUnixEpoch)(int64_t);
@@ -425,7 +425,8 @@ typedef struct PgServerDescriptor {
 
 typedef struct AUHMetadataDescriptor {
   const uint64_t* top_level_request_id;
-  const char* client_node_ip;
+  uint32_t client_node_host;
+  uint16_t client_node_port;
   const char* top_level_node_id;
   int64_t current_request_id;
   int64_t query_id;

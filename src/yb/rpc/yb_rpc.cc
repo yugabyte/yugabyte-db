@@ -280,9 +280,9 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   auto wait_state = this->wait_state();
   if (wait_state) {
     wait_state->UpdateMetadata({
-      .current_request_id = header_.call_id,
-      .client_node_ip = yb::ToString(remote_address())
+      .current_request_id = header_.call_id
     });
+    wait_state->set_client_node_ip(yb::ToString(remote_address()));
     wait_state->UpdateAuxInfo({
       .method = method_name().ToBuffer(),
     });

@@ -178,7 +178,7 @@ void ThreadPool::StartBGThreads() {
         [this, tid]() { this->BGThread(tid); }, &thread));
     bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>(
                                 yb::util::AUHMetadata{
-                                    .top_level_node_id = "localhost",
+                                    .top_level_node_id = 1,
                                     .top_level_request_id = {0, 2},
                                     .query_id = -2}));
     bgthreads_.push_back(thread);

@@ -361,7 +361,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  Status SetAUHMetadata(const char* remote_host, int remote_port);
+  Status SetTopLevelNodeId();
 
   void SetQueryId(int64_t query_id);
 

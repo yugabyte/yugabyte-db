@@ -693,7 +693,7 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 
-YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port);
+YBCStatus YBCSetTopLevelNodeId();
 
 void YBCSetQueryId(int64_t query_id);
 
