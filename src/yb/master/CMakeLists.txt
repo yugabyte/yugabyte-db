@@ -83,6 +83,7 @@ set(MASTER_SRCS
   catalog_loaders.cc
   cdc_consumer_registry_service.cc
   cdc_rpc_tasks.cc
+  cdc_master_server.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
   cluster_balance_util.cc

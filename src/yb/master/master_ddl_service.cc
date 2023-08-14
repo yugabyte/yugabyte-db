@@ -62,10 +62,63 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
   )
 };
 
+// Service that exposes certain RPCs from MasterDDLService on a new port.
+// Service is registered in CDCMasterServer (in cdc_master_server.cc)
+class CDCMasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
+ public:
+  explicit CDCMasterDdlServiceImpl(Master* master)
+      : MasterServiceBase(master), MasterDdlIf(master->metric_entity()) {}
+
+  // Exposing the following RPCs
+  // 1. GetTableSchema
+  // 2. ListTables
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    CatalogManager,
+    (GetTableSchema)
+    (ListTables)
+  )
+
+  // Empty implementation for the rest
+  EMPTY_IMPL(
+    (AlterNamespace)
+    (AlterTable)
+    (BackfillIndex)
+    (CreateNamespace)
+    (CreateTable)
+    (CreateTablegroup)
+    (CreateUDType)
+    (DeleteNamespace)
+    (DeleteTable)
+    (DeleteTablegroup)
+    (DeleteUDType)
+    (GetBackfillJobs)
+    (GetColocatedTabletSchema)
+    (GetNamespaceInfo)
+    (GetTableDiskSize)
+    (GetTablegroupSchema)
+    (GetUDTypeInfo)
+    (IsAlterTableDone)
+    (IsCreateNamespaceDone)
+    (IsCreateTableDone)
+    (IsDeleteNamespaceDone)
+    (IsDeleteTableDone)
+    (IsTruncateTableDone)
+    (LaunchBackfillIndexForTable)
+    (ListNamespaces)
+    (ListTablegroups)
+    (ListUDTypes)
+    (ReportYsqlDdlTxnStatus)
+    (TruncateTable)
+  )
+};
 } // namespace
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterDdlService(Master* master) {
   return std::make_unique<MasterDdlServiceImpl>(master);
+}
+
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterDdlService(Master* master) {
+  return std::make_unique<CDCMasterDdlServiceImpl>(master);
 }
 
 } // namespace master

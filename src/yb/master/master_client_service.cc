@@ -138,10 +138,57 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
   )
 };
 
+// Service that exposes certain RPCs from MasterClientService on a new port.
+// Service is registered in CDCMasterServer (in cdc_master_server.cc)
+class CDCMasterClientServiceImpl : public MasterServiceBase, public MasterClientIf {
+ public:
+  explicit CDCMasterClientServiceImpl(Master* master)
+      : MasterServiceBase(master), MasterClientIf(master->metric_entity()) {}
+
+  // Exposing the following RPCs
+  // 1. GetTableLocations
+  void GetTableLocations(const GetTableLocationsRequestPB* req,
+                         GetTableLocationsResponsePB* resp,
+                         rpc::RpcContext rpc) override {
+    // We can't use the HANDLE_ON_LEADER_WITH_LOCK macro here because we have to inject latency
+    // before acquiring the leader lock.
+    HandleOnLeader(req, resp, &rpc, [&]() -> Status {
+      if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
+        SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
+      }
+      auto status = server_->catalog_manager_impl()->GetTableLocations(req, resp);
+      for (auto& tablet : *resp->mutable_tablet_locations()) {
+        for (auto& replica : *tablet.mutable_replicas()) {
+          for (auto& address : *replica.mutable_ts_info()->mutable_broadcast_addresses()) {
+            address.set_port(9200);
+          }
+        }
+      }
+
+      return status;
+    }, __FILE__, __LINE__, __func__, HoldCatalogLock::kTrue);
+  }
+
+  // Empty implementation for the rest.
+  EMPTY_IMPL(
+    (GetYsqlCatalogConfig)
+    (RedisConfigSet)
+    (RedisConfigGet)
+    (ReservePgsqlOids)
+    (GetIndexBackfillProgress)
+    (GetStatefulServiceLocation)
+    (GetTransactionStatusTablets)
+    (GetTabletLocations)
+  )
+};
 } // namespace
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterClientService(Master* master) {
   return std::make_unique<MasterClientServiceImpl>(master);
+}
+
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterClientService(Master* master) {
+  return std::make_unique<CDCMasterClientServiceImpl>(master);
 }
 
 } // namespace master

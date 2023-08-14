@@ -38,6 +38,7 @@
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
+#include "yb/cdc/cdc_server_options.h"
 #include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"
 
@@ -46,6 +47,7 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
+#include "yb/tserver/cdc_tserver_server.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
@@ -246,6 +248,16 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
+  LOG(INFO) << "Dbg: Init CDC Server Options";
+  cdcserver::CDCServerOptions cdc_server_options(9200);
+  cdc_server_options.rpc_opts.rpc_bind_addresses = "0.0.0.0:9200";
+  cdc_server_options.dump_info_path = "";
+
+  LOG(INFO) << "Dbg: Init CDC TServer Server ";
+  std::unique_ptr<cdcserver::CDCTServerServer> cdc_tserver_server =
+      std::make_unique<cdcserver::CDCTServerServer>(server.get(), cdc_server_options);
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(cdc_tserver_server->Start());
+
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
@@ -381,6 +393,11 @@ int TabletServerMain(int argc, char** argv) {
   if (ysql_conn_mgr_supervisor) {
     LOG(WARNING) << "Stopping Ysql Connection Manager process";
     ysql_conn_mgr_supervisor->Stop();
+  }
+
+  if (cdc_tserver_server) {
+    LOG(WARNING) << "Stopping CDC Tserver Server";
+    cdc_tserver_server->Shutdown();
   }
 
   call_home.reset();

@@ -197,8 +197,18 @@ void MasterServiceBase::HandleIn(
     HANDLE_ON_LEADER_WITH_LOCK(class_name, method_name); \
   }
 
+#define EMPTY_IMPL_HELPER(r, class_name, method_name) \
+  void method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB) * req, \
+      BOOST_PP_CAT(method_name, ResponsePB) * resp, rpc::RpcContext rpc) override {}
+
 #define MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(class_name, methods) \
   BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK_HELPER, class_name, methods)
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(class_name, methods) \
+  BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK_HELPER, class_name, methods)
+
+#define EMPTY_IMPL(methods) BOOST_PP_SEQ_FOR_EACH(EMPTY_IMPL_HELPER, , methods)
 
 #define MASTER_SERVICE_IMPL_ON_ALL_MASTERS_HELPER(r, class_name, method_name) \
   void method_name( \

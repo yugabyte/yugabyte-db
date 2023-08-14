@@ -391,5 +391,9 @@ std::unique_ptr<rpc::ServiceIf> MakeMasterClusterService(Master* master) {
   return std::make_unique<MasterClusterServiceImpl>(master);
 }
 
+// TODO: Check which RPCs are actually required, and which can be filtered out
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterClusterService(Master* master) {
+  return std::make_unique<MasterClusterServiceImpl>(master);
+}
 } // namespace master
 } // namespace yb

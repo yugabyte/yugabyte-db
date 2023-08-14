@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/client/async_initializer.h"
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -44,5 +45,5 @@ class CDCServiceContext {
   virtual ~CDCServiceContext() = default;
 };
 
-} // namespace cdc
-} // namespace yb
+}  // namespace cdc
+}  // namespace yb

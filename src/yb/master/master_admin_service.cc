@@ -71,10 +71,57 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
   )
 };
 
+// Service that exposes certain RPCs from MasterAdminService on a new port.
+// Service is registered in CDCMasterServer (in cdc_master_server.cc)
+class CDCMasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
+ public:
+  explicit CDCMasterAdminServiceImpl(Master* master)
+      : MasterServiceBase(master), MasterAdminIf(master->metric_entity()) {}
+
+  void IsInitDbDone(const IsInitDbDoneRequestPB* req,
+                    IsInitDbDoneResponsePB* resp,
+                    rpc::RpcContext rpc) override {
+    HANDLE_ON_LEADER_WITHOUT_LOCK(CatalogManager, IsInitDbDone);
+  }
+
+  // Exposing the following RPCs
+  // 1. SplitTablet
+  // 2. FlushTables
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      CatalogManager,
+      (SplitTablet)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      FlushManager,
+      (FlushTables)
+  )
+
+  // Empty implementation for the rest
+  EMPTY_IMPL(
+      (AddTransactionStatusTablet)
+      (CheckIfPitrActive)
+      (CompactSysCatalog)
+      (GetCompactionStatus)
+      (CreateTransactionStatusTable)
+      (DdlLog)
+      (DeleteNotServingTablet)
+      (DisableTabletSplitting)
+      (FlushSysCatalog)
+      (IsTabletSplittingComplete)
+      (IsFlushTablesDone)
+      (AccessYsqlBackendsManagerTestRegister)
+      (WaitForYsqlBackendsCatalogVersion)
+  )
+};
 } // namespace
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterAdminService(Master* master) {
   return std::make_unique<MasterAdminServiceImpl>(master);
+}
+
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterAdminService(Master* master) {
+  return std::make_unique<CDCMasterAdminServiceImpl>(master);
 }
 
 } // namespace master

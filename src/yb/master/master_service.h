@@ -39,13 +39,18 @@ namespace yb {
 namespace master {
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterAdminService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterAdminService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterClientService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterClientService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterClusterService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterClusterService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterDclService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterDdlService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterDdlService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterEncryptionService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterHeartbeatService(Master* master);
 std::unique_ptr<rpc::ServiceIf> MakeMasterReplicationService(Master* master);
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterReplicationService(Master* master);
 
 } // namespace master
 } // namespace yb

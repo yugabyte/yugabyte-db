@@ -60,11 +60,54 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(CatalogManager, (GetXClusterSafeTime))
 };
 
+// Service that exposes certain RPCs from MasterReplicationService on a new port.
+// Service is registered in CDCMasterServer (in cdc_master_server.cc)
+class CDCMasterReplicationServiceImpl : public MasterServiceBase, public MasterReplicationIf {
+ public:
+  explicit CDCMasterReplicationServiceImpl(Master* master)
+      : MasterServiceBase(master), MasterReplicationIf(master->metric_entity()) {}
+
+  // Exposing the following RPCs
+  // 1. GetCDCDBStreamInfo
+  // 2. ListCDCStreams
+  // Implementation is present in CatalogManager.
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(CatalogManager, (GetCDCDBStreamInfo)(ListCDCStreams))
+
+  // Empty implementation for the rest of the RPCs
+  EMPTY_IMPL(
+    (ValidateReplicationInfo)
+    (AlterUniverseReplication)
+    (CreateCDCStream)
+    (DeleteCDCStream)
+    (DeleteUniverseReplication)
+    (GetCDCStream)
+    (GetUniverseReplication)
+    (GetUDTypeMetadata)
+    (IsSetupUniverseReplicationDone)
+    (UpdateConsumerOnProducerSplit)
+    (UpdateConsumerOnProducerMetadata)
+    (SetUniverseReplicationEnabled)
+    (PauseResumeXClusterProducerStreams)
+    (SetupUniverseReplication)
+    (UpdateCDCStream)
+    (IsBootstrapRequired)
+    (WaitForReplicationDrain)
+    (SetupNSUniverseReplication)
+    (GetReplicationStatus)
+    (GetTableSchemaFromSysCatalog)
+    (ChangeXClusterRole)
+    (BootstrapProducer)
+    (GetXClusterSafeTime))
+};
+
 } // namespace
 
 std::unique_ptr<rpc::ServiceIf> MakeMasterReplicationService(Master* master) {
   return std::make_unique<MasterReplicationServiceImpl>(master);
 }
 
+std::unique_ptr<rpc::ServiceIf> MakeCDCMasterReplicationService(Master* master) {
+  return std::make_unique<CDCMasterReplicationServiceImpl>(master);
+}
 } // namespace master
 } // namespace yb
