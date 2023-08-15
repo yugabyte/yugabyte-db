@@ -63,6 +63,7 @@ DECLARE_bool(ysql_enable_packed_row);
 
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 
@@ -255,6 +256,51 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
 
   ASSERT_OK(WaitForSplitCompletion(table_id));
 }
+
+#ifndef NDEBUG
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/18387.
+// The test checks that we are getting the expected error if an operation is failing several
+// times in a row: in this case it is expected to get the latest error status.
+// The test reproduces two failure. The first failure is happening after a tablet has been split
+// and the request should be forwarded to the one of its children. The second failure is generated
+// synthetically in AsyncRpcBase::CommonResponseCheck(). Before the fix, the test fails with
+// DCHECK_EQ(response.error_status().size(), 1) in pg_client_session.cc:HandleResponse() due to
+// PgsqlResponsePB::error_status contains two entries because this collection was not cleaned
+// before the retry in the original change (where error_status has been introduced).
+TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
+  constexpr auto kNumRows = 100;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS;"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+
+  // Flush tablets and make sure SST files have appeared to be able to split.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(peers.front()));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("BatcherFlushDone:Retry:1", [&](void* arg) {
+    LOG(INFO) << "Batcher retry detected: setting flag to fail retry.";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_common_response_check_fail_once) = true;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Select and stop on retry
+  auto result = conn.Fetch("SELECT * FROM t");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "CommonResponseCheck test runtime error");
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+#endif // NDEBUG
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
