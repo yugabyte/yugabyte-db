@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansio
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -223,16 +224,34 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     boolean instanceTypeChanged = false;
     // TODO Support overriden instance types
-    if (!curIntent.instanceType.equals(newIntent.instanceType)) {
-      List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
-      // If the instance type changed from dev/xsmall to anything else,
-      // master resources will also change.
-      if (!isReadOnlyCluster
-          && !curIntent.instanceType.equals(newIntent.instanceType)
-          && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      if (!curIntent.instanceType.equals(newIntent.instanceType)) {
+        List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
+        // If the instance type changed from dev/xsmall to anything else,
+        // master resources will also change.
+        if (!isReadOnlyCluster && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+          restartAllPods = true;
+        }
+        instanceTypeChanged = true;
+      }
+    } else {
+      boolean tserverCpuChanged =
+          !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
+              newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      boolean masterCpuChanged =
+          !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
+              newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+      boolean tserverMemChanged =
+          !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
+              newIntent.tserverK8SNodeResourceSpec.memoryGib);
+      boolean masterMemChanged =
+          !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
+              newIntent.masterK8SNodeResourceSpec.memoryGib);
+      instanceTypeChanged =
+          tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
+      if (!isReadOnlyCluster && (masterMemChanged || masterCpuChanged)) {
         restartAllPods = true;
       }
-      instanceTypeChanged = true;
     }
 
     Set<NodeDetails> mastersToAdd =

@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -376,7 +375,7 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces) {
+      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -384,11 +383,6 @@ public class GFlagsUtil {
     String providerUUID = userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     String ybHomeDir = provider.getYbHome();
-    int hardwareConcurrency =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
-                    .getNumCores());
     String serverAddress =
         listenOnAllInterfaces
             ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
