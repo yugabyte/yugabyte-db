@@ -27,10 +27,7 @@
 
 #include "yb/util/trace.h"
 
-using std::vector;
-
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
                                             HybridTime min_allowed,
@@ -52,7 +49,7 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   const auto doc_read_context = GetDocReadContext();
   Schema projection;
   const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
-  vector<ColumnId> column_refs;
+  std::vector<ColumnId> column_refs;
   for (int32_t id : column_pbs.static_ids()) {
     column_refs.emplace_back(id);
   }
@@ -111,6 +108,9 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     const auto& s = fetched_rows.status();
+
+    // TODO(14814, 18387): At the moment only one error status is supported.
+    result->response.mutable_error_status()->Clear();
     StatusToPB(s, result->response.add_error_status());
     // For backward compatibility set also deprecated error message
     result->response.set_error_message(s.message().cdata(), s.message().size());
@@ -135,5 +135,4 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
-}  // namespace tablet
-}  // namespace yb
+}  // namespace yb::tablet

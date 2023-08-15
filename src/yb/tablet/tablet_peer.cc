@@ -1579,8 +1579,8 @@ bool TabletPeer::CanBeDeleted() {
 
   LOG_WITH_PREFIX(INFO) << Format(
       "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
-      "id: $1, split op id: $2)",
-      tablet_id(), all_applied_op_id, op_id);
+      "id: $1, split op id: $2, data state: $3)",
+      tablet_id(), all_applied_op_id, op_id, TabletDataState_Name(data_state()));
 
   return true;
 }
