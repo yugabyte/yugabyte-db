@@ -1347,6 +1347,10 @@ YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
+bool YBCIsRestartReadPointRequested() {
+  return pgapi->IsRestartReadPointRequested();
+}
+
 YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
