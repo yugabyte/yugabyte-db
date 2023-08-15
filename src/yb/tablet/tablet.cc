@@ -1373,7 +1373,6 @@ Status Tablet::ApplyKeyValueRowOperations(
     const HybridTime hybrid_time,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
-      put_batch.table_lock().table_lock_type() == TableLockType::NONE &&
       put_batch.apply_external_transactions().empty()) {
     return Status::OK();
   }

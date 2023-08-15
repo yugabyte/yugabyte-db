@@ -236,8 +236,6 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       ? put_batch_.subtransaction().subtransaction_id()
       : kMinSubTransactionId;
 
-  RETURN_NOT_OK(AddTableLockIntent(put_batch_.table_lock().table_lock_type()));
-
   if (!put_batch_.write_pairs().empty()) {
     if (IsValidRowMarkType(row_mark_)) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
@@ -258,72 +256,6 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
 
   return Finish();
-}
-
-Status TransactionalWriter::AddTableLockIntent(TableLockType lock_type) {
-  // TODO(tablelocks): Consolidate this logic with operator() method.
-  TableLockIntents table_lock_type_to_intent_mapping =
-      GetTableLockIntents(lock_type);
-  if (table_lock_type_to_intent_mapping.size() == 0) {
-    return Status::OK();
-  }
-  const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
-  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
-  const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
-  SubTransactionId big_endian_subtxn_id;
-  Slice subtransaction_marker;
-  Slice subtransaction_id;
-  if (subtransaction_id_ > kMinSubTransactionId) {
-    subtransaction_marker = Slice(&subtransaction_value_type, 1);
-    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-  } else {
-    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-  }
-  constexpr size_t kNumKeyParts = 3;
-  std::array<Slice, kNumKeyParts> key_parts;
-  DocHybridTimeBuffer doc_ht_buffer;
-  dockv::IntentTypeSet intent_types;
-  IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
-  std::array<Slice, 6> value_parts = {{
-      Slice(&transaction_value_type, 1),
-      transaction_id_.AsSlice(),
-      subtransaction_marker,
-      subtransaction_id,
-      Slice(&write_id_value_type, 1),
-      Slice::FromPod(&big_endian_write_id),
-  }};
-  ++intra_txn_write_id_;
-  std::array<char, 2> intent_type;
-
-  for (auto it = table_lock_type_to_intent_mapping.begin();
-       it != table_lock_type_to_intent_mapping.end(); ++it) {
-    auto& mapping = *it;
-    intent_types = mapping.second;
-    intent_type = {{ KeyEntryTypeAsChar::kIntentTypeSet,
-                          static_cast<char>(intent_types.ToUIntPtr()) }};
-    key_parts = {{
-          mapping.first.as_slice(),
-          Slice(intent_type),
-          doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
-    }};
-    AddIntent<kNumKeyParts>(transaction_id_, key_parts, value_parts, handler_);
-
-    if ( next(it) != table_lock_type_to_intent_mapping.end() &&
-        table_lock_type_to_intent_mapping.size() == 2 ) {
-      big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
-      value_parts = {{
-        Slice(&transaction_value_type, 1),
-        transaction_id_.AsSlice(),
-        subtransaction_marker,
-        subtransaction_id,
-        Slice(&write_id_value_type, 1),
-        Slice::FromPod(&big_endian_write_id),
-      }};
-      ++intra_txn_write_id_;
-    }
-  }
-  return Status::OK();
 }
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
@@ -615,7 +547,6 @@ Result<bool> ApplyIntentsContext::Entry(
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
     if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
-      // TODO(tablelocks): Ignore table lock intents.
       return false;
     }
 

@@ -53,9 +53,7 @@ Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
     return STATUS(Corruption, "Unexpected end of key when decoding document key");
   }
   KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice->data());
-  if (current_value_type == KeyEntryType::kGroupEnd ||
-      current_value_type == KeyEntryType::kStrongTableLock ||
-      current_value_type == KeyEntryType::kWeakTableLock) {
+  if (current_value_type == KeyEntryType::kGroupEnd) {
     slice->consume_byte();
     return false;
   }
@@ -1175,9 +1173,7 @@ Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_spe
 
   auto first_value_type = static_cast<KeyEntryType>(input_[0]);
 
-  if (first_value_type == KeyEntryType::kGroupEnd ||
-      first_value_type == KeyEntryType::kWeakTableLock ||
-      first_value_type == KeyEntryType::kStrongTableLock) {
+  if (first_value_type == KeyEntryType::kGroupEnd) {
     return false;
   }
 

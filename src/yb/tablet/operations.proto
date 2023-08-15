@@ -123,12 +123,6 @@ message ChangeMetadataRequestPB {
 
   // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
   optional bool should_abort_active_txns = 16 [ default = false ];
-
-  // If specified, the involved tablet will acquire the specified table lock.
-  optional TableLockType table_lock_type = 18 [default = NONE];
-
-  // Used to attach transaction metadata to any table locks acquired.
-  optional TransactionMetadataPB transaction = 19;
 }
 
 message SplitTabletRequestPB {

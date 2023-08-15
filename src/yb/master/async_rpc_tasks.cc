@@ -66,12 +66,6 @@ DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
 
 DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
-// TODO: Convert this to an autoflag.
-DEFINE_RUNTIME_bool(ysql_use_table_lock_for_alter_table, false,
-                    "If true,persist an ACCESS EXCLUSIVE table lock for ALTER TABLE.");
-TAG_FLAG(ysql_use_table_lock_for_alter_table, hidden);
-TAG_FLAG(ysql_use_table_lock_for_alter_table, experimental);
-
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
@@ -981,10 +975,6 @@ bool AsyncAlterTable::SendRequest(int attempt) {
     req.set_dest_uuid(permanent_uuid());
     req.set_tablet_id(tablet_->tablet_id());
     req.set_alter_table_id(table_->id());
-    if (GetAtomicFlag(&FLAGS_ysql_use_table_lock_for_alter_table)) {
-      req.set_table_lock_type(TableLockType::ACCESS_EXCLUSIVE);
-      *req.mutable_transaction() = l->pb.transaction();
-    }
 
     if (l->pb.has_wal_retention_secs()) {
       req.set_wal_retention_secs(l->pb.wal_retention_secs());
