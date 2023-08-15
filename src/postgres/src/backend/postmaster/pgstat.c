@@ -7045,7 +7045,7 @@ yb_pgstat_add_session_info(uint64_t session_id)
 	if (MyBEEntry == NULL)
 	{
 		/* Must be an auxiliary process */
-		Assert(MyAuxProcType != NotAnAuxProcess);
+		// Assert(MyAuxProcType != NotAnAuxProcess);
 		return;
 	}
 

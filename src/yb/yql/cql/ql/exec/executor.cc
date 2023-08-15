@@ -2446,6 +2446,10 @@ void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context
 
   // reuse this request id for AUH?
   op->mutable_request()->set_request_id(exec_context_->params().request_id());
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_current_request_id(exec_context_->params().request_id());
+  }
   tnode_context->AddOperation(op);
 
   // We need consistent read point if statement is executed in multiple RPC commands.
