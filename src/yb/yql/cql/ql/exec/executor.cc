@@ -1092,6 +1092,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     return Status::OK();
   }
 
+  ql_env_->auh_metadata().ToPB(req->mutable_auh_metadata());
+
   // Add the operation.
   AddOperation(select_op, tnode_context);
   return Status::OK();
@@ -1329,6 +1331,8 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   // Set whether write op writes to the static/primary row.
   insert_op->set_writes_static_row(tnode->ModifiesStaticRow());
   insert_op->set_writes_primary_row(tnode->ModifiesPrimaryRow());
+
+  ql_env_->auh_metadata().ToPB(req->mutable_auh_metadata());
 
   // Add the operation.
   return AddOperation(insert_op, tnode_context);
@@ -2440,6 +2444,7 @@ bool Executor::WriteBatch::Empty() const {
 void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
 
+  // reuse this request id for AUH?
   op->mutable_request()->set_request_id(exec_context_->params().request_id());
   tnode_context->AddOperation(op);
 
