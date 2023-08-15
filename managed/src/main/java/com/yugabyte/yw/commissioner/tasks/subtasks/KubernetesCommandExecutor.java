@@ -658,6 +658,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      log.info(
+          "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
@@ -893,9 +895,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tserverLimit.put(
           "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
     }
-
-    masterResource.put(
-        "cpu", KubernetesUtil.getCoreCountFromInstanceType(instanceType, true /* isMaster */));
 
     Map<String, Object> resourceOverrides = new HashMap();
     if (!masterResource.isEmpty() && !masterLimit.isEmpty()) {
