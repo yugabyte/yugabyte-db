@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB
 description: YugabyteDB documentation is the best source to learn the most in-depth information about the YugabyteDB database, YugabyteDB Managed, and YugabyteDB Anywhere.
-headcontent: Open source cloud native distributed SQL database
+headcontent: Open source cloud-native distributed SQL database
 weight: 1
 type: indexpage
 resourcesIntro: Quick Links
