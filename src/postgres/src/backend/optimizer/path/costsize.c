@@ -6031,7 +6031,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	found_is_null_op = false;
 	index_col = 0;
 	numIndexColumnsWithPrefixInequalityFilters = 0;
-	numPrefixInequalityFilterOnIndexColumn = (int*) palloc(sizeof(int) * index->nkeycolumns);
+	numPrefixInequalityFilterOnIndexColumn = (int*) palloc0(sizeof(int) * index->nkeycolumns);
 	foreach(lc, qinfos)
 	{
 		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
@@ -6051,7 +6051,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				skip_scan_needed = true;
 			}
 			filter_found_for_index_col = false;
-			numPrefixInequalityFilterOnIndexColumn[index_col] = 0;
 			index_col++;
 		}
 
@@ -6120,9 +6119,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				/* Query planner should not propose index scan if there exists */
 				/* an inequality filter on the hash columns. */
 				all_filters_are_prefix_with_eq_clause = false;
-				if (numPrefixInequalityFilterOnIndexColumn[index_col] == 0)
-					++numIndexColumnsWithPrefixInequalityFilters;
-				++numPrefixInequalityFilterOnIndexColumn[index_col];
 				Assert(index_col >= index->nhashcolumns);
 				if (skip_scan_needed)
 				{
@@ -6130,6 +6126,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				}
 				else
 				{
+					if (numPrefixInequalityFilterOnIndexColumn[index_col] == 0)
+						++numIndexColumnsWithPrefixInequalityFilters;
+					++numPrefixInequalityFilterOnIndexColumn[index_col];
 					prefix_inequality_filters =
 						lappend(prefix_inequality_filters, rinfo);
 					prefix_filters =
@@ -6228,11 +6227,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 						for (int j = 0; j < numPrefixInequalityFilterOnIndexColumn[i]; ++j)
 						{
 							prefix_inequality_filters =
-								list_delete_cell(prefix_inequality_filters,
-												 list_tail(prefix_inequality_filters),
-												 list_nth_cell(prefix_inequality_filters,
-															   list_length(prefix_inequality_filters) - 2));
+								list_delete_first(prefix_inequality_filters);
 						}
+						numPrefixInequalityFilterOnIndexColumn[i] = 0;
 						break;
 					}
 				}
@@ -6300,6 +6297,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			num_nexts *= num_sa_scans;
 		}
 	}
+
+	pfree(numPrefixInequalityFilterOnIndexColumn);
 
 	path->estimated_num_nexts = num_nexts;
 	path->estimated_num_seeks = num_seeks;
