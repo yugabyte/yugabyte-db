@@ -62,6 +62,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetPgIsolationLevel(int isolation);
