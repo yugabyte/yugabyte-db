@@ -34,9 +34,11 @@ Notice these three different orthography styles:
 
 The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
-{{<ebnf localrefs="window_definition">}}
-select_start,window_clause,fn_over_window
-{{</ebnf>}}
+{{%ebnf localrefs="window_definition"%}}
+select_start,
+window_clause,
+fn_over_window
+{{%/ebnf%}}
 
 ### Definition of the window_definition rule
 
@@ -44,24 +46,20 @@ As promised in the `SELECT` statement section, this section explains the [`windo
 
 A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition) can be used only at these two syntax spots, within the enclosing syntax of a subquery.
 
-{{<ebnf localrefs="frame_clause">}}
-
-- window_definition
-
-{{</ebnf>}}
+{{%ebnf localrefs="frame_clause" %}}
+window_definition
+{{%/ ebnf %}}
 
 ### The frame_clause
 
-{{<ebnf>}}
-
-- frame_clause
-- frame_bounds
-- frame_start
-- frame_end
-- frame_bound
-- frame_exclusion
-
-{{</ebnf>}}
+{{% ebnf %}}
+frame_clause,
+frame_bounds,
+frame_start,
+frame_end,
+frame_bound,
+frame_exclusion
+{{%/ ebnf %}}
 
 ## Semantics
 
