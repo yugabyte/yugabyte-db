@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import { FieldArray } from 'formik';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -90,7 +90,7 @@ const getGFlagRows = (rowCount: number) =>
     isWarning: false
   }));
 
-const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) => {
+const reorderGFlagRows = (GFlagRows: GFlagRowProps[], startIndex: number, endIndex: number) => {
   let result = Array.from(GFlagRows);
   const [removed] = result.splice(startIndex, 1);
   result.splice(endIndex, 0, removed);
@@ -104,7 +104,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   flagName,
   updateJWKSDialogStatus
 }) => {
-  let unformattedLDAPConf: string | null = null;
+  let unformattedLDAPConf: GFlagRowProps[] | null = null;
   const GFlagConfData = CONST_VALUES.EMPTY_STRING;
   const { t } = useTranslation();
   const classes = useStyles();
@@ -114,9 +114,10 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     serverType === TSERVER
       ? formProps?.values?.tserverFlagDetails?.flagvalueobject
       : formProps?.values?.masterFlagDetails?.flagvalueobject;
+  const flagValue = formProps?.values?.flagvalue;
 
-  if (isNonEmptyString(formProps?.values?.flagvalue) && !GFlagValueConfObject) {
-    unformattedLDAPConf = unformatConf(formProps?.values?.flagvalue);
+  if (isNonEmptyString(flagValue) && !GFlagValueConfObject) {
+    unformattedLDAPConf = unformatConf(flagValue);
   }
 
   const [showJWKSButton, setShowJWKSButton] = useState<boolean>(false);
@@ -126,15 +127,20 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   const [rowCount, setRowCount] = useState<number>(
     GFlagValueConfObject?.length > 0 ? GFlagValueConfObject?.length : 1
   );
-
   const [errorMessageKey, setErrorMessageKey] = useState<string>(CONST_VALUES.EMPTY_STRING);
-  const [GFlagRows, setGFlagConfRows] = useState<any>(
+  const [GFlagRows, setGFlagConfRows] = useState<GFlagRowProps[]>(
     GFlagValueConfObject?.length > 0
       ? GFlagValueConfObject
-      : isNonEmptyString(formProps?.values?.flagvalue)
+      : isNonEmptyString(flagValue)
       ? unformattedLDAPConf
       : getGFlagRows(rowCount)
   );
+
+  useEffect(() => {
+    if (!GFlagValueConfObject && isNonEmptyString(flagValue)) {
+      setGFlagConfRows(unformattedLDAPConf!);
+    }
+  }, [flagValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getPlaceholder = (index: number, flagName: string) => {
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
@@ -348,7 +354,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                             <Box display="flex" flexDirection="column">
                               <Box display="flex" flexDirection="row">
                                 <YBInput
-                                  name={`flagvalue.${index}`}
+                                  key={`${GFlagRows[index].content}`}
+                                  name={`flagvalue-${index}`}
                                   id={`${index}`}
                                   fullWidth
                                   multiline={true}
@@ -364,7 +371,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   onChange={(e: any) => handleChange(e.target.value, index)}
                                   onBlur={() => buildGFlagConf()}
                                   error={GFlagRows[index]?.error}
-                                  helperText={t(GFlagRows[index]?.errorMessageKey)}
+                                  helperText={t(GFlagRows[index]?.errorMessageKey!)}
                                   inputProps={{
                                     'data-testid': `EditMultilineConfField-row-${index}`
                                   }}
