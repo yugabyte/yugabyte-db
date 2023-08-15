@@ -1,11 +1,11 @@
 ---
-title: Active-Active Single-Master design pattern for global applications
+title: Active-Active Single-Master design pattern for  global applications
 headerTitle: Active-active single-master
 linkTitle: Active-active single-master
 description: An active and a stand by cluster for global applications
 headcontent: Active cluster with standby using xCluster deployment
 menu:
-  preview:
+  stable:
     identifier: global-apps-active-active-single-master
     parent: build-global-apps
     weight: 400
@@ -58,14 +58,13 @@ When the primary cluster in `us-west` fails, the secondary cluster in `us-east` 
 
 ## Caveats
 
-The replication happens at the DocDB layer, bypassing the query layer, and some standard functionality doesn't work.
+The replication happens at the DocDB layer, bypassing the query layer, and some standard functionality doesn't work:
 
 - Avoid `UNIQUE` indexes and constraints, as there is no way to check uniqueness.
 - Avoid `TRIGGERS`, as the triggers won't be fired because the query layer is bypassed.
 - Avoid `SERIAL` columns, as both the clusters would generate the same sequence (use UUID instead).
 - Schema changes are not automatically transmitted but have to be applied manually (for now).
-
-Another thing to note with xCluster is that transaction updates are NOT committed atomically from the source to the sink and hence the second cluster could be transactionally inconsistent.
+- Transaction updates are NOT committed atomically from the source to the sink and hence the second cluster could be transactionally inconsistent.
 
 ## Learn more
 

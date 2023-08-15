@@ -5,7 +5,7 @@ linkTitle: Latency-optimized geo-partitioning
 description: Geo Partitioning for improving the latency of Multi-Active global applications
 headcontent: Improve the latency of Multi-Active global applications using geo partitioning
 menu:
-  preview:
+  stable:
     identifier: global-apps-latency-optimized-geo-partition
     parent: build-global-apps
     weight: 600
@@ -37,7 +37,7 @@ CREATE TABLE users (
 ) PARTITION BY LIST (geo);
 ```
 
-Partition your data for east and west users. This ensures that the application in `us-west` will operate on `west` partition and the application in `us-east` will operate on the `east` partition.
+Partition your data for east and west users. This ensures that the application in `us-west` will use the `west` partition and the application in `us-east` will use the `east` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.
