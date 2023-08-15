@@ -86,7 +86,8 @@ class PgLibPqTest : public LibPqTestBase {
       const string database_name, const string tablegroup_name, yb::pgwrapper::PGConn* conn);
 
   void PerformSimultaneousTxnsAndVerifyConflicts(
-      const string database_name, bool colocated, const string tablegroup_name = "");
+      const string database_name, bool colocated, const string tablegroup_name = "",
+      const string query_statement = "SELECT * FROM t FOR UPDATE");
 
   void FlushTablesAndPerformBootstrap(
       const string database_name,
@@ -1208,7 +1209,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
 }
 
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
-    const string database_name, bool colocated, const string tablegroup_name) {
+    const string database_name, bool colocated, const string tablegroup_name,
+    const string query_statement) {
   auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   auto conn2 = ASSERT_RESULT(ConnectToDB(database_name));
 
@@ -1224,7 +1226,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   // From conn1, select the row in UPDATE row lock mode. From conn2, delete the row.
   // Ensure that conn1's transaction will detect a conflict at the time of commit.
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
+  auto res = ASSERT_RESULT(conn1.Fetch(query_statement));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
@@ -1274,6 +1276,18 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForTablegroups)) {
       "test_db" /* database_name */,
       true, /* colocated */
       "test_tgroup" /* tablegroup_name */);
+}
+
+// Test for ensuring that transaction conflicts work as expected for Tablegroups, where the SELECT
+// is done with pg_hint_plan to use YB Sequential Scan.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForTablegroupsYbSeq)) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */, true, /* colocated */
+      "test_tgroup" /* tablegroup_name */,
+      "/*+ SeqScan(t) */ SELECT * FROM t FOR UPDATE" /* query_statement */);
 }
 
 void PgLibPqTest::FlushTablesAndPerformBootstrap(

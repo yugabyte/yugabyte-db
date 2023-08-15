@@ -35,6 +35,7 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/xact.h"
 #include "executor/execdebug.h"
 #include "executor/nodeYbSeqscan.h"
 #include "utils/rel.h"
@@ -85,6 +86,39 @@ YbSeqNext(YbSeqScanState *node)
 										(Scan *) plan,
 										remote);
 		node->ss.ss_currentScanDesc = scandesc;
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		scandesc->ybscan->exec_params = &estate->yb_exec_params;
+		scandesc->ybscan->exec_params->rowmark = -1;
+
+		// Add row marks.
+		if (XactIsoLevel == XACT_SERIALIZABLE)
+		{
+			/*
+			 * In case of SERIALIZABLE isolation level we have to take prefix
+			 * range locks to disallow INSERTion of new rows that satisfy the
+			 * query predicate. So, we set the rowmark on all read requests sent
+			 * to tserver instead of locking each tuple one by one in LockRows
+			 * node.
+			 */
+			ListCell   *l;
+			foreach(l, estate->es_rowMarks)
+			{
+				ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+				/* Do not propagate non-row-locking row marks. */
+				if (erm->markType != ROW_MARK_REFERENCE &&
+					erm->markType != ROW_MARK_COPY)
+				{
+					scandesc->ybscan->exec_params->rowmark = erm->markType;
+					YBUpdateRowLockPolicyForSerializable(
+						&scandesc->ybscan->exec_params->wait_policy,
+						erm->waitPolicy);
+				}
+				break;
+			}
+		}
 	}
 
 	/*
