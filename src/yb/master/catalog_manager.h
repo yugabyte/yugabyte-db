@@ -2048,6 +2048,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       SetupReplicationWithBootstrapStatePB* state,
       rpc::RpcContext* rpc);
 
+  Status TransferFilesAndRestoreSnapshot(
+      std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks, SetupReplicationWithBootstrapStatePB* state,
+      const std::vector<TableMetaPB>& tables_meta, const TxnSnapshotId& old_snapshot_id,
+      const TxnSnapshotId& new_snapshot_id, const LeaderEpoch& epoch);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
