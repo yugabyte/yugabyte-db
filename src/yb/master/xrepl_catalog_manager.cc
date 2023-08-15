@@ -39,6 +39,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
@@ -111,6 +112,10 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 DEFINE_test_flag(
     bool, xcluster_fail_create_consumer_snapshot, false,
     "In the SetupReplicationWithBootstrap flow, test failure to create snapshot on consumer.");
+
+DEFINE_test_flag(
+    bool, xcluster_fail_restore_consumer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, test failure to restore snapshot on consumer.");
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
@@ -1837,7 +1842,7 @@ Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
 Result<std::shared_ptr<CDCRpcTasks>>
 CatalogManager::SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(
     const SetupNamespaceReplicationWithBootstrapRequestPB* req) {
-  // PHASE 1: Validating user input.
+  // Validating user input.
   SCHECK(
       !req->replication_id().empty(), InvalidArgument, "Replication ID must be provided",
       req->ShortDebugString());
@@ -1905,12 +1910,48 @@ CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
   snapshot_req.set_add_indexes(false);
   snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
-  auto s = CreateSnapshot(&snapshot_req, &snapshot_resp, rpc, epoch);
-  if (snapshot_resp.has_snapshot_id())
-    *new_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id());
-  if (!s.ok()) return s;
+  RETURN_NOT_OK(CreateTransactionAwareSnapshot(snapshot_req, &snapshot_resp, rpc));
+  *new_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id());
 
   return std::vector<TableMetaPB>(tables_meta.begin(), tables_meta.end());
+}
+
+Status CatalogManager::TransferFilesAndRestoreSnapshot(
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks, SetupReplicationWithBootstrapStatePB* state,
+    const std::vector<TableMetaPB>& tables_meta, const TxnSnapshotId& old_snapshot_id,
+    const TxnSnapshotId& new_snapshot_id, const LeaderEpoch& epoch) {
+  // Transfer snapshot.
+  *state = SetupReplicationWithBootstrapStatePB::TRANSFER_SNAPSHOT;
+  auto snapshot_transfer_manager =
+      std::make_shared<SnapshotTransferManager>(master_, this, cdc_rpc_tasks->client());
+  RETURN_NOT_OK_PREPEND(
+      snapshot_transfer_manager->TransferSnapshot(
+          old_snapshot_id, new_snapshot_id, tables_meta, epoch),
+      Format("Failed to transfer snapshot $0 from producer", old_snapshot_id.ToString()));
+
+  // Restore snapshot.
+  *state = SetupReplicationWithBootstrapStatePB::RESTORE_SNAPSHOT;
+  auto restoration_id = VERIFY_RESULT(
+      snapshot_coordinator_.Restore(new_snapshot_id, HybridTime(), epoch.leader_term));
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_restore_consumer_snapshot)) {
+    return STATUS(Aborted, "Test failure");
+  }
+
+  return WaitFor(
+      [this, &new_snapshot_id, &restoration_id]() -> Result<bool> {
+        ListSnapshotRestorationsResponsePB resp;
+        RETURN_NOT_OK(
+            snapshot_coordinator_.ListRestorations(restoration_id, new_snapshot_id, &resp));
+
+        SCHECK_EQ(
+            resp.restorations_size(), 1, IllegalState,
+            Format("Expected 1 restoration, got $0", resp.restorations_size()));
+        const auto& restoration = *resp.restorations().begin();
+        const auto& state = restoration.entry().state();
+        return state == SysSnapshotEntryPB::RESTORED;
+      },
+      MonoDelta::kMax, "Waiting for restoration to finish", 100ms);
 }
 
 void CatalogManager::CleanupSetupReplicationWithBootstrap(
@@ -1971,19 +2012,21 @@ void CatalogManager::CleanupSetupReplicationWithBootstrap(
 }
 
 /*
- * SetupNamespaceReplicationWithBootstrap is setup in _ stages.
+ * SetupNamespaceReplicationWithBootstrap is setup in 5 stages.
  * 1. Validates user input & connect to producer.
  * 2. Calls BootstrapProducer with all user tables in namespace.
  * 3. Create snapshot on producer and import onto consumer.
- * 4. TODO: Document remaining steps when completed.
+ * 4. Download snapshots from producer and restore on consumer.
+ * 5. SetupUniverseReplication.
  */
 Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
     const SetupNamespaceReplicationWithBootstrapRequestPB* req,
     SetupNamespaceReplicationWithBootstrapResponsePB* resp,
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
-            << req->DebugString();
+  LOG(INFO) << Format(
+      "SetupNamespaceReplicationWithBootstrap from $0: $1", RequestorString(rpc),
+      req->DebugString());
 
   // PHASE 1: Validate request and connect to producer.
   auto cdc_rpc_tasks =
@@ -1998,7 +2041,7 @@ Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
     bootstrap_ids.push_back(bootstrap_id);
   }
 
-  // PHASE 3: Snapshots.
+  // PHASE 3: Create snapshots and import.
   TxnSnapshotId old_snapshot_id = TxnSnapshotId::Nil();
   TxnSnapshotId new_snapshot_id = TxnSnapshotId::Nil();
   SetupReplicationWithBootstrapStatePB state =
@@ -2009,7 +2052,24 @@ Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
           cdc_rpc_tasks, epoch, &tables, &old_snapshot_id, &new_snapshot_id, &state, rpc),
       state);
 
-  return Status::OK();
+  // PHASE 4: Download snapshots and restore.
+  CLEANUP_AND_RETURN_IF_NOT_OK(
+      TransferFilesAndRestoreSnapshot(
+          cdc_rpc_tasks, &state, tables_meta, old_snapshot_id, new_snapshot_id, epoch),
+      state);
+
+  // PHASE 5: SetupUniverseReplication
+  state = SetupReplicationWithBootstrapStatePB::SETUP_REPLICATION;
+  SetupUniverseReplicationRequestPB replication_req;
+  SetupUniverseReplicationResponsePB replication_resp;
+  replication_req.set_producer_id(req->replication_id());
+  replication_req.set_transactional(req->transactional());
+  replication_req.mutable_producer_master_addresses()->CopyFrom(req->producer_master_addresses());
+  for (const auto& [table_id, bootstrap_id] : table_bootstrap_ids) {
+    replication_req.add_producer_table_ids(table_id);
+    replication_req.add_producer_bootstrap_ids(bootstrap_id.ToString());
+  }
+  return SetupUniverseReplication(&replication_req, &replication_resp, rpc);
 }
 
 /*

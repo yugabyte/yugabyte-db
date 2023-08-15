@@ -57,7 +57,9 @@ class RemoteSnapshotTransferClient : public RemoteClientBase {
       rpc::ProxyCache* proxy_cache, const PeerId& source_peer_uuid,
       const HostPort& source_tablet_addr, const std::string& rocksdb_dir);
 
-  Status FetchSnapshot(const SnapshotId& snapshot_id);
+  // Since the producer and consumer universe can have different snapshot IDs, we give the option of
+  // downloading producer snapshot files into a specific consumer snapshot directory.
+  Status FetchSnapshot(const SnapshotId& snapshot_id, const SnapshotId& new_snapshot_id = "");
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.

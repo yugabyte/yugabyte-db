@@ -74,7 +74,11 @@ Status RemoteSnapshotTransferClient::Start(
 
   BeginRemoteSnapshotTransferSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_id_);
+
+  // Set request tablet_id = source_peer_uuid because it is not guaranteed that the source tablet is
+  // in the same RAFT group as the consumer tablet. For example, in xCluster native bootstrap, the
+  // request is sent to an entirely separate universe.
+  req.set_tablet_id(source_peer_uuid);
 
   rpc::RpcController controller;
   controller.set_timeout(
@@ -119,9 +123,13 @@ Status RemoteSnapshotTransferClient::Start(
   return Status::OK();
 }
 
-Status RemoteSnapshotTransferClient::FetchSnapshot(const SnapshotId& snapshot_id) {
+Status RemoteSnapshotTransferClient::FetchSnapshot(
+    const SnapshotId& snapshot_id, const SnapshotId& new_snapshot_id) {
+  SCHECK(!snapshot_id.empty(), InvalidArgument, "Snapshot id is empty!");
+
   snapshot_component_.reset(new RemoteBootstrapSnapshotsComponent(&downloader_, superblock_.get()));
-  return snapshot_component_->Download(snapshot_id.empty() ? nullptr : &snapshot_id);
+  return snapshot_component_->DownloadInto(
+      &snapshot_id, new_snapshot_id.empty() ? nullptr : &new_snapshot_id);
 }
 
 Status RemoteSnapshotTransferClient::Finish() {
