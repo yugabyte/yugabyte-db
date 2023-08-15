@@ -32,7 +32,7 @@
   [start_now.params]
     buttonText = "Sign up"
     classes = "primary-btn sm-btn"
-    description = "Try our fully managed cloud DBaaS for free."
+    description = "Try our fully-managed cloud DBaaS for free."
     imageUrl = "/icons/cloud.svg"
     newTab = true
     tagLine = "No credit card required"
@@ -93,7 +93,7 @@
   parent = "products"
   url = "/preview/yugabyte-cloud/"
   [main.params]
-    description = "Fully managed cloud DBaaS"
+    description = "Fully-managed cloud DBaaS"
     excludeVersion = true
     imageUrl = "/icons/cloud.svg"
 
