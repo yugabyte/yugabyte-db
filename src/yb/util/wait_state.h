@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <functional>
 #include <iosfwd>

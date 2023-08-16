@@ -116,6 +116,7 @@ yb_auh_sighup(SIGNAL_ARGS)
 void
 yb_auh_main(Datum main_arg) {
   // TODO:
+  MyAuxProcType = YbAUHProcess;
   YBInitPostgresBackend("postgres", "", "hemant");
 
   ereport(LOG, (errmsg("starting bgworker yb_auh with buffer size %d", circular_buf_size)));
