@@ -20,7 +20,7 @@ import (
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScript(outputPath string, dataDir string,
-	excludePrometheus bool, skipRestart bool, verbose bool, plat Platform) {
+	excludePrometheus bool, excludeReleases bool, skipRestart bool, verbose bool, plat Platform) {
 
 	fileName := plat.backupScript()
 	err := os.Chmod(fileName, 0777)
@@ -30,10 +30,12 @@ func CreateBackupScript(outputPath string, dataDir string,
 		log.Debug("Create Backup Script has now been given executable permissions.")
 	}
 
-	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
-		"--yba_installer"}
+	args := []string{"create", "--output", outputPath, "--data_dir", dataDir, "--yba_installer"}
 	if excludePrometheus {
-		args = append(args, "--exclude-prometheus")
+		args = append(args, "--exclude_prometheus")
+	}
+	if excludeReleases {
+		args = append(args, "--exclude_releases")
 	}
 	if skipRestart {
 		args = append(args, "--skip_restart")
@@ -63,6 +65,33 @@ func CreateBackupScript(outputPath string, dataDir string,
 	if !out.SucceededOrLog() {
 		log.Fatal(out.Error.Error())
 	}
+}
+
+// CreateReplicatedBackupScript backs up a replicated based installation of YBA.
+func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbose bool,
+	plat Platform) {
+	fileName := plat.backupScript()
+	err := os.Chmod(fileName, 0777)
+	if err != nil {
+		log.Fatal(err.Error())
+	} else {
+		log.Debug("Create Backup Script has now been given executable permissions.")
+	}
+
+	args := []string{"create", "--output", output, "--data_dir", dataDir, "--exclude_prometheus",
+									 "--exclude_releases", "--db_username", pgUser, "--db_host", "localhost",
+									 "--db_port", pgPort}
+
+	if verbose {
+		args = append(args, "--verbose")
+	}
+
+	log.Info("Creating a backup of your Replicated YBA Installation.")
+	out := shell.Run(fileName, args...)
+	if !out.SucceededOrLog() {
+		log.Warn(out.Error.Error())
+	}
+
 }
 
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
@@ -123,6 +152,20 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	if out := shell.Run(fileName, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
 	}
+
+	if err := plat.SetDataDirPerms(); err != nil {
+		log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
+	}
+
+	if yugabundle {
+		// set fixPaths conf variable
+		plat.FixPaths = true
+		config.GenerateTemplate(plat)
+
+		if err := plat.Restart(); err != nil {
+			log.Fatal(fmt.Sprintf("Error %s restarting yb-platform.", err.Error()))
+		}
+	}
 }
 
 func addPostgresArgs(args []string) []string {
@@ -134,6 +177,7 @@ func addPostgresArgs(args []string) []string {
 	}
 
 	if viper.GetBool("postgres.install.enabled") {
+		// TODO: change to postgres.install.username when it merges
 		args = append(args, "--db_username", "postgres")
 		args = append(args, "--db_host", "localhost")
 		args = append(args, "--db_port", viper.GetString("postgres.install.port"))
@@ -166,6 +210,7 @@ func createPgPass() {
 func createBackupCmd() *cobra.Command {
 	var dataDir string
 	var excludePrometheus bool
+	var excludeReleases bool
 	var skipRestart bool
 	var verbose bool
 
@@ -190,7 +235,8 @@ func createBackupCmd() *cobra.Command {
 
 			outputPath := args[0]
 			if plat, ok := services["yb-platform"].(Platform); ok {
-				CreateBackupScript(outputPath, dataDir, excludePrometheus, skipRestart, verbose, plat)
+				CreateBackupScript(outputPath, dataDir, excludePrometheus, excludeReleases, skipRestart,
+													 verbose, plat)
 			} else {
 				log.Fatal("Could not cast service to Platform struct.")
 			}
@@ -201,6 +247,8 @@ func createBackupCmd() *cobra.Command {
 		"data directory to be backed up")
 	createBackup.Flags().BoolVar(&excludePrometheus, "exclude_prometheus", false,
 		"exclude prometheus metric data from backup (default: false)")
+	createBackup.Flags().BoolVar(&excludeReleases, "exclude_releases", false,
+		"exclude YBDB releases from backup (default: false)")
 	createBackup.Flags().BoolVar(&skipRestart, "skip_restart", false,
 		"don't restart processes during execution (default: false)")
 	createBackup.Flags().BoolVar(&verbose, "verbose", false,
@@ -255,7 +303,7 @@ func restoreBackupCmd() *cobra.Command {
 						db, connStr, err = common.GetPostgresConnection(
 							viper.GetString("postgres.useExisting.username"))
 					} else {
-						db, connStr, err = common.GetPostgresConnection("postgres")
+						db, connStr, err = common.GetPostgresConnection("postgres.install.username")
 					}
 					if err != nil {
 						log.Fatal(fmt.Sprintf(
@@ -273,18 +321,8 @@ func restoreBackupCmd() *cobra.Command {
 				}
 				RestoreBackupScript(inputPath, destination, skipRestart, verbose, plat, yugabundle,
 					useSystemPostgres)
-				if err := plat.SetDataDirPerms(); err != nil {
-					log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
-				}
-				if yugabundle {
-					// set fixPaths conf variable
-					plat.FixPaths = true
-					config.GenerateTemplate(plat)
 
-					if err := plat.Restart(); err != nil {
-						log.Fatal(fmt.Sprintf("Error %s restarting yb-platform.", err.Error()))
-					}
-				}
+
 			} else {
 				log.Fatal("Could not cast service to Platform for backup script execution.")
 			}

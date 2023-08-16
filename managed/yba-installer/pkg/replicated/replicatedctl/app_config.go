@@ -29,6 +29,8 @@ type ConfigEntry struct {
 var replicatedToYbaCtl = map[string]string{
 	"storage_path": "installRoot",
 	"nginx_custom_port": "platform.port",
+	// value changed when we removed nginx from replicated
+	"ui_https_port": "platform.port",
 	"enable_proxy": "platform.proxy.enable",
 	"http_proxy": "platform.proxy.http_proxy",
 	"https_proxy": "platform.proxy.https_proxy",
@@ -167,19 +169,24 @@ func (ac *AppConfig) ExportYbaCtl() error {
 			} else {
 				i, err := e.Int()
 				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i + 1));
+					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i));
 						 err != nil {
 						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
 					}
 				} else {
-					// TODO: Hack to get around 30s -> 30 conversion in prometheus timing values
-					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath,
-						strings.TrimSuffix(e.Value, "s")); err != nil {
-							return fmt.Errorf("Error setting value at %s: %s", ybaCtlPath, err.Error())
+					// Special handling of installRoot
+					if ybaCtlPath == "installRoot" {
+						if e.Value == "/opt/ybanywhere" {
+							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
+						} else {
+							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
+						}
+						continue
 					}
 				}
 			}
 		}
 	}
+	common.InitViper()
 	return nil
 }

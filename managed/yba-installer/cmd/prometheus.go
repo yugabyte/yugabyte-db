@@ -349,9 +349,6 @@ func (prom Prometheus) MigrateFromReplicated() error {
 		}
 	}
 
-	if err := prom.Start(); err != nil {
-		return err
-	}
 	log.Info("Finishing Prometheus migration")
 	return nil
 }
@@ -476,14 +473,6 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		{
 			filepath.Join(rootDir, "yugaware/swamper_rules"),
 			filepath.Join(prom.DataDir, "swamper_rules"),
-		},
-		{
-			filepath.Join(rootDir, "prometheus_configs/default_prometheus.yml"),
-			filepath.Dir(prom.ConfFileLocation),
-		},
-		{
-			filepath.Join(rootDir, "prometheus_configs/prometheus.yml"),
-			filepath.Dir(prom.ConfFileLocation),
 		},
 	}
 	for _, ld := range linkDirs {

@@ -578,9 +578,6 @@ func (plat Platform) MigrateFromReplicated() error {
 		}
 	}
 
-	if err := plat.Start(); err != nil {
-		return err
-	}
 	log.Info("Finishing Platform migration")
 	return nil
 }
