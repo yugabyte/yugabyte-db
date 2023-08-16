@@ -1051,20 +1051,9 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
 
-  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
-    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
-    // active transaction.
-    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
-    if (index > 0) {
-      index--;
-    }
-    // Term does not matter, so can be set to 0.
-
-    auto op_id = OpId(0, index);
-    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
-    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
-  }
+  SCHECK_NE(
+      tablet->table_type(), TableType::TRANSACTION_STATUS_TABLE_TYPE, IllegalState,
+      "Transaction status table cannot be bootstrapped.");
 
   auto op_id = GetLatestLogEntryOpId();
 
