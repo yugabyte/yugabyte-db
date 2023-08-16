@@ -266,7 +266,7 @@
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
-        "k8Memory": "Memory (GB)",
+        "k8Memory": "Memory (Gib)",
         "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
