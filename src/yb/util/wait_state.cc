@@ -36,18 +36,15 @@ void AUHMetadata::set_client_node_ip(std::string &&endpoint) {
   for (; index >= 0; index--, bit_position += 8) {
     power = 1;
     int octate = 0, bit;
-		while (index >= 0 && endpoint[index] != '.')
-		{
-			octate += power * (endpoint[index--] - '0');
-			power *= 10;
-		}
-		for (bit = 0; bit < 8; bit++)
-		{
-			if ((octate >> bit) & 1)
-			{
-				client_node_host ^= (1 << (bit_position + bit));
-			}
-		}
+    while (index >= 0 && endpoint[index] != '.') {
+      octate += power * (endpoint[index--] - '0');
+      power *= 10;
+    }
+    for (bit = 0; bit < 8; bit++) {
+      if ((octate >> bit) & 1) {
+        client_node_host ^= (1 << (bit_position + bit));
+      }
+    }
   }
 }
 

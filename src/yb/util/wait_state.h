@@ -30,7 +30,6 @@
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
 
 #define SET_WAIT_STATUS_TO(ptr, state) \
   if (ptr) ptr->set_state(state)
