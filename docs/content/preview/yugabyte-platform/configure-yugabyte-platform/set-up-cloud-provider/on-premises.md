@@ -208,6 +208,8 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
     ```bash
     /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
     ```
+    Note that in the preceding example you may need to change the Cloud Provider ID ("9cf26f3b-4c7c-451a-880d-593f2f76efce") to your specific cloud provider ID.   
+    To obtain this ID,  extract it from the web browser URL by visiting the following page in YB Anywhere **Configs > Infrastructure > On-Premises Datacenter > your specific Cloud Provider**.
 
     Expect the following output and prompt:
 
