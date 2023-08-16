@@ -13,21 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../multi-column-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../multi-column-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 Multi-column indexes are also known as compound indexes using which you can create an index with multiple columns.
 Multi-column indexes are similar to standard indexes as they both store a sorted table of pointers to data entries. These indexes provide faster access to data entries as it uses multiple columns to sort through data faster.
