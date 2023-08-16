@@ -107,5 +107,5 @@ clean-package:
 test:
 
 .PHONY: config
-config: 
+config:
 	cp ${CONFIG_INPUT_FILE_NAME} ${CONFIG_EMBEDED_NAME}

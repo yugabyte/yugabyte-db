@@ -31,7 +31,7 @@ services:
             {{end}}
 
             {{if eq (yamlPath "postgres.install.enabled") "true" }}
-            username="postgres"
+            username="{{ yamlPath "postgres.install.username" }}"
             password=""
             host="localhost"
             port="{{ yamlPath "postgres.install.port" }}"
