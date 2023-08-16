@@ -25,6 +25,7 @@ The following table lists different types of indexes and their support across th
 | [Foreign key](foreign-key-ysql) | Yes | No | Link to a column in another table |
 | [Secondary index](secondary-indexes) | Yes | Yes | Index on columns other than the primary key |
 | [Unique index](unique-index-ysql) | Yes | Yes | Set one or many columns to be unique |
+| [Multi-column index](multi-column-ysql) | Yes | Yes | Index on multiple columns for faster scan with lesser rows |
 | [Partial index](partial-index-ysql) | Yes | Yes | Indexes that apply to only some rows of the table |
 | [Covering index](covering-index-ysql) | Yes | Yes | Store other columns in the index for faster retrieval |
 | [Expression index](expression-index-ysql) | Yes | No | Index based on a functional operation on columns |
@@ -58,6 +59,12 @@ The following table lists different types of indexes and their support across th
     body="Explore unique indexes in YSQL and YCQL with examples."
     href="unique-index-ysql/"
     icon="fa-solid fa-bars-staggered">}}
+
+  {{<index/item
+    title="Multi-column indexes"
+    body="Explore multi-column indexes in YSQL and YCQL with examples."
+    href="multi-column-ysql/"
+    icon="fa-solid fa-bars">}}
 
   {{<index/item
     title="Partial indexes"
