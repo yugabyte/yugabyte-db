@@ -2,7 +2,7 @@
 title: Documentation
 headerTitle: Documentation Home
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
-headcontent: The open source distributed SQL database for cloud-native transactional applications.
+headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
 type: indexpage
 layout: list
 breadcrumbDisable: true
