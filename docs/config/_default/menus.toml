@@ -716,13 +716,13 @@
   [stable.params]
     showSection = true
 
-[[stable]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/stable/migrate/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/stable/migrate/"
+#  [stable.params]
+#    showSection = true
 
 [[stable]]
   name = "Secure"
@@ -914,13 +914,13 @@
   ["v2.16".params]
     showSection = true
 
-[["v2.16"]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/v2.16/migrate/"
-  ["v2.16".params]
-    showSection = true
+# [["v2.16"]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/v2.16/migrate/"
+#  ["v2.16".params]
+#    showSection = true
 
 [["v2.16"]]
   name = "Secure"
@@ -1055,13 +1055,13 @@
   ["v2.14".params]
     showSection = true
 
-[["v2.14"]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/v2.14/migrate/"
-  ["v2.14".params]
-    showSection = true
+# [["v2.14"]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/v2.14/migrate/"
+#  ["v2.14".params]
+#    showSection = true
 
 [["v2.14"]]
   name = "Secure"
@@ -1121,30 +1121,6 @@
   weight = 13
   identifier = "contribute"
   url = "/preview/contribute/"
-  ["v2.14".params]
-    showSection = true
-
-[["v2.14"]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  ["v2.14".params]
-    classes = "arrow-menu"
-    showSection = true
-
-[["v2.14"]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/v2.14/yugabyte-platform/"
-  ["v2.14".params]
-    showSection = true
-
-[["v2.14"]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
   ["v2.14".params]
     showSection = true
 
