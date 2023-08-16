@@ -187,8 +187,9 @@ std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitSta
   return {};
 }
 
-std::vector<WaitStateInfoPB> MasterTabletServer::ActiveUniverseHistory() const {
-  return {};
+rpc::Messenger* MasterTabletServer::GetMessenger(yb::util::MessengerType messenger_type) const {
+  LOG(FATAL) << "Unexpected call of GetMessenger()";
+  return nullptr;
 }
 
 } // namespace master

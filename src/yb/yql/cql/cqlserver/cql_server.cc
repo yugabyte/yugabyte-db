@@ -108,6 +108,11 @@ Status CQLServer::Start() {
   // Start the CQL node list refresh timer.
   timer_.async_wait(boost::bind(&CQLServer::CQLNodeListRefresh, this,
                                 boost::asio::placeholders::error));
+
+  if (tserver_) {
+    tserver_->SetCQLServerMessenger(std::bind(&CQLServer::messenger, this));
+  }
+
   return Status::OK();
 }
 

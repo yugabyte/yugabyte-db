@@ -414,7 +414,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "Generated Query Id = " << query_id;
   ql_env_.auh_metadata().query_id = std::stoull(
     b2a_hex(query_id).substr(0, std::min(16, (int)query_id.size())), 0, 16);
-  // LOG(ERROR) << " ------------ " << query_id << " " << ql_env_.auh_metadata().query_id;
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_query_id(ql_env_.auh_metadata().query_id);
+  }
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -454,6 +457,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
   LOG(ERROR) << req.query_id();
   ql_env_.auh_metadata().query_id = std::stoull(
     b2a_hex(req.query_id()).substr(0, std::min(16, (int)req.query_id().size())), 0, 16);
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_query_id(ql_env_.auh_metadata().query_id);
+  }
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
   if (!stmt_res.ok()) {
@@ -482,6 +489,10 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   // Allocates space to unprepared statements in the cache.
   ql_env_.auh_metadata().query_id = std::stoull(
     b2a_hex(query_id).substr(0, std::min(16, (int)query_id.size())), 0, 16);
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_query_id(ql_env_.auh_metadata().query_id);
+  }
   const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
       query_id, req.query(), &ql_env_, IsPrepare::kFalse);
 
