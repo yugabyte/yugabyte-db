@@ -1619,6 +1619,8 @@ client::YBSessionPtr& PgClientSession::EnsureSession(
   auto& session = Session(kind);
   if (!session) {
     session = CreateSession(&client_, deadline, clock_);
+  } else {
+    session->SetDeadline(deadline);
   }
   return session;
 }
