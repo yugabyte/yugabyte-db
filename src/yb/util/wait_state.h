@@ -174,7 +174,7 @@ struct AUHMetadata {
     if (!other.top_level_request_id.empty()) {
       top_level_request_id = other.top_level_request_id;
     }
-    if (!other.top_level_node_id != 0) {
+    if (!other.top_level_node_id.empty()) {
       top_level_node_id = other.top_level_node_id;
     }
     if (other.query_id != 0) {
