@@ -265,7 +265,7 @@ export const getUserIntent = (
     useSystemd: advancedConfig.useSystemd
   };
 
-  if (enableRRGflags && formData?.cloudConfig?.provider?.code !== CloudType.kubernetes) {
+  if (enableRRGflags) {
     if (clusterType === ClusterType.ASYNC && inheritFlagsFromPrimary) {
       intent.specificGFlags = {
         inheritFromPrimary: true,
