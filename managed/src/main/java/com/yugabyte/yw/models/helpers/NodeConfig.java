@@ -98,6 +98,8 @@ public class NodeConfig {
 
     AZCOPY("Azcopy binary is installed"),
 
+    CHRONYC("Chronyc binary is installed"),
+
     GSUTIL("Gsutil binary is installed"),
 
     S3CMD("S3cmd binary is installed"),
