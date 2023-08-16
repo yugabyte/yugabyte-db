@@ -24,7 +24,8 @@
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
-      "back": "Back"
+      "back": "Back",
+      "note": "Note :"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -42,6 +43,37 @@
         "masterKeyRotationSuccess": "Successfully rotated master key.",
         "lastRotatedLabel": "Last rotated: ",
         "lastActiveKMSLabel": "Last active KMS: "
+      },
+      "editYSQLSettings": {
+        "modalTitle": "Edit YSQL configuration",
+        "ysqlToggleLabel": "Enable YSQL for this Universe ",
+        "authToggleLabel": "Enable YSQL Auth",
+        "cannotEnableYSQL": "You cannot enable YSQL after universe creation",
+        "currentPwdToAuth": "Enter current password to disable Auth",
+        "YSQLPwdLabel": "YSQL Password",
+        "rotatePwdLabel": "Rotate ysql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
+        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
+        "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
+        "disableYSQLWarning2": "Once you perform this operation, You cannot enable it again."
+      },
+      "editYCQLSettings": {
+        "modalTitle": "Edit YCQL configuration",
+        "ycqlToggleLabel": "Enable YCQL for this Universe ",
+        "authToggleLabel": "Enable YCQL Auth",
+        "currentPwdToAuth": "Enter current password to disable Auth",
+        "YCQLPwdLabel": "YCQL Password",
+        "rotatePwdLabel": "Rotate ycql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
+        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
       }
     },
     "commonErrors": {
@@ -532,7 +564,6 @@
     "providerSelector": {
       "all": "All Providers",
       "errorMessage": "Failed to fetch list of providers"
-      
     },
     "customCACerts": {
       "listing": {
@@ -544,7 +575,7 @@
           "created": "Created",
           "validFrom": "Valid From",
           "validUntil": "Valid Until",
-          "moreActions":{
+          "moreActions": {
             "download": "Download",
             "updateCert": "Update Certificate"
           }
@@ -561,11 +592,11 @@
       "deleteCACertModal": {
         "title": "Delete CA Certificate",
         "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
-        "successMsg" : "Certificate deleted successfully"
+        "successMsg": "Certificate deleted successfully"
       }
     },
     "newRestoreModal": {
-      "title" : "Restore Backup",
+      "title": "Restore Backup",
       "restoreSuccess": "Success. Click <0>here</0> for task details",
       "allKeyspaces": "All Keyspaces",
       "preparingRestore": "Preparing Restore...",
@@ -593,7 +624,7 @@
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup"
         },
-        "selectKeyspaceForm":{
+        "selectKeyspaceForm": {
           "title": "Select Keyspace",
           "selectKeyspace": "Select the keyspace you want to restore",
           "optional": "(Optional)",
@@ -613,7 +644,7 @@
         "title": "Select tables you want to restore",
         "searchTableName": "Search table name",
         "viewFilter": {
-          "viewAll" : "View All",
+          "viewAll": "View All",
           "viewSelected": "View Selected"
         },
         "tablesCount": "{{count}} tables",

@@ -371,7 +371,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   onChange={(e: any) => handleChange(e.target.value, index)}
                                   onBlur={() => buildGFlagConf()}
                                   error={GFlagRows[index]?.error}
-                                  helperText={t(GFlagRows[index]?.errorMessageKey!)}
+                                  helperText={t(GFlagRows[index].errorMessageKey!)}
                                   inputProps={{
                                     'data-testid': `EditMultilineConfField-row-${index}`
                                   }}
