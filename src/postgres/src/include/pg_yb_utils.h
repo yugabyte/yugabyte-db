@@ -906,10 +906,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 	} while (0)
 #endif
 
-void ProcSetTopLevelNodeId(const char *);
+void ProcSetTopLevelNodeId(const uint64_t *);
 void ProcSetTopRequestId(const uint64_t *);
 
-void top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2]);
+void uint128_to_char(char *char_id, const uint64_t uint_id[2]);
 
 uint32 remote_host_port_to_uint(const char *remote_host);
 void client_node_ip_to_string(char *client_node_ip, uint32 client_node_host, uint16 client_node_port);

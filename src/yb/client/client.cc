@@ -1081,11 +1081,20 @@ Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   return Status::OK();
 }
 
-Result<std::string> YBClient::GetTServerUUID() {
-  if (data_->meta_cache_->local_tserver())
-    return data_->meta_cache_->local_tserver()->permanent_uuid();
+Result<std::vector<uint64_t>> YBClient::GetTServerUUID() {
+  vector<uint64_t> permanent_uuid(2);
 
-  return "";
+  if (data_->meta_cache_->local_tserver()) {
+    std::string tserver_uuid = data_->meta_cache_->local_tserver()->permanent_uuid();
+    if (!tserver_uuid.empty()) {
+      permanent_uuid[0] = std::stoull(tserver_uuid.substr(0, std::min(16, (int)tserver_uuid.size())), 0, 16);
+    }
+    if (tserver_uuid.size() > 16) {
+      permanent_uuid[1] = std::stoull(tserver_uuid.substr(16, std::min(16, (int)tserver_uuid.size() - 16)), 0, 16);
+    }
+  }
+
+  return permanent_uuid;
 }
 
 Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,

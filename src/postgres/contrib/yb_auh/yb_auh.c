@@ -47,7 +47,7 @@ typedef struct ybauhEntry {
   long request_id;
   uint32 wait_event;
   char wait_event_aux[16];
-  char top_level_node_id[16];
+  uint64_t top_level_node_id[2];
   uint32 client_node_host;
   uint16 client_node_port;
   long query_id;
@@ -83,7 +83,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             long request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
-                            const char* top_level_node_id,
+                            const uint64_t* top_level_node_id,
                             uint32 client_node_ip,
                             uint16 client_node_port,
                             long query_id,
@@ -185,7 +185,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
     {
       //TODO:
       auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
-                      proc->wait_event_info, "", proc->node_uuid,
+                      proc->wait_event_info, "", proc->top_level_node_id,
                       proc->client_node_host, proc->client_node_port,
                       proc->queryid, auh_sample_time, 1);
     }
@@ -276,7 +276,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             long request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
-                            const char* top_level_node_id,
+                            const uint64_t* top_level_node_id,
                             uint32 client_node_host,
                             uint16 client_node_port,
                             long query_id,
@@ -293,7 +293,6 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
-
   if (top_level_request_id) {
     AUHEntryArray[inserted].top_level_request_id[0] = top_level_request_id[0];
     AUHEntryArray[inserted].top_level_request_id[1] = top_level_request_id[1];
@@ -303,9 +302,10 @@ static void auh_entry_store(TimestampTz auh_time,
   memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
   AUHEntryArray[inserted].wait_event_aux[len] = '\0';
 
-  len = Min(strlen(top_level_node_id) + 1, 15);
-  memcpy(AUHEntryArray[inserted].top_level_node_id, top_level_node_id, len);
-  AUHEntryArray[inserted].top_level_node_id[len] = '\0';
+  if (top_level_node_id) {
+    AUHEntryArray[inserted].top_level_node_id[0] = top_level_node_id[0];
+    AUHEntryArray[inserted].top_level_node_id[1] = top_level_node_id[1];
+  }
 
   AUHEntryArray[inserted].client_node_host = client_node_host;
   AUHEntryArray[inserted].client_node_port = client_node_port;
@@ -390,11 +390,8 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     else
       break;
 
-    char top_level_request_id[17];
-    top_level_request_id_uint_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
-
-    top_level_request_id[16] = '\0';
-
+    char top_level_request_id[33];
+    uint128_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
     // top level request id
     if (AUHEntryArray[i].top_level_request_id[0] != '\0')
       values[j++] = CStringGetTextDatum(top_level_request_id);
@@ -433,9 +430,11 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     else
       nulls[j++] = true;
 
-    // Top level node id
+    char top_level_node_id[33];
+    uint128_to_char(top_level_node_id, AUHEntryArray[i].top_level_node_id);
+    // top level node id
     if (AUHEntryArray[i].top_level_node_id[0] != '\0')
-      values[j++] = CStringGetTextDatum(AUHEntryArray[i].top_level_node_id);
+      values[j++] = CStringGetTextDatum(top_level_node_id);
     else
       nulls[j++] = true;
 

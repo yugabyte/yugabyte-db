@@ -542,13 +542,13 @@ class PgClient::Impl {
     return resp.version();
   }
 
-  Result<std::string> GetTServerUUID() {
+  Result<std::vector<uint64_t>> GetTServerUUID() {
     tserver::PgGetTServerUUIDRequestPB req;
     tserver::PgGetTServerUUIDResponsePB resp;
 
     RETURN_NOT_OK(proxy_->GetTServerUUID(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
-    return resp.node_uuid();     
+    return std::vector<uint64_t>(resp.top_level_node_id().begin(), resp.top_level_node_id().end());
   }
 
   Status CreateSequencesDataTable() {
@@ -884,7 +884,7 @@ Result<uint64_t> PgClient::GetCatalogMasterVersion() {
   return impl_->GetCatalogMasterVersion();
 }
 
-Result<std::string> PgClient::GetTServerUUID() {
+Result<std::vector<uint64_t>> PgClient::GetTServerUUID() {
   return impl_->GetTServerUUID();
 }
 

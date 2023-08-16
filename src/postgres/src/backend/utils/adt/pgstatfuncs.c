@@ -2252,15 +2252,15 @@ yb_wait_metadata(PG_FUNCTION_ARGS)
 	values[2] = Int64GetDatum(proc->queryid);
 	ereport(LOG, (errmsg("Set queryid: " INT64_FORMAT, proc->queryid)));
 
-	if (strlen(proc->node_uuid) > 0)
-		values[3] = CStringGetTextDatum(proc->node_uuid);
-	else
-		nulls[3] = true;
-	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
+    char top_level_node_id[33];
+    uint128_to_char(top_level_node_id, proc->top_level_node_id);
+    values[3] = CStringGetTextDatum(top_level_node_id);
 
-    char top_level_request_id[17];
-    top_level_request_id_uint_to_char(top_level_request_id, proc->top_level_request_id);
-    top_level_request_id[16] = '\0';
+	ereport(LOG, (errmsg("Set top level request id: %s", top_level_node_id)));
+
+
+    char top_level_request_id[33];
+    uint128_to_char(top_level_request_id, proc->top_level_request_id);
     values[4] = CStringGetTextDatum(top_level_request_id);
 
 	ereport(LOG, (errmsg("Set top level request id: %s", top_level_request_id)));
@@ -2327,12 +2327,13 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		int cntr = funcctx->call_cntr;
 		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
 
-	    char top_level_request_id[17];
-		top_level_request_id_uint_to_char(top_level_request_id, rpc->metadata.top_level_request_id);
-		top_level_request_id[16] = '\0';
+	    char top_level_request_id[33];
+		uint128_to_char(top_level_request_id, rpc->metadata.top_level_request_id);
+		char top_level_node_id[33];
+		uint128_to_char(top_level_node_id, rpc->metadata.top_level_node_id);
 		values[0] = CStringGetTextDatum(top_level_request_id);
 		values[1] = Int32GetDatum(rpc->metadata.client_node_host);
-		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
+		values[2] = CStringGetTextDatum(top_level_node_id);
 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
 		values[4] = Int64GetDatum(rpc->metadata.query_id);
 		values[5] = UInt64GetDatum(rpc->wait_status_code);

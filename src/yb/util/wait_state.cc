@@ -22,6 +22,35 @@ namespace yb::util {
 // __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
+void AUHMetadata::set_client_node_ip(std::string &&endpoint) {
+  client_node_host = 0;
+  client_node_port = 0;
+  int power = 1;
+  int index = (int)endpoint.size() - 1;
+  while (index >= 0 && endpoint[index] != ':') {
+    client_node_port += power * (endpoint[index--] - '0');
+    power *= 10;
+  }
+  index--;
+  int bit_position = 0;
+  for (; index >= 0; index--, bit_position += 8) {
+    power = 1;
+    int octate = 0, bit;
+		while (index >= 0 && endpoint[index] != '.')
+		{
+			octate += power * (endpoint[index--] - '0');
+			power *= 10;
+		}
+		for (bit = 0; bit < 8; bit++)
+		{
+			if ((octate >> bit) & 1)
+			{
+				client_node_host ^= (1 << (bit_position + bit));
+			}
+		}
+  }
+}
+
 std::string AUHAuxInfo::ToString() const {
   return YB_STRUCT_TO_STRING(table_id, tablet_id, method);
 }
@@ -96,32 +125,7 @@ void WaitStateInfo::set_query_id(int64_t query_id) {
 
 void WaitStateInfo::set_client_node_ip(std::string &&endpoint) {
   std::lock_guard<simple_spinlock> l(mutex_);
-  metadata_.client_node_host = 0;
-  metadata_.client_node_port = 0;
-  int power = 1;
-  int index = (int)endpoint.size() - 1;
-  while (index >= 0 && endpoint[index] != ':') {
-    metadata_.client_node_port += power * (endpoint[index--] - '0');
-    power *= 10;
-  }
-  index--;
-  int bit_position = 0;
-  for (; index >= 0; index--, bit_position += 8) {
-    power = 1;
-    int octate = 0, bit;
-		while (index >= 0 && endpoint[index] != '.')
-		{
-			octate += power * (endpoint[index--] - '0');
-			power *= 10;
-		}
-		for (bit = 0; bit < 8; bit++)
-		{
-			if ((octate >> bit) & 1)
-			{
-				metadata_.client_node_host ^= (1 << (bit_position + bit));
-			}
-		}
-  }
+  metadata_.set_client_node_ip(std::move(endpoint));
 }
 
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {

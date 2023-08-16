@@ -1661,7 +1661,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
           .top_level_request_id = &info.metadata.top_level_request_id[0],
           .client_node_host = info.metadata.client_node_host,
           .client_node_port = (uint16_t)info.metadata.client_node_port,
-          .top_level_node_id = YBCPAllocStdString(info.metadata.top_level_node_id),
+          .top_level_node_id = &info.metadata.top_level_node_id[0],
           .current_request_id = info.metadata.current_request_id,
           .query_id = info.metadata.query_id,
         },

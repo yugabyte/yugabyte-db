@@ -275,7 +275,7 @@ message PgGetTServerUUIDRequestPB {
 
 message PgGetTServerUUIDResponsePB {
   AppStatusPB status = 1;
-  string node_uuid = 2;
+  repeated uint64 top_level_node_id = 2;
 }
 
 message PgFinishTransactionRequestPB {

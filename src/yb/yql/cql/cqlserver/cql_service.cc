@@ -213,7 +213,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     return;
   }
   (**processor).auh_metadata().top_level_request_id = {util::AUHRandom::GenerateRandom64(), util::AUHRandom::GenerateRandom64()};
-  (**processor).auh_metadata().client_node_ip = yb::ToString(inbound_call->remote_address());
+  (**processor).auh_metadata().set_client_node_ip(yb::ToString(inbound_call->remote_address()));
   auto wait_state = util::WaitStateInfo::CurrentWaitState();
   if (wait_state) {
     wait_state->UpdateMetadata((**processor).auh_metadata());

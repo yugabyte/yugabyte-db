@@ -218,7 +218,7 @@ struct PGPROC
 	int64		queryid;
 	uint32		client_node_host;
 	uint16		client_node_port;
-	uint64_t	top_level_node_id;
+	uint64_t	top_level_node_id[2];
 	uint64_t	top_level_request_id[2];
 };
 

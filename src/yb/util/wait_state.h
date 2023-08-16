@@ -156,11 +156,13 @@ YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
 
 struct AUHMetadata {
   std::vector<uint64_t> top_level_request_id;
-  uint64_t top_level_node_id;
+  std::vector<uint64_t> top_level_node_id;
   int64_t query_id = 0;
   int64_t current_request_id = 0;
   uint32_t client_node_host = 0;
   uint32_t client_node_port = 0;
+
+  void set_client_node_ip(std::string &&endpoint);
 
   std::string ToString() const {
     return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5 }",
@@ -171,7 +173,7 @@ struct AUHMetadata {
     if (!other.top_level_request_id.empty()) {
       top_level_request_id = other.top_level_request_id;
     }
-    if (!other.top_level_node_id != 0) {
+    if (!other.top_level_node_id.empty()) {
       top_level_node_id = other.top_level_node_id;
     }
     if (other.query_id != 0) {
@@ -194,8 +196,9 @@ struct AUHMetadata {
       pb->add_top_level_request_id(top_level_request_id[0]);
       pb->add_top_level_request_id(top_level_request_id[1]);
     }
-    if (!top_level_node_id != 0) {
-      pb->set_top_level_node_id(top_level_node_id);
+    if ((int)top_level_node_id.size() == 2) {
+      pb->add_top_level_node_id(top_level_node_id[0]);
+      pb->add_top_level_node_id(top_level_node_id[1]);
     }
     if (query_id != 0) {
       pb->set_query_id(query_id);
@@ -215,7 +218,7 @@ struct AUHMetadata {
   static AUHMetadata FromPB(const PB& pb) {
     return AUHMetadata{
         .top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end()),
-        .top_level_node_id = pb.top_level_node_id(),
+        .top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end()),
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
         .client_node_host = pb.client_node_host(),
@@ -226,7 +229,7 @@ struct AUHMetadata {
   template <class PB>
   void UpdateFromPB(const PB& pb) {
     if (pb.has_top_level_node_id()) {
-      top_level_node_id = pb.top_level_node_id();
+      top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end());
     }
     if (pb.has_top_level_request_id()) {
       top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end());

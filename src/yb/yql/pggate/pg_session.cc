@@ -992,8 +992,7 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
 
 Status PgSession::SetTopLevelNodeId() {
   auh_metadata_.top_level_node_id = VERIFY_RESULT(pg_client_.GetTServerUUID());
-  LOG(ERROR) << " top level node id : " << auh_metadata_.top_level_node_id;
-  pg_callbacks_.ProcSetTopLevelNodeId(auh_metadata_.top_level_node_id.c_str());
+  pg_callbacks_.ProcSetTopLevelNodeId(&auh_metadata_.top_level_node_id[0]);
   return Status::OK();
 }
 

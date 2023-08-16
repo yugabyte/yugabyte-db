@@ -3575,8 +3575,9 @@ void YbSetIsBatchedExecution(bool value)
 	yb_is_batched_execution = value;
 }
 
-void ProcSetTopLevelNodeId(const char *node_uuid) {
-	strcpy(MyProc->node_uuid, node_uuid);
+void ProcSetTopLevelNodeId(const uint64_t *top_level_node_id) {
+	MyProc->top_level_node_id[0] = top_level_node_id[0];
+	MyProc->top_level_node_id[1] = top_level_node_id[1];
 }
 
 void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
@@ -3584,20 +3585,9 @@ void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
 }
 
-void top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2])
+void uint128_to_char(char *char_id, const uint64_t uint_id[2])
 {
-    uint64_t nth_request_id = top_level_request_id_uint[0];
-    int index = 15;
-    for (; index >= 0; index--)
-    {
-      if (index == 8)
-        nth_request_id = top_level_request_id_uint[1];
-      if (nth_request_id % 16 < 10)
-        top_level_request_id[index] = '0' + (nth_request_id % 16);
-      else
-        top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
-      nth_request_id /= 10;
-    }
+	sprintf(char_id, "%llx%llx", uint_id[0], uint_id[1]);
 }
 
 uint32 remote_host_port_to_uint(const char* remote_host)
