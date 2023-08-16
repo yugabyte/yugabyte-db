@@ -3,7 +3,16 @@ import { Box, makeStyles, Paper, Typography, useTheme } from "@material-ui/core"
 import { useTranslation } from "react-i18next";
 import type { Migration } from "./MigrationOverview";
 import { ErrorOutline, Warning } from "@material-ui/icons";
-import { Bar, BarChart, LabelList, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  TooltipProps,
+  XAxis,
+  YAxis,
+} from "recharts";
 import Editor from "@monaco-editor/react";
 import { YBAccordion } from "@app/components";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
@@ -17,7 +26,7 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1),
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
-  }
+  },
 }));
 
 interface MigrationAnalyzeProps {
@@ -48,6 +57,26 @@ export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration
         xAxis: "Function",
         count: 32,
       },
+      {
+        xAxis: "Triggers",
+        count: 44,
+      },
+      {
+        xAxis: "Sequences",
+        count: 72,
+      },
+      {
+        xAxis: "Constraints",
+        count: 8,
+      },
+      {
+        xAxis: "Views",
+        count: 8,
+      },
+      {
+        xAxis: "Procedures",
+        count: 83,
+      },
     ],
     []
   );
@@ -75,31 +104,32 @@ export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration
           </YBAccordion>
 
           <YBAccordion titleContent={t("clusterDetail.voyager.sqlObjects")}>
-            <BarChart
-              width={400}
-              height={300}
-              data={graphData}
-              margin={{
-                top: 5,
-                right: 30,
-                left: 20,
-                bottom: 5,
-              }}
-              barCategoryGap={30}
-            >
-              <defs>
-                <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="20%" stopColor={"#8047F5"} stopOpacity={"0.5"} />
-                  <stop offset="80%" stopColor={"#2B59C3"} stopOpacity={"0.5"} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="xAxis" />
-              <YAxis />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count" fill="url(#bar-gradient)">
-                <LabelList dataKey="count" position="top" style={{ fill: "black" }} />
-              </Bar>
-            </BarChart>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={graphData}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+                barCategoryGap={30}
+                maxBarSize={40}
+              >
+                <defs>
+                  <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="20%" stopColor={"#8047F5"} stopOpacity={"0.5"} />
+                    <stop offset="80%" stopColor={"#2B59C3"} stopOpacity={"0.5"} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="xAxis" />
+                <YAxis />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" fill="url(#bar-gradient)">
+                  <LabelList dataKey="count" position="top" style={{ fill: "black" }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </YBAccordion>
 
           <YBAccordion
@@ -140,11 +170,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
   const classes = useStyles();
 
   if (active && payload && payload.length) {
-    return (
-      <Box className={classes.tooltip}>
-        {`${label}: ${payload[0].value}`}
-      </Box>
-    );
+    return <Box className={classes.tooltip}>{`${label}: ${payload[0].value}`}</Box>;
   }
 
   return null;

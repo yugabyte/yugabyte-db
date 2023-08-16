@@ -51,12 +51,15 @@ const CompletionComponent = (theme: Theme) => (completionPercentage: number) => 
   );
 };
 
-interface MigrationExportImportProps {
+interface MigrationExportImportDataProps {
   heading: string;
   migration: Migration;
 }
 
-export const MigrationExportImport: FC<MigrationExportImportProps> = ({ heading, migration }) => {
+export const MigrationExportImportData: FC<MigrationExportImportDataProps> = ({
+  heading,
+  migration,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();

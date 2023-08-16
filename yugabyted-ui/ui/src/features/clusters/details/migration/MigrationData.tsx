@@ -3,8 +3,9 @@ import { Box, makeStyles, Paper, Typography } from "@material-ui/core";
 import { ProgressStepper } from "../ProgressStepper";
 import type { Migration } from "./MigrationOverview";
 import { MigrationAnalyze } from "./MigrationAnalyze";
-import { MigrationExportImport } from "./MigrationExportImport";
+import { MigrationExportImportData } from "./MigrationExportImportData";
 import { MigrationVerify } from "./MigrationVerify";
+import { MigrationImportSchema } from "./MigrationImportSchema";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -44,9 +45,10 @@ export const MigrationData: FC<MigrationDataProps> = ({ steps = [""], migration 
 
       <Box mt={2}>
         {step === 0 && <MigrationAnalyze heading={steps[step]} migration={migration} />}
-        {step !== 0 && step !== steps.length - 1 && (
-          <MigrationExportImport heading={steps[step]} migration={migration} />
+        {(step === 1 || step === 3) && (
+          <MigrationExportImportData heading={steps[step]} migration={migration} />
         )}
+        {step === 2 && <MigrationImportSchema heading={steps[step]} migration={migration} />}
         {step === steps.length - 1 && (
           <MigrationVerify heading={steps[step]} migration={migration} />
         )}
