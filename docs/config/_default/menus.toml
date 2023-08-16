@@ -294,6 +294,15 @@
     showSection = true
 
 [[home]]
+  name = "Features"
+  weight = 2
+  identifier = "features"
+  url = "/preview/features/"
+  [home.params]
+    showSection = true
+    hideChildren = true
+
+[[home]]
   name = "Quick Start"
   weight = 2
   identifier = "quick-start"
@@ -344,6 +353,15 @@
   url = "/preview/"
   [preview.params]
     showSection = true
+
+[[preview]]
+  name = "Features"
+  weight = 3
+  identifier = "features"
+  url = "/preview/features/"
+  [preview.params]
+    showSection = true
+    hideChildren = true
 
 [[preview]]
   name = "Quick Start"
