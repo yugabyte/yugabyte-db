@@ -238,15 +238,22 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean tserverCpuChanged =
           !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
               newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
-      boolean masterCpuChanged =
-          !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
-              newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
       boolean tserverMemChanged =
           !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
               newIntent.tserverK8SNodeResourceSpec.memoryGib);
-      boolean masterMemChanged =
-          !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
-              newIntent.masterK8SNodeResourceSpec.memoryGib);
+      boolean masterMemChanged = false;
+      boolean masterCpuChanged = false;
+
+      // For clusters that have read replicas, this condition is true since we
+      // do not pass in masterK8sNodeResourceSpec.
+      if (curIntent.masterK8SNodeResourceSpec != null) {
+        masterMemChanged =
+            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
+                newIntent.masterK8SNodeResourceSpec.memoryGib);
+        masterCpuChanged =
+            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
+                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+      }
       instanceTypeChanged =
           tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
       if (!isReadOnlyCluster && (masterMemChanged || masterCpuChanged)) {
