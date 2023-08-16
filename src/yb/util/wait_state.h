@@ -54,6 +54,7 @@
  */
 #define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
+#define YB_CQL       0xD0000000U
 #define YB_PG        0x00000000U
 /* ----------
  * YB AUH Wait Classes
@@ -66,6 +67,7 @@
 #define YB_TABLET_WAIT               0xEC000000U
 #define YB_ROCKSDB                   0xEB000000U
 #define YB_CLIENT                    0xEA000000U
+#define YB_CQL_WAIT_STATE            0xDF000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -128,6 +130,10 @@ YB_DEFINE_ENUM_TYPE(
     (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
+    // CQL Wait Events
+    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteWaitingForCB)
+    (CQLRead)(CQLWrite)
+
     ((RocksDB, YB_ROCKSDB))
        (BlockCacheLookupInCache)
        (BlockCacheLookupCompressed)
@@ -144,6 +150,8 @@ YB_DEFINE_ENUM_TYPE(
       (LookingUpTablet)
       (TabletLookupFinished)
     )
+
+YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
 
 struct AUHMetadata {
   std::vector<uint64_t> top_level_request_id;
@@ -271,6 +279,7 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AUHAuxInfo& aux) EXCLUDES(mutex_);
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
+  void set_query_id(int64_t query_id) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {
@@ -340,6 +349,7 @@ class ScopedWaitStatus {
   const WaitStateCode state_;
   WaitStateCode prev_state_;
 };
+
 
 // Link to source codes for the classes below
 // https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/fast_random_number_generator.h

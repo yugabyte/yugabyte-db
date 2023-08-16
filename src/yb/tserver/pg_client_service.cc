@@ -41,6 +41,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
@@ -724,19 +725,40 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  void GetRPCsWaitStates(
+      tserver::PgActiveUniverseHistoryResponsePB* resp, yb::util::MessengerType messenger_type) {
+    rpc::DumpRunningRpcsRequestPB dump_req;
+    rpc::DumpRunningRpcsResponsePB dump_resp;
+
+    dump_req.set_include_traces(false);
+    dump_req.set_get_wait_state(true);
+    dump_req.set_dump_timed_out(false);
+
+    auto messenger = tablet_server_.GetMessenger(messenger_type);
+
+    WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+    
+    for (auto conns : dump_resp.inbound_connections()) {
+      for (auto call : conns.calls_in_flight()) {
+        if (messenger_type == util::MessengerType::kTserver) {
+          resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
+        } else {
+          resp->add_cql_wait_states()->CopyFrom(call.wait_state());
+        }
+      }
+    }
+  }
+
   Status ActiveUniverseHistory(
       const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
       rpc::RpcContext* context) {
-    auto tserver_wait_states = tablet_server_.ActiveUniverseHistory();
-
-    for (auto wait_state : tserver_wait_states) {
-      resp->add_wait_states()->CopyFrom(wait_state);
-    }
+    GetRPCsWaitStates(resp, util::MessengerType::kTserver);
+    GetRPCsWaitStates(resp, util::MessengerType::kCQLServer);
 
     auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
 
     for (auto wait_state : bg_wait_states) {
-      wait_state->ToPB(resp->add_wait_states());
+      wait_state->ToPB(resp->add_bg_wait_states());
     }
 
     return Status::OK();
