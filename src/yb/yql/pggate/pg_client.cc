@@ -752,8 +752,14 @@ class PgClient::Impl {
     tserver::PgActiveUniverseHistoryResponsePB resp;
     RETURN_NOT_OK(proxy_->ActiveUniverseHistory(req, &resp, PrepareController()));
     client::RpcsInfo result;
-    result.reserve(resp.wait_states_size());
-    for (const auto& wait_state : resp.wait_states()) {
+    result.reserve(resp.tserver_wait_states_size() + resp.cql_wait_states_size());
+    for (const auto& wait_state : resp.tserver_wait_states()) {
+      result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
+    }
+    for (const auto& wait_state : resp.cql_wait_states()) {
+      result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
+    }
+    for (const auto& wait_state : resp.bg_wait_states()) {
       result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
     }
     return result;

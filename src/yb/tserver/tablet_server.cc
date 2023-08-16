@@ -1235,35 +1235,19 @@ std::vector<yb::util::WaitStateInfoPtr> TabletServer::GetThreadpoolWaitStates() 
   return tablet_manager_->GetThreadpoolWaitStates();
 }
 
-std::vector<WaitStateInfoPB> TabletServer::ActiveUniverseHistory() const {
-  rpc::DumpRunningRpcsRequestPB dump_req;
-  rpc::DumpRunningRpcsResponsePB dump_resp;
+void TabletServer::SetCQLServerMessenger(CQLServerMessenger messenger) {
+  cql_server_messenger_ = messenger;
+}
 
-  dump_req.set_include_traces(false);
-  dump_req.set_get_wait_state(true);
-  dump_req.set_dump_timed_out(false);
-
-  WARN_NOT_OK(messenger()->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
-
-  std::vector<WaitStateInfoPB> res;
-  
-  for (auto conns : dump_resp.inbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
+rpc::Messenger* TabletServer::GetMessenger(util::MessengerType messenger_type) const {
+  switch (messenger_type) {
+    case util::MessengerType::kTserver:
+      return messenger();
+    case util::MessengerType::kCQLServer:
+      return cql_server_messenger_();
+    default:
+      LOG(FATAL) << "AUH asking for invalid messenger";
   }
-
-  for (auto conns : dump_resp.outbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
-  }
-
-  return res;
 }
 
 }  // namespace tserver

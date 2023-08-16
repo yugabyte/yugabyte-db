@@ -709,7 +709,9 @@ message PgActiveUniverseHistoryRequestPB {}
 
 message PgActiveUniverseHistoryResponsePB {
   AppStatusPB status = 1;
-  repeated WaitStateInfoPB wait_states = 2;
+  repeated WaitStateInfoPB tserver_wait_states = 2;
+  repeated WaitStateInfoPB cql_wait_states = 3;
+  repeated WaitStateInfoPB bg_wait_states = 4;
 }
 
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }

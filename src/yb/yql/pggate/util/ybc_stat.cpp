@@ -53,6 +53,9 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
         case YB_PG:
             event_component = "PG";
             break;
+        case YB_CQL:
+            event_component = "CQL";
+            break;
         default:
             event_component = "???";
             break;
@@ -99,6 +102,9 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
             break;
         case YB_FLUSH_AND_COMPACTION:
             event_type = "Flush and Compaction";
+            break;
+        case YB_CQL_WAIT_STATE:
+            event_type = "Query Processing";
             break;
         default:
             event_type = "???";

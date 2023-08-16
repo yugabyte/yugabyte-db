@@ -36,6 +36,7 @@ namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
+using CQLServerMessenger = std::function<rpc::Messenger*(void)>;
 
 class TabletServerIf : public LocalTabletServer {
  public:
@@ -80,8 +81,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 
-  virtual std::vector<WaitStateInfoPB> ActiveUniverseHistory() const = 0;
+  virtual void SetCQLServerMessenger(CQLServerMessenger messenger) = 0;
 
+  virtual rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const = 0;
 };
 
 } // namespace tserver
