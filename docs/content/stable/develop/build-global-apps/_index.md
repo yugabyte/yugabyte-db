@@ -73,9 +73,9 @@ Use the following matrix to choose a [design pattern](#design-patterns-explained
 | **Single Active**            | [Global database](./global-database)<br>[Active-active single-master](./active-active-single-master) | N/A                                                                       |
 | **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **DATA ACCESS ARCHITECTURE** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
+| **Data Access Architecture** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
 
-## Design patterns explained
+## Design patterns
 
 The following table summarizes the design patterns that you can use for your applications. Use these proven patterns to address common problems and accelerate your application development.
 

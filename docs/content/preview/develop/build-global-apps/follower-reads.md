@@ -69,7 +69,7 @@ When the follower in a region fails, the application redirects its reads to the 
 
 ![Follower reads - Failover](/images/develop/global-apps/global-apps-follower-reads-failover.png)
 
-Notice how the application in `us-west` reads from the follower in `us-central` when the follower in `us-west` has failed. Even now, the read latency is just 40 ms, much less than the original 60 ms.
+Notice how the application in `us-west` reads from the follower in `us-central` when the follower in `us-west` has failed. The read latency is 40 ms, still much less than the original 60 ms.
 
 ## Learn more
 

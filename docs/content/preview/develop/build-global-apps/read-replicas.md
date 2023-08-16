@@ -49,11 +49,11 @@ This is only for reads. All writes still go to the leader.
 
 ## Failover
 
-When the read replicas in a region fail, the application redirects its read to the next closest read replica or leader.
+When the read replicas in a region fail, the application redirects its reads to the next closest read replica or leader.
 
 ![Read Replicas - Failover](/images/develop/global-apps/global-apps-read-replicas-failover.png)
 
-Notice how the application in `us-west` reads from the follower in `us-central` when the read replicas in `us-west` fail. Even now, the read latency is just 40 ms, much less than the original 60 ms.
+Notice how the application in `us-west` reads from the follower in `us-central` when the read replicas in `us-west` fail. The read latency is 40 ms, still much less than the original 60 ms.
 
 ## Learn more
 

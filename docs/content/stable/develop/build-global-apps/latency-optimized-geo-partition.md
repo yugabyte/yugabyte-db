@@ -22,7 +22,7 @@ Application instances are active in all regions, do consistent reads, and operat
 
 {{<cluster-setup-tabs>}}
 
-Suppose you want to serve users both in the East and West regions of the US with reduced latency. For this, you should set up a replication factor 3 cluster with leaders in 2 regions, `us-west-1` and `us-east-1`, and place the replicas in nearby regions, say `us-west-2` and `us-east-2`. This provides low read and write latencies for the 2 partitions.
+Suppose you want to serve users in both the East and West regions of the US with reduced latency. Set up a cluster with a replication factor of 3 and leaders in 2 regions, `us-west-1` and `us-east-1`, and place the replicas in nearby regions, `us-west-2` and `us-east-2`. This provides low read and write latencies for the 2 partitions.
 
 ![RF3 cluster spanning 2 regions](/images/develop/global-apps/latency-optimized-geo-partition-setup.png)
 
@@ -59,7 +59,7 @@ CREATE TABLE us_east PARTITION OF users (
 
 ## Replica placement
 
-Now configure your `west` partition leader preference to place the leader in `us-west-1`, one replica in `us-west-2` (nearby region), and the other replica in `us-east-2`. Placing one replica of west data in the east has the advantage of enabling follower reads for applications in the east if needed.
+Configure your `west` partition leader preference to place the leader in `us-west-1`, one replica in `us-west-2` (nearby region), and the other replica in `us-east-2`. Placing one replica of west data in the east has the advantage of enabling follower reads for applications in the east if needed.
 
 ```plpgsql
 --  tablespace for west data

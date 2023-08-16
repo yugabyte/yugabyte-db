@@ -45,14 +45,14 @@ This becomes worse when you add an application in `us-west`.
 The application in `us-west` has a high read latency of 60 ms.
 
 {{<tip title="Goal #2">}}
-Reduce the 60 ms access latency of applications in `us-west`
+Reduce the 60 ms access latency of applications in `us-west`.
 {{</tip>}}
 
 ## Duplicate indexes
 
 By default, all reads go to the leader, so even though the replicas are available in other regions, applications incur cross-region latency if the leaders are in a different region than the application.
 
-To address this, you can create multiple covering indexes with the same schema as the table, and attach them to different tablespaces, with leader preference set to each region.
+To address this, you can create multiple [covering indexes](../../../explore/indexes-constraints/covering-index-ysql/) with the same schema as the table, and attach them to different tablespaces, with leader preference set to each region.
 
 To set this up, do the following:
 

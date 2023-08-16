@@ -22,7 +22,7 @@ Application instances are active in multiple regions and may read stale data.
 
 {{<cluster-setup-tabs list="local,anywhere">}}
 
-Suppose you have a replication factor 3 cluster and applications deployed in `us-west`.
+Suppose you have cluster with a replication factor of 3, and applications deployed in `us-west`.
 
 ![RF3 cluster in one region](/images/develop/global-apps/aa-single-master-1region.png)
 
@@ -30,7 +30,7 @@ This ensures that the reads and writes are in the same region, with the expected
 
 ## Multi-master
 
-You can set up another cluster in a different region, say `us-east`, using [xCluster](../../../explore/multi-region-deployments/asynchronous-replication-ysql/#configure-bidirectional-replication).
+You can eliminate the possibility of data loss by setting up another cluster in a different region, say `us-east`, using [xCluster](../../../explore/multi-region-deployments/asynchronous-replication-ysql/#configure-bidirectional-replication).
 
 ![Active-Active Multi-Master](/images/develop/global-apps/aa-multi-master-setup.png)
 
@@ -53,7 +53,7 @@ The replication happens at the DocDB layer, bypassing the query layer, and some 
 - Avoid `UNIQUE` indexes and constraints, as there is no way to check uniqueness.
 - Avoid `TRIGGERS`, as the triggers won't be fired as the query layer is bypassed.
 - Avoid `SERIAL` columns as both the clusters would generate the same sequence (use UUID instead).
-- Schema changes are not automatically transmitted but have to be applied manually (for now).
+- Schema changes are not automatically transmitted but have to be applied manually (currently).
 - Transaction updates are NOT committed atomically across sources and hence the other cluster could be transactionally inconsistent.
 
 ## Learn more

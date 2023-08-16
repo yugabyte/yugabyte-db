@@ -14,7 +14,7 @@ type: docs
 
 Data residency laws (such as the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)) require data of citizens or residents to be collected, processed, and stored inside the country. Multi-national businesses must operate under local data regulations that dictate how the data of a nation's residents must be stored inside its borders. Re-architecting your storage layer and applications to support these regulations could be a very daunting task.
 
-You want to have data of users from different countries (for example, US, Germany, India) in the same table, but store the rows in their respective regions to comply with the country's data-protection laws, or to reduce latency for the users in those countries similar to the following illustration.
+Suppose you want to store data of users from different countries (for example, US, Germany, India) in the same table. To comply with national data-protection laws, or to reduce latency for the users in those countries, you can store the rows in their respective regions, similar to the following illustration.
 
 {{<tip>}}
 Application instances are active in all regions, do consistent reads, and data is partitioned but applications operate on the entire dataset.
@@ -22,7 +22,7 @@ Application instances are active in all regions, do consistent reads, and data i
 
 ![User data stored within their country's boundaries](/images/develop/global-apps/locality-optimized-geo-partition-goal.png)
 
-For this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+To do this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Setup
 
@@ -117,7 +117,7 @@ You can add other tables without partitioning to be present across both geograph
 
 ## Failover
 
-This pattern is resilient toregion failure. When any of the regions hosting one of the partition leaders fails, the partition follower in another zone would immediately be promoted to leader and the application can continue without any data loss.
+This pattern is resilient to region failure. When any of the regions hosting one of the partition leaders fails, the partition follower in another zone would immediately be promoted to leader and the application can continue without any data loss.
 
 ![Failover](/images/develop/global-apps/locality-optimized-geo-partition-failover.png)
 

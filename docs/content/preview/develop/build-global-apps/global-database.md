@@ -93,7 +93,8 @@ As the application will run in `us-east` and you want it to failover to `us-cent
 Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2 as follows:
 
 ```shell
-./bin/yb-admin set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:2 aws.us-west-1.us-west-1a:3
+./bin/yb-admin \
+    set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:2 aws.us-west-1.us-west-1a:3
 ```
 
 The leaders are placed in `us-east`.
@@ -106,7 +107,7 @@ You can check the tablet information by going to the table on the **Database** p
 
 ## Initial deploy
 
-In this example, when the application starts up in the east, it has a very low read latency of 2 ms as it reads from leaders in the same region. Writes take about 30 ms, as every write has to be replicated to at least 2 other replicas, one of which is located in the region, and the next closest one is in `us-central`, about 30 ms away.
+In this example, when the application starts in the east, it has a very low read latency of 2 ms as it reads from leaders in the same region. Writes take about 30 ms, as every write has to be replicated to at least 2 other replicas, one of which is located in the region, and the next closest one is in `us-central`, about 30 ms away.
 
 ![Global Database - application deploy](/images/develop/global-apps/global-database-app.png)
 

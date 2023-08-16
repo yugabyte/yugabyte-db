@@ -22,7 +22,7 @@ Only one application instance is active at any time and does consistent reads. A
 
 {{<cluster-setup-tabs list="local,anywhere">}}
 
-Suppose you have a replication factor 3 cluster and applications deployed in `us-west`.
+Suppose you have cluster with a replication factor of 3, and applications deployed in `us-west`.
 
 ![RF3 cluster in one region](/images/develop/global-apps/aa-single-master-1region.png)
 
@@ -63,7 +63,7 @@ The replication happens at the DocDB layer, bypassing the query layer, and some 
 - Avoid `UNIQUE` indexes and constraints, as there is no way to check uniqueness.
 - Avoid `TRIGGERS`, as the triggers won't be fired because the query layer is bypassed.
 - Avoid `SERIAL` columns, as both the clusters would generate the same sequence (use UUID instead).
-- Schema changes are not automatically transmitted but have to be applied manually (for now).
+- Schema changes are not automatically transmitted but have to be applied manually (currently).
 
 Another thing to note with xCluster is that transaction updates are NOT committed atomically from the source to the sink and hence the second cluster could be transactionally inconsistent.
 
