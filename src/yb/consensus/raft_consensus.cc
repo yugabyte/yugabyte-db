@@ -1520,8 +1520,8 @@ Status RaftConsensus::Update(
   if (wait_state) {
     wait_state->UpdateMetadata(
       yb::util::AUHMetadata{
-          .top_level_node_id = {0, 1},
           .top_level_request_id = {0, 1},
+          .top_level_node_id = {0, 1},
           .query_id = -1});
   }
   SET_WAIT_STATUS(util::WaitStateCode::Updating);
