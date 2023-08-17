@@ -1415,7 +1415,7 @@ pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
 	 * Since this is a four-byte field which is always read and written as
 	 * four-bytes, updates are atomic.
 	 */
-	if (MyProc->top_level_request_id[0] != '\0')
+	if (proc->top_level_request_id[0] != '\0')
 		proc->wait_event_info = WAIT_EVENT_CPU;
 	else
 	 	proc->wait_event_info = 0;
