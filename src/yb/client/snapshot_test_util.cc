@@ -15,6 +15,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/wire_protocol.h"
@@ -190,20 +191,35 @@ Status SnapshotTestUtil::RestoreSnapshot(
   }, kWaitTimeout * kTimeMultiplier, Format("Restoration $0 done", restoration_id));
 }
 
+Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const YBTableName& table_name) {
+  return DoStartSnapshot([&table_name](master::CreateSnapshotRequestPB* req) {
+    auto table = req->add_tables();
+    table->set_table_name(table_name.table_name());
+    table->mutable_namespace_()->set_name(table_name.namespace_name());
+    table->mutable_namespace_()->set_database_type(table_name.namespace_type());
+  });
+}
+
 Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const TableHandle& table) {
   return StartSnapshot(table.table()->id());
 }
 
 Result<TxnSnapshotId> SnapshotTestUtil::StartSnapshot(const TableId& table_id, bool imported) {
+  return DoStartSnapshot([&table_id, imported](master::CreateSnapshotRequestPB* req) {
+    req->add_tables()->set_table_id(table_id);
+    if (imported) {
+      req->set_imported(true);
+    }
+  });
+}
+
+template <class F>
+Result<TxnSnapshotId> SnapshotTestUtil::DoStartSnapshot(const F& fill_tables) {
   rpc::RpcController controller;
   controller.set_timeout(60s);
   master::CreateSnapshotRequestPB req;
   req.set_transaction_aware(true);
-  auto id = req.add_tables();
-  id->set_table_id(table_id);
-  if (imported) {
-    req.set_imported(true);
-  }
+  fill_tables(&req);
   master::CreateSnapshotResponsePB resp;
   RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshot(req, &resp, &controller));
   RETURN_NOT_OK(ResponseStatus(resp));

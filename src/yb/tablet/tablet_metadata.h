@@ -600,6 +600,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // versions is a map from table id to min schema version that should be kept for this table.
   Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+  void DisableSchemaGC();
+  void EnableSchemaGC();
 
   Result<docdb::CompactionSchemaInfo> CotablePacking(
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
@@ -752,7 +754,23 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // to prevent WAL GC of such operations.
   OpId min_unflushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Max();
 
+  int disable_schema_gc_counter_ GUARDED_BY(data_mutex_) = 0;
+
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
+};
+
+class DisableSchemaGC {
+ public:
+  explicit DisableSchemaGC(RaftGroupMetadata* metadata) : metadata_(metadata) {
+    metadata->DisableSchemaGC();
+  }
+
+  ~DisableSchemaGC() {
+    metadata_->EnableSchemaGC();
+  }
+
+ private:
+  RaftGroupMetadata* metadata_;
 };
 
 Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);
