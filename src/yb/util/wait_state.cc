@@ -65,7 +65,7 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
   }
   return code_;
 }
-`
+
 void WaitStateInfo::set_state(WaitStateCode c) {
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   if (freeze_) {
