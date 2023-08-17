@@ -1,7 +1,7 @@
 ---
-title: Set up on-premises nodes manually
-headerTitle: Set up on-premises nodes manually
-linkTitle: Set up on-prem nodes manually
+title: Manually provision on-premises nodes
+headerTitle: Manually provision on-premises nodes
+linkTitle: Manually provision on-prem nodes
 description: Provision the on-premises nodes manually.
 headContent: Your SSH user does not have sudo privileges
 menu:
@@ -12,10 +12,10 @@ menu:
 type: docs
 ---
 
-Use the following procedure to provision nodes if you set **Manually Provision Nodes** to true in the [on-premises provider configuration](../on-premises/):
+Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
 
-- If your SSH user has sudo privileges that require a password, perform the **Manual setup with script**.
-- If your SSH user does not have sudo privileges at all, perform the **Fully manual setup**.
+- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
+- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

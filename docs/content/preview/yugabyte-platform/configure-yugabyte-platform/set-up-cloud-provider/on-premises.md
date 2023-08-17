@@ -131,9 +131,11 @@ To add regions for the provider, do the following:
 
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**).
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**) and [manually provision the instances](../on-premises-script/).
 
-Note that after you have provisioned and added the instances to the provider (including installing the node agent) YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+{{< tip title="SSH access" >}}
+After you have provisioned and added the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+{{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
@@ -170,7 +172,7 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 
 After the provider has been created, you can configure the hardware for the on-premises configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
 
-![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-instances.png)
+![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
 To configure the hardware, do the following:
 
@@ -199,8 +201,6 @@ To add an instance type, do the following:
 
 You can add instances to an on-prem provider using the YugabyteDB Anywhere UI.
 
-Note that after you have added the instances to the provider (including installing the node agent) YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
-
 #### Prerequisites
 
 Before you add instances, you need the following:
@@ -208,12 +208,10 @@ Before you add instances, you need the following:
 - The IP addresses of your VMs. Before you can add instances, you need to create your VMs. You do this using your hypervisor or cloud provider.
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
 
-In addition, if **Manually Provision Nodes** is enabled in the on-prem provider configuration, you must manually provision instances with the necessary software before you can add them to the provider. You only need to manually provision instances if one of the following conditions is true:
+In addition, if either of the following conditions is true (and **Manually Provision Nodes** is enabled in the on-prem provider configuration), you must manually provision instances with the necessary software before you can add them to the on-premises provider:
 
-- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password.
-- Your SSH user does not have sudo privileges.
-
-For instructions, refer to [Set up on-premises nodes manually](../on-premises-script/).
+- Your [SSH user](#ssh-key-pairs) has sudo privileges that require a password. See [Manual setup with script](../on-premises-script/).
+- Your SSH user does not have sudo privileges. See [Fully manual setup](../on-premises-manual/).
 
 #### Add instances to the on-prem provider
 

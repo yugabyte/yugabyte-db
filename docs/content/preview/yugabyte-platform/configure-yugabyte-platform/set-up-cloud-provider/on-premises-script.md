@@ -1,7 +1,7 @@
 ---
-title: Set up on-premises nodes manually
-headerTitle: Set up on-premises nodes manually
-linkTitle: Set up on-prem nodes manually
+title: Manually provision on-premises nodes
+headerTitle: Manually provision on-premises nodes
+linkTitle: Manually provision on-prem nodes
 description: Provision the on-premises nodes manually.
 headContent: Your SSH user has sudo privileges that require a password
 menu:
@@ -12,10 +12,10 @@ menu:
 type: docs
 ---
 
-Use the following procedure to provision nodes if you set **Manually Provision Nodes** to true in the [on-premises provider configuration](../on-premises/):
+Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
 
-- If your SSH user has sudo privileges that require a password, perform the **Manual setup with script**.
-- If your SSH user does not have sudo privileges at all, perform the **Fully manual setup**.
+- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
+- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -68,7 +68,7 @@ You can manually provision each node using the pre-provisioning Python script, a
     - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
     - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `http://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
     - `--node_name` - enter a name for the node.
-    - `--instance_type` - enter the name of the [instance type](#add-instance-types) to use for the node. The name must match the name of an existing instance type.
+    - `--instance_type` - enter the name of the [instance type](../on-premises/#add-instance-types) to use for the node. The name must match the name of an existing instance type.
     - `--zone_name` - enter a zone name for the node.
 
     For example:
