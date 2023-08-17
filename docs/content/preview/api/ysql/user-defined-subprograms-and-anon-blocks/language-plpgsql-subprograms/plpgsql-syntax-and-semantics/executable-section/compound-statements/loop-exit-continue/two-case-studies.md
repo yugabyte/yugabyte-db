@@ -8,7 +8,7 @@ description: Two case studies to demonstrate the use of the "for" loop (over a r
 menu:
   preview:
     identifier: two-case-studies
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 60
 type: docs
 showRightNav: true

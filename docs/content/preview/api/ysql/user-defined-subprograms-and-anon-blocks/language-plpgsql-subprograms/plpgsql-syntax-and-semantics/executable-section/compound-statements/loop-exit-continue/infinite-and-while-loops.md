@@ -6,7 +6,7 @@ description: Describes the syntax and semantics of the "infinite loop" and the "
 menu:
   preview:
     identifier: infinite-and-while-loops
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 10
 type: docs
 showRightNav: true
@@ -85,7 +85,7 @@ The code relies on these basic PL/pgSQL statements:
 - _[plpgsql_fetch_from_cursor_stmt](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-fetch-from-cursor-stmt)_
 - _[plpgsql_close_cursor_stmt](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-close-cursor-stmt)_
 
-See also the section **[Cursor manipulation in PL/pgSQL](../../basic-statements/cursor-manipulation/)**.
+See also the section **[Cursor manipulation in PL/pgSQL](../../../basic-statements/cursor-manipulation/)**.
 
 This is the result:
 
@@ -100,9 +100,9 @@ This is the result:
  11 | 50
 ```
 
-Notice the use of the special built-in variable _found_. (This is described in the section [The "get diagnostics" statement](../../../executable-section/basic-statements/get-diagnostics/).)
+Notice the use of the special built-in variable _found_. (This is described in the section [The "get diagnostics" statement](../../../../executable-section/basic-statements/get-diagnostics/).)
 
-See also the section [Beware Issue #6514](../../../../../../cursors/#beware-issue-6514) at the end of the [Cursors](../../../../../../cursors/) section. Because of the current restrictions that it describes, and because of the fact that _fetch all_ is anyway not supported in PL/pgSQL in vanilla PostgreSQL, the only viable cursor operation in PL/pgSQL besides _open_ and _close_ is _fetch next... into_. Given this, the _while loop_ approach for iterating over the results of a query shown here adds no value over what the _[query for loop](../query-for-loop/)_ brings.
+See also the section [Beware Issue #6514](../../../../../../../cursors/#beware-issue-6514) at the end of the [Cursors](../../../../../../../cursors/) section. Because of the current restrictions that it describes, and because of the fact that _fetch all_ is anyway not supported in PL/pgSQL in vanilla PostgreSQL, the only viable cursor operation in PL/pgSQL besides _open_ and _close_ is _fetch next... into_. Given this, the _while loop_ approach for iterating over the results of a query shown here adds no value over what the _[query for loop](../query-for-loop/)_ brings.
 
 ## "While loop"
 

@@ -6,7 +6,7 @@ description: Describes the syntax and semantics of the integer for loop. [YSQL]
 menu:
   preview:
     identifier: integer-for-loop
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 20
 type: docs
 showRightNav: true
