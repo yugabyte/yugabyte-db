@@ -358,6 +358,28 @@ func (prom Prometheus) MigrateFromReplicated() error {
 	return nil
 }
 
+// FinishReplicatedMigrate completest the replicated migration prometheus specific tasks
+func (prom Prometheus) FinishReplicatedMigrate() error {
+	links := []string{
+		filepath.Join(prom.DataDir, "storage"),
+		filepath.Join(prom.DataDir, "swamper_targets"),
+		filepath.Join(prom.DataDir, "swamper_rules"),
+	}
+
+	for _, link := range links {
+		if err := common.ResolveSymlink(link); err != nil {
+			return fmt.Errorf("could not complete prometheus migration: %w", err)
+		}
+	}
+
+	userName := viper.GetString("service_username")
+	if err := common.Chown(prom.DataDir, userName, userName, true); err != nil {
+		log.Error("failed to change ownership of " + prom.DataDir + ": " + err.Error())
+		return err
+	}
+	return nil
+}
+
 func (prom Prometheus) moveAndExtractPrometheusPackage() error {
 
 	packagesPath := common.GetInstallerSoftwareDir() + "/packages"
