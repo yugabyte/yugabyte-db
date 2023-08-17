@@ -5,9 +5,9 @@ linkTitle: Install
 description: Prerequisites and installation instructions for YugabyteDB Voyager.
 image: /images/section_icons/develop/learn.png
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: install-yb-voyager
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 101
 type: docs
 ---

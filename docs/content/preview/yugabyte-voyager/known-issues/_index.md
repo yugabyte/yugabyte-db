@@ -8,9 +8,9 @@ description: Known issues and suggested workarounds for migrating data using Yug
 type: indexpage
 showRightNav: true
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: known-issues
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 104
 ---
 

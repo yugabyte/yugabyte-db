@@ -4,7 +4,7 @@ linkTitle: MySQL
 headcontent: Known issues when migrating data from MySQL.
 description: Known issues and suggested workarounds for migrating data from MySQL.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: mysql-issues
     parent: known-issues
     weight: 101

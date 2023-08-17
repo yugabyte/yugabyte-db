@@ -8,9 +8,9 @@ description: Learn about the CLI Reference, data modeling strategies, and data t
 type: indexpage
 showRightNav: true
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: reference-voyager
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 105
 ---
 

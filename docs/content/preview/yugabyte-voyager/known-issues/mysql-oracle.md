@@ -4,7 +4,7 @@ linkTitle: MySQL and Oracle
 headcontent: Known issues when migrating data from MySQL or Oracle.
 description: Known issues and suggested workarounds for migrating data from MySQL or Oracle.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: mysql-oracle-issues
     parent: known-issues
     weight: 103

@@ -4,7 +4,7 @@ headcontent: yb-voyager command line interface
 linkTitle: yb-voyager CLI
 description: YugabyteDB Voyager CLI and SSL connectivity.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: yb-voyager-cli
     parent: reference-voyager
     weight: 100
