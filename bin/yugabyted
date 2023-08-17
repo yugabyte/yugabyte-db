@@ -538,7 +538,16 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "{} is not running. Cannot connect to YSQL.".format(SCRIPT_NAME))
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
-        ysql_proxy.connect()
+        is_password_passed=False
+        for arg in sys.argv[1:]:
+            if arg.startswith("--password"):
+                is_password_passed = True
+                break
+
+        if self.configs.saved_data.get("secure") and is_password_passed:
+            ysql_proxy.connect_with_password()
+        else:
+            ysql_proxy.connect_without_password()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
@@ -551,7 +560,16 @@ class ControlScript(object):
         ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
                         port=self.configs.saved_data.get("ycql_port"),
                         secure=self.configs.saved_data.get("secure"))
-        ycql_proxy.connect()
+        is_password_passed=False
+        for arg in sys.argv[1:]:
+            if arg.startswith("--password"):
+                is_password_passed = True
+                break
+
+        if self.configs.saved_data.get("secure") and is_password_passed:
+            ycql_proxy.connect_with_password()
+        else:
+            ycql_proxy.connect_without_password()
 
     # Creates demo database and starts an interactive shell into it. Destroys the sample database
     # after shell quits.
@@ -641,7 +659,7 @@ class ControlScript(object):
         Output.print_out(
             "For more, go to {}\n".format(website)
         )
-        ysql_proxy.connect(db=db_name)
+        ysql_proxy.connect_with_password(db=db_name)
 
     # Destroy target demo database if it exists.
     def destroy_demo(self, signum=None, frame=None):
@@ -4125,6 +4143,9 @@ class ControlScript(object):
 
         has_errors = False
 
+        if self.configs.saved_data.get("database_password") is not None:
+            self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
+
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
             if args.collect_at_dir is not None:
@@ -4292,6 +4313,22 @@ class ControlScript(object):
                     has_errors = True
                     Output.print_out(Output.make_red("ERROR") + ": Please provide a valid " +
                                  "--rf flag. Replication factor cannot be less than 1.")
+
+        if args.parser == "ysql":
+            if args.username is not None:
+                self.setup_env_init.set_ysql_user(args.username)
+            if args.password is not None:
+                self.setup_env_init.set_ysql_password(args.password)
+            if args.database is not None:
+                self.setup_env_init.set_ysql_db(args.database)
+
+        if args.parser == "ycql":
+            if args.username is not None:
+                self.setup_env_init.set_ycql_user(args.username)
+            if args.password is not None:
+                self.setup_env_init.set_ycql_password(args.password)
+            if args.keyspace is not None:
+                self.setup_env_init.set_ycql_keyspace(args.keyspace)
 
         if args.parser == "start":
             if args.read_replica and not args.join:
@@ -4501,9 +4538,6 @@ class ControlScript(object):
             self.configs.saved_data["ui"] = args.ui
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
-        if self.configs.saved_data.get("database_password") is not None:
-            self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
-
         if has_errors:
             sys.exit(1)
 
@@ -4574,6 +4608,32 @@ class ControlScript(object):
             func = getattr(self, "connect_{}".format(api), None)
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
+
+        # Flags for sub command: ysql
+        for cmd in ("ysql",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--username", help="YSQL username to connect to" \
+                " the YugabyteDB", metavar="")
+            cur_parser.add_argument(
+                "--password", help="The password for YSQL username to connect" \
+                " to the YugabyteDB", metavar="")
+            cur_parser.add_argument(
+                "--database", help="Name of the YSQL database to connect" \
+                " to the YugabyteDB", metavar="")
+
+        # Flags for sub command: ycql
+        for cmd in ("ycql",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--username", help="YCQL username to connect to" \
+                " the YugabyteDB", metavar="")
+            cur_parser.add_argument(
+                "--password", help="The password for YCQL username to connect" \
+                " to the YugabyteDB", metavar="")
+            cur_parser.add_argument(
+                "--keyspace", help="Name of the YCQL keyspace to connect" \
+                " to the YugabyteDB", metavar="")
 
         # Top Level command: demo
         demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
@@ -5577,12 +5637,11 @@ class YsqlProxy(object):
         self.env = env_var
 
     # Starts interactive YSQL shell.
-    def connect(self, db=None):
-        if db is None:
-            db = self.db
-        cmd = self.cmd_without_password + ["-d", db]
+    def connect(self, cmd):
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
+        Output.log("Connecting to the YSQL database using command: {}" \
+                             .format(cmd))
         shell = subprocess.Popen(cmd, env=env_var)
         while True:
             try:
@@ -5590,6 +5649,21 @@ class YsqlProxy(object):
             except KeyboardInterrupt:
                 continue
             break
+
+    def connect_without_password(self, db=None):
+        if db is None:
+            db = self.db
+
+        cmd = self.cmd_without_password + ["-d", db]
+        self.connect(cmd)
+
+    def connect_with_password(self, db=None):
+        if db is None:
+            db = self.db
+
+        cmd=list(self.cmd_with_password)
+        cmd[1] +="/"+db
+        self.connect(cmd)
 
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
@@ -5610,7 +5684,7 @@ class YsqlProxy(object):
 
     # Runs ysqlsh with specified files.
     def load_files(self, filepaths, db=None):
-        cmd = self.cmd_with_password
+        cmd = list(self.cmd_with_password)
         env = self.env
         if db:
             env['PGDATABASE'] = db
@@ -5696,12 +5770,9 @@ class YcqlProxy(object):
             self.cmd.append("--ssl")
 
     # Starts interactive YCQL shell.
-    def connect(self):
-        cmd = self.cmd
-        if self.password_authentication:
-            cmd.extend(["-u", self.username])
-        if self.keyspace is not None:
-            cmd.extend(["-k", self.keyspace])
+    def connect(self, cmd):
+        Output.log("Connecting to the YCQL keyspace using command: {}" \
+                             .format(cmd))
         shell = subprocess.Popen(cmd)
         while True:
             try:
@@ -5709,6 +5780,23 @@ class YcqlProxy(object):
             except KeyboardInterrupt:
                 continue
             break
+
+    def connect_without_password(self):
+        cmd = list(self.cmd)
+        if self.password_authentication:
+            cmd.extend(["-u", self.username])
+        if self.keyspace is not None:
+            cmd.extend(["-k", self.keyspace])
+        self.connect(cmd)
+
+    def connect_with_password(self):
+        cmd = list(self.cmd)
+        if self.username:
+            cmd.extend(["-u", self.username])
+        if self.keyspace is not None:
+            cmd.extend(["-k", self.keyspace])
+        cmd.extend(["-p", self.password])
+        self.connect(cmd)
 
     # Check user exists
     # Note that this will return false if ycqlsh can't connect, even if user exists.
@@ -6394,19 +6482,19 @@ class EnvBasedCredentials(object):
         return self.ysql_user or DEFAULT_YSQL_USER
 
     def get_ysql_password(self):
-        return self.ysql_password or (self.ysql_user or DEFAULT_YSQL_PASSWORD)
+        return self.ysql_password or DEFAULT_YSQL_PASSWORD
 
     def get_ysql_db(self):
-        return self.ysql_db or (self.ysql_user or DEFAULT_YSQL_DB)
+        return self.ysql_db or DEFAULT_YSQL_DB
 
     def get_ycql_user(self):
         return self.ycql_user or DEFAULT_YCQL_USER
 
     def get_ycql_password(self):
-        return self.ycql_password or (self.ycql_user or DEFAULT_YCQL_PASSWORD)
+        return self.ycql_password or DEFAULT_YCQL_PASSWORD
 
     def get_ycql_keyspace(self):
-        return self.ycql_keyspace or (self.ycql_user or DEFAULT_YCQL_KEYSPACE)
+        return self.ycql_keyspace or DEFAULT_YCQL_KEYSPACE
 
     def get_cert_file_path(self):
         return self.cert_file_path
@@ -6426,15 +6514,27 @@ class EnvBasedCredentials(object):
     def is_exists(self, var_to_check):
         return True if var_to_check in os.environ and os.environ.get(var_to_check) else False
 
-    def update_ysql_password(self, new_password):
-        self.ysql_password = new_password
+    def set_ysql_password(self, password):
+        self.ysql_password = password
 
-    def update_ycql_password(self, new_password):
-        self.ycql_password = new_password
+    def set_ycql_password(self, password):
+        self.ycql_password = password
 
     def update_passwords(self, new_password):
-        self.update_ysql_password(new_password)
-        self.update_ycql_password(new_password)
+        self.set_ysql_password(new_password)
+        self.set_ycql_password(new_password)
+
+    def set_ysql_user(self, user):
+        self.ysql_user = user
+
+    def set_ysql_db(self, db):
+        self.ysql_db = db
+
+    def set_ycql_user(self, user):
+        self.ycql_user = user
+
+    def set_ycql_keyspace(self, keyspace):
+        self.ycql_keyspace = keyspace
 
     def setup_ysql_credentials(self, proxy_class):
 
