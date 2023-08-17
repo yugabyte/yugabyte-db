@@ -12,6 +12,11 @@ menu:
 type: docs
 ---
 
+Use the following procedure to provision nodes if you set **Manually Provision Nodes** to true in the [on-premises provider configuration](../on-premises/):
+
+- If your SSH user has sudo privileges that require a password, perform the **Manual setup with script**.
+- If your SSH user does not have sudo privileges at all, perform the **Fully manual setup**.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../on-premises-script/" class="nav-link active">
@@ -28,12 +33,13 @@ type: docs
   </li>
 </ul>
 
-This procedure is only required if both of the following conditions are true:
+If the SSH user configured in the on-premises provider has sudo privileges that require a password, you can provision your nodes by running the pre-provisioning script (`provision_instance.py`).
 
-- You set [Manually Provision Nodes](../on-premises/#provider-settings) to true in the on-premises provider configuration.
-- The SSH user has sudo privileges that require a password.
+The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
-To provision your nodes you can run the pre-provisioning script (`provision_instance.py`). The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created. (If the SSH user does not have any sudo privileges, you can't use the script and need to perform a [fully manual setup](../on-premises-manual/).)
+{{< warning title="Note" >}}
+If the SSH user does not have any sudo privileges at all, you can't use the script and need to perform a [fully manual setup](../on-premises-manual/).
+{{< /warning >}}
 
 ## Manually provision nodes using the script
 

@@ -133,6 +133,8 @@ In the **SSH User** field, enter the name of the user that has SSH privileges on
 
 If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**).
 
+Note that after you have provisioned and added the instances to the provider (including installing the node agent) YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+
 In the **SSH Port** field, provide the port number of SSH client connections.
 
 In the **SSH Keypair Name** field, provide the name of the key pair.

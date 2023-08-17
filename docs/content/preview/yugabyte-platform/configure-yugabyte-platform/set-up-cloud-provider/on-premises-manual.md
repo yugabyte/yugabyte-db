@@ -12,6 +12,11 @@ menu:
 type: docs
 ---
 
+Use the following procedure to provision nodes if you set **Manually Provision Nodes** to true in the [on-premises provider configuration](../on-premises/):
+
+- If your SSH user has sudo privileges that require a password, perform the **Manual setup with script**.
+- If your SSH user does not have sudo privileges at all, perform the **Fully manual setup**.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../on-premises-script/" class="nav-link">
@@ -27,11 +32,6 @@ type: docs
     </a>
   </li>
 </ul>
-
-This procedure is only required if both of the following conditions are true:
-
-- You set [Manually Provision Nodes](../on-premises/#provider-settings) to true in the on-premises provider configuration.
-- The SSH user does not have sudo privileges at all.
 
 If the SSH user configured in the on-premises provider does not have sudo privileges, then you must set up each of the database nodes manually using the following procedure.
 
