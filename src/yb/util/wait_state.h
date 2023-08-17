@@ -161,7 +161,7 @@ struct AUHMetadata {
   uint32_t client_node_host = 0;
   uint32_t client_node_port = 0;
 
-  void set_client_node_ip(std::string &&endpoint);
+  void set_client_node_ip(const std::string &endpoint);
 
   std::string ToString() const {
     return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5 }",
@@ -294,7 +294,7 @@ class WaitStateInfo {
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
   void set_query_id(int64_t query_id) EXCLUDES(mutex_);
-  void set_client_node_ip(std::string &&endpoint) EXCLUDES(mutex_);
+  void set_client_node_ip(const std::string &endpoint) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {

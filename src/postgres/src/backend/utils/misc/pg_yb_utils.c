@@ -3585,7 +3585,7 @@ void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
 }
 
-void uint128_to_char(char *char_id, const uint64_t uint_id[2])
+void uint128_to_char(const uint64_t uint_id[2], char *char_id)
 {
 	sprintf(char_id, "%llx%llx", uint_id[0], uint_id[1]);
 }
@@ -3624,9 +3624,9 @@ int num_digits(uint16 digit)
 	return digits;
 }
 
-void client_node_ip_to_string(char *client_node_ip,
-							  uint32 client_node_host,
-							  uint16 client_node_port)
+void client_node_ip_to_string(uint32 client_node_host,
+							  uint16 client_node_port,
+							  char *client_node_ip)
 {
 	int octate_start_bit, index = -1;
 	for (octate_start_bit = 0; octate_start_bit < 32; octate_start_bit += 8)

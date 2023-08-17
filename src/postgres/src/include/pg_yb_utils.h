@@ -909,10 +909,10 @@ OptSplit *YbGetSplitOptions(Relation rel);
 void ProcSetTopLevelNodeId(const uint64_t *);
 void ProcSetTopRequestId(const uint64_t *);
 
-void uint128_to_char(char *char_id, const uint64_t uint_id[2]);
+void uint128_to_char(const uint64_t uint_id[2], char *char_id);
 
 uint32 remote_host_port_to_uint(const char *remote_host);
-void client_node_ip_to_string(char *client_node_ip, uint32 client_node_host, uint16 client_node_port);
+void client_node_ip_to_string(uint32 client_node_host, uint16 client_node_port, char *client_node_ip);
 
 /*
  * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 

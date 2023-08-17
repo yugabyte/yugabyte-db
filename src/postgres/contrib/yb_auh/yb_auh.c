@@ -391,7 +391,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       break;
 
     char top_level_request_id[33];
-    uint128_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
+    uint128_to_char(AUHEntryArray[i].top_level_request_id, top_level_request_id);
     // top level request id
     if (AUHEntryArray[i].top_level_request_id[0] != '\0')
       values[j++] = CStringGetTextDatum(top_level_request_id);
@@ -431,7 +431,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       nulls[j++] = true;
 
     char top_level_node_id[33];
-    uint128_to_char(top_level_node_id, AUHEntryArray[i].top_level_node_id);
+    uint128_to_char(AUHEntryArray[i].top_level_node_id, top_level_node_id);
     // top level node id
     if (AUHEntryArray[i].top_level_node_id[0] != '\0')
       values[j++] = CStringGetTextDatum(top_level_node_id);
@@ -448,7 +448,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     if (AUHEntryArray[i].client_node_host != 0 && AUHEntryArray[i].client_node_port != 0)
     {
       char client_node_ip[22];
-      client_node_ip_to_string(client_node_ip, AUHEntryArray[i].client_node_host, AUHEntryArray[i].client_node_port);
+      client_node_ip_to_string(AUHEntryArray[i].client_node_host, AUHEntryArray[i].client_node_port, client_node_ip);
       values[j++] = CStringGetTextDatum(client_node_ip);
     }
     else

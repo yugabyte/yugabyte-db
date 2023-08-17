@@ -22,7 +22,7 @@ namespace yb::util {
 // __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
-void AUHMetadata::set_client_node_ip(std::string &&endpoint) {
+void AUHMetadata::set_client_node_ip(const std::string &endpoint) {
   client_node_host = 0;
   client_node_port = 0;
   int power = 1;
@@ -120,9 +120,9 @@ void WaitStateInfo::set_query_id(int64_t query_id) {
   metadata_.query_id = query_id;
 }
 
-void WaitStateInfo::set_client_node_ip(std::string &&endpoint) {
+void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
   std::lock_guard<simple_spinlock> l(mutex_);
-  metadata_.set_client_node_ip(std::move(endpoint));
+  metadata_.set_client_node_ip(endpoint);
 }
 
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
