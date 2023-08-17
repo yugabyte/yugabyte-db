@@ -37,6 +37,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetUniverseReplication)
     (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
+    (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
