@@ -7,8 +7,8 @@ description: Describes the syntax and semantics of the various PL/pgSQL Loop sta
 image: /images/section_icons/api/subsection.png
 menu:
   preview:
-    identifier: loop-exit-continue-statements
-    parent: executable-section
+    identifier: loop-exit-continue
+    parent: compound-statements
     weight: 40
 type: indexpage
 showRightNav: true
@@ -35,10 +35,10 @@ showRightNav: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.grammar.md" %}}
+  {{% includeMarkdown "../../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.diagram.md" %}}
+  {{% includeMarkdown "../../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.diagram.md" %}}
   </div>
 </div>
 
@@ -61,10 +61,10 @@ showRightNav: true
 
 <div class="tab-content">
   <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_exit_stmt,plpgsql_continue_stmt.grammar.md" %}}
+  {{% includeMarkdown "../../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_exit_stmt,plpgsql_continue_stmt.grammar.md" %}}
   </div>
   <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_exit_stmt,plpgsql_continue_stmt.diagram.md" %}}
+  {{% includeMarkdown "../../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_exit_stmt,plpgsql_continue_stmt.diagram.md" %}}
   </div>
 </div>
 
@@ -77,7 +77,7 @@ There are two kinds of PL/pgSQL loop: the _unbounded loop_; and the (bounded) _f
 
 The functionality of all kinds of loops is complemented by the _exit_ statement and the _continue_ statement. The _exit_ statement aborts the iteration altogether. And the _continue_ statement aborts just the current iteration and then starts the next one.
 
-See the section [Using various kinds of "loop" statement, the "exit" statement, and the "continue" statement](../loop-exit-continue-statements/two-case-studies/) for realistic uses of all of the statements (except for the _while loop_) that this page describes.
+See the section [Two case studies: Using various kinds of "loop" statement, the "exit" statement, and the "continue" statement](../loop-exit-continue/two-case-studies/) for realistic uses of all of the statements (except for the _while loop_) that this page describes.
 
 ### Unbounded loop
 

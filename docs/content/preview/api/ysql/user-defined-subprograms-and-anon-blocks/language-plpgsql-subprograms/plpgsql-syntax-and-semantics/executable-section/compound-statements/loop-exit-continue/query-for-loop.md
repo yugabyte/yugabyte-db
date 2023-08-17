@@ -6,7 +6,7 @@ description: Describes the syntax and semantics of the "query for loop" [YSQL]
 menu:
   preview:
     identifier: query-for-loop
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 40
 type: docs
 showRightNav: true
@@ -147,11 +147,11 @@ This is the result:
      5 |    23
 ```
 
-This example makes another point. The _query for loop_ cannot use an _insert... returning_, an _update... returning_, or a _delete... returning_ statement directly. (The attempt causes a syntax error.) However, the rules of top-level SQL _do_ allow a _select_ statement to use a _common table expression_ (_a.k.a. CTE_) that is defined with such a DML statement that uses a _returning_ clause. See the section [WITH clause—SQL syntax and semantics](../../../../../../the-sql-language/with-clause/with-clause-syntax-semantics/). You can therefore take advantage of this to use a _query for loop_ to iterate over the result set that the _returning_ clause of a DML statement defines.
+This example makes another point. The _query for loop_ cannot use an _insert... returning_, an _update... returning_, or a _delete... returning_ statement directly. (The attempt causes a syntax error.) However, the rules of top-level SQL _do_ allow a _select_ statement to use a _common table expression_ (_a.k.a. CTE_) that is defined with such a DML statement that uses a _returning_ clause. See the section [WITH clause—SQL syntax and semantics](../../../../../../../the-sql-language/with-clause/with-clause-syntax-semantics/). You can therefore take advantage of this to use a _query for loop_ to iterate over the result set that the _returning_ clause of a DML statement defines.
 
 ## "Query for loop" with a bound refcursor variable
 
-See the subsection [Semantics for the "plpgsql_bound_refcursor_declaration" rule](../../../declaration-section/#plpgsql-bound-refcursor-declaration) on the [declaration section](../../../declaration-section/) page.
+See the subsection [Semantics for the "plpgsql_bound_refcursor_declaration" rule](../../../../declaration-section/#plpgsql-bound-refcursor-declaration) on the [declaration section](../../../../declaration-section/) page.
 
 Try this:
 

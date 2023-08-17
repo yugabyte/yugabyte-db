@@ -7,7 +7,7 @@ description: Describes how to use the "exit" statement, not in a "loop" statemen
 menu:
   preview:
     identifier: exit-from-block-statememt
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 50
 type: docs
 showRightNav: true

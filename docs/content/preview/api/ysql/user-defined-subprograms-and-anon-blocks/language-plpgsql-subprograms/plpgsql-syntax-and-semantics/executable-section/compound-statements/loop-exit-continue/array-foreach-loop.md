@@ -6,7 +6,7 @@ description: Describes the syntax and semantics of the various PL/pgSQL Loop sta
 menu:
   preview:
     identifier: array-foreach-loop
-    parent: loop-exit-continue-statements
+    parent: loop-exit-continue
     weight: 30
 type: docs
 showRightNav: true
@@ -176,7 +176,7 @@ end;
 $body$;
 ```
 
-Notice how the function uses the _[array_fill()](../../../../../../datatypes/type_array/functions-operators/array-fill/)_ SQL function to set up an empty array with the required bounds and whose elements all have the same, required, data type. And notice how it uses the _[array_lower](../../../../../../datatypes/type_array/functions-operators/properties/#array-lower)_ and _[array_upper](../../../../../../datatypes/type_array/functions-operators/properties/#array-upper)_ SQL functions to read the array's bounds.
+Notice how the function uses the _[array_fill()](../../../../../../../datatypes/type_array/functions-operators/array-fill/)_ SQL function to set up an empty array with the required bounds and whose elements all have the same, required, data type. And notice how it uses the _[array_lower](../../../../../../../datatypes/type_array/functions-operators/properties/#array-lower)_ and _[array_upper](../../../../../../../datatypes/type_array/functions-operators/properties/#array-upper)_ SQL functions to read the array's bounds.
 
 - The first index, _z_, in the expression _arr\[z\]\[y\]\[x\]_ has bounds given by the expressions  _array_lower(arr, 1)_ and _array_upper(arr, 1)_.
 
@@ -194,7 +194,7 @@ select s.three_dim_array(
 ```
 
 {{< note title="Array literals." >}}
-See: the section [Creating an array value using a literal](../../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/11/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/11/arrays.html) in the PostgreSQL documentation.
+See: the section [Creating an array value using a literal](../../../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/11/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/11/arrays.html) in the PostgreSQL documentation.
 {{< /note >}}
 
 The result has no line breaks and so, in a screen window of usual width where line-wrap is turned on, it's very hard to read. Readability is enhanced by adding whitespace manually: line breaks; and a conventional indentation style to line up matching curly braces vertically.
@@ -203,7 +203,7 @@ The literal starts by representing the loop bounds, using square bracket pairs. 
 
 The element values themselves are, by definition, listed in storage order. By definition, too, a run of values for the index that changes fastest, _x_, is surrounded by a curly-brace pair. Then, a run of such runs is surrounded by a second curly-brace pair when the index that changes next-fastest, _y_, changes. Finally, the entire list of element values is surrounded by a third curly-brace pair.
 
-Use the massaged value, now, as the _text[]_ literal input actual for the _[unnest()](../../../../../../datatypes/type_array/functions-operators/array-agg-unnest/#unnest)_ SQL function. This serves _both_ to ensure that the massage didn't introduce any typos _and_ to present the original array value in yet another way, thus:
+Use the massaged value, now, as the _text[]_ literal input actual for the _[unnest()](../../../../../../../datatypes/type_array/functions-operators/array-agg-unnest/#unnest)_ SQL function. This serves _both_ to ensure that the massage didn't introduce any typos _and_ to present the original array value in yet another way, thus:
 
 ```plpgsql
 select unnest(

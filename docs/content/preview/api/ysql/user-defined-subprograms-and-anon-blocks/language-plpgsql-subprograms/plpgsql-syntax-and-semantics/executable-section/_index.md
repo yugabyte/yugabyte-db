@@ -41,6 +41,8 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
   </div>
 </div>
 
+See the dedicated sections **[Basic PL/pgSQL executable statements](./basic-statements/)** and **[Compound PL/pgSQL executable statements](./compound-statements/)**.
+
 ## Semantics
 
 You can use names, in the _executable section_, only if the name can be resolved. If you don't use a qualified identifier, then the name resolution is attempted within the names that the _declaration section_ of the most tightly enclosing block establishes—with the caveat that a matching name must be for an item of the kind that syntactic analysis of the to-be-resolved name has established. If name resolution fails in that most tightly enclosing scope, then it's re-attempted in the next most tightly enclosing scope—finishing (when the outermost block statement is the implementation of a subprogram and not that of a _do_ statement) with the subprogram's list of formal arguments. If a to-be-resolved name remains unresolved after failing in all these scopes, then resolution is attempted in schema scope. This account applies, too, for how the names of block statements are resolved—but, of course, these names must find resolution within the contained scopes of the outermost block statements (before, if resolution finds no match, then escaping to schema scope).
