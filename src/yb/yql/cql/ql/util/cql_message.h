@@ -1024,7 +1024,7 @@ class CQLServerEventList : public rpc::ServerEventList {
   size_t DynamicMemoryUsage() const override { return DynamicMemoryUsageOf(cql_server_events_); }
 
  private:
-  void Transferred(const Status& status, rpc::Connection*) override;
+  void Transferred(const Status& status, const rpc::ConnectionPtr&) override;
   std::vector<std::unique_ptr<CQLServerEvent>> cql_server_events_;
 };
 

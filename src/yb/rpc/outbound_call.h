@@ -336,6 +336,13 @@ class OutboundCall : public RpcCall {
            DynamicMemoryUsageOf(buffer_, call_response_, trace_);
   }
 
+  CoarseTimePoint CallStartTime() const { return start_; }
+
+  std::string DebugString() const;
+
+  // Test only method to reproduce a stuck OutboundCall scenario seen in production.
+  void TEST_ignore_response() { test_ignore_response = true; }
+
  protected:
   friend class RpcController;
 
@@ -349,6 +356,8 @@ class OutboundCall : public RpcCall {
 
   const std::string* hostname_;
   CoarseTimePoint start_;
+  CoarseTimePoint sent_time_;
+  CoarseTimePoint invoke_callback_time_;
   RpcController* controller_;
 
   // Pointer for the protobuf where the response should be written.
@@ -369,7 +378,7 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
   bool SetState(State new_state);
   State state() const;
@@ -405,6 +414,9 @@ class OutboundCall : public RpcCall {
   const std::shared_ptr<RpcMetrics> rpc_metrics_;
   const std::shared_ptr<const OutboundMethodMetrics> method_metrics_;
 
+  // Only set if the OutboundCall was sent.
+  ConnectionPtr connection_;
+
   // ----------------------------------------------------------------------------------------------
   // Fields that may be mutated by the reactor thread while the client thread reads them.
   // ----------------------------------------------------------------------------------------------
@@ -432,6 +444,9 @@ class OutboundCall : public RpcCall {
   // complete, so no synchronization is needed, and the functions extracting data from this object
   // are annotated with NO_THREAD_SAFETY_ANALYSIS.
   CallResponse call_response_ GUARDED_BY_REACTOR_THREAD;
+
+  // TEST only flag to reproduce stuck OutboundCall scenario.
+  bool test_ignore_response = false;
 
   // ----------------------------------------------------------------------------------------------
   // Atomic fields
