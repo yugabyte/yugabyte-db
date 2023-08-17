@@ -21,6 +21,18 @@
 namespace yb {
 namespace tablet {
 
+// State change:
+// submit flush task: IDLE -> SUBMITTED
+// submit task failed: SUBMITTED -> IDLE
+// do flush work in thread pool: SUMITTED -> FLUSHING
+// do flush work synchronously: IDLE -> FLUSHING
+// flush is done: FLUSHING -> IDLE
+// read retryable requests: IDLE -> READING
+// read is done: READING -> IDLE
+// shutdown: IDLE -> SHUTDOWN
+YB_DEFINE_ENUM(RetryableRequestsFlushState,
+               (kFlushIdle)(kFlushSubmitted)(kFlushing)(kReading)(kShutdown));
+
 class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRequestsFlusher> {
  public:
   RetryableRequestsFlusher(
@@ -31,25 +43,37 @@ class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRe
         raft_consensus_(raft_consensus),
         flush_retryable_requests_pool_token_(std::move(flush_retryable_requests_pool_token)) {}
 
-  Status FlushRetryableRequests();
+  Status FlushRetryableRequests(
+      RetryableRequestsFlushState expected = RetryableRequestsFlushState::kFlushIdle);
   Status SubmitFlushRetryableRequestsTask();
   Result<OpId> CopyRetryableRequestsTo(const std::string& dest_path);
   OpId GetMaxReplicatedOpId();
 
+  void Shutdown();
+
   bool TEST_HasRetryableRequestsOnDisk();
 
+  bool TEST_IsFlushing() {
+    return flush_state() == RetryableRequestsFlushState::kFlushing;
+  }
+
  private:
-  bool SetFlushing() {
-    bool flushing = false;
-    return flushing_.compare_exchange_strong(flushing, true, std::memory_order_acq_rel);
+  bool TransferState(RetryableRequestsFlushState old_state, RetryableRequestsFlushState new_state);
+  bool SetFlushing(bool expect_idle, RetryableRequestsFlushState* old_value);
+  bool SetSubmitted();
+  void SetIdle();
+  bool SetReading();
+  bool SetShutdown();
+  void WaitForFlushIdle() const;
+
+  RetryableRequestsFlushState flush_state() const {
+    return flush_state_.load(std::memory_order_acquire);
   }
 
-  bool UnsetFlushing() {
-    bool flushing = true;
-    return flushing_.compare_exchange_strong(flushing, false, std::memory_order_acq_rel);
-  }
-
-  std::atomic<bool> flushing_{false};
+  // Used to notify waiters when each flush is done.
+  mutable std::mutex flush_mutex_;
+  mutable std::condition_variable flush_cond_;
+  std::atomic<RetryableRequestsFlushState> flush_state_{RetryableRequestsFlushState::kFlushIdle};
   TabletId tablet_id_;
   std::shared_ptr<consensus::RaftConsensus> raft_consensus_;
   std::unique_ptr<ThreadPoolToken> flush_retryable_requests_pool_token_;
