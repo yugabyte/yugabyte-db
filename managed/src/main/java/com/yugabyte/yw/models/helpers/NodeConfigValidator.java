@@ -300,6 +300,7 @@ public class NodeConfigValidator {
       case LIBNCURSES6:
       case LIBATOMIC:
       case AZCOPY:
+      case CHRONYC:
       case GSUTIL:
       case S3CMD:
         {
@@ -335,6 +336,10 @@ public class NodeConfigValidator {
               && nodeAgentClient.isClientEnabled(provider);
         }
       case VM_MAX_MAP_COUNT:
+        {
+          return input.getOperation() == Operation.CONFIGURE;
+        }
+      case CHRONYC:
         {
           return input.getOperation() == Operation.CONFIGURE;
         }

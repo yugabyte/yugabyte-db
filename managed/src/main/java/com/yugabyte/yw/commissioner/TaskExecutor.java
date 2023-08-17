@@ -800,7 +800,6 @@ public class TaskExecutor {
     @Override
     public void run() {
       Throwable t = null;
-      TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
       Map<String, String> taskLabels = this.getTaskMetricLabels();
 
@@ -1131,7 +1130,6 @@ public class TaskExecutor {
      */
     public void runSubTasks(boolean abortOnFailure) {
       RuntimeException anyRe = null;
-      Throwable throwable = null;
       try {
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
@@ -1157,10 +1155,8 @@ public class TaskExecutor {
               subTaskGroup.waitForSubTasks(abortOnFailure);
             }
           } catch (CancellationException e) {
-            throwable = e;
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (RuntimeException e) {
-            throwable = e;
             if (subTaskGroup.ignoreErrors) {
               log.error("Ignoring error for " + subTaskGroup, e);
             } else {

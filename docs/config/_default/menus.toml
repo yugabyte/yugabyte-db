@@ -32,7 +32,7 @@
   [start_now.params]
     buttonText = "Sign up"
     classes = "primary-btn sm-btn"
-    description = "Try our fully managed cloud DBaaS for free."
+    description = "Try our fully-managed cloud DBaaS for free."
     imageUrl = "/icons/cloud.svg"
     newTab = true
     tagLine = "No credit card required"
@@ -93,9 +93,19 @@
   parent = "products"
   url = "/preview/yugabyte-cloud/"
   [main.params]
-    description = "Fully managed cloud DBaaS"
+    description = "Fully-managed cloud DBaaS"
     excludeVersion = true
     imageUrl = "/icons/cloud.svg"
+
+[[main]]
+  name = "YugabyteDB Voyager"
+  weight = 4
+  parent = "products"
+  url = "/preview/yugabyte-voyager/"
+  [main.params]
+    description = "Database migration service"
+    excludeVersion = true
+    imageUrl = "/images/migrate/migration-icon.svg"
 
 [[main]]
   name = "Integrations"
@@ -214,7 +224,7 @@
   weight = 3
   identifier = "yugabytedb-voyager-releases"
   parent = "releases"
-  url = "/preview/migrate/release-notes/"
+  url = "/preview/yugabyte-voyager/release-notes/"
   [main.params]
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
@@ -326,6 +336,14 @@
   [home.params]
     showSection = true
 
+[[home]]
+  name = "YugabyteDB Voyager"
+  weight = 5
+  identifier = "migrate"
+  url = "/preview/yugabyte-voyager/"
+  [home.params]
+    showSection = true
+
 ########## Menus for preview
 
 [[preview]]
@@ -370,13 +388,13 @@
   [preview.params]
     showSection = true
 
-[[preview]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/preview/migrate/"
-  [preview.params]
-    showSection = true
+# [[preview]]
+#   name = "Migrate"
+#   weight = 6
+#   identifier = "migrate"
+#   url = "/preview/migrate/"
+#   [preview.params]
+#     showSection = true
 
 [[preview]]
   name = "Secure"
@@ -635,6 +653,25 @@
 #   [preview_yugabyte-cloud.params]
 #     showSection = true
 
+########## Menus (in preview) for YB Voyager section
+
+[[preview_yugabyte-voyager]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_yugabyte-voyager.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_yugabyte-voyager]]
+  name = "YugabyteDB Voyager"
+  weight = 2
+  identifier = "yugabytedb-voyager"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus for stable
 
 [[stable]]
@@ -679,13 +716,13 @@
   [stable.params]
     showSection = true
 
-[[stable]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/stable/migrate/"
-  [stable.params]
-    showSection = true
+# [[stable]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/stable/migrate/"
+#  [stable.params]
+#    showSection = true
 
 [[stable]]
   name = "Secure"
@@ -877,13 +914,13 @@
   ["v2.16".params]
     showSection = true
 
-[["v2.16"]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/v2.16/migrate/"
-  ["v2.16".params]
-    showSection = true
+# [["v2.16"]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/v2.16/migrate/"
+#  ["v2.16".params]
+#    showSection = true
 
 [["v2.16"]]
   name = "Secure"
@@ -1018,13 +1055,13 @@
   ["v2.14".params]
     showSection = true
 
-[["v2.14"]]
-  name = "Migrate"
-  weight = 6
-  identifier = "migrate"
-  url = "/v2.14/migrate/"
-  ["v2.14".params]
-    showSection = true
+# [["v2.14"]]
+#  name = "Migrate"
+#  weight = 6
+#  identifier = "migrate"
+#  url = "/v2.14/migrate/"
+#  ["v2.14".params]
+#    showSection = true
 
 [["v2.14"]]
   name = "Secure"
@@ -1084,30 +1121,6 @@
   weight = 13
   identifier = "contribute"
   url = "/preview/contribute/"
-  ["v2.14".params]
-    showSection = true
-
-[["v2.14"]]
-  name = "View all products"
-  weight = 14
-  identifier = "view-all-products"
-  ["v2.14".params]
-    classes = "arrow-menu"
-    showSection = true
-
-[["v2.14"]]
-  name = "YugabyteDB Anywhere"
-  weight = 1
-  parent = "view-all-products"
-  url = "/v2.14/yugabyte-platform/"
-  ["v2.14".params]
-    showSection = true
-
-[["v2.14"]]
-  name = "YugabyteDB Managed"
-  weight = 2
-  parent = "view-all-products"
-  url = "/preview/yugabyte-cloud/"
   ["v2.14".params]
     showSection = true
 

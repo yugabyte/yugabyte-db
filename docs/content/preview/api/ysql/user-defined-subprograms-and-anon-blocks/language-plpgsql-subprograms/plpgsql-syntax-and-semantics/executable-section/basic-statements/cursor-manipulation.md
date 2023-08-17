@@ -124,13 +124,13 @@ Try the same test in vanilla PostgreSQL. It produces the identical result there.
 
 ### Iterating over the rows that a cursor defines using a "query for loop"
 
-See the section **["Query for loop" with a bound refcursor variable](../../loop-exit-continue-statements/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**. The code example demonstrates the syntax and shows that it produces the expected results. But notice this at the end:
+See the section **["Query for loop" with a bound refcursor variable](../../compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**. The code example demonstrates the syntax and shows that it produces the expected results. But notice this at the end:
 
-> ...a *query for loop* with a bound refcursor variable brings very limited added value beyond what a [query for loop with a subquery](../../loop-exit-continue-statements/query-for-loop/#query-for-loop-with-a-subquery) brings. 
+> ...a *query for loop* with a bound refcursor variable brings very limited added value beyond what a [query for loop with a subquery](../../compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-subquery) brings. 
 
 ### Iterating over the rows that a cursor defines using an "infinite loop"
 
-See the code example at the end of the section **["Infinite loop"](../../loop-exit-continue-statements/infinite-and-while-loops/#infinite-loop-over-cursor-results)**.
+See the code example at the end of the section **["Infinite loop"](../../compound-statements/loop-exit-continue/infinite-and-while-loops/#infinite-loop-over-cursor-results)**.
 
 ### Using the "hard-shell" approach to separate the code that opens a cursor from the code that fetches the rows
 

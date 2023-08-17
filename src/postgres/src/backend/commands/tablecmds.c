@@ -3920,14 +3920,12 @@ ATController(AlterTableStmt *parsetree,
 	}
 	PG_CATCH();
 	{
-		if (!*YBCGetGFlags()->ysql_ddl_rollback_enabled ||
-		    rel->yb_table_properties->is_colocated)
+		if (!ddl_rollback_enabled)
 		{
 			/*
-			 * The new way of doing ddl rollback is disabled (or unsupported,
-			 * as in the case of colocated tables) fall back to the old way of
-			 * doing a best-effort rollback which may not always succeed
-			 * (e.g., in case of network failure or PG crash).
+			 * The new way of doing ddl rollback is disabled, fall back to the
+			 * old way of doing best-effort rollback which may not always
+			 * succeed (e.g., in case of network failure or PG crash).
 			 */
 			ListCell *lc = NULL;
 			foreach(lc, rollbackHandles)
@@ -10490,7 +10488,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	}
 
 	bool yb_clone_table = IsYBRelation(rel) && tab->rewrite > 0;
-	
+
 	if (!yb_clone_table)
 		attrelation = heap_open(AttributeRelationId, RowExclusiveLock);
 
@@ -10968,7 +10966,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 
 	/* Cleanup */
 	heap_freetuple(heapTup);
-	
+
 	return address;
 }
 

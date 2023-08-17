@@ -15,16 +15,16 @@ type: docs
 See the section [Beware Issue #6514](#beware-issue-6514) below.
 {{< /warning >}}
 
-<!--- to_do Fix up the x-ref's when targets exist in the PL/pgSQL section for the 'bound refcursor' and open --->
-
 This section explains:
 
-- what a _cursor_ is;
-- how you can manipulate a _cursor_ explicitly, when your use case calls for this, using either a SQL API or a PL/pgSQL API.
+- what a _cursor_ is
+- how you can manipulate a _cursor_ explicitly, when your use case calls for this, using either a SQL API or a PL/pgSQL API
 
 The SQL API is exposed by the _[declare](../the-sql-language/statements/dml_declare/)_, _[move](../the-sql-language/statements/dml_move/)_, _[fetch](../the-sql-language/statements/dml_fetch/)_, and _[close](../the-sql-language/statements/dml_close/)_ statements. Each of these specifies its _cursor_ using an identifier for the _cursor's_ name.
 
-The functionally equivalent PL/pgSQL API is exposed by the executable statements _open_, _move_, _fetch_, and _close_.  Each of these specifies its _cursor_ using an identifier for the name of a value of the dedicated data type _refcursor_. You can declare a _refcursor_, just as you declare other variables, in the PL/pgSQL source code's _[plpgsql_declaration_section](../syntax_resources/grammar_diagrams/#plpgsql-declaration-section)_. Notice that one flavor of the declaration syntax lets you specify the defining _subquery_ (see below) for the underlying _cursor_ that it denotes. Alternatively,  you can specify the data type of a PL/pgSQL subprogram's formal argument as _refcursor_. The value of a variable or argument whose data type is _refcursor_ is _text_ and is simply the name of the underlying _cursor_ that it denotes.
+The functionally equivalent PL/pgSQL API is exposed by the executable statements _[open](../syntax_resources/grammar_diagrams/#plpgsql-open-cursor-stmt)_, _[move](../syntax_resources/grammar_diagrams/#plpgsql-move-in-cursor-stmt)_, _[fetch](../syntax_resources/grammar_diagrams/#plpgsql-fetch-from-cursor-stmt)_, and _[close](../syntax_resources/grammar_diagrams/#plpgsql-close-cursor-stmt)_.  Each of these specifies its _cursor_ using an identifier for the name of a value of the dedicated data type _refcursor_. You can declare a _refcursor_, just as you declare other variables, in the PL/pgSQL source code's _[plpgsql_declaration_section](../syntax_resources/grammar_diagrams/#plpgsql-declaration-section)_. Notice that one flavor of the declaration syntax, the so-called _["bound refcursor variable"](../syntax_resources/grammar_diagrams/#plpgsql-bound-refcursor-declaration)_,  lets you specify the defining _subquery_ (see below) for the underlying _cursor_ that it denotes. Alternatively,  you can specify the data type of a PL/pgSQL subprogram's formal argument as _refcursor_. The value of a variable or argument whose data type is _refcursor_ is _text_ and is simply the name of the underlying _cursor_ that it denotes.
+
+The section **[Cursor manipulation in PL/pgSQL—the "open", "fetch", and "close" statements](../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/cursor-manipulation/)** explains, and provides code examples for, this topic.
 
 ## What is a cursor?
 

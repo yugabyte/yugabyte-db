@@ -3499,10 +3499,11 @@ plpgsql_refcursor_name ::= name
 
 ### plpgsql_perform_stmt
 ```output.ebnf
-plpgsql_perform_stmt ::= PERFORM select_list
-                         [ trailing_select_clauses ]
+plpgsql_perform_stmt ::= PERFORM { select_list
+                                   [ trailing_select_clauses ]
+                                   | ( select ) }
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="400" height="50" viewbox="0 0 400 50"><path class="connector" d="M0 22h15m77 0h10m79 0h30m154 0h20m-189 0q5 0 5 5v8q0 5 5 5h164q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="77" height="25" rx="7"/><text class="text" x="25" y="22">PERFORM</text><a xlink:href="../grammar_diagrams#select-list"><rect class="rule" x="102" y="5" width="79" height="25"/><text class="text" x="112" y="22">select_list</text></a><a xlink:href="../grammar_diagrams#trailing-select-clauses"><rect class="rule" x="211" y="5" width="154" height="25"/><text class="text" x="221" y="22">trailing_select_clauses</text></a><polygon points="396,29 400,29 400,15 396,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="440" height="80" viewbox="0 0 440 80"><path class="connector" d="M0 22h15m77 0h30m79 0h30m154 0h20m-189 0q5 0 5 5v8q0 5 5 5h164q5 0 5-5v-8q0-5 5-5m5 0h20m-318 0q5 0 5 5v35q0 5 5 5h5m25 0h10m54 0h10m25 0h164q5 0 5-5v-35q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="77" height="25" rx="7"/><text class="text" x="25" y="22">PERFORM</text><a xlink:href="../grammar_diagrams#select-list"><rect class="rule" x="122" y="5" width="79" height="25"/><text class="text" x="132" y="22">select_list</text></a><a xlink:href="../grammar_diagrams#trailing-select-clauses"><rect class="rule" x="231" y="5" width="154" height="25"/><text class="text" x="241" y="22">trailing_select_clauses</text></a><rect class="literal" x="122" y="50" width="25" height="25" rx="7"/><text class="text" x="132" y="67">(</text><a xlink:href="../grammar_diagrams#select"><rect class="rule" x="157" y="50" width="54" height="25"/><text class="text" x="167" y="67">select</text></a><rect class="literal" x="221" y="50" width="25" height="25" rx="7"/><text class="text" x="231" y="67">)</text><polygon points="436,29 440,29 440,15 436,15" style="fill:black;stroke-width:0"/></svg>
 
 ### plpgsql_return_stmt
 ```output.ebnf
