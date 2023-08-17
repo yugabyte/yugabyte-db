@@ -5,7 +5,7 @@ linkTitle: Manually provision on-prem nodes
 description: Provision the on-premises nodes manually.
 headContent: Your SSH user has sudo privileges that require a password
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: on-premises-manual-1
     parent: configure-yugabyte-platform
     weight: 20

@@ -153,7 +153,7 @@ YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if a
 - Sudo user requires a password.
 - The SSH user is not a sudo user.
 
-For manual provisioning, you are prompted to run a Python provisioning script at a later stage to provision the database instances. Refer to [Add instances](#add-instances).
+For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add instances](#add-instances).
 
 Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 

@@ -6,7 +6,7 @@ description: Provision the on-premises nodes manually.
 headContent: Your SSH user does not have sudo privileges
 menu:
   preview_yugabyte-platform:
-    identifier: on-premises-manual-1
+    identifier: on-premises-manual-2
     parent: configure-yugabyte-platform
     weight: 20
 type: docs
@@ -48,7 +48,7 @@ For each node, perform the following:
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
 
-After you have provisioned the nodes, you can proceed to [add the instances to the on-prem provider](../on-premises/#add-instances).
+After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
 
 ## Set up time synchronization
 
