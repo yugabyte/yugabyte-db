@@ -2,8 +2,8 @@
 title: Order by entity
 headerTitle: Order by entity
 linkTitle: Order by entity
-description: Distribute your time-ordered data and retrieve fast
-headcontent: Keep entity data together in a time series data model
+description: Keep entity data together using Entity-wise or Bucket-based ordering
+headcontent: Keep entity data together in a time-series data model
 menu:
   preview:
     identifier: timeseries-entity-ordering
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In a time series data model, to enforce that all data for an entity stays together while maintaining the timestamp-based ordering, you have to distribute the data by the entity and order it by time.
+In a time-series data model, to enforce that all data for an entity stays together while maintaining the timestamp-based ordering, you have to distribute the data by the entity and order it by time.
 
 The following sections describe how to order by entity with a few examples.
 

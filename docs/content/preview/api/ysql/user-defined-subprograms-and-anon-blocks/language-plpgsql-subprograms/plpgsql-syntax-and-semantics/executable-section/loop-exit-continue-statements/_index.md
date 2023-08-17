@@ -3,7 +3,7 @@ title: Loop, exit, and continue statements [YSQL]
 headerTitle: Loop, exit, and continue statements
 linkTitle:
   The "loop", "exit", and "continue" statements
-description: Describes the syntax and semantics of the various PL/pgSQL Loop statements. [YSQL]
+description: Describes the syntax and semantics of Loop, exit, and continue statements. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
   preview:

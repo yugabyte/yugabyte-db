@@ -2,7 +2,7 @@
 title: Array foreach loop [YSQL]
 headerTitle: The "array foreach loop"
 linkTitle: Array foreach loop
-description: Describes the syntax and semantics of the various PL/pgSQL Loop statements. [YSQL]
+description: Describes the syntax and semantics of the PL/pgSQL's array foreach loop statements. [YSQL]
 menu:
   preview:
     identifier: array-foreach-loop
@@ -303,12 +303,12 @@ end loop over_z;
 The complete table function, _s.without_slice_operator()_, is shown below. The innermost loop, _over_x_, concatenates the space-separated element values along the _x_-axis. The surrounding loop, _over_y_, displays each such concatenation of _x_ values on its own line. And the outermost loop, _over_z_, introduces a bank line between each set of _x_ values, one for each _y_ value, for a particular _z_ value, and the corresponding set for the next _z_ value. The nested loops produce this output:
 
 ```
- z11-y23-x36  z11-y23-x37  z11-y23-x38  z11-y23-x39  
- z11-y24-x36  z11-y24-x37  z11-y24-x38  z11-y24-x39  
- z11-y25-x36  z11-y25-x37  z11-y25-x38  z11-y25-x39  
- 
- z12-y23-x36  z12-y23-x37  z12-y23-x38  z12-y23-x39  
- z12-y24-x36  z12-y24-x37  z12-y24-x38  z12-y24-x39  
+ z11-y23-x36  z11-y23-x37  z11-y23-x38  z11-y23-x39
+ z11-y24-x36  z11-y24-x37  z11-y24-x38  z11-y24-x39
+ z11-y25-x36  z11-y25-x37  z11-y25-x38  z11-y25-x39
+
+ z12-y23-x36  z12-y23-x37  z12-y23-x38  z12-y23-x39
+ z12-y24-x36  z12-y24-x37  z12-y24-x38  z12-y24-x39
  z12-y25-x36  z12-y25-x37  z12-y25-x38  z12-y25-x39
 ```
 
@@ -318,7 +318,7 @@ This traversal order is called [_row-major order_](https://en.wikipedia.org/wiki
 
 - The elements along the _x_-axis are stored contiguously in order of increasing values of _x_.
 - Each such _x_-axis run is stored contiguously with the next such run in order of increasing values of _y_.
-- Each run of _x_ values over all the _y_ values (i.e. each _x-y_ plane) is stored contiguously with the next such plane in order of increasing values of _z_. 
+- Each run of _x_ values over all the _y_ values (i.e. each _x-y_ plane) is stored contiguously with the next such plane in order of increasing values of _z_.
 
 Here is the complete definition of the _s.without_slice_operator()_ function. Not only does it display the element values from the nested loop, (_over_x_ within _over_y_ within _over_z_); it also adds these sanity tests:
 
@@ -326,7 +326,7 @@ Here is the complete definition of the _s.without_slice_operator()_ function. No
 - It strips off the array bounds representation from the start of the _text_ literal, _arr_to_text_typecast_; it removes all the curly braces; it removes all the commas; it reduces each run of spaces to just a single space; and it strips off any leading spaces.
 - It concatenates the space-separated element values from the _unnest()_ result as the single _text_ value, _unnest_traversal_; and it strips off any leading spaces.
 - It does a _foreach_ traversal of the array and concatenates the space-separated element values that this produces into a single text value _foreach_traversal_; and it strips off any leading spaces.
-- Finally, it asserts that all of the _text_ values, _row_major_order_traversal_, _arr_to_text_typecast_, _unnest_traversal_, and _foreach_traversal_, are identical to each other. 
+- Finally, it asserts that all of the _text_ values, _row_major_order_traversal_, _arr_to_text_typecast_, _unnest_traversal_, and _foreach_traversal_, are identical to each other.
 
 Create and execute the table function, _s.without_slice_operator()_, thus:
 
@@ -401,7 +401,7 @@ begin
   foreach_traversal         := ltrim(foreach_traversal);
 
   assert arr_to_text_typecast = row_major_order_traversal;
-  assert unnest_traversal     = row_major_order_traversal; 
+  assert unnest_traversal     = row_major_order_traversal;
   assert foreach_traversal    = row_major_order_traversal;
 end;
 $body$;
