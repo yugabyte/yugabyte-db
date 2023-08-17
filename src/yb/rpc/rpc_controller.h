@@ -152,6 +152,14 @@ class RpcController {
 
   Result<CallResponsePtr> CheckedResponse() const;
 
+  std::string CallStateDebugString() const;
+  // When call is present, marks the call as Failed by passing Forced timeout status.
+  void MarkCallAsFailed();
+
+  // Test only flag which is transferred to OutboundCall during its preparation time. This is used
+  // to reproduce the stuck RPC scenario seen in production.
+  void TEST_force_stuck_outbound_call() { TEST_disable_outbound_call_response_processing = true; }
+
  private:
   friend class OutboundCall;
   friend class Proxy;
@@ -164,6 +172,7 @@ class RpcController {
   OutboundCallPtr call_;
   bool allow_local_calls_in_curr_thread_ = false;
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
+  bool TEST_disable_outbound_call_response_processing = false;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };

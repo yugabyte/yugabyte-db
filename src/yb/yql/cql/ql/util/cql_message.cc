@@ -1893,7 +1893,7 @@ std::string CQLServerEvent::ToString() const {
 CQLServerEventList::CQLServerEventList() {
 }
 
-void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
+void CQLServerEventList::Transferred(const Status& status, const rpc::ConnectionPtr&) {
   if (!status.ok()) {
     LOG(WARNING) << "Transfer of CQL server event failed: " << status.ToString();
   }
