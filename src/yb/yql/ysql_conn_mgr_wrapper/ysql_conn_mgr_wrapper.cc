@@ -23,10 +23,7 @@
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(start_pgsql_proxy);
-
-DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
-    "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
-    "Ysql Connection Manager process as a child process.");
+DECLARE_bool(enable_ysql_conn_mgr);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 3600,
