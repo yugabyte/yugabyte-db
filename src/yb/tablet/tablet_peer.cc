@@ -535,7 +535,10 @@ void TabletPeer::CompleteShutdown(
   {
     std::lock_guard lock(lock_);
     strand_.reset();
-    retryable_requests_flusher_.reset();
+    if (retryable_requests_flusher_) {
+      retryable_requests_flusher_->Shutdown();
+      retryable_requests_flusher_.reset();
+    }
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     // Clear the consensus and destroy it outside the lock.
@@ -1708,6 +1711,16 @@ bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
       ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+      : false;
+}
+
+bool TabletPeer::TEST_IsFlushingRetryableRequests() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return false;
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  return retryable_requests_flusher
+      ? retryable_requests_flusher->TEST_IsFlushing()
       : false;
 }
 
