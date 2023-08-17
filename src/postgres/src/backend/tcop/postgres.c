@@ -5455,6 +5455,7 @@ PostgresMain(int argc, char *argv[],
 		if (IsYugaByteEnabled())
 		{
 			YBCSetTopLevelRequestId();
+			MyProc->wait_event_info = WAIT_EVENT_CPU;
 			yb_pgstat_set_has_catalog_version(true);
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
@@ -5980,6 +5981,7 @@ PostgresMain(int argc, char *argv[],
 		{
 			MyProc->queryid = 0;
 			MyProc->top_level_request_id[0] = '\0';
+			MyProc->wait_event_info = 0;
 		}
 	}							/* end of input-reading loop */
 }

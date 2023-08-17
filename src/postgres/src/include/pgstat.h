@@ -801,6 +801,7 @@ typedef enum BackendState
 #define PG_WAIT_IPC					0x08000000U
 #define PG_WAIT_TIMEOUT				0x09000000U
 #define PG_WAIT_IO					0x0A000000U
+#define PG_WAIT_CPU 				0x0C000000U
 
 /* ----------
  * Wait Events - Activity
@@ -983,6 +984,18 @@ typedef enum
 	WAIT_EVENT_WAL_SYNC_METHOD_ASSIGN,
 	WAIT_EVENT_WAL_WRITE
 } WaitEventIO;
+
+/* ----------
+ * Wait Events - CPU
+ *
+ * Use this category when a process is using the CPU
+ * ----------
+ */
+typedef enum
+{
+	WAIT_EVENT_CPU = PG_WAIT_CPU,
+} WaitEventCPU;
+
 
 /* ----------
  * Command type for progress reporting purposes
@@ -1402,7 +1415,10 @@ pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
 	 * Since this is a four-byte field which is always read and written as
 	 * four-bytes, updates are atomic.
 	 */
-	proc->wait_event_info = 0;
+	if (MyProc->top_level_request_id[0] != '\0')
+		proc->wait_event_info = WAIT_EVENT_CPU;
+	else
+	 	proc->wait_event_info = 0;
 }
 
 
