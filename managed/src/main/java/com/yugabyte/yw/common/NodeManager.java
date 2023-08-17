@@ -716,13 +716,26 @@ public class NodeManager extends DevopsBase {
       AnsibleConfigureServers.Params taskParam,
       Map<String, String> gflags,
       boolean useHostname) {
+    processGFlags(config, universe, node, taskParam, gflags, useHostname, false);
+  }
+
+  private void processGFlags(
+      Config config,
+      Universe universe,
+      NodeDetails node,
+      AnsibleConfigureServers.Params taskParam,
+      Map<String, String> gflags,
+      boolean useHostname,
+      boolean allowOverrideAll) {
     if (!config.getBoolean("yb.cloud.enabled")) {
+      allowOverrideAll |=
+          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
       GFlagsUtil.processUserGFlags(
           node,
           gflags,
           GFlagsUtil.getAllDefaultGFlags(
               taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+          allowOverrideAll,
           confGetter,
           taskParam);
     }
@@ -1195,7 +1208,7 @@ public class NodeManager extends DevopsBase {
             } else {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             }
-            processGFlags(config, universe, node, taskParam, gflags, useHostname);
+            processGFlags(config, universe, node, taskParam, gflags, useHostname, true);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
 
