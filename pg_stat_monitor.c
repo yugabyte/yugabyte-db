@@ -164,7 +164,11 @@ DECLARE_HOOK(void pgsm_ExecutorStart, QueryDesc *queryDesc, int eflags);
 DECLARE_HOOK(void pgsm_ExecutorRun, QueryDesc *queryDesc, ScanDirection direction, uint64 count, bool execute_once);
 DECLARE_HOOK(void pgsm_ExecutorFinish, QueryDesc *queryDesc);
 DECLARE_HOOK(void pgsm_ExecutorEnd, QueryDesc *queryDesc);
+#if PG_VERSION_NUM < 160000
 DECLARE_HOOK(bool pgsm_ExecutorCheckPerms, List *rt, bool abort);
+#else
+DECLARE_HOOK(bool pgsm_ExecutorCheckPerms, List *rt, List *rp, bool abort);
+#endif
 
 #if PG_VERSION_NUM >= 140000
 DECLARE_HOOK(PlannedStmt *pgsm_planner_hook, Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams);
@@ -783,7 +787,11 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 }
 
 static bool
+#if PG_VERSION_NUM < 160000
 pgsm_ExecutorCheckPerms(List *rt, bool abort)
+#else
+pgsm_ExecutorCheckPerms(List *rt, List *rp, bool abort)
+#endif
 {
 	ListCell   *lr = NULL;
 	int			i = 0;
@@ -827,7 +835,11 @@ pgsm_ExecutorCheckPerms(List *rt, bool abort)
 	num_relations = i;
 
 	if (prev_ExecutorCheckPerms_hook)
+#if PG_VERSION_NUM < 160000
 		return prev_ExecutorCheckPerms_hook(rt, abort);
+#else
+		return prev_ExecutorCheckPerms_hook(rt, rp, abort);
+#endif
 
 	return true;
 }

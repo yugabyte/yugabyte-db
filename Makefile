@@ -21,7 +21,7 @@ REGRESS = basic version guc pgsm_query_id functions counters relations database 
 PG_CONFIG ?= pg_config
 
 ifdef USE_PGXS
-MAJORVERSION := $(shell pg_config --version | awk {'print $$2'} | cut -f1 -d".")
+MAJORVERSION := $(shell $(PG_CONFIG) --version | awk {'print $$2'} | cut -f1 -d".")
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
