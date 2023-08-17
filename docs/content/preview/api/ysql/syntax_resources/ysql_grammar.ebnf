@@ -1594,7 +1594,7 @@ plpgsql_close_cursor_stmt = 'CLOSE' plpgsql_refcursor_name ;
 plpgsql_refcursor_name = name ;
 
 (* 'PERFORM' *)
-plpgsql_perform_stmt = 'PERFORM' select_list [trailing_select_clauses] ;
+plpgsql_perform_stmt = 'PERFORM' ( select_list [trailing_select_clauses] | '(' select ')' ) ;
 
 (* 'RETURN' *)
 plpgsql_return_stmt = 'RETURN' [ expression | 'NEXT' | 'NEW' | 'OLD' | 'NULL' ] ;

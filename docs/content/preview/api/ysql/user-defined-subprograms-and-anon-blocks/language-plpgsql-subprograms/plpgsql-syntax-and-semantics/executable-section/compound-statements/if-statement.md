@@ -7,7 +7,7 @@ description: Describes the syntax and semantics of the PL/pgSQL "if" statement. 
 menu:
   preview:
     identifier: if-statement
-    parent: executable-section
+    parent: compound-statements
     weight: 20
 type: docs
 showRightNav: true
@@ -32,10 +32,10 @@ showRightNav: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_if_stmt,plpgsql_elsif_leg.grammar.md" %}}
+  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_if_stmt,plpgsql_elsif_leg.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_if_stmt,plpgsql_elsif_leg.diagram.md" %}}
+  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/compound-statements/plpgsql_if_stmt,plpgsql_elsif_leg.diagram.md" %}}
   </div>
 </div>
 
@@ -182,7 +182,7 @@ CONTEXT:  PL/pgSQL function s.f_alt(integer) line 3 at CASE
 
 If you can be sure that _i_ will never be _null_ (or _should_ never be, as long as the surrounding code environment is bug-free) then _f_alt()_ is a better choice than the original _f()_ because it more clearly, and more tersely, conveys the intention to the reader. (You must assume that the reader understands the _case_ statement semantics.)
 
-If, rather, you know that _i_ might be _null_ and know what to do in this case, you can simply add another _[plpgsql_searched_when_leg](../../../../../syntax_resources/grammar_diagrams/#plpgsql-searched-when-leg)_:
+If, rather, you know that _i_ might be _null_ and know what to do in this case, you can simply add another _[plpgsql_searched_when_leg](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-searched-when-leg)_:
 
 ```plpgsql
 case
