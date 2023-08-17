@@ -1,23 +1,41 @@
 ---
-title: Set up on-premises nodes manually
-headerTitle: Set up on-premises nodes manually
-linkTitle: Set up on-prem nodes manually
+title: Manually provision on-premises nodes
+headerTitle: Manually provision on-premises nodes
+linkTitle: Manually provision on-prem nodes
 description: Provision the on-premises nodes manually.
-headContent: Provision on-prem nodes manually if you don't have sudo access
+headContent: Your SSH user does not have sudo privileges
 menu:
   stable_yugabyte-platform:
-    identifier: on-premises-manual
+    identifier: on-premises-manual-2
     parent: configure-yugabyte-platform
     weight: 20
 type: docs
 ---
 
-This procedure is only required if both of the following conditions are true:
+Use the following procedure to manually provision nodes for your [on-premises provider configuration](../on-premises/):
 
-- You set [Manually Provision Nodes](../on-premises/#provider-settings) to true in the on-premises provider configuration.
-- The SSH user does not have sudo privileges at all.
+- Your [SSH user](../on-premises/#ssh-key-pairs) has sudo privileges that require a password - **Manual setup with script**.
+- Your SSH user does not have sudo privileges at all - **Fully manual setup**.
 
-If the SSH user configured in the on-premises provider does not have sudo privileges, then you can set up each of the database nodes manually. Note that you need access to a user with sudo privileges in order to complete these steps.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../on-premises-script/" class="nav-link">
+      <i class="fa-regular fa-scroll"></i>
+      Manual setup with script
+    </a>
+  </li>
+
+  <li>
+    <a href="../on-premises-manual/" class="nav-link active">
+      <i class="icon-shell" aria-hidden="true"></i>
+      Fully manual setup
+    </a>
+  </li>
+</ul>
+
+If the SSH user configured in the on-premises provider does not have sudo privileges, then you must set up each of the database nodes manually using the following procedure.
+
+Note that you need access to a user with sudo privileges in order to complete these steps.
 
 For each node, perform the following:
 
@@ -29,6 +47,8 @@ For each node, perform the following:
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 - [Install the node agent](#install-node-agent)
+
+After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
 
 ## Set up time synchronization
 
