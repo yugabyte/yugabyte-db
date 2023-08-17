@@ -234,7 +234,7 @@ get_cursor(FunctionCallInfo fcinfo, bool should_be_assigned)
 			     errmsg("cursor id is NULL")));
 
 	cid = PG_GETARG_INT32(0);
-	if (cid < 0 && cid >= MAX_CURSORS)
+	if (cid < 0 || cid >= MAX_CURSORS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("value of cursor id is out of range")));
