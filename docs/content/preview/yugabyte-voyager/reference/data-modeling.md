@@ -3,7 +3,7 @@ title: Data modeling strategies
 linkTitle: Data modeling
 description: Data modeling strategies for migrating data using YugabyteDB Voyager.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: data-modeling-voyager
     parent: reference-voyager
     weight: 101

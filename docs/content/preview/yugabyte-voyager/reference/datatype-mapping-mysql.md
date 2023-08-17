@@ -3,7 +3,7 @@ title: Data type mapping from MySQL to YugabyteDB
 linkTitle: Data type mapping
 description: Refer to the data type mapping table when migrating data from MySQL to YugabyteDB using YugabyteDB Voyager.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: datatype-mapping-mysql
     parent: reference-voyager
     weight: 102

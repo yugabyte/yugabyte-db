@@ -4,7 +4,7 @@ linkTitle: General
 headcontent: Known issues when migrating data from MySQL, Oracle, or PostgreSQL.
 description: Known issues and suggested workarounds for migrating data from MySQL, Oracle, or PostgreSQL.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: general-issues
     parent: known-issues
     weight: 100

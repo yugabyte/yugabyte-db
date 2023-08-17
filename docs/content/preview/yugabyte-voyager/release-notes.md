@@ -4,9 +4,9 @@ linkTitle: What's new
 description: YugabyteDB Voyager release notes.
 headcontent: New features, key enhancements, and bug fixes
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: release-notes
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 106
 type: docs
 ---
@@ -25,7 +25,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * The `analyze-schema` command now reports unsupported data types.
 
-* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../../migrate/reference/yb-voyager-cli/#escape-char) and [--quote-char](../../migrate/reference/yb-voyager-cli/#quote-char) options.
+* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../reference/yb-voyager-cli/#escape-char) and [--quote-char](../reference/yb-voyager-cli/#quote-char) options.
 
 ### Bug fixes
 
@@ -45,7 +45,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate-steps/#export-data) for more details.
 
-* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../../migrate/reference/yb-voyager-cli/#file-opts) in import data file.
+* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/yb-voyager-cli/#file-opts) in import data file.
 
 * Added ability to specify null value string in import data file.
 

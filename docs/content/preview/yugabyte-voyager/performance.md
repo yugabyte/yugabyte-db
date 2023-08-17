@@ -1,11 +1,11 @@
 ---
-title: Performance
-linkTitle: Performance
+title: Tune performance
+linkTitle: Tune performance
 description: Performance
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: performance
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 103
 type: docs
 ---

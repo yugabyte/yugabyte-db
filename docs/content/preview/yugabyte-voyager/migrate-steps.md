@@ -1,12 +1,12 @@
 ---
 title: Steps to migrate your database using YugabyteDB Voyager
 headerTitle: Migration steps
-linkTitle: Migration steps
+linkTitle: Migrate
 description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: migrate-steps
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 102
 type: docs
 ---
@@ -344,7 +344,7 @@ yb-voyager import data file .... \
         --data-dir s3://voyager-data
 ```
 
-The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-cha) for additional details on setting up your S3 bucket.
+The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configure the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details on setting up your S3 bucket.
 
 #### Import data file from GCS buckets
 
