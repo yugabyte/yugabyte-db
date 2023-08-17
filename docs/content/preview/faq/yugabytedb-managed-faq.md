@@ -105,7 +105,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
 | [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
 | [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |
-| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 10 simultaneous connections | 10 per vCPU per node |
+| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |

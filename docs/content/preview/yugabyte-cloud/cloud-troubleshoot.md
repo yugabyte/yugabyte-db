@@ -69,8 +69,8 @@ org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserve
 
 Your application has reached the limit of available connections for the cluster:
 
-- Sandbox clusters support up to 10 simultaneous connections.
-- Dedicated clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.
+- Sandbox clusters support up to 15 simultaneous connections.
+- Dedicated clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections.
 
 A solution would be to use a connection pooler. Depending on your use case, you may also want to consider scaling your cluster.
 
