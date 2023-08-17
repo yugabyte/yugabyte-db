@@ -1521,10 +1521,12 @@ expr:
              * supported
              */
             else
+            {
                 ereport(ERROR,
                         (errcode(ERRCODE_SYNTAX_ERROR),
                          errmsg("invalid indirection syntax"),
                          ag_scanner_errposition(@1, scanner)));
+            }
         }
     | expr TYPECAST symbolic_name
         {
@@ -1841,7 +1843,7 @@ var_name:
             ereport(ERROR,
                 (errcode(ERRCODE_SYNTAX_ERROR),
                     errmsg("%s is only for internal use", AGE_DEFAULT_PREFIX),
-                    ag_scanner_errposition(@1, scanner)));   
+                    ag_scanner_errposition(@1, scanner)));
         }
     }
     ;
@@ -2025,14 +2027,25 @@ static Node *do_negate(Node *n, int location)
 
 static void do_negate_float(Float *v)
 {
-    char *oldval = v->fval;
+    char *oldval = NULL;
 
-	if (*oldval == '+')
-		oldval++;
-	if (*oldval == '-')
-		v->fval = oldval+1;	/* just strip the '-' */
-	else
-		v->fval = psprintf("-%s", oldval);
+    Assert(v != NULL);
+    Assert(IsA(v, Float));
+
+    oldval = v->fval;
+
+    if (*oldval == '+')
+    {
+        oldval++;
+    }
+    if (*oldval == '-')
+    {
+        v->fval = oldval+1;    /* just strip the '-' */
+    }
+    else
+    {
+        v->fval = psprintf("-%s", oldval);
+    }
 }
 
 /*
@@ -2111,7 +2124,7 @@ static Node *make_bool_const(bool b, int location)
 static Node *make_null_const(int location)
 {
     A_Const *n = makeNode(A_Const);
-    
+
     n->isnull = true;
     n->location = location;
 

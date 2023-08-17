@@ -137,6 +137,7 @@ void vertex_row_cb(int delim __attribute__((unused)), void *data)
                                         n_fields, label_id_int);
         insert_vertex_simple(cr->graph_oid, cr->object_name,
                              object_graph_id, props);
+        pfree(props);
     }
 
 

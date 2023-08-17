@@ -1441,6 +1441,33 @@ SELECT * FROM age_toString(agtype_in(null));
 -- should fail
 SELECT * FROM age_toString();
 SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (results agtype);
+-- toStringList() --
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([5, 10, 7.8, 9, 1.3]) 
+$$) AS (toStringList agtype);
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList(['test', 89, 'again', 7.1, 9]) 
+$$) AS (toStringList agtype);
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([null, false, true, 'string']) 
+$$) AS (toStringList agtype);
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([9.123456789, 5.123, 1.12345, 0.123123]) 
+$$) AS (toStringList agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([null]) 
+$$) AS (toStringList agtype);
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([true, false, true, true]) 
+$$) AS (toStringList agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([['a', b]]) 
+$$) AS (toStringList agtype);
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([test]) 
+$$) AS (toStringList agtype);
 
 --
 -- reverse(string)
@@ -2810,9 +2837,27 @@ SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:Assign
                                      WITH p, collect(task) AS tasks
                                      WITH {pn: p.name, tasks:tasks} AS project
                                      RETURN project $$) AS (p agtype);
+
+---
+--- Fix: Segmentation fault when using specific names for tables #1124
+---
+--- The following are just a few commands to test SQLValueFunction types
+---
+
+SELECT count(*) FROM CURRENT_ROLE;
+SELECT count(*) FROM CURRENT_USER;
+SELECT count(*) FROM USER;
+SELECT count(*) FROM SESSION_USER;
+SELECT * FROM CURRENT_CATALOG;
+SELECT * FROM CURRENT_SCHEMA;
+SELECT * FROM create_graph('issue_1124');
+SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ CREATE (u) RETURN u $$) AS (results agtype), user;
+SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ MATCH (u) RETURN u $$) AS (results agtype), user;
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1124', true);
 SELECT * FROM drop_graph('graph_395', true);
 SELECT * FROM drop_graph('chained', true);
 SELECT * FROM drop_graph('VLE', true);

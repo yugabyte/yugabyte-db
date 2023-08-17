@@ -249,11 +249,14 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
         d = boolean_to_agtype(boolVal(&ac->val));
         break;
     default:
-        if (ac->isnull) {
+        if (ac->isnull)
+        {
 	    is_null = true;
-	} else {
-	    ereport(ERROR,
-		  (errmsg_internal("unrecognized node type: %d", nodeTag(&ac->val))));
+	}
+        else
+        {
+	    ereport(ERROR, (errmsg_internal("unrecognized node type: %d",
+                                            nodeTag(&ac->val))));
 	    return NULL;
 	}
     }

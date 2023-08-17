@@ -2917,9 +2917,9 @@ $$) AS (toFloatList agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toFloatList(['1.9432', 8.6222, '9.4111212', 344.22])
 $$) AS (toFloatList agtype);
-               tofloatlist               
------------------------------------------
- [1.9432, 8.6222, 9.4111212, 344.220001]
+             tofloatlist             
+-------------------------------------
+ [1.9432, 8.6222, 9.4111212, 344.22]
 (1 row)
 
 SELECT * FROM cypher('expr', $$
@@ -3284,6 +3284,69 @@ ERROR:  function ag_catalog.age_tostring() does not exist
 LINE 1: SELECT * FROM cypher('expr', $$ RETURN toString() $$) AS (re...
                                                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- toStringList() --
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([5, 10, 7.8, 9, 1.3]) 
+$$) AS (toStringList agtype);
+          tostringlist          
+--------------------------------
+ ["5", "10", "7.8", "9", "1.3"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList(['test', 89, 'again', 7.1, 9]) 
+$$) AS (toStringList agtype);
+            tostringlist             
+-------------------------------------
+ ["test", "89", "again", "7.1", "9"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([null, false, true, 'string']) 
+$$) AS (toStringList agtype);
+         tostringlist         
+------------------------------
+ [null, null, null, "string"]
+(1 row)
+
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([9.123456789, 5.123, 1.12345, 0.123123]) 
+$$) AS (toStringList agtype);
+                  tostringlist                   
+-------------------------------------------------
+ ["9.123456789", "5.123", "1.12345", "0.123123"]
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([null]) 
+$$) AS (toStringList agtype);
+ tostringlist 
+--------------
+ [null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([true, false, true, true]) 
+$$) AS (toStringList agtype);
+       tostringlist       
+--------------------------
+ [null, null, null, null]
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([['a', b]]) 
+$$) AS (toStringList agtype);
+ERROR:  could not find rte for b
+LINE 2:     RETURN toStringList([['a', b]]) 
+                                       ^
+SELECT * FROM cypher('expr', $$ 
+    RETURN toStringList([test]) 
+$$) AS (toStringList agtype);
+ERROR:  could not find rte for test
+LINE 2:     RETURN toStringList([test]) 
+                                 ^
 --
 -- reverse(string)
 --
@@ -6913,9 +6976,79 @@ SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:Assign
  {"pn": "Project B", "tasks": [{"tn": "Task C", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]}
 (2 rows)
 
+---
+--- Fix: Segmentation fault when using specific names for tables #1124
+---
+--- The following are just a few commands to test SQLValueFunction types
+---
+SELECT count(*) FROM CURRENT_ROLE;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM CURRENT_USER;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM USER;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM SESSION_USER;
+ count 
+-------
+     1
+(1 row)
+
+SELECT * FROM CURRENT_CATALOG;
+  current_catalog   
+--------------------
+ contrib_regression
+(1 row)
+
+SELECT * FROM CURRENT_SCHEMA;
+ current_schema 
+----------------
+ ag_catalog
+(1 row)
+
+SELECT * FROM create_graph('issue_1124');
+NOTICE:  graph "issue_1124" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ CREATE (u) RETURN u $$) AS (results agtype), user;
+                            results                             | pg_typeof 
+----------------------------------------------------------------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | name
+(1 row)
+
+SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ MATCH (u) RETURN u $$) AS (results agtype), user;
+                            results                             | pg_typeof 
+----------------------------------------------------------------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | name
+(1 row)
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1124', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1124._ag_label_vertex
+drop cascades to table issue_1124._ag_label_edge
+NOTICE:  graph "issue_1124" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('graph_395', true);
 NOTICE:  drop cascades to 7 other objects
 DETAIL:  drop cascades to table graph_395._ag_label_vertex

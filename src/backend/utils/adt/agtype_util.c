@@ -2304,3 +2304,84 @@ char *agtype_value_type_to_string(enum agtype_value_type type)
 
     return NULL;
 }
+
+/*
+ * Deallocates the passed agtype_value recursively.
+ */
+void pfree_agtype_value(agtype_value* value)
+{
+    pfree_agtype_value_content(value);
+    pfree(value);
+}
+
+/*
+ * Helper function that recursively deallocates the contents 
+ * of the passed agtype_value only. It does not deallocate
+ * `value` itself.
+ */
+void pfree_agtype_value_content(agtype_value* value)
+{
+    int i;
+
+    // guards against stack overflow due to deeply nested agtype_value
+    check_stack_depth();
+
+    switch (value->type)
+    {
+        case AGTV_NUMERIC:
+            pfree(value->val.numeric);
+            break;
+
+        case AGTV_STRING:
+            /*
+             * The char pointer (val.string.val) is not free'd because
+             * it is not allocated by an agtype helper function.
+             */
+            break;
+
+        case AGTV_ARRAY:
+        case AGTV_PATH:
+            for (i = 0; i < value->val.array.num_elems; i++)
+            {
+                pfree_agtype_value_content(&value->val.array.elems[i]);
+            }
+            pfree(value->val.array.elems);
+            break;
+
+        case AGTV_OBJECT:
+        case AGTV_VERTEX:
+        case AGTV_EDGE:
+            for (i = 0; i < value->val.object.num_pairs; i++)
+            {
+                pfree_agtype_value_content(&value->val.object.pairs[i].key);
+                pfree_agtype_value_content(&value->val.object.pairs[i].value);
+            }
+            pfree(value->val.object.pairs);
+            break;
+
+        case AGTV_BINARY:
+            pfree(value->val.binary.data);
+            break;
+
+        case AGTV_NULL:
+        case AGTV_INTEGER:
+        case AGTV_FLOAT:
+        case AGTV_BOOL:
+            /*
+             * These are deallocated by the calling function.
+             */
+            break;
+
+        default:
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("unknown agtype")));
+            break;
+    }
+}
+
+void pfree_agtype_in_state(agtype_in_state* value)
+{
+    pfree_agtype_value(value->res);
+    free(value->parse_state);
+}
