@@ -135,6 +135,10 @@ void WaitStateInfo::set_state(WaitStateCode c) {
   #endif
 }
 
+const AUHAuxInfo& WaitStateInfo::aux_info() const {
+  return (freeze_? frozen_aux_info_ : aux_info_);
+}
+
 WaitStateCode WaitStateInfo::get_state() const {
   auto ret = WaitStateCode::Unused;
   if (GetAtomicFlag(&FLAGS_freeze_wait_states)) {
@@ -193,6 +197,9 @@ void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
 
 void WaitStateInfo::UpdateAuxInfo(const AUHAuxInfo& aux) {
   std::lock_guard<simple_spinlock> l(mutex_);
+  if (freeze_) {
+    frozen_aux_info_ = aux_info_;
+  }
   aux_info_.UpdateFrom(aux);
 }
 

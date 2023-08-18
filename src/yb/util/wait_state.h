@@ -326,7 +326,7 @@ class WaitStateInfo {
 #ifndef NDEBUG
     pb->set_wait_status_code_as_string(yb::ToString(code));
 #endif
-    aux_info_.ToPB(pb->mutable_aux_info());
+    aux_info().ToPB(pb->mutable_aux_info());
     }
     VLOG(1) << "Wrote ToPB " << pb->ShortDebugString();
   }
@@ -339,6 +339,8 @@ class WaitStateInfo {
 
   std::string ToString() const EXCLUDES(mutex_);
 
+  const AUHAuxInfo& aux_info();
+
   static void freeze();
   static void unfreeze();
 
@@ -350,6 +352,7 @@ class WaitStateInfo {
   mutable simple_spinlock mutex_;
   AUHMetadata metadata_ GUARDED_BY(mutex_);
   AUHAuxInfo aux_info_ GUARDED_BY(mutex_);
+  AUHAuxInfo frozen_aux_info_ GUARDED_BY(mutex_);
 
 #ifdef TRACK_WAIT_HISTORY
   std::atomic_int16_t num_updates_ GUARDED_BY(mutex_);
