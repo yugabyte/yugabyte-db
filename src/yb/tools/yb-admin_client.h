@@ -392,6 +392,11 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
+  Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
+                                  const std::vector<std::string>& producer_addresses,
+                                  const TypedNamespaceName& ns,
+                                  bool transactional);
+
   Status SetupUniverseReplication(const std::string& producer_uuid,
                                   const std::vector<std::string>& producer_addresses,
                                   const std::vector<TableId>& tables,
@@ -412,6 +417,8 @@ class ClusterAdminClient {
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
+
+  Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
