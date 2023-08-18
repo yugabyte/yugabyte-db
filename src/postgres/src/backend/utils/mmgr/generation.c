@@ -356,10 +356,6 @@ GenerationReset(MemoryContext context)
 			GenerationBlockMarkEmpty(block);
 		else
 			GenerationBlockFree(set, block);
-
-		/* YB_TODO(neil) Check if this call is needed and where to call it.
-		 *   YbPgMemSubConsumption(freed_sz);
-		 */
 	}
 
 	/* set it so new allocations to make use of the keeper block */
@@ -664,7 +660,9 @@ GenerationBlockFree(GenerationContext *set, GenerationBlock *block)
 	wipe_mem(block, block->blksize);
 #endif
 
+	size_t freed_sz = block->endptr - ((char *) block);
 	free(block);
+	YbPgMemSubConsumption(freed_sz);
 }
 
 /*

@@ -762,11 +762,6 @@ GetTypeId(int attrNum, TupleDesc tupleDesc)
 	{
 		case SelfItemPointerAttributeNumber:
 			return TIDOID;
-		#ifdef YB_TODO
-		/* Oid is a regular column PG15 onwards. */
-		case ObjectIdAttributeNumber:
-			return OIDOID;
-		#endif
 		case MinTransactionIdAttributeNumber:
 			return XIDOID;
 		case MinCommandIdAttributeNumber:
