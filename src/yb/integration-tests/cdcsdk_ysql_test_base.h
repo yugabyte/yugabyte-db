@@ -1060,66 +1060,78 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id = OpId::Min(), const uint64_t cdc_sdk_safe_time = 0,
       bool initial_checkpoint = true, const int tablet_idx = 0, bool bootstrap = false) {
-    int max_retries = 3;
     Status st;
-    for (int retry = 0; retry < max_retries; ++retry) {
-      RpcController set_checkpoint_rpc;
-      SetCDCCheckpointRequestPB set_checkpoint_req;
-      SetCDCCheckpointResponsePB set_checkpoint_resp;
-      auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-      set_checkpoint_rpc.set_deadline(deadline);
-      PrepareSetCheckpointRequest(
-          &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
-          cdc_sdk_safe_time, bootstrap);
-      st = cdc_proxy_->SetCDCCheckpoint(
-          set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+    SetCDCCheckpointResponsePB set_checkpoint_resp;
 
-      if (set_checkpoint_resp.has_error() &&
-          (set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
-           retry == max_retries)) {
-        return STATUS_FORMAT(
-            InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
-      }
-      if (st.ok() && !set_checkpoint_resp.has_error()) {
-        return set_checkpoint_resp;
-      }
-    }
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RpcController set_checkpoint_rpc;
+          SetCDCCheckpointRequestPB set_checkpoint_req;
 
-    return st;
+          auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+          set_checkpoint_rpc.set_deadline(deadline);
+
+          PrepareSetCheckpointRequest(
+              &set_checkpoint_req, stream_id, tablets, tablet_idx, op_id, initial_checkpoint,
+              cdc_sdk_safe_time, bootstrap);
+          st = cdc_proxy_->SetCDCCheckpoint(
+              set_checkpoint_req, &set_checkpoint_resp, &set_checkpoint_rpc);
+
+          if (set_checkpoint_resp.has_error() &&
+              set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
+              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
+            return STATUS_FORMAT(
+                InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
+          }
+
+          if (st.ok() && !set_checkpoint_resp.has_error()) {
+            return true;
+          }
+
+          return false;
+        },
+        MonoDelta::FromSeconds(kRpcTimeout),
+        "Set CDC Checkpoint timed out " + set_checkpoint_resp.DebugString()));
+
+    return set_checkpoint_resp;
   }
 
   Result<std::vector<OpId>> GetCDCCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
     GetCheckpointRequestPB get_checkpoint_req;
-    const int max_retries = 3;
-
     std::vector<OpId> op_ids;
+
     op_ids.reserve(tablets.size());
     for (const auto& tablet : tablets) {
       get_checkpoint_req.set_stream_id(stream_id);
       get_checkpoint_req.set_tablet_id(tablet.tablet_id());
 
-      for (auto retry = 1; retry <= max_retries; ++retry) {
-        GetCheckpointResponsePB get_checkpoint_resp;
-        RpcController get_checkpoint_rpc;
-        auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-        get_checkpoint_rpc.set_deadline(deadline);
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            GetCheckpointResponsePB get_checkpoint_resp;
+            RpcController get_checkpoint_rpc;
+            auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+            get_checkpoint_rpc.set_deadline(deadline);
 
-        RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
-            get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+            RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
+                get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
-        if (get_checkpoint_resp.has_error() &&
-            (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND ||
-             retry == max_retries)) {
-          return STATUS_FORMAT(
-              InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
-        }
-        if (!get_checkpoint_resp.has_error()) {
-          op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
-          break;
-        }
-      }
+            if (get_checkpoint_resp.has_error() &&
+                (get_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
+                 get_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY)) {
+              return STATUS_FORMAT(
+                  InternalError, "Response had error: $0", get_checkpoint_resp.DebugString());
+            }
+
+            if (!get_checkpoint_resp.has_error()) {
+              op_ids.push_back(OpId::FromPB(get_checkpoint_resp.checkpoint().op_id()));
+              return true;
+            }
+
+            return false;
+          },
+          MonoDelta::FromSeconds(kRpcTimeout), "Get CDC Checkpoint timed out "));
     }
 
     return op_ids;
