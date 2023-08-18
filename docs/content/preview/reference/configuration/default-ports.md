@@ -72,7 +72,7 @@ The following common ports are required for firewall rules:
 
 ## Prometheus monitoring
 
-YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
+YugabyteDB servers expose time series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
 
 ```output
 <target>/prometheus-metrics
