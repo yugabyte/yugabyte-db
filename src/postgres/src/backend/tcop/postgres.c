@@ -5979,6 +5979,7 @@ PostgresMain(int argc, char *argv[],
 		if (IsYugaByteEnabled())
 		{
 			MyProc->queryid = 0;
+			YBCSetQueryId(0);
 			MyProc->top_level_request_id[0] = '\0';
 		}
 	}							/* end of input-reading loop */
