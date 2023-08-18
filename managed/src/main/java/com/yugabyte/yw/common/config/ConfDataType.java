@@ -102,6 +102,23 @@ public class ConfDataType<T> {
           (s) -> {
             return parseStringAndApply(s, Config::getStringList);
           });
+  static ConfDataType<List> IntegerListType =
+      new ConfDataType<List>(
+          "Integer List",
+          List.class,
+          (config, path) -> {
+            return config.getIntList(path);
+          },
+          (s) -> {
+            try {
+              List<Integer> list =
+                  Json.mapper().readValue(s, new TypeReference<List<Integer>>() {});
+              return list;
+            } catch (Exception e) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Not a valid list of integers. " + e.getMessage());
+            }
+          });
   static ConfDataType<Long> BytesType =
       new ConfDataType<>(
           "Bytes",

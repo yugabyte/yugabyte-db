@@ -297,8 +297,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
 							remote_quals,
-							outer_plan,
-							best_path->path.yb_path_info);
+							outer_plan);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -326,7 +325,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 
 	YbFdwExecState *ybc_state = NULL;
-	ForeignScan *foreignScan = castNode(ForeignScan, node->ss.ps.plan);
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -347,7 +345,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	if (foreignScan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
+	if (XactIsoLevel == XACT_SERIALIZABLE)
 	{
 		/*
 		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
@@ -403,6 +401,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		YbDmlAppendTargetsAggregate(node->yb_fdw_aggrefs,
 									RelationGetDescr(ss->ss_currentRelation),
 									NULL /* index */,
+									false /* xs_want_itup */,
 									handle);
 
 		/*

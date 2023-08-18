@@ -1010,7 +1010,7 @@ class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
   Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server = false) {
     auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
     auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
-    EXPECT_NOT_OK(s);
+    EXPECT_NOK(s);
     EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
 
     if (restart_server) {
@@ -1018,7 +1018,7 @@ class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
       RETURN_NOT_OK(cluster_->RestartSync());
 
       s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
-      EXPECT_NOT_OK(s);
+      EXPECT_NOK(s);
       EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
     }
 

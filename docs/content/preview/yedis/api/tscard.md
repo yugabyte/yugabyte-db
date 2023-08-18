@@ -18,7 +18,7 @@ type: docs
 
 This command returns the number of entires in the given time series.
 
-- If the given `key` is associated with non-timeseries data, an error is raised.
+- If the given `key` is associated with non-time series data, an error is raised.
 - If the given `key` is not associated with any data, 0 is returned.
 
 ## Return value

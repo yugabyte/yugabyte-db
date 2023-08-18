@@ -109,10 +109,10 @@ Yugabyte recommends that you avoid the possibility to use a function for the pur
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/call_procedure,subprogram_arg.grammar.md" %}}
+  {{% includeMarkdown "../syntax_resources/call_procedure,actual_arg.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/call_procedure,subprogram_arg.diagram.md" %}}
+  {{% includeMarkdown "../syntax_resources/call_procedure,actual_arg.diagram.md" %}}
   </div>
 </div>
 

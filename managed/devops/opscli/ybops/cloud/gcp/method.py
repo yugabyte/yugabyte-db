@@ -314,6 +314,8 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
+        if args.boot_script is not None:
+            self.cloud.update_user_data(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(vars(args), server_ports)
 

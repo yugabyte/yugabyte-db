@@ -1,8 +1,7 @@
 ---
 title: Issuing "commit" in user-defined subprograms and anonymous blocks [YSQL]
 headerTitle: Issuing "commit" in user-defined subprograms and anonymous blocks
-linkTitle: >
-  "Commit" in user-defined subprograms
+linkTitle: «Commit» in user-defined subprograms
 description: Explains why you should should avoid issuing "commit" in user-defined subprograms and anonymous blocks [YSQL]
 menu:
   preview:
@@ -12,10 +11,14 @@ menu:
 type: docs
 ---
 
-This section states the restrictions that govern the use of "commit" and other transaction control statements in user-defined subprograms (and, by extension, in anonymous blocks). It then makes a practical recommendation always to invoke a user-defined subprogram using _single statement automatic transaction mode_. See these two sections:
+This section states the restrictions that govern the use of "commit" and other transaction control statements in user-defined subprograms (and, by extension, in anonymous blocks). It then makes a practical recommendation _almost_ always to invoke a user-defined subprogram using _single statement automatic transaction mode_. See these two sections:
 
 - [Semantics of issuing non-transaction-control SQL statements during an ongoing transaction](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-during-an-ongoing-transaction)
-- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing)
+- [Semantics of issuing non-transaction-control SQL statements when no transaction is ongoing](../../txn-model-for-top-level-sql/#semantics-of-issuing-non-transaction-control-sql-statements-when-no-transaction-is-ongoing).
+
+{{< tip title="When you should invoke a user-defined subprogram within an ongoing explicitly started transaction." >}}
+Notice the use of "_almost_ always" in the recommendation. There are very rare exceptions where this recommendation defeats the larger aim. A compelling example is shown in the section **[Using the "hard-shell" approach to separate the code that opens a cursor from the code that fetches the rows](../../user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/cursor-manipulation/#using-the-hard-shell-approach-to-separate-the-code-that-opens-a-cursor-from-the-code-that-fetches-the-rows)**.
+{{< /tip >}}
 
 Finally, it demonstrates all of the restrictions with code examples.
 
@@ -191,7 +194,7 @@ $body$;
 select s.f_bad(42);
 ```
 
-The _create_ statement succeeds. But the _select_ statement fails with the _2D000_ error (_invalid transaction termination_). This arguably represents no practical problem because a function ought not to make data changes. If you want to report a status, you should use a procedure with an _inout_ formal argument.
+The _create_ statement succeeds. But the _select_ statement fails with the _2D000_ error (_invalid transaction termination_).  This arguably represents no practical problem because a function ought not to make data changes. If you want to report a status, you should use a procedure with an _inout_ formal argument.
 
 ### Break "p_ok(): by changing it to "security definer"
 

@@ -393,7 +393,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockWrites)) {
       ASSERT_TRUE(first_select.WaitFor(5s * kTimeMultiplier));
 
       if (i == 0) {
-        EXPECT_NOT_OK(conn.Execute("UPDATE foo SET v=0 WHERE k=1"));
+        EXPECT_NOK(conn.Execute("UPDATE foo SET v=0 WHERE k=1"));
       } else if (i == 1) {
         EXPECT_OK(conn.Execute("UPDATE foo SET v=1 WHERE k=2"));
         EXPECT_OK(conn.CommitTransaction());
@@ -785,11 +785,7 @@ TEST_F(PgTabletSplittingWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName("foo"));
 
-  ASSERT_OK(SplitSingleTablet(table_id));
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
-  }, 15s * kTimeMultiplier, "Wait for split completion."));
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
 
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }

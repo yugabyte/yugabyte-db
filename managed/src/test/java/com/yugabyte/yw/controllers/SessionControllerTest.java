@@ -3,38 +3,17 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertConflict;
-import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
-import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.mvc.Http.Status.SEE_OTHER;
-import static play.mvc.Http.Status.UNAUTHORIZED;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
+import static play.mvc.Http.Status.*;
+import static play.test.Helpers.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -43,11 +22,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.LdapUtil;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
@@ -55,13 +30,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -238,6 +207,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNull("UI Session should not be created", json.get("authToken"));
     assertNotNull(json.get("apiToken"));
+    assertEquals(1L, json.get("apiTokenVersion").asLong());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -384,6 +354,7 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
+    assertEquals(1L, json.get("apiTokenVersion").asLong());
     assertNotNull(json.get("customerUUID"));
     assertAuditEntry(1, customer.getUuid());
   }
@@ -433,6 +404,7 @@ public class SessionControllerTest {
     assertEquals(OK, result.status());
     assertNotNull(json.get("authToken"));
     assertNotNull(json.get("apiToken"));
+    assertEquals(1L, json.get("apiTokenVersion").asLong());
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
     assertAuditEntry(1, c1.getUuid());
 
@@ -720,6 +692,38 @@ public class SessionControllerTest {
 
     assertEquals(OK, result.status());
     assertNotNull(json.get("apiToken"));
+    assertEquals(1L, json.get("apiTokenVersion").asLong());
+    assertAuditEntry(2, customer.getUuid());
+  }
+
+  @Test
+  public void testApiTokenUpdateWithVersion() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    assertAuditEntry(1, customer.getUuid());
+
+    user.upsertApiToken();
+
+    JsonNode json = Json.parse(contentAsString(result));
+    String authToken = json.get("authToken").asText();
+    String custUuid = json.get("customerUUID").asText();
+    ObjectNode apiTokenJson = Json.newObject();
+    apiTokenJson.put("authToken", authToken);
+    result =
+        route(
+            app,
+            fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token?apiTokenVersion=1")
+                .header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("apiToken"));
+    assertEquals(2L, json.get("apiTokenVersion").asLong());
     assertAuditEntry(2, customer.getUuid());
   }
 
@@ -744,6 +748,7 @@ public class SessionControllerTest {
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
     String apiToken1 = json.get("apiToken").asText();
+    Long apiTokenVersion1 = json.get("apiTokenVersion").asLong();
     apiTokenJson.put("authToken", authToken);
     result =
         route(
@@ -752,8 +757,44 @@ public class SessionControllerTest {
                 .header("X-AUTH-TOKEN", authToken));
     json = Json.parse(contentAsString(result));
     String apiToken2 = json.get("apiToken").asText();
+    Long apiTokenVersion2 = json.get("apiTokenVersion").asLong();
     assertNotEquals(apiToken1, apiToken2);
+    assertEquals(Long.valueOf(apiTokenVersion1 + 1), apiTokenVersion2);
     assertAuditEntry(3, customer.getUuid());
+  }
+
+  @Test
+  public void testApiTokenUpdateWrongVersion() {
+    startApp(false);
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users user = ModelFactory.testUser(customer);
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "test@customer.com");
+    loginJson.put("password", "password");
+    Result result = route(app, fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    assertAuditEntry(1, customer.getUuid());
+
+    user.upsertApiToken();
+
+    JsonNode json = Json.parse(contentAsString(result));
+    String authToken = json.get("authToken").asText();
+    String custUuid = json.get("customerUUID").asText();
+    ObjectNode apiTokenJson = Json.newObject();
+    apiTokenJson.put("authToken", authToken);
+    result =
+        assertPlatformException(
+            () ->
+                route(
+                    app,
+                    fakeRequest(
+                            "PUT", "/api/customers/" + custUuid + "/api_token?apiTokenVersion=2")
+                        .header("X-AUTH-TOKEN", authToken)));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(BAD_REQUEST, result.status());
+    assertThat(
+        json.get("error").toString(),
+        allOf(notNullValue(), containsString("API token version has changed")));
   }
 
   @Test

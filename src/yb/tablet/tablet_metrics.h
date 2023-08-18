@@ -67,6 +67,7 @@ YB_DEFINE_ENUM(TabletCounters,
   (kExpiredTransactions)
   (kRestartReadRequests)
   (kConsistentPrefixReadRequests)
+  (kPickReadTimeOnDocDB)
   (kPgsqlConsistentPrefixReadRows)
   (kTabletDataCorruptions)
   (kRowsInserted)

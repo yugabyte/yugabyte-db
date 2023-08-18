@@ -106,6 +106,7 @@ message ColumnSchemaPB {
   // If that DDL transaction commits, this column will be dropped, otherwise this field will be
   // unset again.
   optional bool marked_for_deletion = 15;
+  optional QLValuePB missing_value = 16;
 }
 
 message ColocatedTableIdentifierPB {

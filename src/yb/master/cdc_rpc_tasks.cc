@@ -113,9 +113,9 @@ Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTa
   return tablets;
 }
 
-Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducer(
-    const NamespaceIdentifierPB& producer_namespace,
-    const std::vector<client::YBTableName>& tables) {
+Status CDCRpcTasks::BootstrapProducer(
+    const NamespaceIdentifierPB& producer_namespace, const std::vector<client::YBTableName>& tables,
+    BootstrapProducerCallback callback) {
   SCHECK(!tables.empty(), InvalidArgument, "Empty tables");
   const auto& db_type = producer_namespace.database_type();
   const auto& namespace_name = producer_namespace.name();
@@ -146,14 +146,14 @@ Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducer(
   std::promise<Result<TableBootstrapIdsMap>> promise;
   RETURN_NOT_OK(yb_client_->BootstrapProducer(
       db_type, namespace_name, schema_names, table_names,
-      [this, &promise](client::BootstrapProducerResult bootstrap_result) {
-        promise.set_value(BootstrapProducerCallback(std::move(bootstrap_result)));
+      [this, callback](client::BootstrapProducerResult bootstrap_result) {
+        callback.Run(HandleBootstrapProducerResponse(std::move(bootstrap_result)));
       }));
 
-  return promise.get_future().get();
+  return Status::OK();
 }
 
-Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducerCallback(
+Result<TableBootstrapIdsMap> CDCRpcTasks::HandleBootstrapProducerResponse(
     client::BootstrapProducerResult bootstrap_result) {
   auto [table_ids, bootstrap_ids, _] = VERIFY_RESULT(std::move(bootstrap_result));
   SCHECK_EQ(

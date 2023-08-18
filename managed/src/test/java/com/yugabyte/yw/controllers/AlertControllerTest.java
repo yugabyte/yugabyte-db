@@ -2,61 +2,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_CONFIG_WRITING_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_CHANNEL_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_QUERY_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_SCHEDULE_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLOCK_SKEW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_COMPACTION_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_CORE_FILES;
-import static com.yugabyte.yw.common.AlertTemplate.DB_ERROR_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_FATAL_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.DB_MEMORY_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_QUEUES_OVERFLOW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_REDIS_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_VERSION_MISMATCH;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YCQL_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YSQL_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_NOTIFICATION_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YCQL_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YEDIS_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.INACTIVE_CRON_NODES;
-import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_CPU_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DISK_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_FILE_DESCRIPTORS_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_OOM_KILLS;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.REPLICATION_LAG;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_THROUGHPUT;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_THROUGHPUT;
+import static com.yugabyte.yw.common.AlertTemplate.*;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.anyOf;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.in;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -68,57 +18,22 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.AssertHelper;
-import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.common.alerts.AlertChannelParams;
-import com.yugabyte.yw.common.alerts.AlertChannelService;
-import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
-import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
-import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
-import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
-import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
-import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
-import com.yugabyte.yw.forms.AlertTemplateVariablesList;
-import com.yugabyte.yw.forms.NotificationPreview;
-import com.yugabyte.yw.forms.NotificationPreviewFormData;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertChannelTemplates;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDestination;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.AlertTemplateVariable;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.MetricKey;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -129,12 +44,7 @@ import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
@@ -223,9 +133,14 @@ public class AlertControllerTest extends FakeDBApplication {
                   + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_DISK_USAGE,
-              "Node disk usage for universe 'Test Universe'"
+              "Node data disk usage for universe 'Test Universe'"
                   + " is above 70% on 1 node(s)."
-                  + "\nAffected nodes: node1 node2 node3")
+                  + "\nAffected volumes:\nnode1:/\nnode2:/\n")
+          .put(
+              NODE_SYSTEM_DISK_USAGE,
+              "Node system disk usage for universe 'Test Universe'"
+                  + " is above 80% on 1 node(s)."
+                  + "\nAffected volumes:\nnode1:/\nnode2:/\n")
           .put(
               NODE_FILE_DESCRIPTORS_USAGE,
               "Node file descriptors usage for universe"

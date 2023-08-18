@@ -30,6 +30,7 @@ class KeyBytes;
 class KeyEntryValue;
 class PackedValueV1;
 class PackedValueV2;
+class PackedRowDecoderBase;
 class PackedRowDecoderV1;
 class PackedRowDecoderV2;
 class Partition;

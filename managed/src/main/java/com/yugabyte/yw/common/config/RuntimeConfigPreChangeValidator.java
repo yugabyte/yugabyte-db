@@ -10,6 +10,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 
@@ -27,6 +28,11 @@ public interface RuntimeConfigPreChangeValidator {
 
   default void validateConfigUniverse(
       Universe universe, UUID scopeUUID, String path, String newValue) {
+    validateAny(path, newValue);
+  }
+
+  default void validateConfigProvider(
+      Provider provider, UUID scopeUUID, String path, String newValue) {
     validateAny(path, newValue);
   }
 

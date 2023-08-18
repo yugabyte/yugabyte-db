@@ -11,17 +11,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.110.0"
+  HUGO_VERSION = "0.115.4"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.110.0"
+  HUGO_VERSION = "0.115.4"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.108.0"
+  HUGO_VERSION = "0.115.4"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -570,22 +570,22 @@
 
 [[redirects]]
   from = "/latest/migrate/*"
-  to = "/preview/migrate/"
+  to = "/preview/yugabyte-voyager/"
   force = true
 
 [[redirects]]
   from = "/stable/migrate/*"
-  to = "/preview/migrate/:splat"
+  to = "/preview/yugabyte-voyager/:splat"
   force = true
 
 [[redirects]]
   from = "/v2.16/migrate/*"
-  to = "/preview/migrate/:splat"
+  to = "/preview/yugabyte-voyager/:splat"
   force = true
 
 [[redirects]]
   from = "/v2.14/migrate/*"
-  to = "/preview/migrate/:splat"
+  to = "/preview/yugabyte-voyager/:splat"
   force = true
 
 [[redirects]]
@@ -597,7 +597,12 @@
 
 [[redirects]]
   from = "/:version/migrate/yb-voyager/*"
-  to = "/preview/migrate/"
+  to = "/preview/yugabyte-voyager/"
+  force = true
+
+[[redirects]]
+  from = "/preview/migrate/*"
+  to = "/preview/yugabyte-voyager/:splat"
   force = true
 
 # Redirect for Reference connectors

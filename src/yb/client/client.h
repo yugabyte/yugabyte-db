@@ -315,11 +315,13 @@ class YBClient {
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteIndexTable(const YBTableName& table_name,
                           YBTableName* indexed_table_name = nullptr,
-                          bool wait = true);
+                          bool wait = true,
+                          const TransactionMetadata *txn = nullptr);
 
   Status DeleteIndexTable(const std::string& table_id,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
+                          const TransactionMetadata *txn = nullptr,
                           CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
@@ -481,7 +483,7 @@ class YBClient {
                           const std::string& tablespace_id,
                           const TransactionMetadata* txn);
 
-  Status DeleteTablegroup(const std::string& tablegroup_id);
+  Status DeleteTablegroup(const std::string& tablegroup_id, const TransactionMetadata* txn);
 
   // Check if the tablegroup given by 'tablegroup_id' exists.
   // Result value is set only on success.

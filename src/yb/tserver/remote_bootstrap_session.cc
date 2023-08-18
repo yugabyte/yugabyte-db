@@ -122,6 +122,7 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 
 Status RemoteBootstrapSession::ChangeRole() {
   CHECK(Succeeded());
+  CHECK(ShouldChangeRole());
 
   LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
             << session_id_;
@@ -181,6 +182,7 @@ Status RemoteBootstrapSession::InitSnapshotTransferSession() {
   RETURN_NOT_OK(InitSources());
 
   start_time_ = MonoTime::Now();
+  should_try_change_role_ = false;
 
   return Status::OK();
 }
@@ -618,6 +620,11 @@ void RemoteBootstrapSession::SetSuccess() {
 bool RemoteBootstrapSession::Succeeded() {
   std::lock_guard lock(mutex_);
   return succeeded_;
+}
+
+bool RemoteBootstrapSession::ShouldChangeRole() {
+  std::lock_guard lock(mutex_);
+  return should_try_change_role_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {

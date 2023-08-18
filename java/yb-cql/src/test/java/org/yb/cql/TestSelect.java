@@ -2955,6 +2955,9 @@ public class TestSelect extends BaseCQLTest {
     selectAndVerify("SELECT tojson(u) FROM test_udt_in_udt",
         "{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}");
 
+    session.execute("DROP TABLE test_udt_in_udt");
+    session.execute("DROP TYPE udt8"); // Unblock type 'udt' dropping.
+
     // Test UDT field which refers to a FROZEN<LIST>.
     session.execute("CREATE TYPE udt9(i1 int, l1 frozen<list<int>>)");
     session.execute("CREATE TABLE test_list_in_udt (h int PRIMARY KEY, u udt9)");

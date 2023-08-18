@@ -17,7 +17,6 @@
 #include <math.h>
 
 #include "miscadmin.h"
-#include "access/xact.h"
 #include "access/yb_scan.h"
 #include "catalog/pg_am.h"
 #include "foreign/fdwapi.h"
@@ -217,6 +216,21 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 #undef CONSIDER_PATH_STARTUP_COST
 }
 
+static BMS_Comparison
+yb_bms_compare_ppi(Path *path1, Path *path2)
+{
+	Relids path1_batchinfo = path1->param_info ?
+		path1->param_info->yb_ppi_req_outer_batched : NULL;
+	
+	Relids path2_batchinfo = path2->param_info ?
+		path2->param_info->yb_ppi_req_outer_batched : NULL;
+	
+	if (bms_is_empty(path1_batchinfo) ^ bms_is_empty(path2_batchinfo))
+		return BMS_DIFFERENT;
+
+	return bms_subset_compare(PATH_REQ_OUTER(path1), PATH_REQ_OUTER(path2));
+}
+
 /*
  * set_cheapest
  *	  Find the minimum-cost paths from among a relation's paths,
@@ -294,8 +308,8 @@ set_cheapest(RelOptInfo *parent_rel)
 				best_param_path = path;
 			else
 			{
-				switch (bms_subset_compare(PATH_REQ_OUTER(path),
-										   PATH_REQ_OUTER(best_param_path)))
+				switch (yb_bms_compare_ppi(path,
+													best_param_path))
 				{
 					case BMS_EQUAL:
 						/* keep the cheaper one */
@@ -546,6 +560,19 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			old_path_pathkeys = old_path->param_info ? NIL : old_path->pathkeys;
 			keyscmp = compare_pathkeys(new_path_pathkeys,
 									   old_path_pathkeys);
+
+			/*
+			 * YB: If one is batched and the other isn't we consider
+			 * the two parameterizations to be different.
+			 */
+			bool is_new_path_batched = new_path->param_info &&
+				!bms_is_empty(new_path->param_info->yb_ppi_req_outer_batched);
+
+			bool is_old_path_batched = old_path->param_info &&
+				!bms_is_empty(old_path->param_info->yb_ppi_req_outer_batched);
+			bool considering_batchedness =
+				is_new_path_batched || is_old_path_batched;
+
 			if (keyscmp != PATHKEYS_DIFFERENT)
 			{
 				switch (costcmp)
@@ -553,6 +580,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					case COSTS_EQUAL:
 						outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 													  PATH_REQ_OUTER(old_path));
+						if (considering_batchedness)
+						{
+							outercmp = BMS_DIFFERENT;
+							if (!is_new_path_batched)
+								insert_after = p1;
+						}
+
 						if (keyscmp == PATHKEYS_BETTER1)
 						{
 							if ((outercmp == BMS_EQUAL ||
@@ -622,6 +656,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+							
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_after = p1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET1) &&
 								new_path->rows <= old_path->rows &&
@@ -634,6 +676,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+							
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_after = p1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET2) &&
 								new_path->rows >= old_path->rows &&
@@ -1024,43 +1074,9 @@ add_partial_path_precheck(RelOptInfo *parent_rel, Cost total_cost,
 }
 
 /*
- * If there are rowMarks and we're in a serializable transaction, we lock
- * whole prefix ranges during scans instead of locking only the rows
- * returned to the user. This is required to locks rows that might not yet
- * have been inserted in the table, which is necessary to block concurrent
- * transactions from inserting new rows that match the locked predicate.
- */
-static void
-yb_maybe_set_range_lock_mechanism(List *rowMarks,
-								  YbLockMechanism *yb_lock_mechanism)
-{
-	if (!IsYugaByteEnabled())
-		return;
-
-	if (IsolationIsSerializable() && rowMarks)
-		*yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-}
-
-/*
  * Propagate YugabyteDB fields between a parent and a single child.
  *
- * Currently there is only one field to propagate, yb_lock_mechanism.
- * yb_lock_mechanism indicates whether locks can be taken in the same RPC
- * as a SELECT. This field is unconventional because we let the parent
- * affect the child, in the case of YB_PK_FOR_UPDATE_LOCK. This is because
- * we have only one actual scan node that has a flag indicating whether it
- * can lock, and in some cases, a node above needs to disable such locking
- * because it would lead to over-locking. (In that case a LockRows node
- * will be inserted to do the correct locking on exactly the right rows.)
- * It would be nice if there could be a locked scan node and an unlocked
- * scan node, with a pruning step eliminating the locked node. However
- * in practice it's difficult to prune during path creation, and seems error-
- * prone to traverse the paths to prune them later. Because it's a matter of
- * correctness in locking, and a single RPC is strictly better than two RPCs
- * otherwise, this is safe to do without complicating costs.
- *
- * Other than this case, Path data generally flows upward, from children to
- * parents, as the serializable lock information does currently. Therefore this
+ * Path data generally flows upward, from children to parents. Therefore this
  * function is expected to simply copy information from children to parents for
  * future fields.
  */
@@ -1069,11 +1085,6 @@ yb_propagate_fields(YbPathInfo *parent_fields, YbPathInfo *child_fields)
 {
 	if (!IsYugaByteEnabled())
 		return;
-
-	if (child_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-	else
-		child_fields->yb_lock_mechanism = YB_NO_SCAN_LOCK;
 
 	parent_fields->yb_uniqkeys = list_copy(child_fields->yb_uniqkeys);
 	parent_fields->yb_uniqpath_provisional =
@@ -1091,17 +1102,6 @@ yb_propagate_fields2(YbPathInfo *parent_fields, YbPathInfo *child1_fields,
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (child1_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
-		child2_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-	{
-		Assert(child1_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
-		Assert(child2_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
-		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-	}
-	else
-		child1_fields->yb_lock_mechanism = child2_fields->yb_lock_mechanism =
-			YB_NO_SCAN_LOCK;
-
 	parent_fields->yb_uniqkeys = NIL;
 	parent_fields->yb_uniqpath_provisional =
 		child1_fields->yb_uniqpath_provisional ||
@@ -1116,34 +1116,15 @@ static void
 yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 {
 	ListCell   *lc;
-	bool		found_serializable_lock = false;
 	bool		yb_uniqpath_provisional;
 
 	if (!IsYugaByteEnabled())
 		return;
 
-	foreach(lc, child_paths)
-	{
-		Path   *subpath = (Path *) lfirst(lc);
-
-		if (subpath->yb_path_info.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
-		{
-			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-			found_serializable_lock = true;
-			break;
-		}
-	}
-
 	yb_uniqpath_provisional = false;
 	foreach(lc, child_paths)
 	{
 		Path   *subpath = (Path *) lfirst(lc);
-		if (!found_serializable_lock)
-			subpath->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
-		else
-			Assert(subpath->yb_path_info.yb_lock_mechanism !=
-				   YB_LOCK_CLAUSE_ON_PK);
-
 		yb_uniqpath_provisional |=
 			subpath->yb_path_info.yb_uniqpath_provisional;
 	}
@@ -1160,32 +1141,8 @@ yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 static void
 yb_propagate_mmagg_fields(YbPathInfo *parent_fields, List *mmaggregates)
 {
-	ListCell   *lc;
-	bool		found_serializable_lock = false;
-
 	if (!IsYugaByteEnabled())
 		return;
-
-	foreach(lc, mmaggregates)
-	{
-		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
-		if (mminfo->path->yb_path_info.yb_lock_mechanism ==
-			YB_RANGE_LOCK_ON_SCAN)
-		{
-			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
-			found_serializable_lock = true;
-			break;
-		}
-	}
-	foreach(lc, mmaggregates)
-	{
-		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
-		if (!found_serializable_lock)
-			mminfo->path->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
-		else
-			Assert(mminfo->path->yb_path_info.yb_lock_mechanism !=
-				   YB_LOCK_CLAUSE_ON_PK);
-	}
 }
 
 
@@ -1213,10 +1170,6 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	/*
 	 * The ybcCostEstimate is used to cost a ForeignScan node on YB table,
@@ -1264,10 +1217,6 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* samplescan has unordered result */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_samplescan(pathnode, root, rel, pathnode->param_info);
 
@@ -1327,17 +1276,6 @@ create_index_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = pathkeys;
-	/*
-	 * In a serializable transaction, the presence of rowMarks tells us that
-	 * this is a locked operation. Therefore we will take locks as part of
-	 * this index scan.
-	 */
-	if (indexclauses != NIL)
-	{
-		yb_maybe_set_range_lock_mechanism(
-			root->parse->rowMarks,
-			&pathnode->path.yb_path_info.yb_lock_mechanism);
-	}
 
 	/* Convert clauses to indexquals the executor can handle */
 	expand_indexqual_conditions(index, indexclauses, indexclausecols,
@@ -1538,10 +1476,6 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;	/* always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->path.yb_path_info.yb_lock_mechanism);
 
 	pathnode->tidquals = tidquals;
 
@@ -2279,10 +2213,6 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = pathkeys;
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	cost_functionscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2308,10 +2238,6 @@ create_tablefuncscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_tablefuncscan(pathnode, root, rel, pathnode->param_info);
 
@@ -2339,10 +2265,6 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	cost_valuesscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2367,10 +2289,6 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* XXX for now, result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
 
@@ -2398,10 +2316,6 @@ create_namedtuplestorescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
-
 	cost_namedtuplestorescan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2427,10 +2341,6 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	/* Cost is the same as for a regular CTE scan */
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
@@ -2494,10 +2404,6 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
-
-	yb_maybe_set_range_lock_mechanism(
-		root->parse->rowMarks,
-		&pathnode->path.yb_path_info.yb_lock_mechanism);
 
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
@@ -4476,7 +4382,7 @@ yb_create_skipscan_path(PlannerInfo *root,
 	memcpy(pathnode, basepath, sizeof(IndexPath));
 
 	Assert(prefixlen > 0);
-	pathnode->yb_distinct_prefixlen = prefixlen;
+	pathnode->yb_index_path_info.yb_distinct_prefixlen = prefixlen;
 	pathnode->path.yb_path_info.yb_uniqkeys = yb_distinct_prefix;
 
 	/*

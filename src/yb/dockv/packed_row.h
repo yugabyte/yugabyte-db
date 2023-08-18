@@ -89,11 +89,11 @@ class RowPackerBase {
   // packed_size_limit - don't pack column if packed row will be over limit after it.
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      const ValueControlFields& row_control_fields);
+      const ValueControlFields& row_control_fields, std::reference_wrapper<const Schema> schema);
 
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      Slice control_fields);
+      Slice control_fields, std::reference_wrapper<const Schema> schema);
 
   RowPackerBase(const RowPackerBase&) = delete;
   void operator=(const RowPackerBase&) = delete;
@@ -106,6 +106,10 @@ class RowPackerBase {
 
   const SchemaPacking& packing() const {
     return packing_;
+  }
+
+  const Schema& schema() const {
+    return schema_;
   }
 
   ColumnId NextColumnId() const;
@@ -132,6 +136,8 @@ class RowPackerBase {
 
   // Resulting buffer.
   ValueBuffer result_;
+
+  const Schema& schema_;
 };
 
 // Packs the row with V1 encoding.
@@ -199,6 +205,8 @@ class RowPackerV2 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
 
   Result<Slice> Complete();
+
+  const Schema& GetSchema();
 
  private:
   void Init(SchemaVersion version);

@@ -596,6 +596,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     // to postpone the deletion until end of transaction.
     DCHECK(!wait);
     txn->ToPB(req.mutable_transaction());
+    req.set_ysql_ddl_rollback_enabled(true);
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(
@@ -768,6 +769,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
   if (txn) {
     txn->ToPB(req.mutable_transaction());
+    req.set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
   }
 
   int attempts = 0;
@@ -835,10 +837,21 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
 Status YBClient::Data::DeleteTablegroup(YBClient* client,
                                         CoarseTimePoint deadline,
-                                        const std::string& tablegroup_id) {
+                                        const std::string& tablegroup_id,
+                                        const TransactionMetadata* txn) {
   DeleteTablegroupRequestPB req;
   DeleteTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
+
+  // If YSQL DDL Rollback is enabled, the YB-Master will merely mark the tablegroup for deletion
+  // and perform the actual deletion only after the transaction commits. Thus there is no point
+  // waiting for the table to be deleted here if DDL Rollback is enabled.
+  bool wait = true;
+  if (txn && FLAGS_ysql_ddl_rollback_enabled) {
+    txn->ToPB(req.mutable_transaction());
+    req.set_ysql_ddl_rollback_enabled(true);
+    wait = false;
+  }
 
   int attempts = 0;
   RETURN_NOT_OK(SyncLeaderMasterRpc(
@@ -863,7 +876,9 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
 
-  RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.parent_table_id(), deadline));
+  if (wait) {
+    RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.parent_table_id(), deadline));
+  }
 
   LOG(INFO) << "Deleted tablegroup " << tablegroup_id;
   return Status::OK();

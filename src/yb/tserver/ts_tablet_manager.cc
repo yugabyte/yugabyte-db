@@ -89,6 +89,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -374,6 +375,16 @@ using yb::MonoTime;
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 const std::string kDebugBootstrapString = "RemoteBootstrap";
 const std::string kDebugSnapshotTransferString = "RemoteSnapshotTransfer";
+
+// Jenkins builds complain if we use tools::SnapshotIdToString with `undefined reference`.
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+} // namespace
 
 void TSTabletManager::VerifyTabletData() {
   LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
@@ -1351,8 +1362,11 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir));
 
   // Download the remote file specified in the request.
+  auto snapshot_id = SnapshotIdToString(req.snapshot_id());
+  auto new_snapshot_id =
+      req.has_new_snapshot_id() ? SnapshotIdToString(req.new_snapshot_id()) : snapshot_id;
   RETURN_NOT_OK_PREPEND(
-      remote_snapshot_client->FetchSnapshot(req.snapshot_id()),
+      remote_snapshot_client->FetchSnapshot(snapshot_id, new_snapshot_id),
       "remote snapshot transfer: Unable to fetch data from remote tablet " + source_uuid + " (" +
           source_addr.ToString() + ")");
 
@@ -2761,7 +2775,8 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
+    tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
@@ -2778,7 +2793,7 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
     // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
     // when we have new replication setup and safe time is not yet computed. In this case, we return
     // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
-    return HybridTime::kMin;
+    return { HybridTime::kInvalid, HybridTime::kMin };
   }
   auto opt_xcluster_safe_time = *xcluster_safe_time_result;
   if (opt_xcluster_safe_time) {
@@ -2819,18 +2834,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
           schedules_to_remove.push_back(schedule_id);
           continue;
         }
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       if (!it->second) {
         // Schedules does not have snapshots yet.
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       result.MakeAtMost(it->second);
     }
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
-  return result;
+  return { HybridTime::kInvalid, result };
 }
 
 void TSTabletManager::FlushDirtySuperblocks() {

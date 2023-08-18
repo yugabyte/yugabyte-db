@@ -238,7 +238,8 @@ YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type);
+                                   const YBCPgTypeEntity *attr_type,
+                                   YBCPgExpr missing_value);
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
                                       const char *newname);
@@ -339,6 +340,8 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,

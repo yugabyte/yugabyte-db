@@ -377,13 +377,20 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     auto propagated_history_cutoff =
         tablet_->RetentionPolicy()->HistoryCutoffToPropagate(last_write_ht);
 
-    if (propagated_history_cutoff) {
+    if (propagated_history_cutoff.cotables_cutoff_ht ||
+        propagated_history_cutoff.primary_cutoff_ht) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
       auto operation = std::make_unique<HistoryCutoffOperation>(tablet_);
       auto request = operation->AllocateRequest();
-      request->set_history_cutoff(propagated_history_cutoff.ToUint64());
-
+      if (propagated_history_cutoff.primary_cutoff_ht) {
+        request->set_primary_cutoff_ht(
+            propagated_history_cutoff.primary_cutoff_ht.ToUint64());
+      }
+      if (propagated_history_cutoff.cotables_cutoff_ht) {
+        request->set_cotables_cutoff_ht(
+            propagated_history_cutoff.cotables_cutoff_ht.ToUint64());
+      }
       Submit(std::move(operation), leader_term);
     }
   }
@@ -1044,20 +1051,9 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
 
-  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
-    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
-    // active transaction.
-    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
-    if (index > 0) {
-      index--;
-    }
-    // Term does not matter, so can be set to 0.
-
-    auto op_id = OpId(0, index);
-    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
-    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
-  }
+  SCHECK_NE(
+      tablet->table_type(), TableType::TRANSACTION_STATUS_TABLE_TYPE, IllegalState,
+      "Transaction status table cannot be bootstrapped.");
 
   auto op_id = GetLatestLogEntryOpId();
 

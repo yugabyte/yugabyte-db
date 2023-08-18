@@ -253,9 +253,6 @@ public class TestJWTAuth extends BasePgSQLTest {
     LOG.info("ysql_hba_conf_csv = " + flagMap.get("ysql_hba_conf_csv"));
 
     if (!Strings.isNullOrEmpty(mapName)) {
-      // ysql_ident_conf_csv is a preview flag, so it must be explicitly enabled.
-      flagMap.put("allowed_preview_flags_csv", "ysql_ident_conf_csv");
-
       flagMap.put("ysql_ident_conf_csv", identFileContents);
       LOG.info("ysql_ident_conf_csv = " + flagMap.get("ysql_ident_conf_csv"));
     }

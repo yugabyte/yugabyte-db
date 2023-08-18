@@ -17,6 +17,7 @@ var (
     MasterUIPort  string
     TserverUIPort string
     Warnings      string
+    Debug         bool
 )
 
 func init() {
@@ -40,5 +41,6 @@ func init() {
     flag.StringVar(&TserverUIPort, "tserver_ui_port", "9000",
         "Tserver UI port.")
     flag.StringVar(&Warnings, "warnings", "", "Warnings from the Pre-reqs check by the CLI.")
+    flag.BoolVar(&Debug, "debug", false, "enables debug logs")
     flag.Parse()
 }

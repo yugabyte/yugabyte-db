@@ -319,7 +319,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -394,6 +395,8 @@ class PgApiImpl {
   Status ExecPostponedDdlStmt(PgStatement *handle);
 
   Status ExecDropTable(PgStatement *handle);
+
+  Status ExecDropIndex(PgStatement *handle);
 
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 

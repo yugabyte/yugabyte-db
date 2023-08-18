@@ -740,6 +740,10 @@ Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
 }
 
+Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
+  return conn->ExecuteFormat("SET ysql_session_max_batch_size = $0", max_batch_size);
+}
+
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
     : process_("perf",
                PerfArguments(CHECK_RESULT(conn->FetchValue<PGUint32>("SELECT pg_backend_pid()")))) {

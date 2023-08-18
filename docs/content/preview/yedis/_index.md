@@ -22,7 +22,7 @@ Yugabyte's current focus is on the two distributed SQL APIs, namely [YSQL](../ap
 The YEDIS API allows YugabyteDB to function as a persistent, resilient, auto-sharded, globally-distributed key-value database that is compatible with the Redis command library. A Redis client can connect, send requests, and receive results from this API.
 
 {{< note title="Redis compatibility" >}}
-While YEDIS supports many Redis data types (such as string, hash, set, sorted set, and a new time-series type) and commands, there are some notable exceptions:
+While YEDIS supports many Redis data types (such as string, hash, set, sorted set, and a new time series type) and commands, there are some notable exceptions:
 
 * Only a subset of sorted set commands (ZCARD, ZADD, ZRANGEBYSCORE, ZREM, ZRANGE, ZREVRANGE, ZSCORE) have been implemented. Several commands like ZCOUNT, ZREVRANGEBYSCORE, ZRANK, ZREVRANK are not implemented.
 

@@ -688,7 +688,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
+                      {!universePaused && !this.isRRFlagsEnabled() && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
@@ -700,7 +700,7 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
+                      {!universePaused && this.isRRFlagsEnabled() && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsNewModal}
@@ -871,6 +871,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
+                            disabled={universePaused && updateInProgress}
                           >
                             <YBLabelWithIcon
                               icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}

@@ -846,6 +846,7 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
   std::lock_guard l(lock_);
 
   bool catalog_changed = false;
@@ -894,7 +895,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
                     << "New: " << new_version << ", Old: " << existing_entry.current_version;
       } else {
         // It is not possible to have same current_version but different last_breaking_version.
-        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version);
+        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
+            << "db_oid: " << db_oid << ", new_version: " << new_version;
       }
     } else {
       auto& inserted_entry = it.first->second;
@@ -940,6 +942,22 @@ void TabletServer::SetYsqlDBCatalogVersions(
         LOG_WITH_FUNC(INFO) << "set db " << db_oid
                             << " catalog version: " << new_version
                             << ", breaking version: " << new_breaking_version;
+      }
+      // During upgrade, it is possible that the table pg_yb_catalog_version has
+      // just been upgraded to have a row for each database, but there is a race
+      // condition where some PG backends have not yet seen this and continue to
+      // use global catalog version. Here we also set the global catalog version
+      // variables which can be used to check against RPC requests from such lagging
+      // PG backends. Note that it is uncommon for database template1 to have
+      // a connection. But even if there is a template1 connection operating in
+      // per-db-mode, such a connection may receive more catalog version bumps
+      // than needed from unrelated connections that are still operating in
+      // global-mode, this only results in more RPC rejections but no correctness
+      // issue.
+      if (db_oid == kTemplate1Oid) {
+        ysql_catalog_version_ = new_version;
+        shared_object().SetYsqlCatalogVersion(new_version);
+        ysql_last_breaking_catalog_version_ = new_breaking_version;
       }
     }
   }

@@ -70,10 +70,24 @@ const DEFAULT_FORM_DATA = {
   AZU_KEY_SIZE: DEFAULT_KEY_SIZE
 };
 
+//HCP KMS
+const HcpAuthType = {
+  Token: 'TOKEN',
+  AppRole: 'APPROLE'
+};
+
+export const HCP_AUTHENTICATION_TYPE = [
+  { label: 'Token', value: HcpAuthType.Token },
+  { label: 'AppRole', value: HcpAuthType.AppRole }
+];
+
+const DEFAULT_HCP_AUTHENTICATION_TYPE = HCP_AUTHENTICATION_TYPE[0];
+
 class KeyManagementConfiguration extends Component {
   state = {
     listView: false,
     enabledIAMProfile: false,
+    hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE,
     useCmkPolicy: false,
     mode: 'NEW',
     formData: DEFAULT_FORM_DATA
@@ -83,6 +97,16 @@ class KeyManagementConfiguration extends Component {
     const { mode } = this.state;
     return mode === 'EDIT';
   };
+
+  isTokenMode = () => {
+    const { hcpAuthType } = this.state;
+    return hcpAuthType.value === HcpAuthType.Token;
+  }
+
+  isAppRoleMode = () => {
+    const { hcpAuthType } = this.state;
+    return hcpAuthType.value === HcpAuthType.AppRole;
+  }
 
   updateFormField = (field, value) => {
     this.props.dispatch(change('kmsProviderConfigForm', field, value));
@@ -171,7 +195,13 @@ class KeyManagementConfiguration extends Component {
           break;
         case 'HASHICORP':
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
-          if (isFieldModified('HC_VAULT_TOKEN')) data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          if (this.isTokenMode()) {
+            if (isFieldModified('HC_VAULT_TOKEN')) data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          } else if (this.isAppRoleMode()) {
+            if (isFieldModified('HC_VAULT_ROLE_ID')) data['HC_VAULT_ROLE_ID'] = values.HC_VAULT_ROLE_ID;
+            if (isFieldModified('HC_VAULT_SECRET_ID')) data['HC_VAULT_SECRET_ID'] = values.HC_VAULT_SECRET_ID;
+            if (isFieldModified('HC_VAULT_AUTH_NAMESPACE')) data['HC_VAULT_AUTH_NAMESPACE'] = values.HC_VAULT_AUTH_NAMESPACE;
+          }
           break;
         default:
         case 'SMARTKEY':
@@ -245,7 +275,13 @@ class KeyManagementConfiguration extends Component {
           break;
         case 'HASHICORP':
           data['HC_VAULT_ADDRESS'] = values.HC_VAULT_ADDRESS;
-          data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          if (this.isTokenMode()) {
+            data['HC_VAULT_TOKEN'] = values.HC_VAULT_TOKEN;
+          } else if (this.isAppRoleMode()) {
+            data['HC_VAULT_ROLE_ID'] = values.HC_VAULT_ROLE_ID;
+            data['HC_VAULT_SECRET_ID'] = values.HC_VAULT_SECRET_ID;
+            data['HC_VAULT_AUTH_NAMESPACE'] = values.HC_VAULT_AUTH_NAMESPACE;
+          }
           data['HC_VAULT_KEY_NAME'] = values.HC_VAULT_KEY_NAME
             ? values.HC_VAULT_KEY_NAME
             : 'key_yugabyte';
@@ -475,6 +511,8 @@ class KeyManagementConfiguration extends Component {
 
   getHCVaultForm = () => {
     const isEdit = this.isEditMode();
+    const isToken = this.isTokenMode();
+    const isAppRole = this.isAppRoleMode();
     return (
       <Fragment>
         <Row className="config-provider-row" key={'v-url-field'}>
@@ -497,18 +535,92 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
         </Row>
-        <Row className="config-provider-row" key={'v-token-field'}>
+        <Row className="config-provider-row" key={'v-auth-field'}>
           <Col lg={3}>
-            <div className="form-item-custom-label">Secret Token</div>
+            <div className="form-item-custom-label">Authentication Type</div>
           </Col>
           <Col lg={7}>
             <Field
-              name={'HC_VAULT_TOKEN'}
-              component={YBFormInput}
+              name="hcpAuthType"
+              component={YBFormSelect}
+              options={HCP_AUTHENTICATION_TYPE}
               className={'kube-provider-input-field'}
+              defaultValue={DEFAULT_HCP_AUTHENTICATION_TYPE}
+              onChange={({ form, field }, option) => {
+                this.setState({ hcpAuthType: option });
+              }}
             />
           </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="Authentication Type" content="The authentication type used to connect to the Hahicorp Vault." />
+          </Col>
         </Row>
+        {isToken && (
+          <Row className="config-provider-row" key={'v-token-field'}>
+            <Col lg={3}>
+              <div className="form-item-custom-label">Secret Token</div>
+            </Col>
+            <Col lg={7}>
+              <Field
+                name={'HC_VAULT_TOKEN'}
+                component={YBFormInput}
+                className={'kube-provider-input-field'}
+              />
+            </Col>
+          </Row>
+        )}
+        {isAppRole && (
+          <Fragment>
+            <Row className="config-provider-row" key={'v-role-id-field'}>
+              <Col lg={3}>
+                <div className="form-item-custom-label">Role ID</div>
+              </Col>
+              <Col lg={7}>
+                <Field
+                  name={'HC_VAULT_ROLE_ID'}
+                  component={YBFormInput}
+                  className={'kube-provider-input-field'}
+                />
+              </Col>
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="Vault Role ID"
+                  content="AppRole Role ID Credentials for the provided Auth Namespace"
+                />
+              </Col>
+            </Row>
+            <Row className="config-provider-row" key={'v-secret-id-field'}>
+              <Col lg={3}>
+                <div className="form-item-custom-label">Secret ID</div>
+              </Col>
+              <Col lg={7}>
+                <Field
+                  name={'HC_VAULT_SECRET_ID'}
+                  component={YBFormInput}
+                  className={'kube-provider-input-field'}
+                />
+              </Col>
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="Vault Secret ID"
+                  content="AppRole Secret ID Credentials for the provided Auth Namespace"
+                />
+              </Col>
+            </Row>
+            <Row className="config-provider-row" key={'v-auth-namespace-field'}>
+              <Col lg={3}>
+                <div className="form-item-custom-label">Auth Namespace (Optional)</div>
+              </Col>
+              <Col lg={7}>
+                <Field
+                  name={'HC_VAULT_AUTH_NAMESPACE'}
+                  component={YBFormInput}
+                  className={'kube-provider-input-field'}
+                />
+              </Col>
+            </Row>
+          </Fragment>
+        )}
         <Row className="config-provider-row" key={'v-key-name-field'}>
           <Col lg={3}>
             <div className="form-item-custom-label">Key Name (Optional)</div>
@@ -940,6 +1052,8 @@ class KeyManagementConfiguration extends Component {
     const { listView, enabledIAMProfile, formData } = this.state;
     const isAdmin = ['Admin', 'SuperAdmin'].includes(currentUserInfo.role);
     const isEdit = this.isEditMode();
+    const isToken = this.isTokenMode();
+    const isAppRole = this.isAppRoleMode();
 
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
@@ -1025,8 +1139,18 @@ class KeyManagementConfiguration extends Component {
         }),
 
         HC_VAULT_TOKEN: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'HASHICORP',
+          is: (provider) => provider?.value === 'HASHICORP' && isToken,
           then: Yup.mixed().required('Secret Token is Required')
+        }),
+
+        HC_VAULT_ROLE_ID: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'HASHICORP' && isAppRole,
+          then: Yup.mixed().required('Role ID is Required')
+        }),
+
+        HC_VAULT_SECRET_ID: Yup.mixed().when('kmsProvider', {
+          is: (provider) => provider?.value === 'HASHICORP' && isAppRole,
+          then: Yup.mixed().required('Secret ID is Required')
         }),
 
         //GCP KMS

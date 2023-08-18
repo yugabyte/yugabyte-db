@@ -340,7 +340,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
-        self->table_type, self->doc_read_context->schema().is_colocated())
+        self->table_type, self->doc_read_context->schema().is_colocated()),
+    .schema = rpc::SharedField(self->doc_read_context, &self->doc_read_context->schema())
   };
 }
 
@@ -414,10 +415,11 @@ Status KvStoreInfo::MergeWithRestored(
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
   has_been_fully_compacted = snapshot_kvstoreinfo.has_been_fully_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
-  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+  return RestoreMissingValuesAndMergeTableSchemaPackings(
+      snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-Status KvStoreInfo::MergeTableSchemaPackings(
+Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
@@ -428,12 +430,20 @@ Status KvStoreInfo::MergeTableSchemaPackings(
             "should both be non-colocated (singular). Snapshot table count: $0, restored table "
             "count: $1",
             snapshot_kvstoreinfo.tables_size(), tables.size()));
+    auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+    if (overwrite) {
+      schema->UpdateMissingValuesFrom(snapshot_kvstoreinfo.tables(0).schema().columns());
+    }
     return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
     if (target_table != nullptr) {
+      auto schema = target_table->doc_read_context->mutable_schema();
+      if (overwrite) {
+        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
+      }
       RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
   }
@@ -1574,11 +1584,27 @@ std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList(
   return hosted_services_;
 }
 
+void RaftGroupMetadata::DisableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  ++disable_schema_gc_counter_;
+}
+
+void RaftGroupMetadata::EnableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  --disable_schema_gc_counter_;
+  LOG_IF(DFATAL, disable_schema_gc_counter_ < 0)
+      << "Disable GC counter underflow: " << disable_schema_gc_counter_;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
+    if (disable_schema_gc_counter_ != 0) {
+      // Could skip schema GC at all, because it will be cleaned after next compaction.
+      return Status::OK();
+    }
     for (const auto& [table_id, schema_version] : versions) {
       auto it = table_id.IsNil() ? kv_store_.tables.find(primary_table_id_)
                                  : kv_store_.tables.find(table_id.ToHexString());

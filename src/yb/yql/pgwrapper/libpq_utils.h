@@ -255,6 +255,7 @@ bool IsRetryable(const Status& status);
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
 Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
+Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size);
 
 class PGConnPerf {
  public:

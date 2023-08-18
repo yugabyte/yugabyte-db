@@ -129,6 +129,12 @@ METRIC_DEFINE_counter(tablet, consistent_prefix_read_requests,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix read requests");
 
+METRIC_DEFINE_counter(tablet, picked_read_time_on_docdb,
+    "Picked read time on docdb",
+    yb::MetricUnit::kRequests,
+    "Number of times, a read time was picked on docdb instead of the query layer for read/write "
+    "requests");
+
 METRIC_DEFINE_counter(tablet, pgsql_consistent_prefix_read_rows,
                       "Consistent Prefix Read Requests",
                       yb::MetricUnit::kRequests,
@@ -177,6 +183,7 @@ constexpr std::pair<uint32_t, TabletCounters> kCounters[] = {
   {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS, TabletCounters::kRestartReadRequests},
   {pggate::YB_ANALYZE_METRIC_CONSISTENT_PREFIX_READ_REQUESTS,
       TabletCounters::kConsistentPrefixReadRequests},
+  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB, TabletCounters::kPickReadTimeOnDocDB},
   {pggate::YB_ANALYZE_METRIC_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
       TabletCounters::kPgsqlConsistentPrefixReadRows},
   {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS, TabletCounters::kTabletDataCorruptions},
@@ -233,6 +240,7 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
   COUNTER_INIT(tablet_entity, expired_transactions, kExpiredTransactions);
   COUNTER_INIT(tablet_entity, restart_read_requests, kRestartReadRequests);
   COUNTER_INIT(tablet_entity, consistent_prefix_read_requests, kConsistentPrefixReadRequests);
+  COUNTER_INIT(tablet_entity, picked_read_time_on_docdb, kPickReadTimeOnDocDB);
   COUNTER_INIT(tablet_entity, pgsql_consistent_prefix_read_rows, kPgsqlConsistentPrefixReadRows);
   COUNTER_INIT(tablet_entity, tablet_data_corruptions, kTabletDataCorruptions);
   COUNTER_INIT(tablet_entity, rows_inserted, kRowsInserted);

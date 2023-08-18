@@ -257,10 +257,13 @@ Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(
   auto status = std::async(std::launch::async, [&conn, query]() {
     return conn->Execute(query);
   });
-
+  // TODO: Once https://github.com/yugabyte/yugabyte-db/issues/17295 is fixed, remove the
+  // below annotations ignoring race.
+  ANNOTATE_IGNORE_READS_BEGIN();
   RETURN_NOT_OK(WaitFor([&conn] () {
     return conn->IsBusy();
   }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+  ANNOTATE_IGNORE_READS_END();
   return status;
 }
 

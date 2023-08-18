@@ -90,12 +90,19 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
-DEPRECATE_FLAG(bool, ysql_catalog_preload_additional_tables, "07_2023");
+// This gflag should be deprecated but kept to avoid breaking some customer
+// clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
+DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
+    "If true, YB catalog preloads a default set of tables upon connection "
+    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_tablespace.");
 
 DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "A list of catalog tables that YSQL preloads additionally upon "
     "connection start-up and cache refreshes. Catalog table names must start with pg_."
-    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc");
+    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc."
+    "If both ysql_catalog_preload_additional_tables and "
+    "ysql_catalog_preload_additional_table_list are set, we take a union of "
+    "both the default list and the user-specified list.");
 
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
             "If true, disable global impact ddl statements in per database catalog "
@@ -693,8 +700,8 @@ YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
 }
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type) {
-  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type));
+                                   const YBCPgTypeEntity *attr_type, YBCPgExpr missing_value) {
+  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type, missing_value));
 }
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
@@ -883,6 +890,10 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
+}
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropIndex(handle));
 }
 
 YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
@@ -1488,6 +1499,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   // clang-format off
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
+      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
@@ -1500,7 +1512,6 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
       .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
       .ysql_disable_global_impact_ddl_statements =
