@@ -216,8 +216,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_s
     sample_rate = (float)1;
   else 
     sample_rate = (float)numrpcs/sample_size_rpcs;
-  
-  //ereport(LOG, (errmsg("numrpcs : %ld,  sample_rate : %lf ", numrpcs, sample_rate)));
   for (int i = 0; i < numrpcs; i++) {
     auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
@@ -342,8 +340,6 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
-  
-  //printf("sample rate : %d \n", sample_rate);
 }
 
 static void
@@ -494,22 +490,16 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     // Sample rate
     // TODO: sample rate is throwing an error in certain mac environments
     // Disabling it for now.
-    //ereport(LOG, (errmsg("AUH entry arr : %f ", AUHEntryArray[i].sample_rate)));
     if (AUHEntryArray[i].sample_rate)
-    {
       values[j++] = Float8GetDatum(AUHEntryArray[i].sample_rate);
-      
-      //ereport(LOG, (errmsg("values : %lu ", values[j-1])));
-    }
     else
       nulls[j++] = true;
-    
+      
     tuplestore_putvalues(tupstore, tupdesc, values, nulls);
   }
   /* clean up and return the tuplestore */
   tuplestore_donestoring(tupstore);
   LWLockRelease(auh_entry_array_lock);
-
 }
 
 Datum
