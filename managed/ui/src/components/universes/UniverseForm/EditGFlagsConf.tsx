@@ -54,7 +54,6 @@ const useStyles = makeStyles((theme) => ({
 interface EditGFlagConfProps {
   formProps: any;
   serverType: string;
-  flagName: string;
   updateJWKSDialogStatus: (status: boolean) => void;
 }
 
@@ -101,7 +100,6 @@ const reorderGFlagRows = (GFlagRows: GFlagRowProps[], startIndex: number, endInd
 export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   formProps,
   serverType,
-  flagName,
   updateJWKSDialogStatus
 }) => {
   let unformattedLDAPConf: GFlagRowProps[] | null = null;
@@ -120,6 +118,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     unformattedLDAPConf = unformatConf(flagValue);
   }
 
+  const [flagName, setFlagName] = useState<string>(formProps?.values?.flagname);
   const [showJWKSButton, setShowJWKSButton] = useState<boolean>(false);
   const [showJWKSDialog, setShowJWKSDialog] = useState<boolean>(false);
   const [JWKSKey, setJWKSToken] = useState<string>(CONST_VALUES.EMPTY_STRING);
@@ -141,6 +140,10 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
       setGFlagConfRows(unformattedLDAPConf!);
     }
   }, [flagValue]);
+
+  useEffect(() => {
+    setFlagName(formProps?.values?.flagname);
+  }, [formProps?.values?.flagname]);
 
   const getPlaceholder = (index: number, flagName: string) => {
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
@@ -354,8 +357,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                             <Box display="flex" flexDirection="column">
                               <Box display="flex" flexDirection="row">
                                 <YBInput
-                                  key={`${GFlagRows[index].content}`}
-                                  name={`flagvalue-${index}`}
+                                  key={`${flagName}`}
+                                  name={`${flagName}-${index}`}
                                   id={`${index}`}
                                   fullWidth
                                   multiline={true}
@@ -371,7 +374,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   onChange={(e: any) => handleChange(e.target.value, index)}
                                   onBlur={() => buildGFlagConf()}
                                   error={GFlagRows[index]?.error}
-                                  helperText={t(GFlagRows[index]?.errorMessageKey!)}
+                                  helperText={t(GFlagRows[index].errorMessageKey!)}
                                   inputProps={{
                                     'data-testid': `EditMultilineConfField-row-${index}`
                                   }}
