@@ -62,6 +62,11 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (IsFlushTablesDone)
   )
 
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      TabletHealthManager,
+      (AreNodesSafeToTakeDown)
+  )
+
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
       YsqlBackendsManager,
       (AccessYsqlBackendsManagerTestRegister)

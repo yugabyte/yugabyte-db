@@ -27,9 +27,9 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
-#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_health_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -549,6 +549,7 @@ void RetryingMasterRpcTask::DoRpcCallback() {
 Status RetryingMasterRpcTask::ResetProxies() {
   HostPort hostport = HostPortFromPB(DesiredHostPort(peer_, master_->MakeCloudInfoPB()));
   master_test_proxy_ = std::make_unique<MasterTestProxy>(&master_->proxy_cache(), hostport);
+  master_cluster_proxy_ = std::make_unique<MasterClusterProxy>(&master_->proxy_cache(), hostport);
   return Status::OK();
 }
 
@@ -774,6 +775,78 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1) << "Send create tablet request to " << permanent_uuid_ << ":\n"
                       << " (attempt " << attempt << "):\n"
                       << req_.DebugString();
+  return true;
+}
+
+// ============================================================================
+//  Class AsyncMasterTabletHealthTask.
+// ============================================================================
+AsyncMasterTabletHealthTask::AsyncMasterTabletHealthTask(
+    Master* master,
+    ThreadPool* callback_pool,
+    const consensus::RaftPeerPB& peer,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler)
+  : RetryingMasterRpcTask(
+      master, callback_pool, peer, /* async_task_throttler */ nullptr), cb_handler_{cb_handler} {}
+
+void AsyncMasterTabletHealthTask::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status s = StatusFromPB(resp_.error().status());
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "AsyncMasterTabletHealthTask RPC on "
+                               << peer_.ShortDebugString() << " failed: " << s;
+    }
+    return;
+  }
+  cb_handler_->ReportHealthCheck(resp_, peer_.permanent_uuid());
+  TransitionToCompleteState();
+}
+
+std::string AsyncMasterTabletHealthTask::description() const {
+  return "Check tablet health for tablets on master " + peer_.ShortDebugString();
+}
+
+bool AsyncMasterTabletHealthTask::SendRequest(int attempt) {
+  master_cluster_proxy_->CheckMasterTabletHealthAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  return true;
+}
+
+// ============================================================================
+//  Class AsyncTserverTabletHealthTask.
+// ============================================================================
+AsyncTserverTabletHealthTask::AsyncTserverTabletHealthTask(
+    Master* master,
+    ThreadPool* callback_pool,
+    std::string permanent_uuid,
+    std::vector<TabletId> tablets,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler)
+  : RetrySpecificTSRpcTask(
+      master, callback_pool, std::move(permanent_uuid), /* async_task_throttler */ nullptr),
+    cb_handler_{std::move(cb_handler)} {
+  for (auto& tablet_id : tablets) {
+    req_.add_tablet_ids(std::move(tablet_id));
+  }
+}
+
+void AsyncTserverTabletHealthTask::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    Status s = StatusFromPB(resp_.error().status());
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "CheckTserverTabletHealth RPC on TS "
+                               << permanent_uuid_ << " failed: " << s;
+    }
+    return;
+  }
+  cb_handler_->ReportHealthCheck(resp_, permanent_uuid_);
+  TransitionToCompleteState();
+}
+
+std::string AsyncTserverTabletHealthTask::description() const {
+  return "Check tablet health for tablets on TS " + permanent_uuid_;
+}
+
+bool AsyncTserverTabletHealthTask::SendRequest(int attempt) {
+  ts_proxy_->CheckTserverTabletHealthAsync(req_, &resp_, &rpc_, BindRpcCallback());
   return true;
 }
 

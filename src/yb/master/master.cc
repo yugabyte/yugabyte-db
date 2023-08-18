@@ -171,6 +171,7 @@ Master::Master(const MasterOptions& opts)
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
+      tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
       test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
