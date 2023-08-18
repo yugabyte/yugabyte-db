@@ -101,10 +101,10 @@ message KvStoreInfoPB {
   optional bytes lower_bound_key = 6;
   optional bytes upper_bound_key = 7;
 
-  // Whether KV-store regular DB has been fully compacted since creation.
-  // We don't split not yet fully compacted post-split tablets as of 2020-06-23, since
+  // Whether KV-store regular DB parent files have been compacted since creation.
+  // We don't split post-split tablets which have uncompacted parent data as of 2020-06-23, since
   // detecting effective middle key and tablet size for such tablets is not yet implemented.
-  optional bool has_been_fully_compacted = 8;
+  optional bool parent_data_compacted = 8;
 
   repeated bytes snapshot_schedules = 9;
 

@@ -397,8 +397,8 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
         metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
       }
-      if (!metadata.has_been_fully_compacted()) {
-        metadata.set_has_been_fully_compacted(true);
+      if (!metadata.parent_data_compacted()) {
+        metadata.set_parent_data_compacted(true);
       }
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
@@ -3392,7 +3392,7 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
 }
 
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
-  return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
+  return key_bounds().IsInitialized() && !metadata()->parent_data_compacted();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {

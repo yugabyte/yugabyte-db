@@ -727,7 +727,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->doc_db().regular) {
+    if (peer->shared_tablet()->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -1132,7 +1132,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    auto db = peer->tablet()->TEST_db();
+    auto db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }

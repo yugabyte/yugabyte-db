@@ -3931,7 +3931,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
   ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Reset the flag so we compact the children after the restore.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
@@ -3941,7 +3941,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
   ASSERT_EQ(tablets.size(), 2);
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Try to split the first tablet to sanity check it was compacted after the restore.
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(

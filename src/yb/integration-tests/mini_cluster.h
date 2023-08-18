@@ -382,7 +382,7 @@ Status WaitForAnySstFiles(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
 
-Status WaitForPeersAreFullyCompacted(
+Status WaitForPeersPostSplitCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 

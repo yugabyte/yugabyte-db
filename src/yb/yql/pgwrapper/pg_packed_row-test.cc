@@ -277,7 +277,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Random)) {
   }
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->TEST_db()) {
+    if (!peer->tablet()->regular_db()) {
       continue;
     }
     std::unordered_set<std::string> values;
@@ -384,7 +384,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
     if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
       continue;
     }
-    auto files = peer->tablet()->doc_db().regular->GetLiveFilesMetaData();
+    auto files = peer->tablet()->regular_db()->GetLiveFilesMetaData();
     auto table_info = peer->tablet_metadata()->primary_table_info();
     ASSERT_EQ(table_info->doc_read_context->schema_packing_storage.SchemaCount(), 1);
   }
@@ -721,7 +721,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->TEST_db()) {
+    if (!peer->tablet()->regular_db()) {
       continue;
     }
     auto dump = peer->tablet()->TEST_DocDBDumpStr(tablet::IncludeIntents::kTrue);
@@ -856,10 +856,10 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   std::string metapath;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
     auto tablet = peer->shared_tablet();
-    if (!tablet || !tablet->TEST_db()) {
+    if (!tablet || !tablet->regular_db()) {
       continue;
     }
-    for (const auto& file : tablet->TEST_db()->GetLiveFilesMetaData()) {
+    for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
       fname = file.BaseFilePath();
       metapath = ASSERT_RESULT(tablet->metadata()->FilePath());
       LOG(INFO) << "File: " << fname << ", metapath: " << metapath;

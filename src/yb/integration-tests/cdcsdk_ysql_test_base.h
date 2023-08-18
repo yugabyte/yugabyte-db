@@ -1992,7 +1992,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       if (peer->tablet()->metadata()->table_id() != table_id) {
         continue;
       }
-      auto db = peer->tablet()->TEST_db();
+      auto db = peer->tablet()->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));

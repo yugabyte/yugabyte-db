@@ -204,7 +204,7 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
 
 Status PgTabletSplitTestBase::DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
   for (auto& peer : *peers) {
-    RETURN_NOT_OK(peer->tablet()->doc_db().regular->SetOptions({
+    RETURN_NOT_OK(peer->tablet()->regular_db()->SetOptions({
         {"level0_file_num_compaction_trigger", std::to_string(std::numeric_limits<int32>::max())}
     }));
   }
@@ -257,7 +257,7 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
   }
 
   // Wait for new peers are fully compacted.
-  return WaitForPeersAreFullyCompacted(cluster_.get(), new_tablet_ids);
+  return WaitForPeersPostSplitCompacted(cluster_.get(), new_tablet_ids);
 }
 
 PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table) {

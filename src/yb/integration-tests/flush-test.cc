@@ -187,7 +187,7 @@ class FlushITest : public YBTest {
   int NumRunningFlushes() {
     int compactions = 0;
     for (auto& peer : cluster_->GetTabletPeers(0)) {
-      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
+      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
       if (db) {
         compactions += db->TEST_NumRunningFlushes();
       }
@@ -214,7 +214,7 @@ class FlushITest : public YBTest {
     for (auto& peer : cluster_->GetTabletPeers(0)) {
       const auto tablet_id = peer->tablet_id();
       if (tablets->count(tablet_id) == 0) {
-        auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
+        auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
         if (db) {
           auto* cf = pointer_cast<rocksdb::ColumnFamilyHandleImpl*>(db->DefaultColumnFamily());
           if (cf->cfd()->mem()->num_entries() > 0) {

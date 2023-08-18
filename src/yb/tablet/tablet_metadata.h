@@ -222,7 +222,7 @@ struct KvStoreInfo {
   std::string upper_bound_key;
 
   // See KvStoreInfoPB field with the same name.
-  bool has_been_fully_compacted = false;
+  bool parent_data_compacted = false;
 
   // See KvStoreInfoPB field with the same name.
   uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
@@ -382,14 +382,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool IsUnderXClusterReplication() const;
 
-  bool has_been_fully_compacted() const {
+  bool parent_data_compacted() const {
     std::lock_guard<MutexType> lock(data_mutex_);
-    return kv_store_.has_been_fully_compacted;
+    return kv_store_.parent_data_compacted;
   }
 
-  void set_has_been_fully_compacted(const bool& value) {
+  void set_parent_data_compacted(const bool& value) {
     std::lock_guard<MutexType> lock(data_mutex_);
-    kv_store_.has_been_fully_compacted = value;
+    kv_store_.parent_data_compacted = value;
   }
 
   uint64_t last_full_compaction_time() {
