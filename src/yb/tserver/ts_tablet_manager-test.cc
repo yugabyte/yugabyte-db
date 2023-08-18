@@ -653,7 +653,7 @@ Result<size_t> CountUniqueLimiters(const TSTabletManager::TabletPeers& peers,
             "Start index must be less than number of peers");
   std::unordered_set<rocksdb::RateLimiter*> unique;
   for (size_t i = start_idx; i < peers.size(); ++i) {
-    auto db = peers[i]->tablet()->TEST_db();
+    auto db = peers[i]->tablet()->regular_db();
     SCHECK_NOTNULL(db);
     auto rl = db->GetDBOptions().rate_limiter.get();
     if (rl) {

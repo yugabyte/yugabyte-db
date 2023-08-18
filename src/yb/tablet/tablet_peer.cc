@@ -787,7 +787,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
-  status_pb_out->set_has_been_fully_compacted(meta_->has_been_fully_compacted());
+  status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
 }
 
 Status TabletPeer::RunLogGC() {
