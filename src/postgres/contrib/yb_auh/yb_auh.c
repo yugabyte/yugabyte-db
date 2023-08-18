@@ -494,12 +494,13 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       values[j++] = Float8GetDatum(AUHEntryArray[i].sample_rate);
     else
       nulls[j++] = true;
-      
+
     tuplestore_putvalues(tupstore, tupdesc, values, nulls);
   }
   /* clean up and return the tuplestore */
   tuplestore_donestoring(tupstore);
   LWLockRelease(auh_entry_array_lock);
+
 }
 
 Datum
