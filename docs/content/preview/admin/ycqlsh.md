@@ -333,3 +333,14 @@ The `file name` should be a string literal (with single quotes) representing a p
 | `CHUNKSIZE`       | 1000    | The number of rows that are passed to child worker processes from the main process at a time. |
 
 See `COPY TO` for additional flags common to both `COPY TO` and `COPY FROM`.
+
+
+### TIMING
+
+Enables or disables simple request round-trip timing, as measured on a current YCQL shell session.
+
+To start, use TIMING ON. To stop, use TIMING OFF. If run without arguments, the command shows the current timing status.
+
+```cql
+
+```
