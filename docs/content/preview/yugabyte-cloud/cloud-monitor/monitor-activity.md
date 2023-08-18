@@ -29,4 +29,5 @@ The following table lists the cluster activity that is logged.
 | Cluster | Create cluster<br>Edit cluster<br>Upgrade cluster<br>Pause cluster<br>Resume cluster |
 | Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | Allow List | Edit IP Allow Lists |
+| Metrics | Configure Metrics Export |
 <!-- | Backup | Create backup<br>Delete backup<br>Restore backup | -->
