@@ -5,7 +5,7 @@
   "main": "public/index.html",
   "scripts": {
     "start": "run-p start-diagrams webpack-watch hugo-server",
-    "fast": "run-p start-diagrams webpack-watch hugo-server-fast",
+    "fast": "run-p webpack-watch hugo-server-fast",
     "start-production": "run-p webpack-watch hugo-server-production",
     "start-static": "run-p webpack-watch hugo-server-static",
     "build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-build",
