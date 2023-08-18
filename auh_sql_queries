@@ -85,7 +85,11 @@ from (select query_id, wait_event_component, wait_event_class,wait_event, count(
     pg_stat_statements stmts  
 where stmts.queryid = auh.query_id order by query_id, auh.wait_event_component;
 
+
+---
+
 select stmts.queryid, substring(stmts.query, 1, 50)  
+   from
     auh_query_id_details_with_counts as auh, pg_stat_statements as stmts  
 where stmts.queryid = auh.query_id;
 -------------------------------------------------------------
