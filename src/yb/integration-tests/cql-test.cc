@@ -469,7 +469,7 @@ TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
   ASSERT_OK(cluster_->CompactTablets());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto* db = peer->tablet()->TEST_db();
+    auto* db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }

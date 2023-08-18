@@ -51,7 +51,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
 
   auto tablet = VERIFY_RESULT(tablet_safe());
   history_cutoff = tablet->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
-  auto regular_db = tablet->doc_db().regular;
+  auto regular_db = tablet->regular_db();
   if (regular_db) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;
