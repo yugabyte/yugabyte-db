@@ -210,11 +210,15 @@ ExecInitForeignScan(ForeignScan *node, EState *estate, int eflags)
 	else
 	{
 		TupleDesc	scan_tupdesc;
-
 		/* don't trust FDWs to return tuples fulfilling NOT NULL constraints */
 		scan_tupdesc = CreateTupleDescCopy(RelationGetDescr(currentRelation));
-		ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
-							  &TTSOpsHeapTuple);
+		/* YB_REVIEW: In YB, we fetch values and nulls from docdb and hence, VirtualTupleTableSlot is a better choice.  */
+		if(IsYugaByteEnabled())
+			ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
+								&TTSOpsVirtual);
+		else
+			ExecInitScanTupleSlot(estate, &scanstate->ss, scan_tupdesc,
+								&TTSOpsHeapTuple);
 		/* Node's targetlist will contain Vars with varno = scanrelid */
 		tlistvarno = scanrelid;
 	}

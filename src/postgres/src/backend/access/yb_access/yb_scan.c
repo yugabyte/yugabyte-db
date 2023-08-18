@@ -3327,12 +3327,14 @@ TupleTableSlot *
 ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid)
 {
+	/* YB_REVIEW: Are these the right assertion to make? */
+	Assert(slot != NULL);
+	Assert(TTS_IS_VIRTUAL(slot));
 	TupleDesc	tupdesc = slot->tts_tupleDescriptor;
 	Datum	   *values = slot->tts_values;
 	bool	   *nulls = slot->tts_isnull;
 	YBCPgSysColumns syscols;
 	bool		has_data;
-
 	ExecClearTuple(slot);
 	/* Fetch one row. */
 	HandleYBStatus(YBCPgDmlFetch(handle,
@@ -3346,19 +3348,6 @@ ybFetchNext(YBCPgStatement handle,
 		slot->tts_nvalid = tupdesc->natts;
 		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
-#ifdef YB_TODO
-		/* OID is now a regular column */
-		if (syscols.oid != InvalidOid)
-		{
-			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
-			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
-			HeapTupleSetOid(tuple, syscols.oid);
-			tuple->t_tableOid = relid;
-			HEAPTUPLE_YBCTID(tuple) = TABLETUPLE_YBCTID(slot);
-			slot = ExecStoreHeapTuple(tuple, slot, true);
-			MemoryContextSwitchTo(oldcontext);
-		}
-#endif
 		slot->tts_tableOid = relid;
 	}
 	return slot;
