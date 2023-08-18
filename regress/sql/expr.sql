@@ -1269,6 +1269,54 @@ $$) AS (toBoolean agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toBoolean()
 $$) AS (toBoolean agtype);
+
+-- toBooleanList()
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([true, false, true])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["true", "false", "true"])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["True", "False", "True"])
+$$) AS (toBooleanList agtype);
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([null, null, null])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["Hello", "world!"])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([["A", "B"], ["C", "D"]])
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([0,1,2,3,4])
+$$) AS (toBooleanList agtype);
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(fail)
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList("fail")
+$$) AS (toBooleanList agtype);
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(123)
+$$) AS (toBooleanList agtype);
+
 -- toFloat()
 SELECT * FROM cypher('expr', $$
     RETURN toFloat(1)

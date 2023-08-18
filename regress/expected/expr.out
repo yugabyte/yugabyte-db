@@ -2827,6 +2827,87 @@ ERROR:  function ag_catalog.age_toboolean() does not exist
 LINE 2:     RETURN toBoolean()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- toBooleanList()
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([true, false, true])
+$$) AS (toBooleanList agtype);
+    tobooleanlist    
+---------------------
+ [true, false, true]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["true", "false", "true"])
+$$) AS (toBooleanList agtype);
+    tobooleanlist    
+---------------------
+ [true, false, true]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["True", "False", "True"])
+$$) AS (toBooleanList agtype);
+    tobooleanlist    
+---------------------
+ [true, false, true]
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([])
+$$) AS (toBooleanList agtype);
+ tobooleanlist 
+---------------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([null, null, null])
+$$) AS (toBooleanList agtype);
+   tobooleanlist    
+--------------------
+ [null, null, null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(["Hello", "world!"])
+$$) AS (toBooleanList agtype);
+ tobooleanlist 
+---------------
+ [null, null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([["A", "B"], ["C", "D"]])
+$$) AS (toBooleanList agtype);
+ tobooleanlist 
+---------------
+ [null, null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList([0,1,2,3,4])
+$$) AS (toBooleanList agtype);
+         tobooleanlist          
+--------------------------------
+ [null, null, null, null, null]
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(fail)
+$$) AS (toBooleanList agtype);
+ERROR:  could not find rte for fail
+LINE 2:     RETURN toBooleanList(fail)
+                                 ^
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList("fail")
+$$) AS (toBooleanList agtype);
+ERROR:  toBooleanList() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN toBooleanList(123)
+$$) AS (toBooleanList agtype);
+ERROR:  toBooleanList() argument must resolve to a list or null
 -- toFloat()
 SELECT * FROM cypher('expr', $$
     RETURN toFloat(1)
