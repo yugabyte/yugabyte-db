@@ -43,7 +43,7 @@ Multiple flows can be used; for example, two unidirectional flows between two un
 
 Although for simplicity, we will describe flows between entire universes, flows are actually composed of streams between pairs of tables, one in each universe, allowing replication of only certain namespaces or tables.
 
-xCluster is more flexible than a hypothetical scheme whereby read replicas are promoted to full replicas when primary replicas are lost because it does not require the two universes to be tightly coupled. With xCluster, for example, the same table can be split into tablets in different ways in the two universes and (in the future) the two universes will be able to run different versions of YugabyteDB. xCluster also allows for bidirectional replication, which is not possible using read replicas because read replicas cannot take writes.
+xCluster is more flexible than a hypothetical scheme whereby read replicas are promoted to full replicas when primary replicas are lost because it does not require the two universes to be tightly coupled. With xCluster, for example, the same table can be split into tablets in different ways in the two universes. xCluster also allows for bidirectional replication, which is not possible using read replicas because read replicas cannot take writes.
 
 
 ## Asynchronous replication modes
@@ -73,9 +73,9 @@ Note that these inconsistencies are limited to the tables/rows being written to 
 
 ### Transactional replication
 
-This mode is an extension of the previous one.  In order to restore consistency, we additionally disallow writes on the target universe and cause reads to read as of a time far enough in the past that all the relevant data from the source universe has already been replicated.
+This mode is an extension of the previous one.  In order to restore consistency, we additionally disallow writes on the target universe and cause reads to read as of a time far enough in the past (typically 250 ms) that all the relevant data from the source universe has already been replicated.
 
-In particular, we pick the time to read as of, _T_, so that all the writes from all the source transactions that will commit at or before time _T_ have been replicated to the target universe.  Put another way, we read as of a time far enough in the past that there cannot be new incoming source writes at or before that time.  This restores consistent reads and ensures source universe transaction results become visible atomically.  Note that we do *not* wait for any current in flight source-universe transactions.
+In particular, we pick the time to read as of, _T_, so that all the writes from all the source transactions that will commit at or before time _T_ have been replicated to the target universe.  Put another way, we read as of a time far enough in the past that there cannot be new incoming source commits at or before that time.  This restores consistent reads and ensures source universe transaction results become visible atomically.  Note that we do *not* wait for any current in flight source-universe transactions.
 
 In order to know when to read as of, we maintain an analog of safe time called _xCluster safe time_, which is the latest time it is currently safe to read as of with xCluster transactional replication in order to guarantee consistency and atomicity.  xCluster safe time advances as replication proceeds but lags behind real-time by the current replication lag.  This means, for example, if we write at 2 PM in the source universe and read at 2:01 PM in the target universe and replication lag is say five minutes then the read will read as of 1:56 PM and will not see the write.  We won't be able to see the write until 2:06 PM in the target universe assuming the replication lag remains at five minutes.
 
@@ -134,7 +134,7 @@ When a source transaction commits, it is applied to the relevant tablets lazily.
 
 xCluster safe time is computed for each database by the target-universe master leader as the minimum _xCluster application time_ any tablet in that database has reached.  Pollers determine this time using information from the source tablet servers of the form "once you have fully applied all the changes before this one, your xCluster application time for this tablet will be _T_".
 
-A source tablet server sends such information when it determines that no active transaction involving that tablet can commit before _T_ and that all transactions involving that tablet that committed before _T_ have application Raft entries that have been previously sent as changes.  It also periodically checks for committed transactions that are missing apply Raft entries and generates such entries for them; this helps xCluster safe time advance faster.
+A source tablet server sends such information when it determines that no active transaction involving that tablet can commit before _T_ and that all transactions involving that tablet that committed before _T_ have application Raft entries that have been previously sent as changes.  It also periodically (currently 250 ms) checks for committed transactions that are missing apply Raft entries and generates such entries for them; this helps xCluster safe time advance faster.
 
 
 ## Schema differences
