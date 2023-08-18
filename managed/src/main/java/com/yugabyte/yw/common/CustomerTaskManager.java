@@ -510,13 +510,13 @@ public class CustomerTaskManager {
     } else {
       throw new PlatformServiceException(BAD_REQUEST, "Unknown type for task params " + taskParams);
     }
+    taskParams.setPreviousTaskUUID(taskUUID);
     UUID newTaskUUID = commissioner.submit(taskType, taskParams);
     LOG.info(
         "Submitted retry task to universe for {}:{}, task uuid = {}.",
         targetUUID,
         targetName,
         newTaskUUID);
-    taskParams.setPreviousTaskUUID(taskUUID);
     return CustomerTask.create(
         customer,
         targetUUID,
