@@ -311,6 +311,7 @@ export const unformatConf = (GFlagInput) => {
       const JWKSKey = GFlagRowConfSubset.substring(GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS));
       if (isNonEmptyString(JWKSKey)) {
         GFlagRowConfSubset = GFlagRowConfSubset.replace(JWKSKey, '');
+        GFlagRowConfSubset = GFlagRowConfSubset.trimEnd();
       }
       JWKSToken = JWKSKey.substring(JWKSKey.indexOf(CONST_VALUES.EQUALS) + 1);
     }

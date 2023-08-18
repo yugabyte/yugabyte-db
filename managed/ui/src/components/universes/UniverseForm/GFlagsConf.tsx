@@ -134,7 +134,6 @@ export const GFlagsConf: FC<GFlagConfProps> = ({
           <EditGFlagsConf
             formProps={formProps}
             serverType={serverType}
-            flagName={flagName}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
           />
         )}
