@@ -39,7 +39,7 @@
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
 
-#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        11
+#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
 typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
@@ -52,7 +52,7 @@ typedef struct ybauhEntry {
   uint16 client_node_port;
   long query_id;
   TimestampTz start_ts_of_wait_event;
-  uint16 sample_rate;
+  float8 sample_rate;
 } ybauhEntry;
 
 /* counters */
@@ -69,6 +69,9 @@ static int circular_buf_size = 0;
 static int circular_buf_size_kb = 16*1024;
 
 static int auh_sampling_interval = 1;
+
+static uint16 sample_size_procs = 5;
+static uint16 sample_size_rpcs = 5;
 
 /* Entry point of library loading */
 void _PG_init(void);
@@ -88,9 +91,9 @@ static void auh_entry_store(TimestampTz auh_time,
                             uint16 client_node_port,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
-                            uint16 sample_rate);
-static void pg_collect_samples(TimestampTz auh_sample_time);
-static void tserver_collect_samples(TimestampTz auh_sample_time);
+                            float8 sample_rate);
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs);
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -164,8 +167,8 @@ yb_auh_main(Datum main_arg) {
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
 
-    pg_collect_samples(auh_sample_time);
-    tserver_collect_samples(auh_sample_time);
+    pg_collect_samples(auh_sample_time, sample_size_procs);
+    tserver_collect_samples(auh_sample_time, sample_size_rpcs);
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -173,11 +176,17 @@ yb_auh_main(Datum main_arg) {
   proc_exit(0);
 }
 
-static void pg_collect_samples(TimestampTz auh_sample_time)
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs)
 {
   LWLockAcquire(ProcArrayLock, LW_SHARED);
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int		procCount = ProcGlobal->allProcCount;
+  float8 sample_rate;
+  if(procCount <= sample_size_procs)
+    sample_rate =  (float)1;
+  else 
+    sample_rate = (float)procCount/sample_size_procs;
+
   for (int i = 0; i < procCount; i++)
   {
     PGPROC *proc = &ProcGlobal->allProcs[i];
@@ -195,14 +204,20 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
   LWLockRelease(ProcArrayLock);
 }
 
-static void tserver_collect_samples(TimestampTz auh_sample_time)
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs)
 {
   //TODO:
   YBCAUHDescriptor *rpcs = NULL;
   size_t numrpcs = 0;
-
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
+  float8 sample_rate;
+  if(numrpcs <= sample_size_rpcs)
+    sample_rate = (float)1;
+  else 
+    sample_rate = (float)numrpcs/sample_size_rpcs;
+  
+  //ereport(LOG, (errmsg("numrpcs : %ld,  sample_rate : %lf ", numrpcs, sample_rate)));
   for (int i = 0; i < numrpcs; i++) {
     auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
@@ -282,7 +297,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             uint16 client_node_port,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
-                            uint16 sample_rate)
+                            float8 sample_rate)
 {
   int inserted;
   if (!AUHEntryArray) { return; }
@@ -327,6 +342,8 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
+  
+  //printf("sample rate : %d \n", sample_rate);
 }
 
 static void
@@ -477,11 +494,16 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     // Sample rate
     // TODO: sample rate is throwing an error in certain mac environments
     // Disabling it for now.
-    if (false && AUHEntryArray[i].sample_rate)
-      values[j++] = Int16GetDatum(AUHEntryArray[i].sample_rate);
+    //ereport(LOG, (errmsg("AUH entry arr : %f ", AUHEntryArray[i].sample_rate)));
+    if (AUHEntryArray[i].sample_rate)
+    {
+      values[j++] = Float8GetDatum(AUHEntryArray[i].sample_rate);
+      
+      //ereport(LOG, (errmsg("values : %lu ", values[j-1])));
+    }
     else
       nulls[j++] = true;
-
+    
     tuplestore_putvalues(tupstore, tupdesc, values, nulls);
   }
   /* clean up and return the tuplestore */

@@ -13,7 +13,7 @@ CREATE FUNCTION pg_active_universe_history(
     OUT query_id BIGINT,
     OUT client_node_ip text,
     OUT start_ts_of_wait_event timestamptz,
-    OUT sample_rate SMALLINT
+    OUT sample_rate FLOAT
 )
 
 RETURNS SETOF record
