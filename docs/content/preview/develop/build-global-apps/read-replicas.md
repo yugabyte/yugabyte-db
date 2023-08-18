@@ -2,7 +2,7 @@
 title: Read Replicas for global applications
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Reducing Read Latency for global applications
+description: Reduce read latency using Read replicas
 headcontent: Reduce read latency for global applications
 menu:
   preview:
