@@ -74,6 +74,27 @@
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
         "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
+      },
+      "encryptionInTransit": {
+        "title": "Manage encryption in-Transit",
+        "enableEIT": "Enable encryption in transit for this Universe",
+        "certAuthority": "Certificate Authority",
+        "serverCert": "Server Certificate",
+        "useSameCert": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+        "enableNNEncryption": "Enable “Node to Node” Encryption",
+        "enableCNEncryption": "Enable “Client to Node” Encryption",
+        "enableCNAndNNEncryption": "Enable “Node to Node” and “Client to Node” Encryption",
+        "selectCA": "Select certificate authority",
+        "rotateCA": "Rotate certificate authority",
+        "useRollingUpgrade": "Use rolling upgrade to apply this change",
+        "rollingUpgradeInputTitle": "Set the upgrade delay between servers (Seconds)",
+        "rotateServerCert": "Rotate server certificate",
+        "rotateNToNServerCert": "Rotate “Node to Node” Server Certificate",
+        "rotateCToNServerCert": "Rotate “Client to Node” Server Certificate",
+        "changeCTNCertWarning": "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.",
+        "disableEncryptionWarning": "Rotating certificates (Certificate Authority or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
+        "disableNNRotationWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "disableCNRotationWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
       }
     },
     "commonErrors": {
