@@ -112,6 +112,7 @@ YB_DEFINE_ENUM_TYPE(
         (HandleFailure) // Ran into some kind of failure.
       (Applying) // operation has been replicated/acknowledged by a majority. Applying it to the tablet.
       (ApplyDone) // apply is done.
+      (WALLogSync) // waiting for WALEdits to be persisted.
 
     // UpdateConsensus
       (Updating) // Update rpc is called on a follower
