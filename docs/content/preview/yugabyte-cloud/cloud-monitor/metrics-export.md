@@ -16,17 +16,21 @@ You can export cluster metrics to third-party tools for analysis and customizati
 1. Create an export configuration. An export configuration defines the settings and login information for the tool that you want to export your metrics to.
 1. Assign a configuration to the cluster. Once created, you can assign an export configuration to one or more clusters. While the connection is active, metrics are automatically streamed to the tool.
 
-Create export configurations and assign them to clusters on the **Integrations > Metrics** tab.
-
 Currently, YugabyteDB Managed supports export to [Datadog](https://docs.datadoghq.com/). Metrics export is not available for the Sandbox cluster.
 
 Exporting metrics counts against your data transfer allowance, and may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
+
+Create export configurations and assign them to clusters on the **Integrations > Metrics** tab.
 
 ![Integrations Metrics tab](/images/yb-cloud/managed-metrics-export.png)
 
 The tab lists any export configurations that you have created, along with the clusters in your account, and the status of any metrics export assigned to clusters.
 
-## Create an export configuration
+You can also access metrics export on the cluster **Settings** tab under **Metrics Export**.
+
+## Manage export configurations
+
+You can add, edit, and delete export configurations. You can't delete a configuration that is assigned to a cluster.
 
 To create an export configuration, do the following:
 
@@ -39,6 +43,10 @@ To create an export configuration, do the following:
 1. Optionally, click **Download** to download the Datadog dashboard template. You can import this JSON format template into your Datadog account and use it as a starting point for visualizing your cluster data in Datadog.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
+
+To edit a configuration, click the **...** button on the configuration and choose **Edit**.
+
+To delete a configuration, click the **...** button on the configuration and choose **Delete**.
 
 ## Manage cluster configurations
 
