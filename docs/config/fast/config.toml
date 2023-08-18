@@ -10,4 +10,8 @@
   excludeFiles = ["/v{2.12,2.14,2.16,2.8}/*"]
 
   # for preview only
-  # excludeFiles = ["/{stable}/*", "/v{2.12,2.14,2.16,2.8}/*"]  
+  # excludeFiles = ["/{stable}/*", "/v{2.12,2.14,2.16,2.8}/*"]
+
+
+[params]
+  ebnfDiagrams = 'disabled'
