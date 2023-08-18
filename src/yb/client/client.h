@@ -826,6 +826,10 @@ class YBClient {
   std::shared_ptr<YBSession> NewSession(MonoDelta delta);
   std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
+  Status AreNodesSafeToTakeDown(
+      std::vector<std::string> tserver_uuids, std::vector<std::string> master_uuids,
+      int follower_lag_bound_ms);
+
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
 

@@ -348,3 +348,18 @@ message GetCompatibleSchemaVersionResponsePB {
   optional TabletServerErrorPB error = 1;
   optional uint32 compatible_schema_version = 2;
 }
+
+message CheckTserverTabletHealthRequestPB {
+  repeated bytes tablet_ids = 1;
+}
+
+message CheckTserverTabletHealthResponsePB {
+  message TabletHealthPB {
+    optional bytes tablet_id = 1;
+    optional PeerRole role = 2;
+    // Only valid if role is not LEADER.
+    optional int64 follower_lag_ms = 3;
+  }
+  optional TabletServerErrorPB error = 1;
+  repeated TabletHealthPB tablet_healths = 2;
+}

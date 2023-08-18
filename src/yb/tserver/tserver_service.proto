@@ -108,12 +108,15 @@ service TabletServerService {
   // Returns the schema version on the XCluster consumer side that is
   // compatible with the schema provided in the request.
   rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
-  returns (GetCompatibleSchemaVersionResponsePB);
+      returns (GetCompatibleSchemaVersionResponsePB);
 
   rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
       returns (StartRemoteSnapshotTransferResponsePB);
 
   rpc GetTabletKeyRanges(GetTabletKeyRangesRequestPB) returns (GetTabletKeyRangesResponsePB);
+
+  rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
+      returns (CheckTserverTabletHealthResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields

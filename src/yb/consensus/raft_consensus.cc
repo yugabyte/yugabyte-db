@@ -3676,6 +3676,10 @@ Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
   return state_->CopyRetryableRequestsTo(dest_path);
 }
 
+int64_t RaftConsensus::follower_lag_ms() const {
+  return follower_last_update_time_ms_metric_->lag_ms();
+}
+
 bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
   return state_->TEST_HasRetryableRequestsOnDisk();
 }

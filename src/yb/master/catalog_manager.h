@@ -698,7 +698,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableName& table_name, const PgSchemaName pg_schema_name = {}) override;
 
   // Return TableInfos according to specified mode.
-  std::vector<TableInfoPtr> GetTables(GetTablesMode mode) override;
+  virtual std::vector<TableInfoPtr> GetTables(
+      GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
 
   // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
   // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.

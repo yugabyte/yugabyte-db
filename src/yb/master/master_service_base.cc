@@ -49,6 +49,10 @@ TestAsyncRpcManager* MasterServiceBase::handler(TestAsyncRpcManager*) {
   return server_->test_async_rpc_manager();
 }
 
+TabletHealthManager* MasterServiceBase::handler(TabletHealthManager*) {
+  return server_->tablet_health_manager();
+}
+
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,

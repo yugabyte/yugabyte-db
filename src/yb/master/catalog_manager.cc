@@ -2382,9 +2382,8 @@ Status CatalogManager::ValidateTableReplicationInfo(
   }
   if (replication_info.live_replicas().placement_uuid() !=
       cluster_replication_info.live_replicas().placement_uuid()) {
-
-      return STATUS(InvalidArgument, "Placement uuid for table level replication info "
-          "must match that of the cluster's live placement info.");
+    return STATUS(InvalidArgument, "Placement uuid for table level replication info "
+        "must match that of the cluster's live placement info.");
   }
   return Status::OK();
 }
@@ -7553,13 +7552,14 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
   return tables_->FindTableOrNull(table_id);
 }
 
-std::vector<TableInfoPtr> CatalogManager::GetTables(GetTablesMode mode) {
+std::vector<TableInfoPtr> CatalogManager::GetTables(
+    GetTablesMode mode, PrimaryTablesOnly primary_tables_only) {
   std::vector<TableInfoPtr> result;
   // Note: TableInfoPtr has a namespace_name field which was introduced in version 2.3.0. The data
   // for this field is not backfilled (see GH17713/GH17712 for more details).
   {
     SharedLock lock(mutex_);
-    auto tables_it = tables_->GetAllTables();
+    auto tables_it = primary_tables_only ? tables_->GetPrimaryTables() : tables_->GetAllTables();
     result = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   switch (mode) {
