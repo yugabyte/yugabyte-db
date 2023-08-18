@@ -15,6 +15,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/tablet_health_manager.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base.h"
@@ -369,6 +370,11 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     rpc.RespondSuccess();
   }
+
+  MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
+    TabletHealthManager,
+    (CheckMasterTabletHealth)
+  )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
     CatalogManager,

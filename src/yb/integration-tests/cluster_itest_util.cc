@@ -1247,6 +1247,23 @@ GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
   return replicas;
 }
 
+Status WaitForReplicasRunningOnAllTsAccordingToMaster(
+    ExternalMiniCluster* cluster, const client::YBTableName& table_name, const MonoDelta& timeout) {
+  return WaitFor([&]() -> Result<bool> {
+    master::GetTableLocationsResponsePB table_locations;
+    RETURN_NOT_OK(GetTableLocations(
+        cluster, table_name, timeout, RequireTabletsRunning::kTrue, &table_locations));
+    for (auto& tablet_locs : table_locations.tablet_locations()) {
+      for (auto& replica : tablet_locs.replicas()) {
+        if (replica.state() != tablet::RUNNING) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, timeout, "Wait for replicas to be running on all tservers");
+}
+
 Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const string& tablet_id,
                           const MonoDelta& timeout,

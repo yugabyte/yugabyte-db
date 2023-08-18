@@ -91,6 +91,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  tablet_health_manager.cc
   master_backup_service.cc
   master_client_service.cc
   master_cluster_service.cc
