@@ -20,15 +20,24 @@ Currently, YugabyteDB Managed supports export to [Datadog](https://docs.datadogh
 
 Exporting metrics counts against your data transfer allowance, and may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
+## Prerequisites
+
+### Datadog
+
+- Datadog account
+- Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/)
+
+## Export configuration
+
 Create export configurations and assign them to clusters on the **Integrations > Metrics** tab.
 
 ![Integrations Metrics tab](/images/yb-cloud/managed-metrics-export.png)
 
-The tab lists any export configurations that you have created, along with the clusters in your account, and the status of any metrics export assigned to clusters.
+The tab lists any export configurations that you have created, along with the clusters in your account, and the status of any metrics export that has been assigned.
 
 You can also access metrics export on the cluster **Settings** tab under **Metrics Export**.
 
-## Manage export configurations
+### Manage export configurations
 
 You can add, edit, and delete export configurations. You can't delete a configuration that is assigned to a cluster.
 
@@ -48,7 +57,7 @@ To edit a configuration, click the **...** button on the configuration and choos
 
 To delete a configuration, click the **...** button on the configuration and choose **Delete**.
 
-## Manage cluster configurations
+### Manage cluster configurations
 
 To assign an export configuration to a cluster, in the **Export Metrics by Cluster** table, in the **Export Configurations** column, choose a configuration for the cluster.
 
