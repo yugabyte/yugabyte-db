@@ -254,5 +254,6 @@ extern List *yb_get_uniqkeys(IndexOptInfo *index, int prefixlen);
 extern int yb_calculate_distinct_prefixlen(IndexOptInfo *index,
 										   List *index_clauses);
 extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
+extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 
 #endif							/* PATHS_H */
