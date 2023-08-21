@@ -147,6 +147,11 @@ void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
   metadata_.set_client_node_ip(endpoint);
 }
 
+void WaitStateInfo::set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.top_level_node_id = top_level_node_id;
+}
+
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.UpdateFrom(meta);

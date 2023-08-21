@@ -160,7 +160,7 @@ struct AUHMetadata {
   int64_t query_id = 0;
   int64_t current_request_id = 0;
   uint32_t client_node_host = 0;
-  uint32_t client_node_port = 0;
+  uint16_t client_node_port = 0;
 
   void set_client_node_ip(const std::string &endpoint);
 
@@ -222,7 +222,7 @@ struct AUHMetadata {
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
         .client_node_host = pb.client_node_host(),
-        .client_node_port = pb.client_node_port()
+        .client_node_port = static_cast<uint16_t>(pb.client_node_port())
     };
   }
 
@@ -241,7 +241,7 @@ struct AUHMetadata {
       client_node_host = pb.client_node_host();
     }
     if (pb.client_node_port()) {
-      client_node_port = pb.client_node_port();
+      client_node_port = static_cast<uint16_t>(pb.client_node_port());
     }
     if (pb.has_current_request_id()) {
       current_request_id = pb.current_request_id();
@@ -297,6 +297,7 @@ class WaitStateInfo {
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
   void set_query_id(int64_t query_id) EXCLUDES(mutex_);
   void set_client_node_ip(const std::string &endpoint) EXCLUDES(mutex_);
+  void set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {
