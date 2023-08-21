@@ -2470,7 +2470,18 @@ YbPrefetch(YbTablePrefetcherState* prefetcher)
 		{
 			if (!prefetched)
 			{
+				const int64 old_query_id = MyProc->queryid;
+				const int64 kCatalogQueryId = -3;
+				if (old_query_id == 0)
+				{
+					YBCSetQueryId(kCatalogQueryId);
+					MyProc->queryid = kCatalogQueryId;
+				}
 				YBCStatus status = YBCPrefetchRegisteredSysTables();
+				if (MyProc->queryid == kCatalogQueryId) {
+					YBCSetQueryId(old_query_id);
+					MyProc->queryid = old_query_id;
+				}
 				if (status)
 					return status;
 				prefetched = true;
@@ -5516,10 +5527,11 @@ RelationCacheInitializePhase3(void)
 	  RelationMapInitializePhase3();
 	}
 	const int64 old_query_id = MyProc->queryid;
+	const int64 kCatalogQueryId = -3;
 	if (IsYugaByteEnabled() && old_query_id == 0)
 	{
-		const int64 kCatalogQueryId = -3;
 		YBCSetQueryId(kCatalogQueryId);
+		MyProc->queryid = kCatalogQueryId;
 	}
 
 	/*
@@ -5831,9 +5843,9 @@ RelationCacheInitializePhase3(void)
 		write_relcache_init_file(true);
 		write_relcache_init_file(false);
 	}
-	if (IsYugaByteEnabled() && old_query_id == 0)
-	{
-		YBCSetQueryId(0);
+	if (IsYugaByteEnabled() && MyProc->queryid == kCatalogQueryId) {
+		YBCSetQueryId(old_query_id);
+		MyProc->queryid = old_query_id;
 	}
 }
 
