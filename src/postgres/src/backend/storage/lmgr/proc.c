@@ -440,9 +440,9 @@ InitProcess(void)
 	MyProc->ybAnyLockAcquired = false;
 
 	MyProc->queryid = 0;
-	MyProc->remote_host[0] = '\0';
-	MyProc->remote_port = 0;
-	MyProc->node_uuid[0] = '\0';
+	MyProc->client_node_host = 0;
+	MyProc->client_node_port = 0;
+	MyProc->top_level_node_id[0] = '\0';
 	MyProc->top_level_request_id[0] = '\0';
 
 	/*
@@ -589,9 +589,9 @@ InitAuxiliaryProcess(void)
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
 	MyProc->queryid = 0;
-	MyProc->remote_host[0] = '\0';
-	MyProc->remote_port = 0;
-	MyProc->node_uuid[0] = '\0';
+	MyProc->client_node_host = 0;
+	MyProc->client_node_port = 0;
+	MyProc->top_level_node_id[0] = '\0';
 	MyProc->top_level_request_id[0] = '\0';
 #ifdef USE_ASSERT_CHECKING
 	{

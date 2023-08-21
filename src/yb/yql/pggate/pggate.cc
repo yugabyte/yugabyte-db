@@ -2056,8 +2056,8 @@ Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
-Status PgApiImpl::SetAUHMetadata(const char* remote_host, int remote_port) {
-  return pg_session_->SetAUHMetadata(remote_host, remote_port);
+Status PgApiImpl::SetTopLevelNodeId() {
+  return pg_session_->SetTopLevelNodeId();
 }
 
 void PgApiImpl::SetQueryId(int64_t query_id) {

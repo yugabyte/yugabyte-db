@@ -9,7 +9,7 @@ INSERT INTO pg_catalog.pg_proc (
   proargdefaults, protrftypes, prosrc, probin, proconfig, proacl
 ) VALUES
   (8061, 'yb_wait_metadata', 11, 10, 12, 1, 0, 0, '-', 'f', false, false, true, false,
-   'v', 's', 0, 0, 2249, 23, '{25,20,20,25,25}', '{o,o,o,o,o}',
+   'v', 's', 0, 0, 2249, 23, '{20,20,20,25,25}', '{o,o,o,o,o}',
    '{host,port,queryid,node_uuid,top_request_id}',
    NULL, NULL, 'yb_wait_metadata', NULL, NULL, NULL)
 ON CONFLICT DO NOTHING;

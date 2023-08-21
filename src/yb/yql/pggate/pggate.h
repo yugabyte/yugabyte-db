@@ -684,7 +684,7 @@ class PgApiImpl {
   // Active Universe History.
   Result<client::RpcsInfo> ActiveUniverseHistory();
 
-  Status SetAUHMetadata(const char* remote_host, int remote_port);
+  Status SetTopLevelNodeId();
 
   void SetQueryId(int64_t query_id);
 

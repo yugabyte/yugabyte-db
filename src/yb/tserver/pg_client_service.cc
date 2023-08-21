@@ -354,7 +354,9 @@ class PgClientServiceImpl::Impl {
       const PgGetTServerUUIDRequestPB& req,
       PgGetTServerUUIDResponsePB* resp,
       rpc::RpcContext* context) {
-    resp->set_node_uuid(VERIFY_RESULT(client().GetTServerUUID()));
+    auto top_level_node_id = VERIFY_RESULT(client().GetTServerUUID());
+    resp->add_top_level_node_id(top_level_node_id[0]);
+    resp->add_top_level_node_id(top_level_node_id[1]);
     return Status::OK();
   }
 

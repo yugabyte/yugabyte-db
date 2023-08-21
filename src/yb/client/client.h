@@ -448,7 +448,7 @@ class YBClient {
 
   Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
-  Result<std::string> GetTServerUUID();
+  Result<std::vector<uint64_t>> GetTServerUUID();
 
   // Grant permission with given arguments.
   Status GrantRevokePermission(GrantRevokeStatementType statement_type,

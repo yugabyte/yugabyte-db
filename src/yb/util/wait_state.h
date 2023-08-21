@@ -156,14 +156,17 @@ YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
 
 struct AUHMetadata {
   std::vector<uint64_t> top_level_request_id;
-  std::string top_level_node_id;
+  std::vector<uint64_t> top_level_node_id;
   int64_t query_id = 0;
   int64_t current_request_id = 0;
-  std::string client_node_ip;
+  uint32_t client_node_host = 0;
+  uint32_t client_node_port = 0;
+
+  void set_client_node_ip(const std::string &endpoint);
 
   std::string ToString() const {
-    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4 }",
-                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_ip);
+    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5 }",
+                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_host, client_node_port);
   }
 
   void UpdateFrom(const AUHMetadata &other) {
@@ -179,8 +182,11 @@ struct AUHMetadata {
     if (other.current_request_id != 0) {
       current_request_id = other.current_request_id;
     }
-    if (!other.client_node_ip.empty()) {
-      client_node_ip = other.client_node_ip;
+    if (other.client_node_host != 0) {
+      client_node_host = other.client_node_host;
+    }
+    if (other.client_node_port != 0) {
+      client_node_port = other.client_node_port;
     }
   }
 
@@ -190,8 +196,9 @@ struct AUHMetadata {
       pb->add_top_level_request_id(top_level_request_id[0]);
       pb->add_top_level_request_id(top_level_request_id[1]);
     }
-    if (!top_level_node_id.empty()) {
-      pb->set_top_level_node_id(top_level_node_id);
+    if ((int)top_level_node_id.size() == 2) {
+      pb->add_top_level_node_id(top_level_node_id[0]);
+      pb->add_top_level_node_id(top_level_node_id[1]);
     }
     if (query_id != 0) {
       pb->set_query_id(query_id);
@@ -199,8 +206,11 @@ struct AUHMetadata {
     if (current_request_id != 0) {
       pb->set_current_request_id(current_request_id);
     }
-    if (!client_node_ip.empty()) {
-      pb->set_client_node_ip(client_node_ip);
+    if (client_node_host != 0) {
+      pb->set_client_node_host(client_node_host);
+    }
+    if (client_node_port != 0) {
+      pb->set_client_node_port(client_node_port);
     }
   }
 
@@ -208,17 +218,18 @@ struct AUHMetadata {
   static AUHMetadata FromPB(const PB& pb) {
     return AUHMetadata{
         .top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end()),
-        .top_level_node_id = pb.top_level_node_id(),
+        .top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end()),
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
-        .client_node_ip = pb.client_node_ip()
+        .client_node_host = pb.client_node_host(),
+        .client_node_port = pb.client_node_port()
     };
   }
 
   template <class PB>
   void UpdateFromPB(const PB& pb) {
     if (pb.has_top_level_node_id()) {
-      top_level_node_id = pb.top_level_node_id();
+      top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end());
     }
     if (pb.has_top_level_request_id()) {
       top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end());
@@ -226,8 +237,11 @@ struct AUHMetadata {
     if (pb.has_query_id()) {
       query_id = pb.query_id();
     }
-    if (pb.has_client_node_ip()) {
-      client_node_ip = pb.client_node_ip();
+    if (pb.has_client_node_host()) {
+      client_node_host = pb.client_node_host();
+    }
+    if (pb.client_node_port()) {
+      client_node_port = pb.client_node_port();
     }
     if (pb.has_current_request_id()) {
       current_request_id = pb.current_request_id();
@@ -282,6 +296,7 @@ class WaitStateInfo {
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
   void set_query_id(int64_t query_id) EXCLUDES(mutex_);
+  void set_client_node_ip(const std::string &endpoint) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {

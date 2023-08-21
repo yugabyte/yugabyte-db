@@ -2224,9 +2224,9 @@ yb_wait_metadata(PG_FUNCTION_ARGS)
 
 		/* Initialise attributes information in the tuple descriptor */
 	tupdesc = CreateTemplateTupleDesc(YB_WAIT_METADATA_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "remote_host",
-					   TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "remote_port",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "client_node_host",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "client_node_port",
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "queryid",
 					   INT8OID, -1, 0);
@@ -2237,33 +2237,29 @@ yb_wait_metadata(PG_FUNCTION_ARGS)
 
 	BlessTupleDesc(tupdesc);
 
-	if (strlen(proc->remote_host) > 0)
-		values[0] = CStringGetTextDatum(proc->remote_host);
+	if (proc->client_node_host)
+		values[0] = Int64GetDatum(proc->client_node_host);
 	else
 		nulls[0] = true;
-	ereport(LOG, (errmsg("Set remote host: %s: %s", proc->remote_host, DatumGetCString(values[0]))));
+	ereport(LOG, (errmsg("Set remote host: %d", proc->client_node_host)));
 
-	if (proc->remote_port != 0)
-		values[1] = Int32GetDatum(proc->remote_port);
+	if (proc->client_node_port)
+		values[1] = Int64GetDatum(proc->client_node_port);
 	else
 		nulls[1] = true;
-
-	ereport(LOG, (errmsg("Set remote port: %d", proc->remote_port)));
+	ereport(LOG, (errmsg("Set remote port: %d", proc->client_node_port)));
 
 	values[2] = Int64GetDatum(proc->queryid);
 	ereport(LOG, (errmsg("Set queryid: " INT64_FORMAT, proc->queryid)));
 
-	if (strlen(proc->node_uuid) > 0)
-		values[3] = CStringGetTextDatum(proc->node_uuid);
-	else
-		nulls[3] = true;
-	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
+    char top_level_node_id[33];
+    uint128_to_char(proc->top_level_node_id, top_level_node_id);
+    values[3] = CStringGetTextDatum(top_level_node_id);
+	ereport(LOG, (errmsg("Set top level node id: %s", top_level_node_id)));
 
-    char top_level_request_id[17];
-    top_level_request_id_uint_to_char(top_level_request_id, proc->top_level_request_id);
-    top_level_request_id[16] = '\0';
+    char top_level_request_id[33];
+    uint128_to_char(proc->top_level_request_id, top_level_request_id);
     values[4] = CStringGetTextDatum(top_level_request_id);
-
 	ereport(LOG, (errmsg("Set top level request id: %s", top_level_request_id)));
 
 	/* Returns the record as Datum */
@@ -2293,7 +2289,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 						   "top_level_request_id", TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-						   "client_node_ip", TEXTOID, -1, 0);
+						   "client_node_ip", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
 						   "top_level_node_id", TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
@@ -2328,12 +2324,13 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		int cntr = funcctx->call_cntr;
 		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
 
-	    char top_level_request_id[17];
-		top_level_request_id_uint_to_char(top_level_request_id, rpc->metadata.top_level_request_id);
-		top_level_request_id[16] = '\0';
+	    char top_level_request_id[33];
+		char top_level_node_id[33];
+		uint128_to_char(rpc->metadata.top_level_request_id, top_level_request_id);
+		uint128_to_char(rpc->metadata.top_level_node_id, top_level_node_id);
 		values[0] = CStringGetTextDatum(top_level_request_id);
-		values[1] = CStringGetTextDatum(rpc->metadata.client_node_ip);
-		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
+		values[1] = Int32GetDatum(rpc->metadata.client_node_host);
+		values[2] = CStringGetTextDatum(top_level_node_id);
 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
 		values[4] = Int64GetDatum(rpc->metadata.query_id);
 		values[5] = UInt64GetDatum(rpc->wait_status_code);

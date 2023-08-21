@@ -10475,7 +10475,7 @@
   descr => 'Display Wait Event Info Metadata',
   proname => 'yb_wait_metadata', provolatile => 's',
   proparallel => 'r', prorettype => 'record', proargtypes => 'int4',
-  proallargtypes => '{varchar,int8,int8,varchar,varchar}',
+  proallargtypes => '{int8,int8,int8,varchar,varchar}',
   proargmodes => '{o,o,o,o,o}',
   proargnames => '{remote_host, remote_port, queryid, node_uuid, top_request_id}',
   prosrc => 'yb_wait_metadata' },

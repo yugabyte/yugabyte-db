@@ -990,12 +990,9 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
 
-Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
-  auto node_uuid = VERIFY_RESULT(pg_client_.GetTServerUUID());
-  pg_callbacks_.ProcSetNodeUUID(node_uuid.c_str());
-  auh_metadata_.top_level_node_id = node_uuid;
-  auh_metadata_.client_node_ip = yb::Format("$0:$1", remote_host, remote_port);
-  auh_metadata_.top_level_node_id = node_uuid;
+Status PgSession::SetTopLevelNodeId() {
+  auh_metadata_.top_level_node_id = VERIFY_RESULT(pg_client_.GetTServerUUID());
+  pg_callbacks_.ProcSetTopLevelNodeId(&auh_metadata_.top_level_node_id[0]);
   return Status::OK();
 }
 

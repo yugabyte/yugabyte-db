@@ -5306,9 +5306,9 @@ PostgresMain(int argc, char *argv[],
 
 		if (IsYugaByteEnabled())
 		{
-			HandleYBStatus(YBCPgSetAUHMetadata(remote_host, atoi(remote_port)));
-			strcpy(MyProc->remote_host, remote_host);
-			MyProc->remote_port = atoi(remote_port);
+			YBCSetTopLevelNodeId();
+			MyProc->client_node_host = remote_host_port_to_uint(remote_host);
+			MyProc->client_node_port = atoi(remote_port);
 		}
 	}
 

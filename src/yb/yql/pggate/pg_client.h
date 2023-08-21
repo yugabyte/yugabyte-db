@@ -100,7 +100,7 @@ class PgClient {
 
   Result<uint64_t> GetCatalogMasterVersion();
 
-  Result<std::string> GetTServerUUID();
+  Result<std::vector<uint64_t>> GetTServerUUID();
 
   Status CreateSequencesDataTable();
 

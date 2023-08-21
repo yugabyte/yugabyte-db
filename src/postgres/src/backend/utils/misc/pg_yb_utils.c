@@ -26,6 +26,7 @@
 
 #include "pg_yb_utils.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/types.h>
@@ -659,7 +660,7 @@ YBInitPostgresBackend(
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.SignalWaitStart = &pgstat_report_wait_start;
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
-		callbacks.ProcSetNodeUUID = &ProcSetNodeUUID;
+		callbacks.ProcSetTopLevelNodeId = &ProcSetTopLevelNodeId;
 		callbacks.ProcSetTopRequestId = &ProcSetTopRequestId;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
@@ -3575,8 +3576,9 @@ void YbSetIsBatchedExecution(bool value)
 	yb_is_batched_execution = value;
 }
 
-void ProcSetNodeUUID(const char *node_uuid) {
-	strcpy(MyProc->node_uuid, node_uuid);
+void ProcSetTopLevelNodeId(const uint64_t *top_level_node_id) {
+	MyProc->top_level_node_id[0] = top_level_node_id[0];
+	MyProc->top_level_node_id[1] = top_level_node_id[1];
 }
 
 void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
@@ -3584,21 +3586,25 @@ void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
 }
 
-void
-top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2])
+void uint128_to_char(const uint64_t uint_id[2], char *char_id)
 {
-    uint64_t nth_request_id = top_level_request_id_uint[0];
-    int index = 15;
-    for (; index >= 0; index--)
-    {
-      if (index == 8)
-        nth_request_id = top_level_request_id_uint[1];
-      if (nth_request_id % 16 < 10)
-        top_level_request_id[index] = '0' + (nth_request_id % 16);
-      else
-        top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
-      nth_request_id /= 10;
-    }
+	sprintf(char_id, "%llx%llx", uint_id[0], uint_id[1]);
+}
+
+uint32 remote_host_port_to_uint(const char* remote_host)
+{
+	return ntohl(inet_addr(remote_host));
+}
+
+void client_node_ip_to_string(uint32 client_node_host,
+							  uint16 client_node_port,
+							  char *client_node_ip)
+{
+	sprintf(client_node_ip, "%d.%d.%d.%d:%d",
+		client_node_host >> 24,
+		255 & (client_node_host >> 16),
+		255 & (client_node_host >> 8),
+		255 & client_node_host, client_node_port);
 }
 
 OptSplit *

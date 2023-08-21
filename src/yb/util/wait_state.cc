@@ -13,6 +13,8 @@
 
 #include "yb/util/wait_state.h"
 
+#include <arpa/inet.h>
+
 #include "yb/util/tostring.h"
 
 using yb::util::WaitStateCode;
@@ -23,6 +25,15 @@ namespace yb::util {
 
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 std::atomic<bool> WaitStateInfo::freeze_{false};
+
+void AUHMetadata::set_client_node_ip(const std::string &endpoint) {
+  client_node_host = 0;
+  client_node_port = 0;
+
+  size_t colon_position = endpoint.find(':');
+  client_node_host = ntohl(inet_addr(endpoint.substr(0, colon_position).c_str()));
+  client_node_port = std::stoi(endpoint.substr(colon_position + 1));
+}
 
 std::string AUHAuxInfo::ToString() const {
   return YB_STRUCT_TO_STRING(table_id, tablet_id, method);
@@ -129,6 +140,11 @@ void WaitStateInfo::set_top_level_request_id(uint64_t top_level_request_id) {
 void WaitStateInfo::set_query_id(int64_t query_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.query_id = query_id;
+}
+
+void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.set_client_node_ip(endpoint);
 }
 
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
