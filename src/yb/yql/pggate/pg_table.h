@@ -57,7 +57,6 @@ class PgTable {
 
   Result<PgColumn&> ColumnForAttr(int attr_num);
   PgColumn& ColumnForIndex(size_t index);
-  const PgColumn& ColumnForIndex(size_t index) const;
 
  private:
   PgTableDescPtr desc_;

@@ -241,29 +241,18 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
                    << " when only reads are expected";
     }
+    intent_types_ = dockv::GetIntentTypesForWrite(isolation_level_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
     RETURN_NOT_OK(EnumerateIntents(
-        put_batch_.write_pairs(),
-        [this, intent_types = dockv::GetIntentTypesForWrite(isolation_level_)](
-            auto ancestor_doc_key, auto full_doc_key, auto value, auto* key, auto last_key, auto) {
-          return (*this)(intent_types, ancestor_doc_key, full_doc_key, value, key, last_key);
-        },
-        partial_range_key_intents_));
+        put_batch_.write_pairs(), std::ref(*this), partial_range_key_intents_));
   }
 
   if (!put_batch_.read_pairs().empty()) {
+    intent_types_ = dockv::GetIntentTypesForRead(isolation_level_, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
-        put_batch_.read_pairs(),
-        [this, intents = dockv::ReadIntentTypesHolder(isolation_level_, row_mark_)](
-            auto ancestor_doc_key, auto full_doc_key,
-            const auto& value, auto* key, auto last_key, auto row_lock) {
-          return (*this)(
-              dockv::GetIntentTypes(intents, row_lock), ancestor_doc_key,
-              full_doc_key, value, key, last_key);
-        },
-        partial_range_key_intents_));
+        put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
   }
 
   return Finish();
@@ -271,14 +260,16 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
-    dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey,
-    Slice intent_value, dockv::KeyBytes* key, dockv::LastKey last_key) {
+    dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice value_slice,
+    dockv::KeyBytes* key, dockv::LastKey last_key) {
   if (ancestor_doc_key) {
-    weak_intents_[key->data()] |= MakeWeak(intent_types);
+    weak_intents_[key->data()] |= MakeWeak(intent_types_);
     return Status::OK();
   }
+
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
+  const auto row_lock_value_type = ValueEntryTypeAsChar::kRowLock;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
   const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
@@ -300,13 +291,17 @@ Status TransactionalWriter::operator()(
       subtransaction_id,
       Slice(&write_id_value_type, 1),
       Slice::FromPod(&big_endian_write_id),
-      intent_value,
+      value_slice,
   }};
+  // Store a row lock indicator rather than data (in value_slice) for row lock intents.
+  if (IsValidRowMarkType(row_mark_)) {
+    value.back() = Slice(&row_lock_value_type, 1);
+  }
 
   ++intra_txn_write_id_;
 
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
-                          static_cast<char>(intent_types.ToUIntPtr()) };
+                          static_cast<char>(intent_types_.ToUIntPtr()) };
 
   DocHybridTimeBuffer doc_ht_buffer;
 

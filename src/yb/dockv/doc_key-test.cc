@@ -418,7 +418,7 @@ class IntentCollector {
                     FullDocKey full_doc_key,
                     Slice value,
                     KeyBytes* key,
-                    LastKey, RowLock row_lock) {
+                    LastKey) {
     out_->push_back(CollectedIntent{
       .ancestor_doc_key = ancestor_doc_key,
       .full_doc_key = full_doc_key,
