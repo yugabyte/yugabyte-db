@@ -294,19 +294,33 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
-  if (top_level_request_id) {
+  if (top_level_request_id)
+  {
     AUHEntryArray[inserted].top_level_request_id[0] = top_level_request_id[0];
     AUHEntryArray[inserted].top_level_request_id[1] = top_level_request_id[1];
+  }
+  else
+  {
+    AUHEntryArray[inserted].top_level_request_id[0] = 0;
+    AUHEntryArray[inserted].top_level_request_id[1] = 0;
   }
 
   int len = Min(strlen(wait_event_aux) + 1, 15);
   memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
   AUHEntryArray[inserted].wait_event_aux[len] = '\0';
 
-  if (top_level_node_id) {
+  if (top_level_node_id)
+  {
     AUHEntryArray[inserted].top_level_node_id[0] = top_level_node_id[0];
     AUHEntryArray[inserted].top_level_node_id[1] = top_level_node_id[1];
   }
+  else
+  {
+    AUHEntryArray[inserted].top_level_node_id[0] = 0;
+    AUHEntryArray[inserted].top_level_node_id[1] = 0;
+  }
+
+  ereport(LOG, (errmsg("%llu %llu", AUHEntryArray[inserted].top_level_node_id[0], AUHEntryArray[inserted].top_level_node_id[1])));
 
   AUHEntryArray[inserted].client_node_host = client_node_host;
   AUHEntryArray[inserted].client_node_port = client_node_port;

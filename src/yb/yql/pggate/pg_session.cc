@@ -1002,7 +1002,7 @@ void PgSession::SetQueryId(int64_t query_id) {
 
 void PgSession::SetTopLevelRequestId() {
   auh_metadata_.top_level_request_id = {util::AUHRandom::GenerateRandom64(), util::AUHRandom::GenerateRandom64()};
-  pg_callbacks_.ProcSetTopRequestId(&auh_metadata_.top_level_request_id[0]);
+  pg_callbacks_.ProcSetTopLevelRequestId(auh_metadata_.top_level_request_id.data());
 }
 
 Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {

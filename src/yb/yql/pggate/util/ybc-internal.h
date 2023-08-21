@@ -42,4 +42,6 @@ void* YBCCStringToTextWithLen(const char* c, int size);
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
 const char* YBCPAllocStdString(const std::string& s);
 
+const uint64_t* YBCPAllocStdVectorUint64(const std::vector<uint64_t>& v);
+
 } // namespace yb::pggate

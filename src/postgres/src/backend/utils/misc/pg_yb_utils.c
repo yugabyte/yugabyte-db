@@ -661,7 +661,7 @@ YBInitPostgresBackend(
 		callbacks.SignalWaitStart = &pgstat_report_wait_start;
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
 		callbacks.ProcSetTopLevelNodeId = &ProcSetTopLevelNodeId;
-		callbacks.ProcSetTopRequestId = &ProcSetTopRequestId;
+		callbacks.ProcSetTopLevelRequestId = &ProcSetTopLevelRequestId;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
 		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
@@ -3576,12 +3576,14 @@ void YbSetIsBatchedExecution(bool value)
 	yb_is_batched_execution = value;
 }
 
-void ProcSetTopLevelNodeId(const uint64_t *top_level_node_id) {
+void ProcSetTopLevelNodeId(const uint64_t *top_level_node_id)
+{
 	MyProc->top_level_node_id[0] = top_level_node_id[0];
 	MyProc->top_level_node_id[1] = top_level_node_id[1];
 }
 
-void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
+void ProcSetTopLevelRequestId(const uint64_t *top_level_request_id)
+{
 	MyProc->top_level_request_id[0] = top_level_request_id[0];
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
 }

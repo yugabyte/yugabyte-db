@@ -742,6 +742,10 @@ class PgClientServiceImpl::Impl {
     
     for (auto conns : dump_resp.inbound_connections()) {
       for (auto call : conns.calls_in_flight()) {
+        if (!call.has_wait_state() || (call.wait_state().has_aux_info()
+            && call.wait_state().aux_info().has_method()
+            && call.wait_state().aux_info().method() == "ActiveUniverseHistory"))
+          continue;
         if (messenger_type == util::MessengerType::kTserver) {
           resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
         } else {
@@ -758,8 +762,11 @@ class PgClientServiceImpl::Impl {
     GetRPCsWaitStates(resp, util::MessengerType::kCQLServer);
 
     auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
+    auto top_level_node_id = VERIFY_RESULT(client().GetTServerUUID());
 
     for (auto wait_state : bg_wait_states) {
+      wait_state->set_top_level_node_id(top_level_node_id);
+      wait_state->set_client_node_ip("255.255.255.255:65535");
       wait_state->ToPB(resp->add_bg_wait_states());
     }
 
