@@ -1302,8 +1302,6 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	bool	   *elem_nulls;
 	int			num_valid;
 	int			j;
-	AttrNumber *attnos;
-	Oid 	   *colids;
 	bool is_row = false;
 	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
 	Relation relation = ybScan->relation;
@@ -1321,34 +1319,25 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (YbIsRowHeader(key))
 	{
 		is_row = true;
-		int subkey_count = length_of_key - 1;
-
 		for(int row_ind = 0; row_ind < length_of_key; row_ind++)
 		{
-			int bound_idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i + row_ind]);
+			int bound_idx = YBAttnumToBmsIndex(
+				relation, scan_plan->bind_key_attnums[i + row_ind]);
 			if (is_column_bound[bound_idx])
-			{
 				return false;
-			}
-		}
-
-		attnos = palloc(sizeof(AttrNumber) * subkey_count);
-		colids = palloc(sizeof(Oid) * subkey_count);
-		arrayval =
-			DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
-
-		for(size_t j = 0; j < subkey_count; j++)
-		{
-			attnos[j] = ybScan->keys[i + j + 1]->sk_attno;
-			colids[j] = ybScan->keys[i + j + 1]->sk_attno;
+			else
+				is_column_bound[bound_idx] = true;
 		}
 	}
+
+	if (is_for_precheck)
+		return true;
+
+	if (is_row)
+		arrayval = DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
 	else
-	{
 		arrayval = DatumGetArrayTypeP(key->sk_argument);
-		attnos = palloc(sizeof(AttrNumber));
-		*attnos = key->sk_attno;
-	}
+
 	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
 	/* We could cache this data, but not clear it's worth it */
 	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
@@ -1367,7 +1356,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * eg. WHERE element = INT_MAX + k, where k is positive and element
 	 * is of integer type.
 	 */
-	Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+	Oid atttype = ybc_get_atttypid(scan_plan->bind_desc,
+								   scan_plan->bind_key_attnums[i]);
 
 	num_valid = 0;
 	for (j = 0; j < num_elems; j++)
@@ -1432,28 +1422,18 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	if (is_row)
 	{
-		if (!is_for_precheck)
+		AttrNumber attnums[length_of_key];
+		/* Subkeys for this rowkey start at i+1. */
+		for (int j = 1; j <= length_of_key; j++)
 		{
-			AttrNumber attnums[length_of_key];
-			/* Subkeys for this rowkey start at i+1. */
-			for (int j = 1; j <= length_of_key; j++)
-			{
-				attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
-			}
-
-			ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
-									length_of_key - 1, attnums,
-									num_elems, elem_values);
+			attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
 		}
 
-		for (int j = i + 1; j < i + length_of_key; j++)
-		{
-			int bound_idx =
-				YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[j]);
-			is_column_bound[bound_idx] = true;
-		}
+		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
+								length_of_key - 1, attnums,
+								num_elems, elem_values);
 	}
-	else if (!is_for_precheck)
+	else
 	{
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scan_plan->bind_key_attnums[i],
