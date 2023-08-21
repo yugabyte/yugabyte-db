@@ -286,6 +286,20 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 		ExplainPropertyText("Lock Type", lock_mode, es);
 }
 
+/* Explains a LockRows node */
+static void
+YbExplainLockRows(ExplainState *es)
+{
+	/* We only have something interesting to do in SERIALIZABLE isolation. */
+	if (!IsolationIsSerializable())
+		return;
+
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+		appendStringInfoString(es->str, " (no-op)");
+	else
+		ExplainPropertyBool("Executes", false, es);
+}
+
 /*
  * ExplainQuery -
  *	  execute an EXPLAIN command
@@ -1648,6 +1662,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				else
 					ExplainPropertyText("Command", setopcmd, es);
 			}
+			break;
+		case T_LockRows:
+			YbExplainLockRows(es);
 			break;
 		default:
 			break;
