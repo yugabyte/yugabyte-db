@@ -29,7 +29,7 @@ void AUHMetadata::set_client_node_ip(const std::string &endpoint) {
   client_node_port = 0;
 
   size_t colon_position = endpoint.find(':');
-	client_node_host = ntohl(inet_addr(endpoint.substr(0, colon_position).c_str()));
+  client_node_host = ntohl(inet_addr(endpoint.substr(0, colon_position).c_str()));
   client_node_port = std::stoi(endpoint.substr(colon_position + 1));
 }
 
