@@ -1082,7 +1082,7 @@ Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
 }
 
 Result<std::vector<uint64_t>> YBClient::GetTServerUUID() {
-  vector<uint64_t> permanent_uuid(2);
+  vector<uint64_t> permanent_uuid(2, 0);
 
   if (data_->meta_cache_->local_tserver()) {
     std::string tserver_uuid = data_->meta_cache_->local_tserver()->permanent_uuid();
