@@ -1,10 +1,11 @@
 import React, { FC } from "react";
-import { Box, makeStyles } from "@material-ui/core";
+import { Box, Paper, Typography, makeStyles } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
+import { MigrationsGetStarted } from "./MigrationGetStarted";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -22,6 +23,9 @@ const useStyles = makeStyles((theme) => ({
   easyComp: {
     color: theme.palette.success.main,
   },
+  heading: {
+    marginBottom: theme.spacing(4),
+  },
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
@@ -34,13 +38,17 @@ const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexi
       ? classes.easyComp
       : undefined;
 
-  return <Box className={className}>{complexity}</Box>;
+  return <Box className={className}>{complexity || "Not assessed yet"}</Box>;
 };
 
 const StatusComponent = () => (status: string) => {
   return (
     <Box>
-      <YBBadge variant={BadgeVariant.InProgress} text={status} />
+      <YBBadge
+        variant={status === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress}
+        text={status}
+        icon={false}
+      />
     </Box>
   );
 };
@@ -58,17 +66,30 @@ interface MigrationListProps {
   onSelectMigration: (migration: Migration) => void;
 }
 
-export const MigrationList: FC<MigrationListProps> = ({
-  migrationData,
-  onSelectMigration,
-}) => {
+export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectMigration }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
   const migrationColumns = [
     {
-      name: "name",
+      name: "migration_name",
       label: t("clusterDetail.voyager.name"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "database_name",
+      label: t("clusterDetail.voyager.database"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "schema_name",
+      label: t("clusterDetail.voyager.schema"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -84,10 +105,26 @@ export const MigrationList: FC<MigrationListProps> = ({
       },
     },
     {
+      name: "current_phase",
+      label: t("clusterDetail.voyager.phase"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
       name: "status",
       label: t("clusterDetail.voyager.status"),
       options: {
         customBodyRender: StatusComponent(),
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "invocation_timestamp",
+      label: t("clusterDetail.voyager.startedOn"),
+      options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
@@ -102,18 +139,27 @@ export const MigrationList: FC<MigrationListProps> = ({
     },
   ];
 
+  if (migrationData.length === 0) {
+    return <MigrationsGetStarted />;
+  }
+
   return (
-    <Box display="flex" flexDirection="column" gridGap={10}>
-      <YBTable
-        data={migrationData}
-        columns={migrationColumns}
-        options={{
-          pagination: false,
-          rowHover: true,
-          onRowClick: (_, { dataIndex }) => onSelectMigration(migrationData[dataIndex]),
-        }}
-        touchBorder={false}
-      />
-    </Box>
+    <Paper>
+      <Box p={4}>
+        <Typography variant="h4" className={classes.heading}>
+          {t("clusterDetail.voyager.migrations")}
+        </Typography>
+        <YBTable
+          data={migrationData}
+          columns={migrationColumns}
+          options={{
+            pagination: false,
+            rowHover: true,
+            onRowClick: (_, { dataIndex }) => onSelectMigration(migrationData[dataIndex]),
+          }}
+          withBorder={false}
+        />
+      </Box>
+    </Paper>
   );
 };

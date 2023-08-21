@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 import { Switch, Route, useRouteMatch } from 'react-router-dom';
-import { MigrationTabs } from './details/migration/MigrationTabs';
+import { MigrationOverview } from './details/migration/MigrationOverview';
+import { Box } from '@material-ui/core';
 
 export const MigrationRouting: FC = () => {
   const { path } = useRouteMatch<App.RouteParams>();
@@ -8,7 +9,10 @@ export const MigrationRouting: FC = () => {
   return (
     <Switch>
       <Route path={`${path}/:tab?`}>
-        <MigrationTabs />
+        {/* <MigrationTabs /> */}
+        <Box pt={2}>
+          <MigrationOverview />
+        </Box>
       </Route>
     </Switch>
   );

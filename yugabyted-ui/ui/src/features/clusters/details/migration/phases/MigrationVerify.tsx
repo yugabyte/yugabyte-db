@@ -1,6 +1,6 @@
 import React, { FC } from "react";
 import { Box, makeStyles, Paper, Typography, Link as MUILink } from "@material-ui/core";
-import type { Migration } from "./MigrationOverview";
+import type { Migration } from "../MigrationOverview";
 import { STATUS_TYPES, YBStatus } from "@app/components";
 
 const useStyles = makeStyles((theme) => ({
@@ -23,9 +23,10 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationVerifyProps {
   heading: string;
   migration: Migration;
+  phase: number;
 }
 
-export const MigrationVerify: FC<MigrationVerifyProps> = ({ heading, migration }) => {
+export const MigrationVerify: FC<MigrationVerifyProps> = ({ heading }) => {
   const classes = useStyles();
 
   return (

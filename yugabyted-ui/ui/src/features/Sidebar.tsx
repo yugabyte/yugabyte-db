@@ -320,7 +320,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </div>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/migration/tabMigrations`}
+          to={`/migration`}
           isActive={(_, location) => /^\/migration/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}

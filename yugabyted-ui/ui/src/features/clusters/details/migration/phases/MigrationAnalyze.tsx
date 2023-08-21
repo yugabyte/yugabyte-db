@@ -1,7 +1,7 @@
 import React, { FC } from "react";
 import { Box, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import type { Migration } from "./MigrationOverview";
+import type { Migration } from "../MigrationOverview";
 import { ErrorOutline, Warning } from "@material-ui/icons";
 import {
   Bar,
@@ -32,9 +32,10 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationAnalyzeProps {
   heading: string;
   migration: Migration;
+  phase: number;
 }
 
-export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration }) => {
+export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
