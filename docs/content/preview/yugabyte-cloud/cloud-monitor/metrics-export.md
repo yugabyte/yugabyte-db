@@ -57,8 +57,12 @@ To edit a configuration, click the **...** button on the configuration and choos
 
 To delete a configuration, click the **...** button on the configuration and choose **Delete**.
 
-### Manage cluster configurations
+### Manage cluster metrics export
+
+You can assign a metrics configuration to one or more clusters to begin exporting metrics from those clusters. You can also pause and resume metrics export for a cluster.
 
 To assign an export configuration to a cluster, in the **Export Metrics by Cluster** table, in the **Export Configurations** column, choose a configuration for the cluster.
 
 To remove an export configuration from a cluster, in the **Export Metrics by Cluster** table, set the **Export Configurations** column to **None**.
+
+To pause or resume metrics export from a cluster, in the **Export Metrics by Cluster** table, click the **...** button for the cluster, and choose **Pause** or **Resume**.
