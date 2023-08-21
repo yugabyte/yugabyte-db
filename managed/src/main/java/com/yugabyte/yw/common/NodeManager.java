@@ -922,6 +922,16 @@ public class NodeManager extends DevopsBase {
             subcommand.add("install-software");
             subcommand.add("--tags");
             subcommand.add("override_gflags");
+            if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+              subcommand.addAll(
+                  getCertificatePaths(
+                      runtimeConfigFactory.forUniverse(universe),
+                      userIntent,
+                      taskParam,
+                      commonName,
+                      taskParam.getProvider().getYbHome(),
+                      alternateNames));
+            }
             Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
             if (!config.getBoolean("yb.cloud.enabled")) {
               GFlagsUtil.processUserGFlags(
