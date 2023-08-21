@@ -22,6 +22,8 @@ from antlr4 import *
 from antlr4.tree.Tree import *
 from decimal import Decimal
 
+resultHandler = None
+
 class ResultHandler:
     def parse(ageData):
         pass
@@ -34,7 +36,9 @@ def parseAgeValue(value, cursor=None):
     if value is None:
         return None
 
-    resultHandler = Antlr4ResultHandler(None)
+    global resultHandler
+    if (resultHandler == None):
+        resultHandler = Antlr4ResultHandler(None)
     try:
         return resultHandler.parse(value)
     except Exception as ex:
