@@ -159,18 +159,13 @@ void IncrementBy(int64_t amount, HighWaterMark* consumption,
   }
 }
 
-std::string CreateMetricName(const MemTracker& mem_tracker) {
-  if (mem_tracker.metric_entity() &&
-        (!mem_tracker.parent() ||
-            mem_tracker.parent()->metric_entity().get() != mem_tracker.metric_entity().get())) {
-    return "mem_tracker";
-  }
-  std::string id = mem_tracker.id();
-  EscapeMetricNameForPrometheus(&id);
+std::string CreateMetricName(
+    const MemTracker& mem_tracker, std::string metric_name) {
+  EscapeMetricNameForPrometheus(&metric_name);
   if (mem_tracker.parent()) {
-    return CreateMetricName(*mem_tracker.parent()) + "_" + id;
+    return mem_tracker.parent()->metric_name() + "_" + metric_name;
   } else {
-    return id;
+    return "mem_tracker";
   }
 }
 
@@ -191,18 +186,15 @@ class MemTracker::TrackerMetrics {
       : metric_entity_(metric_entity) {
   }
 
-  void Init(const MemTracker& mem_tracker, const std::string& name_suffix) {
-    std::string name = CreateMetricName(mem_tracker);
-    if (!name_suffix.empty()) {
-      name += "_";
-      name += name_suffix;
-    }
+  void Init(const MemTracker& mem_tracker) {
     metric_ = metric_entity_->FindOrCreateGauge(
         std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
-          metric_entity_->prototype().name(), std::move(name),
+          metric_entity_->prototype().name(), mem_tracker.metric_name(),
           CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
           CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
-        mem_tracker.consumption());
+        static_cast<int64_t>(0));
+    // Consumption could be changed when gauge is created, so set it separately.
+    metric_->set_value(mem_tracker.consumption());
   }
 
   TrackerMetrics(TrackerMetrics&) = delete;
@@ -271,6 +263,7 @@ void MemTracker::CreateRootTracker() {
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
                                                  const string& id,
+                                                 const std::string& metric_name,
                                                  ConsumptionFunctor consumption_functor,
                                                  const shared_ptr<MemTracker>& parent,
                                                  AddToParent add_to_parent,
@@ -278,7 +271,7 @@ shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
   return real_parent->CreateChild(
       byte_limit, id, std::move(consumption_functor), MayExist::kFalse, add_to_parent,
-      create_metrics);
+          create_metrics, metric_name);
 }
 
 shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
@@ -286,7 +279,8 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                ConsumptionFunctor consumption_functor,
                                                MayExist may_exist,
                                                AddToParent add_to_parent,
-                                               CreateMetrics create_metrics) {
+                                               CreateMetrics create_metrics,
+                                               const std::string& metric_name) {
   std::lock_guard<std::mutex> lock(child_trackers_mutex_);
   if (may_exist) {
     auto result = FindChildUnlocked(id);
@@ -296,7 +290,7 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   }
   auto result = std::make_shared<MemTracker>(
       byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
-      create_metrics);
+          create_metrics, metric_name);
   auto p = child_trackers_.emplace(id, result);
   if (!p.second) {
     auto existing = p.first->second.lock();
@@ -312,7 +306,8 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
 
 MemTracker::MemTracker(int64_t byte_limit, const string& id,
                        ConsumptionFunctor consumption_functor, std::shared_ptr<MemTracker> parent,
-                       AddToParent add_to_parent, CreateMetrics create_metrics)
+                       AddToParent add_to_parent, CreateMetrics create_metrics,
+                       const std::string& metric_name)
     : limit_(byte_limit),
       soft_limit_(limit_ == -1 ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100),
       id_(id),
@@ -321,7 +316,8 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
       parent_(std::move(parent)),
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace),
-      add_to_parent_(add_to_parent) {
+      add_to_parent_(add_to_parent),
+      metric_name_(CreateMetricName(*this, metric_name)) {
   VLOG(1) << "Creating tracker " << ToString();
   UpdateConsumption();
 
@@ -340,7 +336,7 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
     for (MemTracker* tracker = this; tracker; tracker = tracker->parent().get()) {
       if (tracker->metric_entity()) {
         metrics_ = std::make_unique<TrackerMetrics>(tracker->metric_entity());
-        metrics_->Init(*this, std::string());
+        metrics_->Init(*this);
         break;
       }
     }
@@ -405,12 +401,14 @@ MemTrackerPtr MemTracker::FindChildUnlocked(const std::string& id) {
 
 shared_ptr<MemTracker> MemTracker::FindOrCreateTracker(int64_t byte_limit,
                                                        const string& id,
+                                                       const std::string& metric_name,
                                                        const shared_ptr<MemTracker>& parent,
                                                        AddToParent add_to_parent,
                                                        CreateMetrics create_metrics) {
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
   return real_parent->CreateChild(
-      byte_limit, id, ConsumptionFunctor(), MayExist::kTrue, add_to_parent, create_metrics);
+      byte_limit, id, ConsumptionFunctor(), MayExist::kTrue, add_to_parent,
+          create_metrics, metric_name);
 }
 
 std::vector<MemTrackerPtr> MemTracker::ListChildren() {
@@ -807,8 +805,7 @@ shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   return root_tracker;
 }
 
-void MemTracker::SetMetricEntity(
-    const MetricEntityPtr& metric_entity, const std::string& name_suffix) {
+void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {
   if (metrics_) {
     LOG_IF(DFATAL, metric_entity->id() != metrics_->metric_entity_->id())
         << "SetMetricEntity (" << metric_entity->id() << ") while "
@@ -816,8 +813,9 @@ void MemTracker::SetMetricEntity(
         << metrics_->metric_entity_->id();
     return;
   }
-  metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
-  metrics_->Init(*this, name_suffix);
+  auto metrics = std::make_unique<TrackerMetrics>(metric_entity);
+  metrics->Init(*this);
+  metrics_ = std::move(metrics);
 }
 
 void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {
