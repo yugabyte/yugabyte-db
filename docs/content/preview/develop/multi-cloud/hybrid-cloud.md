@@ -43,7 +43,7 @@ Every hybrid cloud strategy has to be adapted to the specific needs of your orga
 
 For this example, assume you have two on-prem data centers in `us-west` and `us-east`, and you are adding a region in `us-central` on GCP.
 
-### Trivial workloads onto public cloud
+### Move trivial workloads onto public cloud
 
 One of the key benefits of a Hybrid cloud strategy is that you can slowly migrate applications from your on-prem data centers to the public cloud. The first phase of this process could be to move some applications to public cloud. For example, suppose you have two on-prem data centers with YugabyteDB deployed for your production and test applications as follows:
 
@@ -63,7 +63,7 @@ This move has multiple advantages:
 - Instead of spending time and money to set up a data center in `us-central`, you leverage existing cloud infrastructure to add your presence in `us-central`.
 - Adding a new public cloud to your environment and moving less important workloads to it opens up the possibility of running other important workloads in your on-prem data centers.
 
-### Resource-intensive workloads onto public cloud
+### Move resource-intensive workloads onto public cloud
 
 After you have tested out the new public cloud you have added to your infrastructure, you can begin moving more important and resource-intensive applications (like machine-learning logic/stream processing, and so on) to the newly adopted public cloud.
 
@@ -71,7 +71,7 @@ After you have tested out the new public cloud you have added to your infrastruc
 
 The reason for moving resource-intensive applications to the public cloud is that it is easier to switch to powerful node instances that the public cloud provides. For example, [AWS Instance types](https://aws.amazon.com/ec2/instance-types/) and [GCP Instance Types](https://cloud.google.com/compute/docs/machine-resource).
 
-### Applications spread across the Hybrid cloud
+### Spread applications across the hybrid cloud
 
 After you become comfortable with managing the newly added public cloud and are happy with its performance, it would be a good choice to spread your primary database across both the on-prem data center and the public cloud, as shown in the following illustration:
 
