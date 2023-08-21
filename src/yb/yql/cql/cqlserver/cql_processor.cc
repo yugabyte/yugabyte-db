@@ -454,7 +454,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
-  LOG(ERROR) << req.query_id();
+  VLOG(1) << yb::ToString(req.query_id());
   ql_env_.auh_metadata().query_id = std::stoull(
     b2a_hex(req.query_id()).substr(0, std::min(16, (int)req.query_id().size())), 0, 16);
   auto wait_state = util::WaitStateInfo::CurrentWaitState();
