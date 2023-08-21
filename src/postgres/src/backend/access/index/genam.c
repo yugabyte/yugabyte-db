@@ -439,7 +439,18 @@ systable_getnext(SysScanDesc sysscan)
 
 	if (IsYugaByteEnabled())
 	{
-		return ybc_systable_getnext(sysscan);
+		const int64 kCatalogQueryId = -3;
+		const int64 old_query_id = MyProc->queryid;
+		if (old_query_id == 0) {
+			YBCSetQueryId(kCatalogQueryId);
+			MyProc->queryid = kCatalogQueryId;
+		}
+		HeapTuple ret = ybc_systable_getnext(sysscan);
+		if (MyProc->queryid == kCatalogQueryId) {
+			YBCSetQueryId(old_query_id);
+			MyProc->queryid = old_query_id;
+		}
+		return ret;
 	}
 
 	if (sysscan->irel)

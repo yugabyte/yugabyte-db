@@ -708,7 +708,18 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
+		const int64 old_query_id = MyProc->queryid;
+		const int64 kCatalogQueryId = -3;
+		if (old_query_id == 0)
+		{
+			YBCSetQueryId(kCatalogQueryId);
+			MyProc->queryid = kCatalogQueryId;
+		}
 		HandleYBStatus(YBCPrefetchRegisteredSysTables());
+		if (MyProc->queryid == kCatalogQueryId) {
+			YBCSetQueryId(old_query_id);
+			MyProc->queryid = old_query_id;
+		}
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
