@@ -30,7 +30,7 @@
   </a>
   &nbsp;
   <a href="https://github.com/apache/age/releases">
-    <img src="https://img.shields.io/badge/Release-v1.3.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
+    <img src="https://img.shields.io/badge/Release-v1.4.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
   </a>
   &nbsp;
   <a href="https://www.postgresql.org/docs/15/index.html">

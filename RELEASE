@@ -15,14 +15,46 @@
 # specific language governing permissions and limitations
 # under the License.
 
-Release Notes for Apache AGE release 0.0.0 for PG 15
+Release Notes for Apache AGE release 1.4.0 for PG 15
 
-Apache AGE 0.0.0 - Release Notes
+Apache AGE 1.4.0 - Release Notes
 
 NOTE: This is an initial release of PG15. There are no upgrade
       scripts to this release.
 
-**************************************************************
-***** THIS IS THE MASTER BRANCH TEMPLATE FOR THE RELEASE *****
-***** FILE. MODIFY AS NECESSARY FOR THE SPECIFIC RELEASE *****
-**************************************************************
+NOTE: Some of these reference the master branch PR that was
+      either applied to lower versions via a separate PR or
+      merged into a newly created branch.
+
+Added license in Python driver README.md (#956)
+Added the toStringList() function (#1128)
+Added toBooleanList() (#1165)
+Added toFloatList() function (#1016)
+Added toIntegerList() function (#1025)
+Added regression tests for MATCH clause using labels only (#1019)
+Added REGTYPEOID to toString function (#1036)
+Added Dockerfile.dev & move docker-related files to "docker/" (#943)
+Fixed complex MERGE causes crash (#897) (#961)
+Fixed docker build files (#1104)
+Fixed case sensitivity on label usage of reserved keyword (#1040)
+Fixed issue 1000: Indexes created on WHERE (#1133)
+Fixed issue 1002: Invalid reuse of variables in MATCH clause (#1003)
+Fixed issue 1033: access operator on vle edge lists (#1037)
+Fixed issue 1043: ERROR:  container must be an array or object (#1046)
+Fixed issue 1124: Segmentation fault when using specific tables (#1125)
+Fixed issue 395: ERROR: container is not an agtype array (#1039)
+Fixed issue 870: regarding orderability and added regression tests (#994)
+Fixed issue 876: column reference "_age_default_alias_0" is ambiguous (#931)
+Fixed issue 975: Invalid reuse of variables in CREATE clause (#977)
+Fixed issue 989: Impossible to create array with > 100 items (#1001)
+Fixed memory leak issues with age_load (#1142)
+Fixed memory leaks in MERGE (merge_edge & merge_vertex) (#958)
+Fixed MERGE crashes due to incorrect label type (#957)
+Fixed MERGE variable reuse (#997)
+Fixed misspellings in many AGE files (#985)
+Fixed warning messages in DockerHub builds. (#1075)
+Modified test_agtypes to view useful testing message (#992)
+Optimised Antlr4ResultHandler initialization (#1169)
+Updated CIs to pull correct image based on branch (#1105)
+Updated files, format, and version information (#1063)
+Updated README.
