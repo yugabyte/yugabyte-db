@@ -69,10 +69,7 @@ static int circular_buf_size = 0;
 static int circular_buf_size_kb = 16*1024;
 
 static int auh_sampling_interval = 1;
-
-static uint16 sample_size_procs = 5;
-static uint16 sample_size_rpcs = 5;
-
+static int auh_sample_size = 5;
 /* Entry point of library loading */
 void _PG_init(void);
 void yb_auh_main(Datum);
@@ -167,8 +164,8 @@ yb_auh_main(Datum main_arg) {
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
 
-    pg_collect_samples(auh_sample_time, sample_size_procs);
-    tserver_collect_samples(auh_sample_time, sample_size_rpcs);
+    pg_collect_samples(auh_sample_time, auh_sample_size);
+    tserver_collect_samples(auh_sample_time, auh_sample_size);
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -182,18 +179,14 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int		procCount = ProcGlobal->allProcCount;
   float8 sample_rate;
-  if(procCount <= sample_size_procs)
-    sample_rate =  (float)1;
-  else 
-    sample_rate = (float)procCount/sample_size_procs;
-
+  if(procCount == 0)
+    sample_rate = 0;
+  else
+    sample_rate = (float)Min(sample_size_procs, procCount)/procCount;
   for (int i = 0; i < procCount; i++)
   {
     PGPROC *proc = &ProcGlobal->allProcs[i];
-
-    if (proc != NULL && proc->pid != 0)
-    {
-      //TODO:
+    if (proc != NULL && proc->pid != 0 && (random() < sample_rate * MAX_RANDOM_VALUE)){
       auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
                       proc->wait_event_info, "", proc->top_level_node_id,
                       proc->client_node_host, proc->client_node_port,
@@ -212,12 +205,13 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_s
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   float8 sample_rate;
-  if(numrpcs <= sample_size_rpcs)
-    sample_rate = (float)1;
-  else 
-    sample_rate = (float)numrpcs/sample_size_rpcs;
+  if(numrpcs == 0)
+    sample_rate = 0;
+  else
+    sample_rate = (float)Min(sample_size_rpcs, numrpcs)/numrpcs;
   for (int i = 0; i < numrpcs; i++) {
-    auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
+    if(random() <= sample_rate * MAX_RANDOM_VALUE){
+      auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
                     rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
@@ -245,6 +239,11 @@ _PG_init(void)
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
+
+  DefineCustomIntVariable("yb_auh.sample_size", "Sample size of threads to be added to the buffer",
+                          NULL, &auh_sample_size,
+                          50, 0, INT_MAX, PGC_SIGHUP,
+                          0, NULL, NULL, NULL);
 
   RequestAddinShmemSpace(yb_auh_memsize());
   RequestNamedLWLockTranche("auh_entry_array", 1);
