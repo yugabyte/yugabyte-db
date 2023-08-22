@@ -12,6 +12,8 @@ menu:
     identifier: ycqlsh
     parent: admin
     weight: 20
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -334,13 +336,94 @@ The `file name` should be a string literal (with single quotes) representing a p
 
 See `COPY TO` for additional flags common to both `COPY TO` and `COPY FROM`.
 
-
 ### TIMING
 
-Enables or disables simple request round-trip timing, as measured on a current YCQL shell session.
-
-To start, use TIMING ON. To stop, use TIMING OFF. If run without arguments, the command shows the current timing status.
+Enables or disables basic request round-trip timing, as measured on a current YCQL shell session.
 
 ```cql
+TIMING ON | OFF
+```
 
+TIMING ON: Enables round-trip timing for all further requests.
+
+TIMING OFF: Disables timing.
+
+TIMING (with no arguments): Outputs the current timing status.
+
+{{< note title = "Feature support" >}}
+TIMING for [SELECTs](../../api/ycql/dml_select/) is available starting from YugabyteDB version 2.18.0.0 and later.
+TIMING will be available for all DMLs starting from YugabyteDB version 2.19.2.0 and later.
+{{< /note >}}
+
+#### Example
+
+You can use TIMING and run queries from a YCQL session as follows:
+
+```cql
+ycqlsh> TIMING
+```
+
+```output
+Timing is currently disabled. Use TIMING ON to enable.
+```
+
+```cql
+ycqlsh> TIMING ON
+```
+
+```output
+Now Timing is enabled
+```
+
+```cql
+ycqlsh> use example;
+```
+
+```output
+26.18 milliseconds elapsed
+```
+
+```cql
+ycqlsh:example> CREATE TABLE employees(department_id INT, employee_id INT,name TEXT, PRIMARY KEY(department_id, employee_id));
+```
+
+```output
+1042.67 milliseconds elapsed
+```
+
+```cql
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 1, 'John');
+```
+
+```output
+16.89 milliseconds elapsed
+```
+
+```cql
+ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (1, 2, 'Jane');
+```
+
+```output
+11.65 milliseconds elapsed
+```
+
+```cql
+ycqlsh:example> SELECT * FROM employees;
+```
+
+```output
+ department_id | employee_id | name
+---------------+-------------+------
+             1 |           1 | John
+             1 |           2 | Jane
+5.76 milliseconds elapsed
+(2 rows)
+```
+
+```cql
+ycqlsh:example> TIMING OFF
+```
+
+```output
+Disabled Timing.
 ```
