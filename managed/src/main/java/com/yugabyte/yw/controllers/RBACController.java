@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
@@ -80,8 +81,9 @@ public class RBACController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
 
     List<PermissionInfo> permissionInfoList = Collections.emptyList();
-    if (EnumUtils.isValidEnum(ResourceType.class, resourceType)) {
-      permissionInfoList = permissionUtil.getAllPermissionInfo(ResourceType.valueOf(resourceType));
+    ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
+    if (resourceTypeEnum != null) {
+      permissionInfoList = permissionUtil.getAllPermissionInfo(resourceTypeEnum);
     } else {
       permissionInfoList = permissionUtil.getAllPermissionInfo();
     }
@@ -122,10 +124,11 @@ public class RBACController extends AuthenticatedController {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
 
-    // Get all roles for the customer if 'roleType' is not a valid enum
+    // Get all roles for the customer if 'roleType' is not a valid case insensitive enum
     List<Role> roleList = Collections.emptyList();
-    if (EnumUtils.isValidEnum(RoleType.class, roleType)) {
-      roleList = Role.getAll(customerUUID, RoleType.valueOf(roleType));
+    RoleType roleTypeEnum = EnumUtils.getEnumIgnoreCase(RoleType.class, roleType);
+    if (roleTypeEnum != null) {
+      roleList = Role.getAll(customerUUID, roleTypeEnum);
     } else {
       roleList = Role.getAll(customerUUID);
     }
@@ -213,7 +216,7 @@ public class RBACController extends AuthenticatedController {
           String.format(
               "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      throw new PlatformServiceException(NOT_FOUND, errorMsg);
     }
 
     // Ensure we are not modifying system defined roles.
@@ -275,7 +278,7 @@ public class RBACController extends AuthenticatedController {
           String.format(
               "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      throw new PlatformServiceException(NOT_FOUND, errorMsg);
     }
 
     // Ensure we are not deleting system defined roles.
