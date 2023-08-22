@@ -32,7 +32,7 @@ Set up the **Source** universe in AWS and the **Target** universe in GCP using t
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 {{<note>}}
-To set up a universe, refer to <a href="../../../explore/#set-up-yugabytedb-universe">Set up a YugabyteDB universe</a>.
+To set up a local universe, refer to <a href="../../../explore/#set-up-yugabytedb-universe">Set up a YugabyteDB universe</a>.
 {{</note>}}
 
 <!-- END: local cluster setup instructions -->
@@ -43,7 +43,7 @@ To set up a universe, refer to <a href="../../../explore/#set-up-yugabytedb-univ
 {{<nav/panel name="anywhere">}}
 
 {{<note>}}
-To set up a universe, see [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To set up a universe in YugabyteDB Anywhere, refer to [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 {{</note>}}
 
 <!-- END: YBA cluster setup instructions -->
