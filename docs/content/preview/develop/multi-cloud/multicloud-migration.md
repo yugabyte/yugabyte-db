@@ -32,7 +32,7 @@ When finished, note down the universe-uuids of the `source` and `target` univers
 
 ### Bootstrap the new universe
 
-Now that the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
+After the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
 
 {{<tip title="More Details">}}
 For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe).
@@ -47,13 +47,13 @@ The basic flow of bootstrapping is as follows:
             bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
     ```
 
-1. Take the backup of the tables on the AWS universe and restore them to the GCP universe. See [Backup and Restore](../../../manage/backup-restore/).
+1. Take a backup of the tables on the AWS universe and restore them to the GCP universe. See [Backup and Restore](../../../manage/backup-restore/).
 
 This ensures that the current data in your AWS universe is correctly copied over to the GCP universe.
 
 ### Set up replication
 
-Now that your data has been pre-populated from the AWS universe to the GCP universe, you need to set up the replication stream from the AWS to the GCP universe.
+After your data has been pre-populated from the AWS universe to the GCP universe, you need to set up the replication stream from the AWS to the GCP universe.
 
 {{<tip title="More Details">}}
 For detailed instructions on how to set up replication, see [Set up unidirectional replication](../../../deploy/multi-dc/async-replication/#set-up-unidirectional-replication).
@@ -69,7 +69,7 @@ A simple way to set up replication is as follows:
 
 ![Multi-cloud Replication](/images/develop/multicloud/multicloud-migration-replication.png)
 
-Now any data changes to the AWS universe are automatically applied to the GCP universe. _NOTE_: For now, DDL changes have to be applied manually.
+Any data changes to the AWS universe are automatically applied to the GCP universe. _NOTE_: For this example, DDL changes have to be applied manually.
 
 ### Switch over to the new universe
 
@@ -93,7 +93,7 @@ The basic flow of switchover is as follows:
       change_xcluster_role ACTIVE
   ```
 
-Now you can point your applications to the new universe in GCP and then stop the replication, as shown in the following illustration.
+You can point your applications to the new universe in GCP and then stop the replication, as shown in the following illustration.
 
 ![Migration complete](/images/develop/multicloud/multicloud-migration-complete.png)
 

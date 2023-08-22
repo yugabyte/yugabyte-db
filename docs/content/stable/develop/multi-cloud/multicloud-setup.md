@@ -79,7 +79,7 @@ For illustration, set up a 6-node universe with 2 nodes each in AWS, GCP, and Az
     status="yes"
     locations="azu.us-east-1.us-east-1a,azu.us-east-1.us-east-1a">}}
 
-Now, you should have a 6-node cluster with 2 nodes in each cloud provider as follows:
+You should have a 6-node cluster with 2 nodes in each cloud provider as follows:
 
 ![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-6nodes.png)
 
