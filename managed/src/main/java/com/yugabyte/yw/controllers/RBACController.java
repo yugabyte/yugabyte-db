@@ -149,9 +149,23 @@ public class RBACController extends AuthenticatedController {
     RoleFormData roleFormData =
         formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
 
+    // Ensure that the given role name is not blank.
+    if (roleFormData.name == null || roleFormData.name.isBlank()) {
+      String errorMsg = "Role name cannot be blank: " + roleFormData.name;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
     // Check if role with given name for that customer already exists.
     if (Role.get(customerUUID, roleFormData.name) != null) {
       String errorMsg = "Role with given name already exists: " + roleFormData.name;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Ensure that the given permission list is not empty.
+    if (roleFormData.permissionList == null || roleFormData.permissionList.isEmpty()) {
+      String errorMsg = "Permission list cannot be empty.";
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -205,6 +219,20 @@ public class RBACController extends AuthenticatedController {
     // Ensure we are not modifying system defined roles.
     if (RoleType.System.equals(role.getRoleType())) {
       String errorMsg = "Cannot modify System Role with given UUID: " + roleUUID;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    if (roleFormData.name != null) {
+      log.warn("Editing the role name is not supported, skipping this operation.");
+    }
+
+    if (roleFormData.permissionList == null) {
+      log.warn("Permission list not given, using the previous permission list itself.");
+      roleFormData.permissionList =
+          Role.get(customerUUID, roleUUID).getPermissionDetails().getPermissionList();
+    } else if (roleFormData.permissionList.isEmpty()) {
+      String errorMsg = "Given permission list cannot be empty.";
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
