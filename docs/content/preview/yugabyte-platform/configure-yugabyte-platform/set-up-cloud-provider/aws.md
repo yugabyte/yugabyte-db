@@ -144,8 +144,8 @@ You can customize your network, including the virtual network, as follows:
 
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
-  - **Create a new VPC**. Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered beta and is not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will result in a silent failure:
-    - Configuring more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+  - **Create a new VPC** ([Early access](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered Beta and is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
+    - Configuring more than one AWS cloud provider with different CIDR block prefixes.
     - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
 
     To use this option, contact {{% support-platform %}}.
