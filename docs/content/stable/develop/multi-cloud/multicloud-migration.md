@@ -43,7 +43,7 @@ To set up a universe, refer to <a href="../../../explore/#set-up-yugabytedb-univ
 {{<nav/panel name="anywhere">}}
 
 {{<note>}}
-To set up a universe in YB Anywhere, see [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To set up a universe, see [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 {{</note>}}
 
 <!-- END: YBA cluster setup instructions -->
