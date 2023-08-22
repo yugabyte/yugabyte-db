@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -152,6 +153,7 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  public static final String TMP_DIRECTORY = "tmp_dir";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -352,6 +354,9 @@ public class GFlagsUtil {
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
+    // Append the custom_tmp gflag to the YBC gflag.
+    String ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
