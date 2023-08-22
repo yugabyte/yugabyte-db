@@ -476,6 +476,8 @@ class PgClientServiceImpl::Impl {
         auto old_txn_ptr = std::make_shared<OldTransactionMetadataPB>(std::move(old_txn));
         old_txns_pq.push(std::move(old_txn_ptr));
         while (old_txns_pq.size() > max_num_txns) {
+          VLOG(4) << "Dropping old transaction with metadata "
+                  << old_txns_pq.top()->ShortDebugString();
           old_txns_pq.pop();
         }
       }
@@ -516,6 +518,8 @@ class PgClientServiceImpl::Impl {
   Status DoGetLockStatus(
       const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context, const std::vector<master::TSInformationPB>& live_tservers) {
+    VLOG(4) << "Request to DoGetLockStatus: " << req.ShortDebugString();
+
     if (req.transactions_by_tablet().empty() && req.transaction_ids().empty()) {
       return Status::OK();
     }
@@ -540,6 +544,8 @@ class PgClientServiceImpl::Impl {
       auto* node_locks = resp->add_node_locks();
       node_locks->set_permanent_uuid(permanent_uuid);
       node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
+      VLOG(4) << "Adding node locks to PgGetLockStatusResponsePB: "
+              << node_locks->ShortDebugString();
     }
 
     auto s = RefineAccumulatedLockStatusResp(req, resp);
