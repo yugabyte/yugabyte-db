@@ -308,7 +308,7 @@ Result<SysRowEntryType> Parse_SysRowEntryType(const string& type_name) {
   return type;
 }
 
-template<typename Visitor, typename... Args> 
+template<typename Visitor, typename... Args>
 Status CallVisitor(int8_t entry_type, Visitor* v, Args... args) {
   RETURN_NOT_OK(IsValid_SysRowEntryType(entry_type));
   switch (static_cast<SysRowEntryType>(entry_type)) {
@@ -383,7 +383,7 @@ class ReadFilters {
       include_ids_(include_ids), exclude_ids_(exclude_ids),
       skip_types_(skip_types), flags_(flags) {}
 
-  ReadFilters(ReadFlags&& flags) : flags_(flags) {}
+  explicit ReadFilters(ReadFlags&& flags) : flags_(flags) {}
 
   bool NeedToShow(SysRowEntryType type, const ObjectId& id) const;
 
@@ -458,7 +458,7 @@ class SysRowJsonWriter : public JsonWriter {
   Status WritePB(const PB& data);
 
   struct WriteEntryPBVisitor {
-    WriteEntryPBVisitor(SysRowJsonWriter* writer) : writer_(DCHECK_NOTNULL(writer)) {}
+    explicit WriteEntryPBVisitor(SysRowJsonWriter* writer) : writer_(DCHECK_NOTNULL(writer)) {}
 
     template<SysRowEntryType Type>
     Status Visit(const Slice& id, const Slice& data) {
@@ -491,7 +491,8 @@ class SysRowJsonWriter : public JsonWriter {
   WriteEntryPBVisitor visitor_;
 };
 
-void SysRowJsonWriter::ProtobufRepeatedField(const Message& pb, const FieldDescriptor* field, int index) {
+void SysRowJsonWriter::ProtobufRepeatedField(
+    const Message& pb, const FieldDescriptor* field, int index) {
   if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE &&
       field->message_type() &&
       field->message_type()->full_name() == "yb.master.SysRowEntry") {
@@ -503,7 +504,8 @@ void SysRowJsonWriter::ProtobufRepeatedField(const Message& pb, const FieldDescr
 
 void SysRowJsonWriter::SysRow(const google::protobuf::Message& message) {
   const master::SysRowEntry& entry = dynamic_cast<const master::SysRowEntry&>(message);
-  if (filters_.IsSet(OptionFlag::kUseNestedFiltering) && !filters_.NeedToShow(entry.type(), entry.id()) ) {
+  if (filters_.IsSet(OptionFlag::kUseNestedFiltering) &&
+      !filters_.NeedToShow(entry.type(), entry.id()) ) {
     return; // Hide this entry.
   }
 
@@ -861,7 +863,8 @@ Status SysCatalogTool::Read(const ReadFilters& filters) {
     writer_->String("TIME-END");
     writer_->String(end_time.ToHumanReadableTime());
 
-    const MonoDelta duration = MonoDelta::FromMicroseconds(end_time.ToInt64() - start_time.ToInt64());
+    const MonoDelta duration =
+        MonoDelta::FromMicroseconds(end_time.ToInt64() - start_time.ToInt64());
     writer_->String("TIME-DURATION");
     writer_->String(duration.ToString());
 
@@ -911,7 +914,8 @@ Status HelpExecute(const HelpArguments& args) {
 // ------------------------------------------------------------------------------------------------
 // Read command
 // ------------------------------------------------------------------------------------------------
-const string kReadDescription = "Read entries from the SysCatalog. Read all entries by default. Arguments";
+const string kReadDescription = "Read entries from the SysCatalog. Read all entries by default. "
+                                "Arguments";
 
 struct ReadArguments {
   // Filtering by entry type name.
@@ -956,9 +960,10 @@ unique_ptr<OptionsDescription> ReadOptions() {
           (string("Filter: show only specified entry types. Options:") + types).c_str())
       ("skip", po::value(&args.skip),
           "Filter: skip specified entry types. Options are the same as for '--show'.")
-      ("include", po::value(&args.include), "Filter: show only entities with specified IDs")
-      ("exclude", po::value(&args.exclude), "Filter: ignore entities with specified IDs")
-      ("use-nested-filtering", po::bool_switch(&args.use_nested_filtering), "Apply filters to child entities too")
+      ("include", po::value(&args.include), "Filter: show only entries with specified IDs")
+      ("exclude", po::value(&args.exclude), "Filter: ignore entries with specified IDs")
+      ("use-nested-filtering", po::bool_switch(&args.use_nested_filtering),
+          "Apply filters to child entries too")
       // Show/hide sections.
       ("no-header", po::bool_switch(&args.no_header), "Do not show HEADER section")
       ("no-sys-catalog", po::bool_switch(&args.no_sys_catalog), "Do not show SYS-CATALOG section")
