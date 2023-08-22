@@ -59,9 +59,9 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
 {{< /note >}}
 
-{{< note title="For manually-provisioned on-premises universe upgrades" >}}
+{{< note title="Manually-provisioned on-premises universe upgrades" >}}
 
-If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, then the following steps are additionally required to install YB Controller manually after the otherwise-automated software upgrade procedure completes; YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
+If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) universe, you must additionally manually install YB Controller after the otherwise-automated software upgrade procedure completes. YB Controller was introduced in YugabyteDB Anywhere 2.16.0, and is required for YugabyteDB Anywhere 2.16.0 and later.
 
 To install YB Controller, call the following API after the software upgrade:
 
