@@ -1861,6 +1861,10 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
 Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state)
+    wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = tablet_id()});
+
   ScopedRWOperation pending_op;
   if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
     pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
@@ -3412,6 +3416,11 @@ void Tablet::TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush) {
 
 Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
     docdb::SkipFlush skip_flush) {
+  
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state)
+    wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = tablet_id()});
+
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   rocksdb::CompactRangeOptions options;

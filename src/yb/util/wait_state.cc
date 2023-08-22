@@ -58,6 +58,9 @@ WaitStateInfo::WaitStateInfo(AUHMetadata meta)
 #endif 
   {}
 
+WaitStateInfo::WaitStateInfo(AUHMetadata meta, AUHAuxInfo aux_info)
+  : metadata_(meta), aux_info_(aux_info) {}
+
 simple_spinlock* WaitStateInfo::get_mutex() {
   return &mutex_;
 };
@@ -150,6 +153,11 @@ void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
 void WaitStateInfo::set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.top_level_node_id = top_level_node_id;
+}
+
+std::string WaitStateInfo::get_tablet_id() {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  return aux_info_.tablet_id;
 }
 
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
