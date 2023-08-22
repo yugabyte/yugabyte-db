@@ -14,6 +14,7 @@
 #include "yb/util/wait_state.h"
 
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
 
 using yb::util::WaitStateCode;
 
