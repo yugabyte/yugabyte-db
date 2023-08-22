@@ -439,7 +439,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b32"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.55.7-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30" excludeAll(
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31" excludeAll(
   ExclusionRule(organization = "io.ebean"))
 
 libraryDependencies ++= Seq(
