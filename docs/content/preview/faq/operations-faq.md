@@ -20,7 +20,7 @@ For YCQL, YugabyteDB provides automatic load balancing.
 
 [YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the connection load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding. For more information on connection load balancing in YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
-#### GCP universe limitation
+#### GCP universes and YugabyteDB Anywhere
 
 Note that if you provision a YugabyteDB universe using [YugabyteDB Anywhere](../../yugabyte-platform/) with the GCP cloud provider, then the load balancers provided by GCP does not work by default (currently) and requires you to manually set the flags [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../../reference/configuration/yb-tserver/#pgsql-proxy-bind-address) and [`--cql_proxy_bind_address 0.0.0.0:9042`](../../reference/configuration/yb-tserver/#cql-proxy-bind-address).
 
