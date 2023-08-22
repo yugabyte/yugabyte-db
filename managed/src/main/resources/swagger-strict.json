@@ -18939,7 +18939,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -19030,7 +19030,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -19123,7 +19123,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -19226,7 +19226,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -19268,7 +19268,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
+        "summary" : "Deprecated since YBA version 2.20.0.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
         "tags" : [ "Release management" ]
       }
     },
@@ -20496,7 +20496,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-06-06, sinceYBAVersion=2.19.1.0, Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
+        "summary" : "Deprecated since YBA version 2.19.1.0, Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
         "tags" : [ "Customer Tasks" ]
       }
     },
@@ -20833,7 +20833,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: Do not use, this will be removed soon. Import a universe",
+        "summary" : "Deprecated since YBA version 2.19.3.0. Do not use, this will be removed soon. Import a universe",
         "tags" : [ "Universe actions" ]
       }
     },
