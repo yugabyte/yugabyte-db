@@ -58,9 +58,6 @@ WaitStateInfo::WaitStateInfo(AUHMetadata meta)
 #endif 
   {}
 
-WaitStateInfo::WaitStateInfo(AUHMetadata meta, AUHAuxInfo aux_info)
-  : metadata_(meta), aux_info_(aux_info) {}
-
 simple_spinlock* WaitStateInfo::get_mutex() {
   return &mutex_;
 };

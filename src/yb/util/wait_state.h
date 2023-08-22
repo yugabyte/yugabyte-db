@@ -283,7 +283,6 @@ class WaitStateInfo {
  public:
   WaitStateInfo() = default;
   WaitStateInfo(AUHMetadata meta);
-  WaitStateInfo(AUHMetadata meta, AUHAuxInfo aux_info);
 
   void set_state(WaitStateCode c);
   WaitStateCode get_state() const;
