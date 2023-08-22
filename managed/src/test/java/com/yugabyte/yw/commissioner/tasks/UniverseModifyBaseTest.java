@@ -18,12 +18,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.junit.Before;
-import org.yb.CommonNet;
-import org.yb.CommonTypes;
-import org.yb.WireProtocol;
-import org.yb.client.GetMasterRegistrationResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -217,6 +212,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   }
 
   public static void mockGetMasterRegistrationResponses(YBClient client, List<String> masterIps) {
+    /* reimplement once correct RPC method is used
     when(client.getMasterRegistrationResponseList())
         .thenAnswer(
             i -> {
@@ -244,6 +240,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                           .collect(Collectors.toList()));
               return responses;
             });
+     */
   }
 
   public void mockGetMasterRegistrationResponse(List<String> addedIps, List<String> removedIps) {
@@ -252,6 +249,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   public static void mockGetMasterRegistrationResponse(
       YBClient client, List<String> addedIps, List<String> removedIps) {
+    /* reimplement once correct RPC method is used
     List<GetMasterRegistrationResponse> responses = new ArrayList<>();
     responses.addAll(
         addedIps
@@ -284,5 +282,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                         null))
             .collect(Collectors.toList()));
     when(client.getMasterRegistrationResponseList()).thenReturn(responses);
+    */
   }
 }
