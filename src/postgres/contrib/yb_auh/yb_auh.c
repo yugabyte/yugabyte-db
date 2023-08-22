@@ -178,10 +178,8 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
   LWLockAcquire(ProcArrayLock, LW_SHARED);
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int		procCount = ProcGlobal->allProcCount;
-  float8 sample_rate;
-  if(procCount == 0)
-    sample_rate = 0;
-  else
+  float8 sample_rate = 0;
+  if(procCount != 0)
     sample_rate = (float)Min(sample_size_procs, procCount)/procCount;
   for (int i = 0; i < procCount; i++)
   {
@@ -190,7 +188,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
       auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
                       proc->wait_event_info, "", proc->top_level_node_id,
                       proc->client_node_host, proc->client_node_port,
-                      proc->queryid, auh_sample_time, 1);
+                      proc->queryid, auh_sample_time, sample_rate);
     }
   }
   LWLockRelease(auh_entry_array_lock);
@@ -204,18 +202,17 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_s
   size_t numrpcs = 0;
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
-  float8 sample_rate;
-  if(numrpcs == 0)
-    sample_rate = 0;
-  else
-    sample_rate = (float)Min(sample_size_rpcs, numrpcs)/numrpcs;
+  float8 sample_rate= 0;
+  if(numrpcs != 0)
+    sample_rate = (float)Min(sample_size_rpcs, numrpcs)/numrpcs;  
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
                     rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
-                    rpcs[i].metadata.query_id, auh_sample_time, 1);
+                    rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
+    }
   }
   LWLockRelease(auh_entry_array_lock);
 }
