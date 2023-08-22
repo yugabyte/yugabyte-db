@@ -29,8 +29,6 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("enable_wait_queues", "false");
     flagMap.put("enable_deadlock_detection", "false");
-    // Setting the below flag stabilizes yb_lock_status tests.
-    flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
     return flagMap;
   }
 
@@ -56,6 +54,8 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     flags.put("enable_wait_queues", "true");
     flags.put("enable_deadlock_detection", "true");
     flags.put("auto_promote_nonlocal_transactions_to_global", "false");
+    // Setting the below flag stabilizes yb_lock_status tests.
+    flags.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
 
     restartClusterWithFlags(Collections.emptyMap(), flags);
     runIsolationRegressTest();
@@ -87,6 +87,8 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     flags.put("enable_wait_queues", "true");
     flags.put("enable_deadlock_detection", "true");
     flags.put("auto_promote_nonlocal_transactions_to_global", "false");
+    // Setting the below flag stabilizes yb_lock_status tests.
+    flags.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
 
     restartClusterWithFlags(Collections.emptyMap(), flags);
     runIsolationRegressTest();
