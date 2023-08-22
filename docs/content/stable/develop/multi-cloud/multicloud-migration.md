@@ -5,7 +5,7 @@ linkTitle: Multi-cloud migration
 description: Migrate your data between different clouds
 headcontent: Migrate your data between different clouds
 menu:
-  preview:
+  stable:
     identifier: multicloud-migration
     parent: build-multicloud-apps
     weight: 200
@@ -55,7 +55,7 @@ When finished, note down the universe-uuids of the `source` and `target` univers
 
 ### Bootstrap the new universe
 
-After the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
+Now that the GCP universe has been set up, you need to populate the data from your AWS universe. This is typically referred to as **Bootstrapping**.
 
 {{<tip title="More Details">}}
 For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe).
