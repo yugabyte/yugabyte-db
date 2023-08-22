@@ -6,7 +6,7 @@ description: Build applications that run across on-prem datacenters and public c
 headcontent: Build applications that run across on-prem datacenters and public clouds
 image: /images/section_icons/develop/api-icon.png
 menu:
-  preview:
+  stable:
     identifier: multicloud-hybrid-cloud
     parent: build-multicloud-apps
     weight: 300
