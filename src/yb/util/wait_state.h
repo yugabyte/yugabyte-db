@@ -133,7 +133,7 @@ YB_DEFINE_ENUM_TYPE(
 
     // CQL Wait Events
     ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteWaitingForCB)
-    (CQLRead)(CQLWrite)
+    (CQLRead)(CQLWrite)(CQLHandling)(CQLHandlingDone)(FlushAsync)(FlushAsyncDone)
 
     ((RocksDB, YB_ROCKSDB))
        (BlockCacheLookupInCache)
