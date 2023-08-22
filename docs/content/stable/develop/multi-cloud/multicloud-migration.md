@@ -26,7 +26,30 @@ To accomplish the migration, use the [xCluster](../../../architecture/docdb-repl
 
 Set up the **Source** universe in AWS and the **Target** universe in GCP using the following setup procedures.
 
-{{<cluster-setup-tabs>}}
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,anywhere" active="local"/>}}
+
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+{{<note>}}
+To set up a universe, refer to <a href="../../../explore/#set-up-yugabytedb-universe">Set up a YugabyteDB universe</a>.
+{{</note>}}
+
+<!-- END: local cluster setup instructions -->
+{{</nav/panel>}}
+<!-- xCluster not currently supported in YBM
+{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
+-->
+{{<nav/panel name="anywhere">}}
+
+{{<note>}}
+To set up a universe in YB Anywhere, see [Create a multi-zone universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+{{</note>}}
+
+<!-- END: YBA cluster setup instructions -->
+{{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 When finished, note down the universe-uuids of the `source` and `target` universes.
 
