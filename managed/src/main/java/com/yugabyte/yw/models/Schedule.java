@@ -415,6 +415,10 @@ public class Schedule extends Model {
         .findList();
   }
 
+  public static List<Schedule> getAllSchedulesByOwnerUUID(UUID ownerUUID) {
+    return find.query().where().eq("owner_uuid", ownerUUID).findList();
+  }
+
   public static List<Schedule> getAllSchedulesByOwnerUUIDAndType(
       UUID ownerUUID, TaskType taskType) {
     return find.query().where().eq("owner_uuid", ownerUUID).in("task_type", taskType).findList();

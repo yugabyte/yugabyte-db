@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -104,6 +105,18 @@ public class PitrController extends AuthenticatedController {
     Optional<PitrConfig> pitrConfig = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
     if (pitrConfig.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
+    }
+
+    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (type != null) {
+      if (type.equals(TableType.YQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YCQL tables when API is disabled");
+      } else if (type.equals(TableType.PGSQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YSQL tables when API is disabled");
+      }
     }
 
     taskParams.setUniverseUUID(universeUUID);
