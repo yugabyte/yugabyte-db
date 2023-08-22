@@ -73,7 +73,7 @@
     "AWSRegionCloudInfo" : {
       "properties" : {
         "arch" : {
-          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
+          "description" : "Deprecated since YBA version 2.20.0. Use provider.imageBundle instead",
           "enum" : [ "x86_64", "aarch64" ],
           "type" : "string"
         },
@@ -84,7 +84,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
+          "description" : "Deprecated since YBA version 2.20.0. Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -1557,7 +1557,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
+          "description" : "Deprecated since YBA version 2.20.0. Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -2824,7 +2824,7 @@
           "type" : "string"
         },
         "expiryDate" : {
-          "description" : "The certificate's expiry date. Deprecated: Use expirtyDateIso instead",
+          "description" : "The certificate's expiry date. Deprecated since YBA version 2.17.2.0. Use expirtyDateIso instead",
           "format" : "date-time",
           "type" : "string"
         },
@@ -2850,7 +2850,7 @@
           "type" : "string"
         },
         "startDate" : {
-          "description" : "The certificate's creation date. Deprecated: use stateDateIso instead",
+          "description" : "The certificate's creation date. Deprecated since YBA version 2.17.2.0. Use stateDateIso instead",
           "format" : "date-time",
           "type" : "string"
         },
@@ -4614,7 +4614,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
+          "description" : "Deprecated since YBA version 2.20.0. Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -5346,7 +5346,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
-          "description" : "DEPRECATED: kubernetes service account is not needed.",
+          "description" : "DEPRECATED since YBA version 2.17.3.0. kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {
@@ -5654,7 +5654,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
-          "description" : "DEPRECATED: kubernetes service account is not needed.",
+          "description" : "DEPRECATED since YBA version 2.17.3.0. kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {
@@ -7973,7 +7973,7 @@
           "type" : "boolean"
         },
         "airGapInstall" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.airGapInstall. Only supported in Create Request",
+          "description" : "Deprecated since YBA version 2.17.2.0, Use details.airGapInstall. Only supported in Create Request",
           "type" : "boolean"
         },
         "allAccessKeys" : {
@@ -7990,7 +7990,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.metadata instead",
+          "description" : "Deprecated since YBA version 2.17.2.0. Use details.metadata instead",
           "type" : "object"
         },
         "customerUUID" : {
@@ -8000,15 +8000,18 @@
           "type" : "string"
         },
         "destVpcId" : {
+          "description" : "Deprecated since YBA version 2.17.2.0",
           "type" : "string"
         },
         "details" : {
           "$ref" : "#/definitions/ProviderDetails"
         },
         "hostVpcId" : {
+          "description" : "Deprecated since YBA version 2.17.2.0",
           "type" : "string"
         },
         "hostVpcRegion" : {
+          "description" : "Deprecated since YBA version 2.17.2.0",
           "type" : "string"
         },
         "imageBundles" : {
@@ -8018,7 +8021,7 @@
           "type" : "array"
         },
         "keyPairName" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.keyPairName instead",
+          "description" : "Deprecated since YBA version 2.17.2.0, Use allAccessKeys[0].keyInfo.keyPairName instead",
           "type" : "string"
         },
         "name" : {
@@ -8032,16 +8035,16 @@
           "type" : "array"
         },
         "sshPort" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshPort instead. Only supported in create request",
+          "description" : "Deprecated since YBA version 2.17.2.0, Use details.SshPort instead. Only supported in create request",
           "format" : "int32",
           "type" : "integer"
         },
         "sshPrivateKeyContent" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead",
+          "description" : "Deprecated since YBA version 2.17.2.0, Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead",
           "type" : "string"
         },
         "sshUser" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Use details.SshUser instead. Only supported in create request",
+          "description" : "Deprecated since YBA version 2.17.2.0, Use details.SshUser instead. Only supported in create request",
           "type" : "string"
         },
         "usabilityState" : {
@@ -8187,7 +8190,7 @@
           "type" : "string"
         },
         "securityGroupId" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure securityGroupId property",
+          "description" : "Deprecated since YBA version 2.17.2.0, Moved to regionDetails.cloudInfo aws/azure securityGroupId property",
           "type" : "string"
         },
         "uuid" : {
@@ -8197,11 +8200,11 @@
           "type" : "string"
         },
         "vnetName" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to regionDetails.cloudInfo aws/azure vnet property",
+          "description" : "Deprecated since YBA version 2.17.2.0, Moved to regionDetails.cloudInfo aws/azure vnet property",
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, Moved to details.cloudInfo aws/gcp/azure ybImage property",
+          "description" : "Deprecated since YBA version 2.17.2.0, Moved to details.cloudInfo aws/gcp/azure ybImage property",
           "example" : "TODO",
           "type" : "string"
         },
@@ -12943,7 +12946,7 @@
           "type" : "string"
         },
         "role" : {
-          "description" : "User role. Deprecated. Use field roleResourceDefinitions instead.",
+          "description" : "Deprecated since YBA version 2.19.3.0. Use field roleResourceDefinitions instead.",
           "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
@@ -13184,7 +13187,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "Map  of region UUID to AMI name. Deprecated: sinceDate=2023-03-30,sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "description" : "Map of region UUID to AMI name. Deprecated since YBA version 2.18.0.0, Use imageBundle instead.",
           "example" : "{\n    'b28e0813-4866-4a2d-89f3-52265766d666': 'OpenLogic:CentOS:7_9:7.9.2022020700',\n    'b28e0813-4866-4a2d-89f3-52265766d666': 'ami-0f12219b4df721aa6',\n    'd73833fc-0812-4a01-98f8-f4f24db76dbe': 'https://www.googleapis.com/compute/v1/projects/rhel-cloud/global/images/rhel-8-v20221102'\n  }",
           "type" : "object"
         },
@@ -13268,7 +13271,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "Map of region UUID to SSH User override. Deprecated: sinceDate=2023-03-30,sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "description" : "Map of region UUID to SSH User override. Deprecated since YBA version 2.18.0.0, Use imageBundle instead.",
           "example" : "{\n    'b28e0813-4866-4a2d-89f3-52265766d666': 'ec2-user',\n  }",
           "type" : "object"
         },
@@ -19050,7 +19053,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -19141,7 +19144,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -19234,7 +19237,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -19337,7 +19340,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
+        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -19379,7 +19382,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
+        "summary" : "Deprecated since YBA version 2.20.0.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
         "tags" : [ "Release management" ]
       }
     },
@@ -20607,7 +20610,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: sinceDate=2023-06-06, sinceYBAVersion=2.19.1.0, Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
+        "summary" : "Deprecated since YBA version 2.19.1.0, Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
         "tags" : [ "Customer Tasks" ]
       }
     },
@@ -20944,7 +20947,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Deprecated: Do not use, this will be removed soon. Import a universe",
+        "summary" : "Deprecated since YBA version 2.19.3.0. Do not use, this will be removed soon. Import a universe",
         "tags" : [ "Universe actions" ]
       }
     },

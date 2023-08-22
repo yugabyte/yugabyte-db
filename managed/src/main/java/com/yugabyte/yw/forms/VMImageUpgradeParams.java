@@ -15,7 +15,8 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
@@ -34,11 +35,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     None
   }
 
-  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
   @ApiModelProperty(
       value =
-          "Map  of region UUID to AMI name. Deprecated: sinceDate=2023-03-30,"
-              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "Map of region UUID to AMI name. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
       required = false,
       example =
           "{\n"
@@ -54,11 +55,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
 
   // Use whenwe want to use a different SSH_USER instead of what is defined in the default
   // accessKey.
-  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
   @ApiModelProperty(
       value =
-          "Map of region UUID to SSH User override. Deprecated: sinceDate=2023-03-30,"
-              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "Map of region UUID to SSH User override. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
       required = false,
       example = "{\n" + "    'b28e0813-4866-4a2d-89f3-52265766d666':" + " 'ec2-user',\n" + "  }")
   public Map<UUID, String> sshUserOverrideMap = new HashMap<>();
