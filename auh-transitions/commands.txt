@@ -1,0 +1,30 @@
+
+# !grep "setting state to" % | sed 's/^ *//; s/.*code: //; s/aux_info:.*method: /method:/; s/\}.*setting/setting/' | sort | uniq -c > ~/code/yugabyte/wait-state-transitions2.txt
+
+LOG_FILE=/Users/amitanand/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/yb-tserver.INFO
+CSV_FILE=transactions_new.csv
+DB_FILE=transactions_new.db
+
+grep "setting state to" ${LOG_FILE} | sed 's/.*code: //; s/ aux_info:.*method: /,/; s/ \}.*setting state to /,/' | sort | uniq -c | sed 's/^ *//; s/ /,/'  > ${CSV_FILE}
+
+--
+-- insert the header:
+-- count,current_wait_state,method_name,next_wait_state
+--
+
+gsed -i '1i\count,current_wait_state,method_name,next_wait_state' ${CSV_FILE}
+
+echo .import ${CSV_FILE} transitions
+
+sqlite3 $DB_FILE
+
+.mode csv
+.import ${CSV_FILE} transitions
+
+create view incoming_counts as select next_wait_state as wait_state, sum(count) as counts from transitions group by next_wait_state;
+create view outgoing_counts as select current_wait_state as wait_state, sum(count) as counts from transitions group by current_wait_state;
+create view transition_counts as select current_wait_state, next_wait_state, sum(count) as count from transitions group by current_wait_state, next_wait_state;
+create view transition_curr_and_next as select current_wait_state, next_wait_state from transitions group by current_wait_state, next_wait_state;
+
+create view num_next_states as select current_wait_state, count(*) as num_next from transition_curr_and_next group by current_wait_state;
+create view num_prev_states as select next_wait_state as state, count(*) as num_prev from transition_curr_and_next group by next_wait_state;
