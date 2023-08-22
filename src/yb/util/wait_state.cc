@@ -71,7 +71,7 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
   if (!ret) {
     return;
   }
-  VTRACE(0, "Cased Handling -> HandlingDone");
+  VTRACE(0, "cas-ed $0 -> $1", util::ToString(prev), util::ToString(c));
   if (freeze_) {
     // See comments in ::set_state()
     if (frozen_state_code_ == WaitStateCode::Unused) {
