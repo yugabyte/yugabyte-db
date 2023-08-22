@@ -22,7 +22,7 @@ For YCQL, YugabyteDB provides automatic load balancing.
 
 #### GCP universes and YugabyteDB Anywhere
 
-Note that if you provision a YugabyteDB universe using [YugabyteDB Anywhere](../../yugabyte-platform/) with the GCP cloud provider, then the load balancers provided by GCP does not work by default (currently) and requires you to manually set the flags [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../../reference/configuration/yb-tserver/#pgsql-proxy-bind-address) and [`--cql_proxy_bind_address 0.0.0.0:9042`](../../reference/configuration/yb-tserver/#cql-proxy-bind-address).
+If you provision a YugabyteDB universe using [YugabyteDB Anywhere](../../yugabyte-platform/) on GCP, then the load balancers provided by GCP don't work by default (currently). To use load balancers on GCP, set the [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../../reference/configuration/yb-tserver/#pgsql-proxy-bind-address) and [`--cql_proxy_bind_address 0.0.0.0:9042`](../../reference/configuration/yb-tserver/#cql-proxy-bind-address) flags. Refer to [Edit configuration flags](../../yugabyte-platform/manage-deployments/edit-config-flags/).
 
 ### Can write ahead log (WAL) files be cleaned up or reduced in size?
 
