@@ -96,6 +96,15 @@ public class RoleBindingUtil {
   public void validateResourceGroups(
       UUID customerUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
+      if (roleResourceDefinition.getResourceGroup().getResourceDefinitionSet() == null
+          || roleResourceDefinition.getResourceGroup().getResourceDefinitionSet().isEmpty()) {
+        String errMsg =
+            String.format(
+                "resourceDefinitionSet cannot be empty in the roleResourceDefinition: %s.",
+                roleResourceDefinition.toString());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
       for (ResourceDefinition resourceDefinition :
           roleResourceDefinition.getResourceGroup().getResourceDefinitionSet()) {
         validateResourceDefinition(customerUUID, resourceDefinition);
@@ -120,6 +129,31 @@ public class RoleBindingUtil {
             String.format(
                 "Resource UUID '%s' of type '%s' is not valid or doesn't exist.",
                 resourceUUID, resourceDefinition.getResourceType());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+    }
+    // Check that only one of the fields `allowAll` or `resourceUUIDSet` exists.
+    if (resourceDefinition.isAllowAll() ^ resourceDefinition.getResourceUUIDSet().isEmpty()) {
+      String errMsg =
+          String.format(
+              "One of 'allowAll' or 'resourceUUIDSet' should be filled in resourceDefinition: %s.",
+              resourceDefinition.toString());
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    // Check that for DEFAULT resource types, 'allowAll' is false and only one resource UUID is
+    // given, which is the customer UUID.
+    if (resourceDefinition.getResourceType().equals(ResourceType.DEFAULT)) {
+      if (resourceDefinition.isAllowAll()
+          || !(resourceDefinition.getResourceUUIDSet().size() == 1)
+          || (!resourceDefinition.getResourceUUIDSet().iterator().next().equals(customerUUID))) {
+        String errMsg =
+            String.format(
+                "For DEFAULT resource type, 'allowAll' must be false and "
+                    + "'resourceUUIDSet' should have only customerUUID in resourceDefinition: %s.",
+                resourceDefinition.toString());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
@@ -236,9 +270,11 @@ public class RoleBindingUtil {
 
     // Add all the non resource specific permissions such as UNIVERSE.CREATE, etc.
     for (ResourceType resourceTypeToReturn : nonResourcePermissionsToAdd.keySet()) {
-      resourcePermissions.add(
-          new ResourcePermissionData(
-              resourceTypeToReturn, null, nonResourcePermissionsToAdd.get(resourceTypeToReturn)));
+      if (resourceType == null || resourceType.equals(resourceTypeToReturn)) {
+        resourcePermissions.add(
+            new ResourcePermissionData(
+                resourceTypeToReturn, null, nonResourcePermissionsToAdd.get(resourceTypeToReturn)));
+      }
     }
     return resourcePermissions;
   }
