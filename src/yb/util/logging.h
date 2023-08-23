@@ -77,9 +77,7 @@
 // Example usage:
 //   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
-  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
-  if (int num = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs) ; num >= 0) \
-    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num).stream()
+    YB_LOG_EVERY_N_SECS_OR_VLOG(severity, n_secs, -1)
 
 #define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
