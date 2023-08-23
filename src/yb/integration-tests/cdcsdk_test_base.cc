@@ -19,6 +19,7 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_server_options.h"
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
@@ -86,6 +87,10 @@ void CDCSDKTestBase::TearDown() {
     if (test_cluster_.pg_supervisor_) {
       test_cluster_.pg_supervisor_->Stop();
     }
+    cdc_master_server_->Shutdown();
+    cdc_master_server_.reset();
+    cdc_tserver_server_->Shutdown();
+    cdc_tserver_server_.reset();
     test_cluster_.mini_cluster_->Shutdown();
     test_cluster_.mini_cluster_.reset();
   }
@@ -94,9 +99,9 @@ void CDCSDKTestBase::TearDown() {
 
 std::unique_ptr<CDCServiceProxy> CDCSDKTestBase::GetCdcProxy() {
   YBClient *client_ = test_client();
-  const auto mini_server = test_cluster()->mini_tablet_servers().front();
   std::unique_ptr<CDCServiceProxy> proxy = std::make_unique<CDCServiceProxy>(
-      &client_->proxy_cache(), HostPort::FromBoundEndpoint(mini_server->bound_rpc_addr()));
+      &client_->proxy_cache(),
+      CHECK_RESULT(HostPort::FromString(cdc_tserver_server_host_, cdc_tserver_server_port_)));
   return proxy;
 }
 
@@ -135,6 +140,53 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
   return Status::OK();
 }
 
+Status CDCSDKTestBase::StartCDCMasterServer() {
+  auto* mini_master = test_cluster_.mini_cluster_->mini_master(0);
+  auto* master = mini_master->master();
+
+  const auto& master_options = master->opts();
+  cdc_master_server_host_ = mini_master->bound_rpc_addr().host();
+  cdc_master_server_port_ = test_cluster_.mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) <<"Sid: CDC Master server Host: " << cdc_master_server_host_;
+  LOG(INFO) <<"Sid: CDC Master server Port: " << cdc_master_server_port_;
+
+  yb::cdcserver::CDCServerOptions cdc_server_options(cdc_master_server_port_);
+  cdc_server_options.fs_opts = master_options.fs_opts;
+  cdc_server_options.master_addresses_flag = master_options.master_addresses_flag;
+  // cdc_server_options.SetMasterAddresses(master_options.GetMasterAddresses());
+
+  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_master_server_host_, cdc_master_server_port_);
+
+  cdc_master_server_ = std::make_unique<cdcserver::CDCMasterServer>(master, cdc_server_options);
+
+  return cdc_master_server_->Start();
+}
+
+
+Status CDCSDKTestBase::StartCDCTSServer() {
+  auto* mini_tserver = test_cluster_.mini_cluster_->mini_tablet_server(0);
+  auto* tserver = mini_tserver->server();
+
+  const auto& tserver_options = tserver->options();
+  cdc_tserver_server_host_ = mini_tserver->bound_rpc_addr().address().to_string();
+  cdc_tserver_server_port_ = test_cluster_.mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) <<"Sid: CDC Tserver server Host: " << cdc_tserver_server_host_;
+  LOG(INFO) <<"Sid: CDC Tserver server Port: " << cdc_tserver_server_port_;
+
+  yb::cdcserver::CDCServerOptions cdc_server_options(cdc_tserver_server_port_);
+  cdc_server_options.fs_opts = tserver_options.fs_opts;
+  cdc_server_options.master_addresses_flag = tserver_options.master_addresses_flag;
+  cdc_server_options.SetMasterAddresses(tserver_options.GetMasterAddresses());
+
+  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_tserver_server_host_, cdc_tserver_server_port_);
+
+  cdc_tserver_server_ = std::make_unique<cdcserver::CDCTServerServer>(tserver, cdc_server_options);
+  LOG(INFO)<<"Sid: Now starting the cdc tserver server";
+  return cdc_tserver_server_->Start();
+}
+
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
@@ -162,6 +214,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
     RETURN_NOT_OK(InitPostgres(&test_cluster_));
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
+
+  RETURN_NOT_OK(StartCDCMasterServer());
+  RETURN_NOT_OK(StartCDCTSServer());
 
   cdc_proxy_ = GetCdcProxy();
 

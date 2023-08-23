@@ -65,7 +65,10 @@ class CDCMasterServer : public server::RpcServerBase {
  private:
   CDCServerOptions opts_;
 
-  std::shared_ptr<CDCServiceImpl> cdc_master_service_;
+  // Check if this is required?
+  // std::shared_ptr<CDCServiceImpl> cdc_master_service_;
+
+  // define pointer to all the 5 services here itself.
   master::Master* master_;
 
   DISALLOW_COPY_AND_ASSIGN(CDCMasterServer);

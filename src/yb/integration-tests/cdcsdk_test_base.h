@@ -19,6 +19,8 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/tserver/cdc_tserver_server.h"
+#include "yb/master/cdc_master_server.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -120,6 +122,10 @@ class CDCSDKTestBase : public YBTest {
 
   Status InitPostgres(Cluster* cluster);
 
+  Status StartCDCMasterServer();
+
+  Status StartCDCTSServer();
+
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false);
@@ -192,6 +198,14 @@ class CDCSDKTestBase : public YBTest {
  protected:
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
+  std::unique_ptr<yb::cdcserver::CDCMasterServer> cdc_master_server_;
+  std::unique_ptr<yb::cdcserver::CDCTServerServer> cdc_tserver_server_;
+
+  std::string cdc_master_server_host_;
+  uint16_t cdc_master_server_port_ = 0;
+
+  std::string cdc_tserver_server_host_;
+  uint16_t cdc_tserver_server_port_ = 0;
 
   Cluster test_cluster_;
 };
