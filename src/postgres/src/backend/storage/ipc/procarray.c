@@ -103,6 +103,16 @@ static ProcArrayStruct *procArray;
 static PGPROC *allProcs;
 static PGXACT *allPgXact;
 
+//typedef struct Node;
+// {
+//   uint64_t top_level_request_id[2];
+//   uint32 wait_event_info;
+//   uint64_t top_level_node_id[2];
+//   uint32 client_node_host;
+//   uint16 client_node_port;
+//   int64	queryid;
+//   int numprocs;
+// } auhEntryTemp;
 /*
  * Bookkeeping for tracking emulated transactions in recovery
  */
@@ -271,6 +281,23 @@ CreateSharedProcArray(void)
 	LWLockRegisterTranche(LWTRANCHE_PROC, "proc");
 }
 
+
+auhEntryTemp proc_getter(PGPROC *proc, int numprocs)
+{
+	auhEntryTemp procEntry;
+	for (int i = 0; i < 2; i++) {
+        procEntry.top_level_request_id[i] = proc->top_level_request_id[i];
+        procEntry.top_level_node_id[i] = proc->top_level_node_id[i];
+    }
+	//procEntry.top_level_request_id = proc->top_level_request_id;
+	procEntry.wait_event_info = proc->wait_event_info;
+	//procEntry.top_level_node_id = proc->top_level_node_id;
+	procEntry.client_node_host = proc->client_node_host;
+	procEntry.client_node_port = proc->client_node_port;
+	procEntry.queryid = proc->queryid;
+	procEntry.numprocs = numprocs;
+	return procEntry;
+}
 /*
  * Add the specified PGPROC to the shared array.
  */
@@ -322,7 +349,7 @@ ProcArrayAdd(PGPROC *proc)
 	LWLockRelease(ProcArrayLock);
 }
 
-/*
+/*ß
  * Remove the specified PGPROC from the shared array.
  *
  * When latestXid is a valid XID, we are removing a live 2PC gxact from the
@@ -2794,6 +2821,43 @@ MinimumActiveBackends(int min)
 	return count >= min;
 }
 
+void insertNode(PgProcAuhNode **head, auhEntryTemp data) {
+    PgProcAuhNode *newNode = malloc(sizeof(PgProcAuhNode));
+    newNode->data = data;
+    newNode->next = *head;
+    *head = newNode;
+}
+void freeLinkedList(PgProcAuhNode *head) {
+    while (head != NULL) {
+        PgProcAuhNode *temp = head;
+        head = head->next;
+        free(temp);
+    }
+}
+
+//PGProcAUHEntryList
+PgProcAuhNode* pg_collect_samples_proc()
+{
+	ProcArrayStruct *arrayP = procArray;
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+	PgProcAuhNode *head = NULL;
+	// int procCount = procArray->numProcs;
+	// auhEntryTemp *procArr = palloc(sizeof(auhEntryTemp) * procCount);
+	for (int i = 0; i < procArray->numProcs; i++)
+	{
+		int	pgprocno = arrayP->pgprocnos[i];
+		PGPROC *proc  = &allProcs[pgprocno];
+		//procArr[i] = proc_getter(proc, procArray->numProcs);
+		if(proc != NULL && proc->pid != 0 && proc->wait_event_info!=0)
+		{
+			auhEntryTemp entry = proc_getter(proc, procArray->numProcs);
+			insertNode(&head, entry);
+		}
+	}
+	LWLockRelease(ProcArrayLock);
+	return head;	
+}
+
 /*
  * CountDBBackends --- count backends that are using specified database
  */
@@ -2805,6 +2869,7 @@ CountDBBackends(Oid databaseid)
 	int			index;
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
+	ereport(LOG, (errmsg("numprocs %d", arrayP->numProcs)));
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
