@@ -64,9 +64,9 @@ a future release.
 You can check the available hypothetical indexes in your own backend:
 
     rjuju=# SELECT * FROM hypopg_list_indexes ;
-     indexrelid |                 indexname                 | nspname | relname | amname
-     -----------+-------------------------------------------+---------+---------+--------
-         205101 | <41072>btree_hypo_id                      | public  | hypo    | btree
+     indexrelid |          index_name           | schema_name | table_name | am_name 
+    ------------+-------------------------------+-------------+------------+---------
+          50573 | <50573>btree_hypo_id          | public      | hypo       | btree
 
 
 If you need more technical information on the hypothetical indexes, the

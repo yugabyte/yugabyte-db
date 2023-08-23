@@ -182,9 +182,9 @@ Some other convenience functions and views are available:
 .. code-block:: psql
 
   SELECT * FROM hypopg_list_indexes ;
-   indexrelid |      indexname       | nspname | relname | amname
-  ------------+----------------------+---------+---------+--------
-        18284 | <18284>btree_hypo_id | public  | hypo    | btree
+   indexrelid |      index_name       | schema_name | table_name | am_name
+  ------------+-----------------------+-------------+------------+---------
+        18284 | <18284>btree_hypo_id  | public      | hypo       | btree
   (1 row)
 
 - **hypopg()**: function that lists all hypothetical indexes that have
@@ -203,10 +203,10 @@ Some other convenience functions and views are available:
 
 .. code-block:: psql
 
-  SELECT indexname, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes ;
-        indexname       |             hypopg_get_indexdef
-  ----------------------+----------------------------------------------
-   <18284>btree_hypo_id | CREATE INDEX ON public.hypo USING btree (id)
+  SELECT index_name, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes ;
+        index_name       |             hypopg_get_indexdef
+  -----------------------+----------------------------------------------
+   <18284>btree_hypo_id  | CREATE INDEX ON public.hypo USING btree (id)
   (1 row)
 
 - **hypopg_relation_size(oid)**: function that estimates how big a hypothetical
@@ -214,11 +214,11 @@ Some other convenience functions and views are available:
 
 .. code-block:: psql
 
-  SELECT indexname, pg_size_pretty(hypopg_relation_size(indexrelid))
+  SELECT index_name, pg_size_pretty(hypopg_relation_size(indexrelid))
     FROM hypopg_list_indexes ;
-        indexname       | pg_size_pretty
-  ----------------------+----------------
-   <18284>btree_hypo_id | 2544 kB
+        index_name       | pg_size_pretty
+  -----------------------+----------------
+   <18284>btree_hypo_id  | 2544 kB
   (1 row)
 
 - **hypopg_drop_index(oid)**: function that removes the given hypothetical
