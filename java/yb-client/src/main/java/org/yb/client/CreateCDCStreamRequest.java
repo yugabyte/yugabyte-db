@@ -59,9 +59,15 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
     if (recordType != null && !recordType.isEmpty()) {
       if (recordType.equalsIgnoreCase("ALL")) {
         this.recordType = CdcService.CDCRecordType.ALL;
+      } else if (recordType.equalsIgnoreCase("FULL_ROW_NEW_IMAGE")) {
+        this.recordType = CdcService.CDCRecordType.FULL_ROW_NEW_IMAGE;
+      } else if (recordType.equalsIgnoreCase("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+        this.recordType = CdcService.CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES;
       } else {
         this.recordType = CdcService.CDCRecordType.CHANGE;
       }
+    } else {
+      this.recordType = CdcService.CDCRecordType.CHANGE;
     }
   }
 

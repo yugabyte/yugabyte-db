@@ -52,6 +52,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
@@ -745,6 +746,11 @@ bool ValidatePercentageFlag(const char* flag_name, int value) {
   }
   LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
   return false;
+}
+
+bool IsUsageMessageSet() {
+  // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
+  return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
 }
 
 } // namespace yb

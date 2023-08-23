@@ -622,7 +622,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
 
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
-        LOG_WITH_PREFIX(INFO) << "Fail of leader " << state_->GetLeaderUuidUnlocked()
+        LOG_WITH_PREFIX(INFO) << "Fail or stepdown of leader " << state_->GetLeaderUuidUnlocked()
                               << " detected. Triggering leader " << election_name
                               << ", mode=" << data.mode;
       } else {

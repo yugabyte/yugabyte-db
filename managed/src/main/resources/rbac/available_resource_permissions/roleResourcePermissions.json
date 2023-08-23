@@ -1,0 +1,45 @@
+[
+  {
+    "resourceType": "ROLE",
+    "action": "CREATE",
+    "description": "Allows user to create a custom role.",
+    "permissionValidOnResource": false,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "ROLE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "ROLE",
+    "action": "READ",
+    "description": "Allows user to read/view a role.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": []
+  },
+  {
+    "resourceType": "ROLE",
+    "action": "UPDATE",
+    "description": "Allows user to update a role.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "ROLE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "ROLE",
+    "action": "DELETE",
+    "description": "Allows user to delete a role.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "ROLE",
+        "action": "READ"
+      }
+    ]
+  }
+]
