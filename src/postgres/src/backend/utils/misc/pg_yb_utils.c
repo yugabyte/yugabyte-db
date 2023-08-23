@@ -1227,6 +1227,10 @@ bool yb_test_fail_next_ddl = false;
 
 char *yb_test_block_index_phase = "";
 
+char *yb_test_fail_index_state_change = "";
+
+bool ddl_rollback_enabled = false;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -1390,13 +1394,13 @@ void
 YBDecrementDdlNestingLevel()
 {
 	--ddl_transaction_state.nesting_level;
+	if (yb_test_fail_next_ddl)
+	{
+		yb_test_fail_next_ddl = false;
+		elog(ERROR, "Failed DDL operation as requested");
+	}
 	if (ddl_transaction_state.nesting_level == 0)
 	{
-		if (yb_test_fail_next_ddl)
-		{
-			yb_test_fail_next_ddl = false;
-			elog(ERROR, "Failed DDL operation as requested");
-		}
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
@@ -2017,6 +2021,19 @@ YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
+	}
+}
+
+void
+YbTestGucFailIfStrEqual(char *actual, const char *expected)
+{
+	if (strcmp(actual, expected) == 0)
+	{
+		ereport(ERROR,
+				(errmsg("TEST injected failure at stage %s", expected),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+
 	}
 }
 
@@ -3693,7 +3710,7 @@ YbGetSplitOptions(Relation rel)
 	OptSplit *split_options = makeNode(OptSplit);
 	split_options->split_type = NUM_TABLETS;
 	split_options->num_tablets = rel->yb_table_properties->num_tablets;
-	/* 
+	/*
 	 * Copy split points if we have a live range key.
 	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
 	 * being dropped).

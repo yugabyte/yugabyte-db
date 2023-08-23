@@ -15,7 +15,8 @@ test: yb-skip-locked-after-update
 test: yb-skip-locked-single-shard-transaction
 
 # TODO: Re-enable after memory leak fixed
-#test: yb-lock-status
+# Refer https://github.com/yugabyte/yugabyte-db/issues/18324 for details.
+# test: yb-lock-status
 
 # TODO:
 # 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns

@@ -747,17 +747,14 @@ SELECT * FROM vtype;
  1 | 0.2 | t
 (1 row)
 
--- YB TODO(fizaa): fix output after issue #18352 is resolved.
--- (ALTER TABLE with ALTER TYPE on multiple columns fails).
 ALTER TABLE vtype
       ALTER b TYPE text USING b::text,
       ALTER c TYPE text USING c::text;
-ERROR:  attribute 2 of type vtype_temp_old has wrong type
-DETAIL:  Table has type text, but query expects double precision.
+NOTICE:  rewriting table vtype for reason 4
 SELECT * FROM vtype;
- a |  b  | c 
----+-----+---
- 1 | 0.2 | t
+ a |  b  |  c   
+---+-----+------
+ 1 | 0.2 | true
 (1 row)
 
 -- also check the case that doesn't rewrite the table

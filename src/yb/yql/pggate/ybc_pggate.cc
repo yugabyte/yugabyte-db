@@ -892,6 +892,10 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropIndex(handle));
+}
+
 YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
                                              int* num_lagging_backends) {
   return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version),
@@ -1146,6 +1150,10 @@ YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
   return ToYBCStatus(pgapi->SetForwardScan(handle, is_forward_scan));
+}
+
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length) {
+  return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
@@ -1508,7 +1516,6 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
       .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
       .ysql_disable_global_impact_ddl_statements =

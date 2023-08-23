@@ -33,9 +33,10 @@ const initialStateFeatureInTest = {
   enableS3BackupProxy: false,
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
-  enableNewRestoreModal: false,
+  enableNewRestoreModal: true,
   enableConfigureDBApi: false,
-  enableRBAC: false
+  enableRBAC: false,
+  enableCACertRotation: false
 };
 
 const initialStateFeatureReleased = {

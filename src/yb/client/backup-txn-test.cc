@@ -84,7 +84,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     return WaitFor([this]() -> Result<bool> {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       for (const auto& peer : peers) {
-        auto db = peer->tablet()->doc_db().regular;
+        auto db = peer->tablet()->regular_db();
         if (!db) {
           continue;
         }

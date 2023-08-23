@@ -1050,7 +1050,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("If enabled, planner will force a preference of batched" 
+			gettext_noop("If enabled, planner will force a preference of batched"
 						" nested loop join plans over classic nested loop"
 						" join plans."),
 			NULL
@@ -2318,6 +2318,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_add_column_missing_default,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ddl_rollback_enabled", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("If set, any DDL that involves DocDB schema changes will have those "
+						 "changes rolled back upon failure."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&ddl_rollback_enabled,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -4667,6 +4679,17 @@ static struct config_string ConfigureNamesString[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_fail_index_state_change", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Fails index backfill at given stage."),
+			gettext_noop("Valid values are \"indisready\" and \"postbackfill\"."
+						 "Any other value is ignored."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_index_state_change,
+		"",
+		NULL, NULL, NULL
+	},
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL

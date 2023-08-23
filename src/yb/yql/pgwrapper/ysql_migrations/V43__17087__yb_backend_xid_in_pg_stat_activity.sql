@@ -2,12 +2,24 @@ BEGIN;
   SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
 
   -- Add a column for distributed transaction ID in pg_stat_get_activity
-  UPDATE pg_catalog.pg_proc
-  SET proallargtypes = '{23,26,23,26,25,25,25,25,25,1184,1184,1184,1184,869,25,23,28,28,25,16,25,25,23,16,25,2950}',
-      proargmodes = '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-      proargnames = '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn,yb_backend_xid}'
-  WHERE (proname = 'pg_stat_get_activity' AND
-      pronamespace = 'pg_catalog'::regnamespace);
+  -- TODO: As a workaround for GHI #13500, we perform a delete + insert instead
+  -- of an update into pg_proc. Restore to UPDATE once fixed.
+  DELETE FROM pg_catalog.pg_proc WHERE proname = 'pg_stat_get_activity' AND
+    proargtypes = '23' AND pronamespace = 'pg_catalog'::regnamespace;
+  INSERT INTO pg_catalog.pg_proc (
+    oid, proname, pronamespace, proowner, prolang, procost, prorows, provariadic, protransform,
+    prokind, prosecdef, proleakproof, proisstrict, proretset, provolatile, proparallel,
+    pronargs, pronargdefaults, prorettype, proargtypes, proallargtypes, proargmodes,
+    proargnames, proargdefaults, protrftypes, prosrc, probin, proconfig, proacl
+  ) VALUES (
+    2022, 'pg_stat_get_activity', 11, 10, 12, 1, 100, 0, '-', 'f', false, false, false, 
+    true, 's', 'r', 1, 0, 2249, '23', '{23,26,23,26,25,25,25,25,25,1184,1184,1184,1184,869,25,23,
+    28,28,25,16,25,25,23,16,25,2950}', '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+    '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,
+    query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,
+    backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn,
+    yb_backend_xid}', NULL, NULL, 'pg_stat_get_activity', NULL, NULL, NULL)
+  ON CONFLICT DO NOTHING;
 COMMIT;
 
 BEGIN;
@@ -41,50 +53,6 @@ BEGIN;
   END $$;
 
 COMMIT;
-
--- Update the pg_stat_activity view to include the distributed transaction ID
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT TRUE FROM pg_attribute
-    WHERE attrelid = 'pg_catalog.pg_stat_activity'::regclass
-          AND attname = 'yb_backend_xid'
-          AND NOT attisdropped
-  ) THEN
-    CREATE OR REPLACE VIEW pg_catalog.pg_stat_activity
-    WITH (use_initdb_acl = true)
-    AS
-        SELECT
-            S.datid AS datid,
-            D.datname AS datname,
-            S.pid,
-            S.usesysid,
-            U.rolname AS usename,
-            S.application_name,
-            S.client_addr,
-            S.client_hostname,
-            S.client_port,
-            S.backend_start,
-            S.xact_start,
-            S.query_start,
-            S.state_change,
-            S.wait_event_type,
-            S.wait_event,
-            S.state,
-            S.backend_xid,
-            s.backend_xmin,
-            S.query,
-            S.backend_type,
-            yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
-            yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
-            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
-            S.yb_backend_xid
-        FROM pg_stat_get_activity(NULL) AS S
-            LEFT JOIN pg_database AS D ON (S.datid = D.oid)
-            LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
-            LEFT JOIN (pg_stat_get_backend_idset() beid CROSS JOIN
-                      pg_stat_get_backend_pid(beid) pid) B ON B.pid = S.pid;
-  END IF;
 
 -- Recreating system views that use pg_stat_get_activity to update their corresponding
 -- pg_rewrite entries.
@@ -155,5 +123,3 @@ CREATE OR REPLACE VIEW pg_catalog.pg_stat_ssl WITH (use_initdb_acl = true) AS
         S.sslcompression AS compression,
         S.sslclientdn AS clientdn
     FROM pg_stat_get_activity(NULL) AS S;
-
-END $$;

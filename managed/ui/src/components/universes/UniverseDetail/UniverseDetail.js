@@ -50,6 +50,7 @@ import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
+import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
@@ -575,6 +576,9 @@ class UniverseDetail extends Component {
       featureFlags.released['enableThirdpartyUpgrade'];
 
     const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
+    const isCACertRotationEnabled =
+      !isItKubernetesUniverse &&
+      (featureFlags.test['enableCACertRotation'] || featureFlags.released['enableCACertRotation']);
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -688,7 +692,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
+                      {!universePaused && !this.isRRFlagsEnabled() && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
@@ -700,7 +704,7 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
+                      {!universePaused && this.isRRFlagsEnabled() && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsNewModal}
@@ -926,7 +930,7 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'vmImageUpgradeModal' ||
-              visibleModal === 'tlsConfigurationModal' ||
+              (visibleModal === 'tlsConfigurationModal' && !isCACertRotationEnabled) ||
               visibleModal === 'rollingRestart' ||
               visibleModal === 'thirdpartyUpgradeModal' ||
               visibleModal === 'systemdUpgrade')
@@ -964,6 +968,17 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
+        {isCACertRotationEnabled && (
+          <EncryptionInTransit
+            open={showModal && visibleModal === 'tlsConfigurationModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+              this.props.fetchCustomerTasks();
+            }}
+            universe={currentUniverse.data}
+          />
+        )}
         {isMKREnabled ? (
           <EncryptionAtRest
             open={showModal && visibleModal === 'manageKeyModal'}

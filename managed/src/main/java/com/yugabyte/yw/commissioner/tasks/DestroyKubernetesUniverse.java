@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -23,10 +24,12 @@ import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -75,6 +78,14 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           xClusterUniverseService,
           new HashSet<>() /* excludeXClusterConfigSet */,
           params().isForceDelete);
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList =
+            Backup.fetchBackupToDeleteByUniverseUUID(
+                params().customerUUID, universe.getUniverseUUID());
+        createDeleteBackupYbTasks(backupList, params().customerUUID)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
+      }
 
       preTaskActions();
 

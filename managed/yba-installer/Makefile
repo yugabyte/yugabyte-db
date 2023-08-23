@@ -36,13 +36,13 @@ VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
-# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-04-04-02-48
-PG_BINARY_NAME ?= postgres-linux-14.6.tar.gz
-PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.6.tar.gz
+# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-08-010-02-48
+PG_BINARY_NAME ?= postgres-linux-14.8.tar.gz
+PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.8.tar.gz
 
 # https://adoptium.net/temurin/releases/
-JDK_BINARY_NAME ?= OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
 # Package stable ybdb release in yba-installer.
 # Currently disabled.
 YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
@@ -107,5 +107,5 @@ clean-package:
 test:
 
 .PHONY: config
-config: 
+config:
 	cp ${CONFIG_INPUT_FILE_NAME} ${CONFIG_EMBEDED_NAME}

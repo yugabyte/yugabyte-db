@@ -160,7 +160,7 @@ Notice that the target for the _fetch_ statement, _rec_, is declared as a _recor
 The [Cursors](../../../../cursors/) section is a direct child of the major section [Yugabyte Structured Query Language (YSQL)](../../../../../ysql/) and, as such, is a peer of the [User-defined subprograms and anonymous blocks](../../../../user-defined-subprograms-and-anon-blocks/) section. This reflects the fact that cursor functionality is first and foremost a SQL feature—just as, for example, _select_, _insert_, _update_, and _delete_ are.
 {{< /tip >}}
 
-Here is an example. It uses the **["Query for loop" with a bound refcursor variable](../executable-section/loop-exit-continue-statements/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**.
+Here is an example. It uses the **["Query for loop" with a bound refcursor variable](../executable-section/compound-statements/loop-exit-continue/query-for-loop/#query-for-loop-with-a-bound-refcursor-variable)**.
 
 ```plpgsql
 create table s.t3(k int primary key, v text not null);

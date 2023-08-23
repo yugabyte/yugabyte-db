@@ -841,4 +841,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and it is not specified in the task parameters",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_finalize",
+          ScopeType.UNIVERSE,
+          "Skip Upgrade Finalize",
+          "Skip Auto-flags promotions and ysql upgrade during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

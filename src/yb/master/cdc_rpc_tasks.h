@@ -22,6 +22,7 @@
 #include "yb/common/entity_ids.h"
 
 #include "yb/common/snapshot.h"
+#include "yb/gutil/callback_forward.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/util/status_fwd.h"
@@ -46,6 +47,7 @@ namespace master {
 class TableIdentifierPB;
 class TabletLocationsPB;
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
+typedef Callback<void(Result<TableBootstrapIdsMap>)> BootstrapProducerCallback;
 
 class CDCRpcTasks {
  public:
@@ -59,16 +61,17 @@ class CDCRpcTasks {
 
   // Calls BootstrapProducer and waits for the callback to complete.
   // TODO: Make this async.
-  Result<TableBootstrapIdsMap> BootstrapProducer(
+  Status BootstrapProducer(
       const NamespaceIdentifierPB& producer_namespace,
-      const std::vector<client::YBTableName>& tables);
+      const std::vector<client::YBTableName>& tables,
+      BootstrapProducerCallback callback);
   Result<SnapshotInfoPB> CreateSnapshot(
       const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id);
   client::YBClient* client() const { return yb_client_.get(); }
   Result<client::YBClient*> UpdateMasters(const std::string& master_addrs);
 
  private:
-  Result<TableBootstrapIdsMap> BootstrapProducerCallback(
+  Result<TableBootstrapIdsMap> HandleBootstrapProducerResponse(
       client::BootstrapProducerResult bootstrap_result);
   Result<SnapshotInfoPB> CreateSnapshotCallback(const TxnSnapshotId& snapshot_id);
 

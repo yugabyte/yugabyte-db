@@ -92,6 +92,12 @@ func (pg Postgres) Name() string {
 	return pg.name
 }
 
+// Version gets the version.
+func (pg Postgres) Version() string {
+	return pg.version
+}
+
+// Version gets the version
 func (pg Postgres) getPgUserName() string {
 	return viper.GetString("postgres.install.username")
 }
@@ -459,7 +465,43 @@ func (pg Postgres) Upgrade() error {
 // restored onto the new postgres install, we currently will just do a full install.
 // TODO: Implement the backup/restore of postgres.
 func (pg Postgres) MigrateFromReplicated() error {
-	return pg.Install()
+	config.GenerateTemplate(pg)
+	if err := pg.extractPostgresPackage(); err != nil {
+		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
+	}
+
+	if err := pg.createFilesAndDirs(); err != nil {
+		return fmt.Errorf("Error creating postgres files and directories: %s", err.Error())
+	}
+
+	// First let initdb create its config and data files in the software/pg../conf location
+	if err := pg.runInitDB(); err != nil {
+		return fmt.Errorf("Error running initdb: %s", err.Error())
+	}
+	// Then copy over data files to the intended data dir location
+	if err := pg.setUpDataDir(); err != nil {
+		return fmt.Errorf("Error setting up data directory: %s", err.Error())
+	}
+
+	// Finally update the conf file location to match this new data dir location
+	pg.modifyPostgresConf()
+
+	log.Info("Finished postgres migration")
+	return nil
+}
+
+// TODO: Error handling for this function (need to return errors from createYugawareDB and start)
+func (pg Postgres) finishMigrateFromReplicated() error {
+	pg.Start()
+
+	if viper.GetBool("postgres.install.enabled") {
+		pg.createYugawareDatabase()
+	}
+
+	if !common.HasSudoAccess() {
+		pg.createCronJob()
+	}
+	return nil
 }
 
 func (pg Postgres) extractPostgresPackage() error {

@@ -1178,7 +1178,8 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
+          expected_before_image_records.key);
         if (validate_old_tuple) {
           if (validate_third_column) {
             ASSERT_EQ(record.row_message().old_tuple_size(), 3);
@@ -1821,7 +1822,7 @@ namespace cdc {
       if (peer->tablet()->metadata()->table_id() != table_id) {
         continue;
       }
-      auto db = peer->tablet()->TEST_db();
+      auto db = peer->tablet()->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));

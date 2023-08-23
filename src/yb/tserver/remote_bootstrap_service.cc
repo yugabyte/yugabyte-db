@@ -502,20 +502,21 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
       return Status::OK();
     }
 
-    MonoTime deadline =
-        MonoTime::Now() +
-        MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_change_role_timeout_ms);
-    for (;;) {
-      Status status = session->ChangeRole();
-      if (status.ok()) {
-        LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-        break;
-      }
-      LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
-                   << ", error : " << status;
-      if (!status.IsLeaderHasNoLease() || MonoTime::Now() >= deadline) {
-        RemoteBootstrapErrorPB::Code app_error;
-        return it->second.ResetExpiration(&app_error);
+    if (session->ShouldChangeRole()) {
+      MonoTime deadline = MonoTime::Now() + MonoDelta::FromMilliseconds(
+                                                FLAGS_remote_bootstrap_change_role_timeout_ms);
+      for (;;) {
+        Status status = session->ChangeRole();
+        if (status.ok()) {
+          LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
+          break;
+        }
+        LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
+                     << ", error : " << status;
+        if (!status.IsLeaderHasNoLease() || MonoTime::Now() >= deadline) {
+          RemoteBootstrapErrorPB::Code app_error;
+          return it->second.ResetExpiration(&app_error);
+        }
       }
     }
   } else {

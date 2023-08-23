@@ -17,6 +17,7 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 - Server-to-server encryption for intra-node communication between YB-Master and YB-TServer nodes.
 - Client-to-server encryption for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
+- Encryption for communication between YugabytedDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
 
 {{< note title="Note" >}}
 
@@ -200,11 +201,11 @@ In addition, ensure the following:
 
 1. Select **CA Signed**, as per the following illustration:
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
 
 1. Upload the custom CA root certificate as the root certificate.
 
-   If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
+    If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
 
@@ -262,7 +263,7 @@ You rotate the existing custom certificates and replace them with new database n
 
 **Step 1**: Follow Step 1 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to obtain a new set of certificates for each of the nodes.
 
-**Step 2**: Follow Step 2 of  [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
+**Step 2**: Follow Step 2 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
 
 **Step 3**: Follow Step 3 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to create a new CA-signed certificate in YugabyteDB Anywhere.
 
@@ -362,7 +363,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
 - Configure the secret engine, as follows:
 
-  - Create a root CA  or configure the top-level CA.
+  - Create a root CA or configure the top-level CA.
 
   - Optionally, create an intermediate CA chain and sign them.
 
@@ -483,11 +484,11 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
 
    ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
-3. Create the universe:
+1. Create the universe:
 
    - Navigate to **Universes** and click **Create Universe**.
    - In the **Provider** field, select the cloud provided that you have configured in step 2.
@@ -507,7 +508,7 @@ kubectl get ClusterIssuer
 kubectl -n <namespace> Issuer
 ```
 
-## Connecting to clusters
+## Connect to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
 
@@ -582,7 +583,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
 
-## Validating certificates
+## Validate certificates
 
 When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:
 
@@ -632,3 +633,46 @@ In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
+
+## Use self-signed and custom CA certificates
+
+YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other services, including:
+
+- LDAP
+- OIDC
+- Webhook
+- S3 backup storage
+- Hashicorp Vault
+- YBA high availability
+
+If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
+
+### Add certificates to your trust store
+
+To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click **Upload Trusted CA Certificate**.
+
+1. Enter a name for the certificate.
+
+1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+
+### Rotate a certificate in your trust store
+
+To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click the **...** button for the certificate and choose **Update Certificate**.
+
+1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+
+### Delete a certificate in your trust store
+
+To delete a certificate in your YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click the **...** button for the certificate and choose **Delete**, then click **Delete CA Certificate**.

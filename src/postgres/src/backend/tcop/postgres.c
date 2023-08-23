@@ -3972,26 +3972,14 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			if (edata->detail == NULL && edata->hint == NULL)
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
-			else
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errdetail("%s", edata->detail),
-						 errhint("%s", edata->hint),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
+			ereport(edata->elevel,
+					(yb_txn_errcode(edata->yb_txn_errcode),
+					 errcode(error_code),
+					 errmsg("%s", edata->message),
+					 edata->detail ? errdetail("%s", edata->detail) : 0,
+					 edata->hint ? errhint("%s", edata->hint) : 0,
+					 errcontext("Catalog Version Mismatch: A DDL occurred "
+								"while processing this query. Try again.")));
 		}
 		else
 		{

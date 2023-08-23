@@ -188,6 +188,7 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *rel_pushdown,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
+							   int distinct_prefixlen,
 							   YBCPgExecParameters *exec_params);
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */

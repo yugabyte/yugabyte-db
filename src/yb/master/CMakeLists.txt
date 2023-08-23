@@ -71,6 +71,7 @@ set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
   async_snapshot_tasks.cc
+  async_snapshot_transfer_task.cc
   auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
@@ -110,6 +111,7 @@ set(MASTER_SRCS
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
+  snapshot_transfer_manager.cc
   state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_initialization.cc

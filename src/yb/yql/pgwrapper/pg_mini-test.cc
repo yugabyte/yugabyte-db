@@ -60,7 +60,9 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -689,12 +691,10 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(
-        result.status().ToString(), "could not serialize access due to concurrent update");
-    ASSERT_STR_CONTAINS(result.status().ToString(), "conflicts with higher priority transaction");
+    const auto& status = result.status();
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
   }
 }
 
@@ -749,7 +749,7 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->doc_db().regular) {
+    if (peer->shared_tablet()->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -1129,7 +1129,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    auto db = peer->tablet()->TEST_db();
+    auto db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }
@@ -1177,9 +1177,7 @@ void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_updat
   ASSERT_OK(conn2.Execute("DELETE FROM t WHERE i = 2"));
   auto status = conn1.Execute("UPDATE t SET j = 21 WHERE i = 2");
   if (select_before_update) {
-    ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(
-        status.message().ToBuffer(), "could not serialize access due to concurrent update");
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
     ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Value write after transaction start");
     return;
   }

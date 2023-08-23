@@ -171,7 +171,11 @@ struct CBTabletServerLoadCounts {
 };
 
 struct Options {
-  Options() {}
+  Options() {
+    if (kMaxConcurrentLeaderMovesPerTable == -1) {
+      kMaxConcurrentLeaderMovesPerTable = kMaxConcurrentLeaderMoves;
+    }
+  }
   virtual ~Options() {}
 
   std::string ToString() {
