@@ -42,6 +42,8 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb_ysql_conn_mgr_helper.h"
+
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -108,11 +110,6 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.
  */
 extern bool IsYugaByteEnabled();
-
-/*
- * Check whether the connection is made from Ysql Connection Manager.
- */
-extern bool YbIsClientYsqlConnMgr();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
@@ -953,8 +950,6 @@ extern void decrement_sticky_object_count();
  * Check if there exists a database object that requires a sticky connection.
  */
 extern bool YbIsStickyConnection(int *change);
-
-extern bool yb_is_client_ysqlconnmgr;
 
 /*
  * Creates a shallow copy of the pointer list.
