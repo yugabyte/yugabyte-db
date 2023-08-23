@@ -58,6 +58,13 @@
 #include "yb/util/logging_callback.h"
 #include "yb/util/monotime.h"
 
+// Logs every n secs unless VLOG is on at a level higher than verboselevel (in which case it logs
+// every time).
+#define YB_LOG_EVERY_N_SECS_OR_VLOG(severity, n_secs, verboselevel) \
+  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
+  if (int num = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs, verboselevel) ; num >= 0) \
+    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num).stream()
+
 ////////////////////////////////////////////////////////////////////////////////
 // Throttled logging support
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,9 +78,7 @@
 // Example usage:
 //   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
-  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
-  if (int num = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs) ; num >= 0) \
-    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num).stream()
+    YB_LOG_EVERY_N_SECS_OR_VLOG(severity, n_secs, -1)
 
 #define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
@@ -245,14 +250,16 @@ class LogThrottler {
   }
 
   // Returns the number of suppressed messages if it should log, otherwise -1.
-  int ShouldLog(int n_secs) {
+  // Always logs if the vlog level is greater than or equal to always_log_vlog_level.
+  int ShouldLog(int n_secs, int verboselevel = -1) {
     MicrosecondsInt64 ts = GetMonoTimeMicros();
-    if (ts - last_ts_ < n_secs * 1e6) {
-      base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
-      return -1;
+    if (ts - last_ts_ >= n_secs * 1e6 ||
+        (verboselevel > -1 && VLOG_IS_ON(verboselevel))) {
+      last_ts_ = ts;
+      return base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
     }
-    last_ts_ = ts;
-    return base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
+    base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
+    return -1;
   }
  private:
   Atomic32 num_suppressed_ = 0;
