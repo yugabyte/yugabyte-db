@@ -27,7 +27,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
@@ -166,7 +166,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
 
   std::string GetMemoryUsageDetails() override {
     std::string result;
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
     result += TcMallocStats();
     result += "\n";
 #endif

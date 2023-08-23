@@ -36,7 +36,7 @@
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
 
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
@@ -288,7 +288,7 @@ int TabletServerMain(int argc, char** argv) {
   // TODO After the TODO below is fixed the call of
   // PeriodicDumpLLVMProfileFile can be moved to the infinite while loop
   //  at the end of the function.
-  std::thread llvm_profile_dump_thread(PeriodicDumpLLVMProfileFile);
+  yb::thread llvm_profile_dump_thread(PeriodicDumpLLVMProfileFile);
 #endif
 
   // TODO(neil): After CQL server is starting, it blocks this thread from moving on.

@@ -76,4 +76,8 @@ YB_DEFINE_ENUM(SetFlagResult, (SUCCESS)(NO_SUCH_FLAG)(NOT_SAFE)(BAD_VALUE)(PG_SE
 SetFlagResult SetFlag(
     const std::string& flag_name, const std::string& new_value, const SetFlagForce force,
     std::string* old_value, std::string* output_msg);
-}  // namespace yb
+
+// Validate that the given flag is a valid percentage value (0-100).
+bool ValidatePercentageFlag(const char* flag_name, int value);
+
+} // namespace yb

@@ -173,6 +173,7 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   } else {
     pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks);
   }
+
   VLOG(1) << "PgGate open";
 }
 
@@ -250,13 +251,7 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
 }
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  if (pgapi) {
-#ifdef TCMALLOC_ENABLED
-    *consumption = pgapi->GetMemTracker().GetTCMallocCurrentAllocatedBytes();
-#else
-    *consumption = 0;
-#endif
-  }
+  *consumption = GetTCMallocCurrentAllocatedBytes();
   return YBCStatusOK();
 }
 

@@ -422,7 +422,6 @@ Result<EnumType> ParseEnumInsensitive(const std::string& str) {
   return ParseEnumInsensitive<EnumType>(str.c_str());
 }
 
-
 }  // namespace yb
 
 #endif  // YB_UTIL_ENUMS_H_

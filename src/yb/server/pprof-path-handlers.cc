@@ -43,11 +43,11 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
-#endif
+#endif  // YB_TCMALLOC_ENABLED
 
 #include <fstream>
 #include <string>
@@ -66,6 +66,7 @@
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/tcmalloc_impl_util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);
@@ -108,20 +109,19 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
 static void PprofHeapHandler(const Webserver::WebRequest& req,
                               Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "Heap profiling is not available without tcmalloc.";
+#if !YB_TCMALLOC_ENABLED
+  (*output) << "Heap profiling is only available if tcmalloc is enabled.";
+  return;
 #else
-  // Remote (on-demand) profiling is disabled if the process is already being profiled.
+  // Remote (on-demand) profiling is disabled for gperftools tcmalloc if the process is already
+  // being profiled.
   if (FLAGS_enable_process_lifetime_heap_profiling) {
     (*output) << "Heap profiling is running for the process lifetime.";
     return;
   }
 
-  auto it = req.parsed_args.find("seconds");
-  int seconds = PPROF_DEFAULT_SAMPLE_SECS;
-  if (it != req.parsed_args.end()) {
-    seconds = atoi(it->second.c_str());
-  }
+  int seconds = ParseLeadingInt32Value(
+      FindWithDefault(req.parsed_args, "seconds", ""), PPROF_DEFAULT_SAMPLE_SECS);
 
   LOG(INFO) << "Starting a heap profile:"
             << " path prefix=" << FLAGS_heap_profile_path
@@ -134,7 +134,7 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   HeapProfilerStop();
   (*output) << profile;
   delete profile;
-#endif
+#endif // YB_TCMALLOC_ENABLED
 }
 
 // pprof asks for the url /pprof/profile?seconds=XX to get cpu-profiling information.
@@ -143,14 +143,9 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "CPU profiling is not available without tcmalloc.";
-#else
-  auto it = req.parsed_args.find("seconds");
-  int seconds = PPROF_DEFAULT_SAMPLE_SECS;
-  if (it != req.parsed_args.end()) {
-    seconds = atoi(it->second.c_str());
-  }
+#if YB_TCMALLOC_ENABLED
+  string secs_str = FindWithDefault(req.parsed_args, "seconds", "");
+  int32_t seconds = ParseLeadingInt32Value(secs_str.c_str(), PPROF_DEFAULT_SAMPLE_SECS);
   // Build a temporary file name that is hopefully unique.
   string tmp_prof_file_name = strings::Substitute("/tmp/yb_cpu_profile.$0.$1", getpid(), rand());
 
@@ -168,7 +163,9 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
   }
   (*output) << prof_file.rdbuf();
   prof_file.close();
-#endif
+#else
+  (*output) << "CPU profiling is only available with gperftools tcmalloc.";
+#endif  // YB_TCMALLOC_ENABLED
 }
 
 // pprof asks for the url /pprof/growth to get heap-profiling delta (growth) information.
@@ -176,13 +173,13 @@ static void PprofCpuProfileHandler(const Webserver::WebRequest& req,
 // MallocExtension::instance()->GetHeapGrowthStacks(&output);
 static void PprofGrowthHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
-#ifndef TCMALLOC_ENABLED
-  (*output) << "Growth profiling is not available without tcmalloc.";
-#else
+#if YB_TCMALLOC_ENABLED
   string heap_growth_stack;
   MallocExtension::instance()->GetHeapGrowthStacks(&heap_growth_stack);
   (*output) << heap_growth_stack;
-#endif
+#else
+  (*output) << "Growth profiling is only available with gperftools tcmalloc.";
+#endif  // YB_TCMALLOC_ENABLED
 }
 
 // Lock contention profiling
