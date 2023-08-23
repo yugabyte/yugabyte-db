@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC that hosts an application that you want to have access to your cluster. The PSE on your cluster connects to an endpoint on a VPC hosting your application over a privately linked service. Unlike VPC peering, when connected to a VPC using a private link, you do not need to add an IP allow list to your cluster.
+A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service. 
 
 Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 
@@ -26,6 +26,17 @@ Setting up a private link to connect your cluster to your application VPC involv
 1. On the cloud provider, create an interface VPC endpoint (AWS) or private endpoint (Azure) on the VPC (VNet) hosting your application. You create an endpoint for each region in your cluster.
 
 ![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
+
+Each provider refers to the elements of a private link service in different ways.
+
+| | AWS PrivateLink | Azure Private Link|
+| :--- | :--- | :--- |
+| Private service endpoint | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | Private link service |
+| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | Private endpoint |
+| Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | Subscriber ID |
+| Virtual Private Cloud (VPC) | VPC | VNet |
+
+Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an IP allow list to your cluster.
 
 For detailed steps describing how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
 
