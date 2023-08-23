@@ -138,4 +138,7 @@ SetFlagResult SetFlag(
   } \
   static_assert(true, "semi-colon required after this macro")
 
+// Validate that the given flag is a valid percentage value (0-100).
+bool ValidatePercentageFlag(const char* flag_name, int value);
+
 } // namespace yb

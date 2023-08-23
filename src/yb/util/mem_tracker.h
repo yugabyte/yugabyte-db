@@ -39,14 +39,7 @@
 #include <vector>
 #include <unordered_map>
 
-#ifdef YB_TCMALLOC_ENABLED
-#if defined(YB_GOOGLE_TCMALLOC)
-#include <tcmalloc/malloc_extension.h>
-#else
-#include <gperftools/malloc_extension.h>
-#endif
-#endif
-
+#include <boost/container/small_vector.hpp>
 #include <boost/optional.hpp>
 
 #include "yb/gutil/ref_counted.h"
@@ -56,6 +49,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/random.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tcmalloc_util.h"
 
 namespace yb {
 
@@ -161,50 +155,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   ~MemTracker();
 
-#ifdef YB_TCMALLOC_ENABLED
-  static int64_t GetTCMallocProperty(const char* prop) {
-#if defined(YB_GOOGLE_TCMALLOC)
-    absl::optional<size_t> value = ::tcmalloc::MallocExtension::GetNumericProperty(prop);
-    if (!value.has_value()) {
-      LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
-      value = 0;
-    }
-    return *value;
-#else
-    size_t value;
-    if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
-      LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
-      value = 0;
-    }
-    return value;
-#endif // YB_GOOGLE_TCMALLOC
-  }
-
-  static int64_t GetPageHeapFreeBytes() {
-    return GetTCMallocProperty("tcmalloc.pageheap_free_bytes");
-  }
-
-  static int64_t GetTCMallocPhysicalBytesUsed() {
-#if defined(YB_GOOGLE_TCMALLOC)
-    return GetTCMallocProperty("generic.physical_memory_used");
-#else
-    return GetTCMallocProperty("generic.total_physical_bytes");
-#endif
-  }
-
-  static int64_t GetTCMallocCurrentAllocatedBytes() {
-    return GetTCMallocProperty("generic.current_allocated_bytes");
-  }
-
-  static int64_t GetTCMallocCurrentHeapSizeBytes() {
-    return GetTCMallocProperty("generic.heap_size");
-  }
-
-  static int64_t GetTCMallocActualHeapSizeBytes();
-#endif // YB_TCMALLOC_ENABLED
-
-  // These are declared even for non-tcmalloc builds and are no-ops in those cases.
-  static void SetTCMallocCacheMemory();
+  static void ConfigureTCMalloc();
   static void PrintTCMallocConfigs();
 
   // Removes this tracker from its parent's children. This tracker retains its
@@ -358,7 +309,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // this tracker or any of its parents. Returns int64_t::max() if there are no
   // limits and a negative value if any limit is already exceeded.
   int64_t SpareCapacity() const;
-
 
   int64_t limit() const { return limit_; }
   bool has_limit() const { return limit_ >= 0; }

@@ -166,7 +166,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
 
   std::string GetMemoryUsageDetails() override {
     std::string result;
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
     result += TcMallocStats();
     result += "\n";
 #endif

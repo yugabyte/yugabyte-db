@@ -43,6 +43,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tcmalloc_impl_util.h"
 
 using std::copy;
 using std::max;
@@ -382,17 +383,17 @@ void MemoryTrackingBufferAllocator::FreeInternal(Buffer* buffer) {
 }
 
 std::string TcMallocStats() {
-#ifdef YB_TCMALLOC_ENABLED
-#if defined(YB_GOOGLE_TCMALLOC)
+#if !YB_TCMALLOC_ENABLED
+  return std::string();
+#endif
+#if YB_GOOGLE_TCMALLOC
   return ::tcmalloc::MallocExtension::GetStats();
-#else
+#endif
+#if YB_GPERFTOOLS_TCMALLOC
   char buf[20_KB];
   MallocExtension::instance()->GetStats(buf, sizeof(buf));
   return buf;
-#endif
-#else
-  return "";
-#endif
+#endif  // YB_GPERFTOOLS_TCMALLOC
 }
 
 

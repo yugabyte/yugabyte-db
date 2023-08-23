@@ -58,7 +58,7 @@
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/string_case.h"
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 

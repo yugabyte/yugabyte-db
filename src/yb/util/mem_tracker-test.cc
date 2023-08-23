@@ -43,6 +43,7 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tcmalloc_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
 DECLARE_int64(mem_tracker_update_consumption_interval_us);
@@ -309,7 +310,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   }
 }
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 TEST(MemTrackerTest, TcMallocRootTracker) {
   MemTracker::TEST_SetReleasedMemorySinceGC(0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_update_consumption_interval_us) = 100000;
@@ -321,7 +322,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   // Sleep to be sure that UpdateConsumption will take action.
   int64_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
-    value = MemTracker::GetTCMallocActualHeapSizeBytes();
+    value = GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;
   }, kWaitTimeout, "Consumption actualized"));
 
@@ -346,7 +347,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   }
 
   // The freed memory should go to the pageheap free bytes.
-  ASSERT_GE(MemTracker::GetPageHeapFreeBytes(), alloc_size);
+  ASSERT_GE(GetTCMallocPageHeapFreeBytes(), alloc_size);
 
   if (FLAGS_mem_tracker_include_pageheap_free_in_root_consumption) {
     // If we are including pageheap free size, consumption should stay the same.
@@ -370,20 +371,20 @@ TEST(MemTrackerTest, TcMallocGC) {
   // we do something with the pointer... so we just log it.
   VLOG(8) << static_cast<void*>(big_alloc.get());
   // Check overhead at start of the test.
-  auto overhead_before = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_before = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Initial overhead " << overhead_before;
   // Clear the memory, so tcmalloc gets free bytes.
   big_alloc.reset();
   // Check the overhead afterwards, should clearly be higher.
-  auto overhead_after = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_after = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Post-free overhead " << overhead_after;
   ASSERT_GT(overhead_after, overhead_before);
   // Release up to the threshold. We only GC after we cross it, so nothing should happen now.
   root->Release(1_MB);
-  ASSERT_EQ(overhead_after, MemTracker::GetPageHeapFreeBytes());
+  ASSERT_EQ(overhead_after, GetTCMallocPageHeapFreeBytes());
   // Now we go over the limit and trigger a GC.
   root->Release(1);
-  auto overhead_final = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_final = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Final overhead " << overhead_final;
   ASSERT_GT(overhead_after, overhead_final);
 }

@@ -62,7 +62,7 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
   DLOG(INFO) << "Process id: " << getpid();
 
-  MemTracker::SetTCMallocCacheMemory();
+  MemTracker::ConfigureTCMalloc();
   MemTracker::PrintTCMallocConfigs();
 
   return Status::OK();
