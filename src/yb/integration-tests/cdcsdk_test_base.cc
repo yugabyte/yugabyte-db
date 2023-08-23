@@ -100,7 +100,7 @@ void CDCSDKTestBase::TearDown() {
 std::unique_ptr<CDCServiceProxy> CDCSDKTestBase::GetCdcProxy() {
   YBClient *client_ = test_client();
   std::unique_ptr<CDCServiceProxy> proxy = std::make_unique<CDCServiceProxy>(
-      &client_->proxy_cache(),
+  &client_->proxy_cache(),
       CHECK_RESULT(HostPort::FromString(cdc_tserver_server_host_, cdc_tserver_server_port_)));
   return proxy;
 }
@@ -156,7 +156,8 @@ Status CDCSDKTestBase::StartCDCMasterServer() {
   cdc_server_options.master_addresses_flag = master_options.master_addresses_flag;
   // cdc_server_options.SetMasterAddresses(master_options.GetMasterAddresses());
 
-  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_master_server_host_, cdc_master_server_port_);
+  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_master_server_host_,
+  cdc_master_server_port_);
 
   cdc_master_server_ = std::make_unique<cdcserver::CDCMasterServer>(master, cdc_server_options);
 
@@ -180,10 +181,11 @@ Status CDCSDKTestBase::StartCDCTSServer() {
   cdc_server_options.master_addresses_flag = tserver_options.master_addresses_flag;
   cdc_server_options.SetMasterAddresses(tserver_options.GetMasterAddresses());
 
-  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_tserver_server_host_, cdc_tserver_server_port_);
+  cdc_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cdc_tserver_server_host_,
+  cdc_tserver_server_port_);
 
   cdc_tserver_server_ = std::make_unique<cdcserver::CDCTServerServer>(tserver, cdc_server_options);
-  LOG(INFO)<<"Sid: Now starting the cdc tserver server";
+  LOG(INFO)<< "Sid: Now starting the cdc tserver server";
   return cdc_tserver_server_->Start();
 }
 
