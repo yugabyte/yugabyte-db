@@ -102,7 +102,6 @@ class ThreadPool {
     void (*function)(void*);
     void* tag;
     void (*unschedFunction)(void*);
-    yb::util::AUHAuxInfo aux_info;
   };
   typedef std::deque<BGItem> BGQueue;
 

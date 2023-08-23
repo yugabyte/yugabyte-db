@@ -104,15 +104,13 @@ void ThreadPool::BGThread(size_t thread_id) {
     }
     void (*function)(void*) = queue_.front().function;
     void* arg = queue_.front().arg;
-    auto aux_info = queue_.front().aux_info;
     queue_.pop_front();
     queue_len_.store(static_cast<unsigned int>(queue_.size()),
                      std::memory_order_relaxed);
 
     bool decrease_io_priority = (low_io_priority != low_io_priority_);
-    PthreadCall("unlock", pthread_mutex_unlock(&mu_));
     SCOPED_ADOPT_WAIT_STATE(bg_wait_states_[thread_id]);
-    bg_wait_states_[thread_id]->UpdateAuxInfo(aux_info);
+    PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 
 #ifdef __linux__
     if (decrease_io_priority) {
@@ -203,9 +201,6 @@ void ThreadPool::Schedule(void (*function)(void* arg1), void* arg, void* tag,
   queue_.back().arg = arg;
   queue_.back().tag = tag;
   queue_.back().unschedFunction = unschedFunction;
-  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
-  if (wait_state)
-    queue_.back().aux_info.tablet_id = wait_state->get_tablet_id();
   queue_len_.store(static_cast<unsigned int>(queue_.size()),
                    std::memory_order_relaxed);
 

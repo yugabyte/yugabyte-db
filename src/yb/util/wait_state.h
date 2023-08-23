@@ -298,7 +298,6 @@ class WaitStateInfo {
   void set_query_id(int64_t query_id) EXCLUDES(mutex_);
   void set_client_node_ip(const std::string &endpoint) EXCLUDES(mutex_);
   void set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) EXCLUDES(mutex_);
-  std::string get_tablet_id() EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {
