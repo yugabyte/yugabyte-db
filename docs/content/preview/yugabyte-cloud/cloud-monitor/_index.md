@@ -106,4 +106,16 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="monitor-activity/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Export metrics</div>
+      </div>
+      <div class="body">
+        Export cluster metrics to third-party tools such as Datadog.
+      </div>
+    </a>
+  </div>
+
 </div>

@@ -48,7 +48,7 @@ To create an export configuration, do the following:
 1. Enter a name for the configuration.
 1. Choose your provider. (Currently, only Datadog is supported.)
 1. Enter your Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/).
-1. Choose the Datadog site to connect to, or choose Self hosted and enter your URL.
+1. Choose the Datadog site to connect to, or choose Self-hosted and enter your URL.
 1. Optionally, click **Download** to download the Datadog dashboard template. You can import this JSON format template into your Datadog account and use it as a starting point for visualizing your cluster data in Datadog.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
