@@ -1,11 +1,9 @@
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
+
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -18,11 +16,9 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.time.DateUtils;
@@ -101,50 +97,8 @@ public class SupportBundleUtil {
   // Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
   public String getDataDirPath(
       Universe universe, NodeDetails node, NodeUniverseManager nodeUniverseManager, Config config) {
-    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
-    CloudType cloudType = userIntent.providerType;
 
-    if (cloudType == CloudType.onprem) {
-      // On prem universes:
-      // Onprem universes have to specify the mount points for the volumes at the time of provider
-      // creation itself.
-      // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
-      try {
-        String mountPoints = userIntent.deviceInfo.mountPoints;
-        dataDirPath = mountPoints.split(",")[0];
-      } catch (Exception e) {
-        log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
-      }
-    } else if (cloudType == CloudType.kubernetes) {
-      // Kubernetes universes:
-      // K8s universes have a default mount path "/mnt/diskX" with X = {0, 1, 2...} based on number
-      // of volumes
-      // This is specified in the charts repo:
-      // https://github.com/yugabyte/charts/blob/master/stable/yugabyte/templates/service.yaml
-      String mountPoint = config.getString("yb.support_bundle.k8s_mount_point_prefix");
-      dataDirPath = mountPoint + "0";
-    } else {
-      // Other provider based universes:
-      // Providers like GCP, AWS have the mountPath stored in the instance types for the most part.
-      // Some instance types don't have mountPath initialized. In such cases, we default to
-      // "/mnt/d0"
-      try {
-        String nodeInstanceType = node.cloudInfo.instance_type;
-        String providerUUID = userIntent.provider;
-        InstanceType instanceType =
-            InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
-        List<VolumeDetails> volumeDetailsList = instanceType.instanceTypeDetails.volumeDetailsList;
-        if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
-          dataDirPath = volumeDetailsList.get(0).mountPath;
-        } else {
-          log.info(String.format("Mount point is not defined. Defaulting to %s", dataDirPath));
-        }
-      } catch (Exception e) {
-        log.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
-      }
-    }
-    return dataDirPath;
+    return getDataDirectoryPath(universe, node, config);
   }
 
   public void deleteFile(Path filePath) {

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableMap;
@@ -117,6 +118,7 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String TMP_DIRECTORY = "tmp_dir";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -261,13 +263,15 @@ public class GFlagsUtil {
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
-  public static Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
+  public static Map<String, String> getYbcFlags(
+      AnsibleConfigureServers.Params taskParam, Config config) {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
@@ -288,6 +292,8 @@ public class GFlagsUtil {
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
+    String ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);

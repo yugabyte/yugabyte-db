@@ -123,6 +123,8 @@ public class NodeManager extends DevopsBase {
 
   @Inject ReleaseManager releaseManager;
 
+  @Inject Config config;
+
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
@@ -714,7 +716,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
       boolean enableVerbose =
           runtimeConfigFactory.forUniverse(universe).getBoolean(YBC_ENABLE_VERBOSE);
       if (enableVerbose) {
