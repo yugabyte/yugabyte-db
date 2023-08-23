@@ -12,15 +12,22 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. The PSE connects to a private endpoint attached to a VPC hosting your application over a privately linked service. Unlike VPC peering, when connected to a VPC using a private link, you do not need to add an IP allow list to your cluster.
+A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC that hosts an application that you want to have access to your cluster. The PSE connects to an endpoint attached to a VPC hosting your application over a privately linked service. Unlike VPC peering, when connected to a VPC using a private link, you do not need to add an IP allow list to your cluster.
 
 Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 
-- Deploy your cluster in a VPC. You must create a VPC and deploy your cluster before you can configure a PSE.
-- Create a PSE in each region of your cluster. In the case of AWS, you grant access to one or more security principals in the form of Amazon resource names (ARNs); for Azure, you provide the subscription IDs of the services you want to have access.
-- Create a private endpoint on the cloud provider VPC (VNet).
+1. Deploy your cluster in a VPC. You must create a VPC and deploy your cluster before you can configure a PSE.
+1. Create a PSE in each region of your cluster. The PSE is an endpoint service, and it is activated by granting access to a service principal on your application VPC.
 
-For more information on how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
+    In the case of AWS, the security principal is an AWS principal, in the form of Amazon resource names (ARNs).
+
+    For Azure, the security principal is a subscription ID of the service you want to have access.
+
+1. On the cloud provider, create an interface VPC endpoint (AWS) or private endpoint (Azure) on the VPC (VNet) hosting your application. You create an endpoint for each region in your cluster.
+
+![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
+
+For detailed steps describing how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
 
 ## Limitations
 
