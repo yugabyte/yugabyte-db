@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -37,6 +38,13 @@ import java.util.stream.Stream;
 public class TestPgColumnReadEfficiency extends BasePgSQLTest {
   private static final int QUERY_ATTEMPTS = 30;
   private static final int ITEMS_COUNT = 10000;
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_packed_row", "false");
+    return flagMap;
+  }
 
   @Test
   public void testScans() throws Exception {
