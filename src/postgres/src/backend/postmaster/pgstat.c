@@ -337,7 +337,7 @@ static const char *pgstat_get_wait_client(WaitEventClient w);
 static const char *pgstat_get_wait_ipc(WaitEventIPC w);
 static const char *pgstat_get_wait_timeout(WaitEventTimeout w);
 static const char *pgstat_get_wait_io(WaitEventIO w);
-static const char *pgstat_get_wait_cpu(WaitEventCPU w);
+static const char *pgstat_get_cpu_event(WaitEventCPU w);
 
 static void pgstat_setheader(PgStat_MsgHdr *hdr, StatMsgType mtype);
 static void pgstat_send(void *msg, int len);
@@ -3625,12 +3625,12 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 		case PG_WAIT_IO:
 			event_type = "IO";
 			break;
-		case PG_WAIT_CPU:
+		case PG_CPU:
 			event_type = "CPU";
 			break;
 		default:
 			event_type = "???";
-			if (IsYugaByteEnabled() && classId > PG_WAIT_CPU)
+			if (IsYugaByteEnabled() && classId > PG_CPU)
 			{
 				event_type = ybcstat_get_wait_event_type(wait_event_info);
 			}
@@ -3709,16 +3709,16 @@ pgstat_get_wait_event(uint32 wait_event_info)
 				event_name = pgstat_get_wait_io(w);
 				break;
 			}
-		case PG_WAIT_CPU:
+		case PG_CPU:
 			{
 				WaitEventCPU w = (WaitEventCPU) wait_event_info;
 
-				event_name = pgstat_get_wait_cpu(w);
+				event_name = pgstat_get_cpu_event(w);
 				break;
 			}
 		default:
 			event_name = "unknown wait event";
-			if (IsYugaByteEnabled() && classId > PG_WAIT_CPU)
+			if (IsYugaByteEnabled() && classId > PG_CPU)
 			{
 				event_name = ybcstat_get_wait_event(wait_event_info);
 			}
@@ -4207,13 +4207,13 @@ pgstat_get_wait_io(WaitEventIO w)
 
 
 /* ----------
- * pgstat_get_wait_cpu() -
+ * pgstat_get_cpu_event() -
  *
  * Convert WaitEventCPU to string.
  * ----------
  */
 static const char *
-pgstat_get_wait_cpu(WaitEventCPU w)
+pgstat_get_cpu_event(WaitEventCPU w)
 {
 	const char *event_name = "unknown wait event";
 

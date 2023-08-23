@@ -801,7 +801,7 @@ typedef enum BackendState
 #define PG_WAIT_IPC					0x08000000U
 #define PG_WAIT_TIMEOUT				0x09000000U
 #define PG_WAIT_IO					0x0A000000U
-#define PG_WAIT_CPU 				0x0C000000U
+#define PG_CPU 						0x0C000000U
 
 /* ----------
  * Wait Events - Activity
@@ -993,7 +993,7 @@ typedef enum
  */
 typedef enum
 {
-	WAIT_EVENT_CPU = PG_WAIT_CPU,
+	WAIT_EVENT_CPU = PG_CPU,
 } WaitEventCPU;
 
 
