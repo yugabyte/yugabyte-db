@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 
 #include "yb/util/tostring.h"
+#include "yb/util/trace.h"
 
 using yb::util::WaitStateCode;
 
@@ -75,6 +76,32 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
     return frozen_state_code_;
   }
   return code_;
+}
+
+void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
+  auto ret = code_.compare_exchange_strong(prev, c);
+  if (!ret) {
+    return;
+  }
+  VTRACE(0, "cas-ed $0 -> $1", util::ToString(prev), util::ToString(c));
+  if (freeze_) {
+    // See comments in ::set_state()
+    if (frozen_state_code_ == WaitStateCode::Unused) {
+      frozen_state_code_ = prev;
+    }
+  } else {
+    frozen_state_code_ = WaitStateCode::Unused;
+  }
+  VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c)
+          << " if current state is " << util::ToString(prev);
+#ifdef TRACK_WAIT_HISTORY
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    history_.emplace_back(code_);
+    // history_.push_back(code_);
+  }
+  num_updates_++;
+#endif
 }
 
 void WaitStateInfo::set_state(WaitStateCode c) {
