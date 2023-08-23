@@ -32,7 +32,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/master/cdc_master_server.h"
 #include "yb/cdc/cdc_server_options.h"
 #include "yb/common/wire_protocol.h"
 
@@ -41,6 +40,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/master/cdc_master_server.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
@@ -176,8 +176,8 @@ static int MasterMain(int argc, char** argv) {
 
   call_home.reset();
 
-  server.Shutdown();
   cdc_master_server->Shutdown();
+  server.Shutdown();
   return EXIT_SUCCESS;
 }
 

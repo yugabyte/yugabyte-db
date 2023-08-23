@@ -61,7 +61,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
 };
 
 // Service that exposes certain RPCs from MasterReplicationService on a new port.
-// Service is registered in CDCMasterServer (in cdc_master_server.cc)
 class CDCMasterReplicationServiceImpl : public MasterServiceBase, public MasterReplicationIf {
  public:
   explicit CDCMasterReplicationServiceImpl(Master* master)
@@ -99,7 +98,8 @@ class CDCMasterReplicationServiceImpl : public MasterServiceBase, public MasterR
     (BootstrapProducer)
     (GetXClusterSafeTime)
     (IsObjectPartOfXRepl)
-    (SetupNamespaceReplicationWithBootstrap))
+    (SetupNamespaceReplicationWithBootstrap)
+    (IsSetupNamespaceReplicationWithBootstrapDone))
 };
 
 } // namespace

@@ -63,7 +63,6 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
 };
 
 // Service that exposes certain RPCs from MasterDDLService on a new port.
-// Service is registered in CDCMasterServer (in cdc_master_server.cc)
 class CDCMasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
  public:
   explicit CDCMasterDdlServiceImpl(Master* master)

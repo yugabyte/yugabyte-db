@@ -139,7 +139,6 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
 };
 
 // Service that exposes certain RPCs from MasterClientService on a new port.
-// Service is registered in CDCMasterServer (in cdc_master_server.cc)
 class CDCMasterClientServiceImpl : public MasterServiceBase, public MasterClientIf {
  public:
   explicit CDCMasterClientServiceImpl(Master* master)

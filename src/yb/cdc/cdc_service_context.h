@@ -45,5 +45,5 @@ class CDCServiceContext {
   virtual ~CDCServiceContext() = default;
 };
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace cdc
+} // namespace yb

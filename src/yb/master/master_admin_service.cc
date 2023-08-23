@@ -72,7 +72,6 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
 };
 
 // Service that exposes certain RPCs from MasterAdminService on a new port.
-// Service is registered in CDCMasterServer (in cdc_master_server.cc)
 class CDCMasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
  public:
   explicit CDCMasterAdminServiceImpl(Master* master)

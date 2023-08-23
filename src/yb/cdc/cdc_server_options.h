@@ -9,9 +9,6 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
-//
-// This file contains the CDCServerOptions class that defines the CDC server options.
 
 #pragma once
 
@@ -20,10 +17,8 @@
 namespace yb {
 namespace cdcserver {
 
-// Options for constructing a CDC server.
 class CDCServerOptions : public yb::server::ServerBaseOptions {
  public:
-  // port: The port to rregister RPCs on
   explicit CDCServerOptions(int port) : yb::server::ServerBaseOptions(port) {}
   std::string broadcast_rpc_address;
 
