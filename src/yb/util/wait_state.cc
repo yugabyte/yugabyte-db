@@ -79,11 +79,18 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
 }
 
 void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
+  std::string old_to_string;
+  if (VLOG_IS_ON(3)) {
+    old_to_string = ToString();
+  }
   auto ret = code_.compare_exchange_strong(prev, c);
   if (!ret) {
     return;
   }
   VTRACE(0, "cas-ed $0 -> $1", util::ToString(prev), util::ToString(c));
+  VLOG(3) << this << " " << old_to_string << " setting state to " << util::ToString(c);
+  // VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c)
+  //         << " if current state is " << util::ToString(prev);
   if (freeze_) {
     // See comments in ::set_state()
     if (frozen_state_code_ == WaitStateCode::Unused) {
@@ -92,8 +99,6 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
   } else {
     frozen_state_code_ = WaitStateCode::Unused;
   }
-  VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c)
-          << " if current state is " << util::ToString(prev);
 #ifdef TRACK_WAIT_HISTORY
   {
     std::lock_guard<simple_spinlock> l(mutex_);
