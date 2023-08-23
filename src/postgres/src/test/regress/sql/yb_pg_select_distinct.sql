@@ -48,11 +48,4 @@ SELECT 2 IS NOT DISTINCT FROM null as "no";
 SELECT null IS NOT DISTINCT FROM null as "yes";
 
 -- Testing distinct pushdown, see #16552
-EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name, att.attnum as OID, pg_catalog.format_type(ty.oid,NULL) AS datatype,
-	att.attnotnull as not_null, att.atthasdef as has_default_val
-	FROM pg_catalog.pg_attribute att
-	    JOIN pg_catalog.pg_type ty ON ty.oid=atttypid
-	WHERE
-	    att.attnum > 0
-	    AND att.attisdropped IS FALSE
-	ORDER BY att.attnum LIMIT 1;
+EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT hundred, even FROM onek WHERE hundred = 7;

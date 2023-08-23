@@ -131,25 +131,11 @@ SELECT null IS NOT DISTINCT FROM null as "yes";
 (1 row)
 
 -- Testing distinct pushdown, see #16552
-EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name, att.attnum as OID, pg_catalog.format_type(ty.oid,NULL) AS datatype,
-	att.attnotnull as not_null, att.atthasdef as has_default_val
-	FROM pg_catalog.pg_attribute att
-	    JOIN pg_catalog.pg_type ty ON ty.oid=atttypid
-	WHERE
-	    att.attnum > 0
-	    AND att.attisdropped IS FALSE
-	ORDER BY att.attnum LIMIT 1;
-                                                       QUERY PLAN                                                        
--------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=1 loops=1)
-   ->  Unique (actual rows=1 loops=1)
-         ->  Sort (actual rows=1 loops=1)
-               Sort Key: att.attnum, att.attname, (format_type(ty.oid, NULL::integer)), att.attnotnull, att.atthasdef
-               Sort Method: quicksort  Memory: 349kB
-               ->  Nested Loop (actual rows=2023 loops=1)
-                     ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute att (actual rows=2023 loops=1)
-                           Index Cond: (attnum > 0)
-                           Filter: (attisdropped IS FALSE)
-                     ->  Index Scan using pg_type_oid_index on pg_type ty (actual rows=1 loops=2023)
-                           Index Cond: (oid = att.atttypid)
-(11 rows)
+EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT hundred, even FROM onek WHERE hundred = 7;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ HashAggregate (actual rows=1 loops=1)
+   Group Key: hundred, even
+   ->  Index Scan using onek_hundred on onek (actual rows=100 loops=1)
+         Index Cond: (hundred = 7)
+(4 rows)
