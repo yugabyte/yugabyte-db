@@ -31,9 +31,9 @@ Each provider refers to the elements of a private link service in different ways
 
 | | AWS PrivateLink | Azure Private Link|
 | :--- | :--- | :--- |
-| Private service endpoint | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | Private link service |
-| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | Private endpoint |
-| Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | Subscriber ID |
+| Private service endpoint | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | [Private Link service](https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview) |
+| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) |
+| Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) |
 | Virtual Private Cloud (VPC) | VPC | VNet |
 
 Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an IP allow list to your cluster.
