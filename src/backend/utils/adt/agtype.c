@@ -10784,7 +10784,7 @@ Datum agtype_volatile_wrapper(PG_FUNCTION_ARGS)
             {
                 agtv_result.val.int_value = (int64) DatumGetInt32(arg);
             }
-            else if (type == INT4OID)
+            else if (type == INT2OID)
             {
                 agtv_result.val.int_value = (int64) DatumGetInt16(arg);
             }

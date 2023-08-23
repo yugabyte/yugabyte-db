@@ -3192,6 +3192,30 @@ SELECT agtype_btree_cmp(
                -1
 (1 row)
 
+--Int2 to Agtype in agtype_volatile_wrapper
+SELECT ag_catalog.agtype_volatile_wrapper(1::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ 1
+(1 row)
+
+SELECT ag_catalog.agtype_volatile_wrapper(32767::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ 32767
+(1 row)
+
+SELECT ag_catalog.agtype_volatile_wrapper(-32767::int2);
+ agtype_volatile_wrapper 
+-------------------------
+ -32767
+(1 row)
+
+-- These should fail
+SELECT ag_catalog.agtype_volatile_wrapper(32768::int2);
+ERROR:  smallint out of range
+SELECT ag_catalog.agtype_volatile_wrapper(-32768::int2);
+ERROR:  smallint out of range
 --
 -- Cleanup
 --

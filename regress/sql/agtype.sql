@@ -925,6 +925,15 @@ SELECT agtype_btree_cmp(
 	'[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
 	  {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
 	  {"id":4, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+
+--Int2 to Agtype in agtype_volatile_wrapper
+SELECT ag_catalog.agtype_volatile_wrapper(1::int2);
+SELECT ag_catalog.agtype_volatile_wrapper(32767::int2);
+SELECT ag_catalog.agtype_volatile_wrapper(-32767::int2);
+
+-- These should fail
+SELECT ag_catalog.agtype_volatile_wrapper(32768::int2);
+SELECT ag_catalog.agtype_volatile_wrapper(-32768::int2);
 --
 -- Cleanup
 --
