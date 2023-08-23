@@ -43,6 +43,7 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/any_range.hpp>
 
 #include <gtest/gtest_prod.h>
 
@@ -66,6 +67,8 @@
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
@@ -114,6 +117,9 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+
+using RetryableRequestIdRange =
+    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
 
 // Creates a new YBClient with the desired options.
 //
@@ -186,15 +192,19 @@ class YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Result<std::unique_ptr<YBClient>> Build(rpc::Messenger* messenger = nullptr);
+  Result<std::unique_ptr<YBClient>> Build(
+      rpc::Messenger* messenger = nullptr, const server::ClockPtr& clock = nullptr);
 
   // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
-  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger,
+                                          const server::ClockPtr& clock);
 
  private:
   class Data;
 
-  Status DoBuild(rpc::Messenger* messenger, std::unique_ptr<client::YBClient>* client);
+  Status DoBuild(rpc::Messenger* messenger,
+                 server::ClockPtr clock,
+                 std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -802,11 +812,13 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
+  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 
   const std::string& LogPrefix() const;
+
+  server::Clock* Clock() const;
 
  private:
   class Data;

@@ -70,6 +70,8 @@ message WritePB {
   optional fixed64 external_hybrid_time = 19;
 
   optional uint64 batch_idx = 20;
+
+  optional uint64 start_time_micros = 21;
 }
 
 message ChangeMetadataRequestPB {

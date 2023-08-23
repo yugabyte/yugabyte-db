@@ -21,9 +21,12 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tablet/operations.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -43,6 +46,11 @@ TAG_FLAG(retryable_request_timeout_secs, runtime);
 // dropped independently.
 DEFINE_int32(retryable_request_range_time_limit_secs, 30,
              "Max delta in time for single op id range.");
+
+DEFINE_bool(enable_check_retryable_request_timeout, true,
+            "Whether to check if retryable request exceeds the timeout.");
+
+DECLARE_uint64(max_clock_skew_usec);
 
 METRIC_DEFINE_gauge_int64(tablet, running_retryable_requests,
                           "Number of running retryable requests.",
@@ -217,7 +225,10 @@ class RetryableRequests::Impl {
     log_prefix_ = log_prefix;
   }
 
-  Result<bool> Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
+  Result<bool> Register(
+      const ConsensusRoundPtr& round,
+      tablet::IsLeaderSide is_leader_side,
+      RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(*round->replicate_msg());
     if (!data) {
       return true;
@@ -246,6 +257,32 @@ class RetryableRequests::Impl {
               AlreadyPresent, "Duplicate request $0 from client $1 (min running $2)",
               data.request_id(), data.client_id(),
               client_retryable_requests.min_running_request_id);
+    }
+
+    // If there's start_time specified, check if the request is too old.
+    // This should only be checked from the leader side.
+    if (is_leader_side &&
+        FLAGS_enable_check_retryable_request_timeout &&
+        server_clock_ &&
+        data.write().start_time_micros() > 0) {
+      const auto retryable_request_timeout =
+          GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+      const auto max_clock_skew = FLAGS_max_clock_skew_usec * 1us;
+      if (PREDICT_TRUE(retryable_request_timeout > max_clock_skew)) {
+        const auto now_micros = server_clock_->Now().GetPhysicalValueMicros();
+        VLOG_WITH_PREFIX(4) << Format(
+            "Checking start_time(now:$0 start:$1)", now_micros, data.write().start_time_micros());
+        if (data.write().start_time_micros() * 1us <
+                now_micros * 1us - retryable_request_timeout + max_clock_skew) {
+          return STATUS_EC_FORMAT(
+              Expired,
+              MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
+              "Request id $0 from client $1 is too old (now=$2, start_time=$3, request timeout $4, "
+              "max clock skew $5)",
+              data.request_id(), data.client_id(), now_micros, data.write().start_time_micros(),
+              retryable_request_timeout, max_clock_skew);
+        }
+      }
     }
 
     auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
@@ -374,6 +411,10 @@ class RetryableRequests::Impl {
     running_requests_gauge_ = METRIC_running_retryable_requests.Instantiate(metric_entity, 0);
     replicated_request_ranges_gauge_ = METRIC_replicated_retryable_request_ranges.Instantiate(
         metric_entity, 0);
+  }
+
+  void SetServerClock(const server::ClockPtr& clock) {
+    server_clock_ = clock;
   }
 
   RetryableRequestsCounts TEST_Counts() {
@@ -543,6 +584,7 @@ class RetryableRequests::Impl {
   std::string log_prefix_;
   std::unordered_map<ClientId, ClientRetryableRequests, ClientIdHash> clients_;
   RestartSafeCoarseMonoClock clock_;
+  server::ClockPtr server_clock_;
   scoped_refptr<AtomicGauge<int64_t>> running_requests_gauge_;
   scoped_refptr<AtomicGauge<int64_t>> replicated_request_ranges_gauge_;
 };
@@ -565,8 +607,10 @@ void RetryableRequests::operator=(RetryableRequests&& rhs) {
 }
 
 Result<bool> RetryableRequests::Register(
-    const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
-  return impl_->Register(round, entry_time);
+    const ConsensusRoundPtr& round,
+    tablet::IsLeaderSide is_leader_side,
+    RestartSafeCoarseTimePoint entry_time) {
+  return impl_->Register(round, is_leader_side, entry_time);
 }
 
 yb::OpId RetryableRequests::CleanExpiredReplicatedAndGetMinOpId() {
@@ -604,5 +648,8 @@ void RetryableRequests::set_log_prefix(const std::string& log_prefix) {
   impl_->set_log_prefix(log_prefix);
 }
 
+void RetryableRequests::SetServerClock(const server::ClockPtr& clock) {
+  impl_->SetServerClock(clock);
+}
 } // namespace consensus
 } // namespace yb

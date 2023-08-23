@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
@@ -23,7 +24,9 @@ namespace yb {
 Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(rpc::Messenger* messenger) {
   client::YBClientBuilder builder;
   ConfigureClientBuilder(&builder);
-  return builder.Build(messenger);
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder.Build(messenger, clock);
 }
 
 // Created client will shutdown messenger on client shutdown.
@@ -34,7 +37,9 @@ Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(
     return CreateClient(&default_builder);
   }
   ConfigureClientBuilder(builder);
-  return builder->Build();
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder->Build(nullptr, clock);
 }
 
 // Created client gets messenger ownership and will shutdown messenger on client shutdown.
@@ -42,7 +47,9 @@ Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateClient(
     std::unique_ptr<rpc::Messenger>&& messenger) {
   client::YBClientBuilder builder;
   ConfigureClientBuilder(&builder);
-  return builder.Build(std::move(messenger));
+  auto clock = make_scoped_refptr<server::HybridClock>();
+  RETURN_NOT_OK(clock->Init());
+  return builder.Build(std::move(messenger), clock);
 }
 
 Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {

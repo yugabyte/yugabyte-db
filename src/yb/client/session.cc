@@ -182,15 +182,15 @@ void BatcherFlushDone(
 
   internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
   retry_batcher->SetDeadline(done_batcher->deadline());
+
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
     // Transmit failed request id to retry_batcher.
-    if (op->request_id().has_value()) {
-      done_batcher->RemoveRequest(op->request_id().value());
-      retry_batcher->RegisterRequest(op->request_id().value());
+    if (op->request_id()) {
+      retry_batcher->MoveRequestDetailsFrom(done_batcher, *op->request_id());
     }
     retry_batcher->Add(op);
   }
@@ -305,6 +305,7 @@ internal::Batcher& YBSession::Batcher() {
 
 void YBSession::Apply(YBOperationPtr yb_op) {
   VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
+  yb_op->reset_request_id();
   Batcher().Add(yb_op);
 }
 
@@ -327,6 +328,7 @@ void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
   }
   auto& batcher = Batcher();
   for (const auto& op : ops) {
+    op->reset_request_id();
     batcher.Add(op);
   }
 }

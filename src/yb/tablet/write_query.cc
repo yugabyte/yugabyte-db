@@ -73,6 +73,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, WritePB* 
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
+    if (client_request.has_start_time_micros()) {
+      out_request->set_start_time_micros(client_request.start_time_micros());
+    }
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are

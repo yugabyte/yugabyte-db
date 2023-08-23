@@ -68,20 +68,20 @@ AsyncClientInitialiser::~AsyncClientInitialiser() {
   }
 }
 
-void AsyncClientInitialiser::Start() {
-  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));
+void AsyncClientInitialiser::Start(const server::ClockPtr& clock) {
+  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this, clock));
 }
 
 YBClient* AsyncClientInitialiser::client() const {
   return client_future_.get();
 }
 
-void AsyncClientInitialiser::InitClient() {
+void AsyncClientInitialiser::InitClient(const server::ClockPtr& clock) {
   CDSAttacher attacher;
 
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
-    auto result = client_builder_->Build(messenger_);
+    auto result = client_builder_->Build(messenger_, clock);
     if (result.ok()) {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());

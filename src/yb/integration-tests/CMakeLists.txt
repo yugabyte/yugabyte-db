@@ -173,6 +173,7 @@ ADD_YB_TEST(restart-test)
 ADD_YB_TEST(yb-ts-cli-itest)
 ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
+ADD_YB_TEST(retryable_request-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
