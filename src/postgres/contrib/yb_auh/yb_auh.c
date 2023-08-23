@@ -329,8 +329,6 @@ static void auh_entry_store(TimestampTz auh_time,
     AUHEntryArray[inserted].top_level_node_id[1] = 0;
   }
 
-  ereport(LOG, (errmsg("%llu %llu", AUHEntryArray[inserted].top_level_node_id[0], AUHEntryArray[inserted].top_level_node_id[1])));
-
   AUHEntryArray[inserted].client_node_host = client_node_host;
   AUHEntryArray[inserted].client_node_port = client_node_port;
   AUHEntryArray[inserted].query_id = query_id;
