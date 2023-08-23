@@ -263,9 +263,6 @@ class ServicePoolImpl final : public InboundCallHandler {
         TRACE_TO(incoming->trace(), "Handling call $0", AsString(incoming->method_name()));
         service_->Handle(std::move(incoming));
       }
-      // if (service_->service_name() != "yb.cqlserver.CQLServerService") {
-      //   SET_WAIT_STATUS(util::WaitStateCode::HandlingDone);
-      // }
       SET_WAIT_STATUS_IF_AT(util::WaitStateCode::Handling, util::WaitStateCode::HandlingDone);
       return;
     }
