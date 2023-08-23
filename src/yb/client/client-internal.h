@@ -528,6 +528,7 @@ class YBClient::Data {
   bool use_threadpool_for_callbacks_;
   std::unique_ptr<ThreadPool> threadpool_;
 
+  server::ClockPtr clock_;
   const ClientId id_;
   const std::string log_prefix_;
 

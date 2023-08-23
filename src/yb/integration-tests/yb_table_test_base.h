@@ -73,8 +73,11 @@ class YBTableTestBase : public YBTest {
   virtual void CreateTable();
   void OpenTable();
   virtual void DeleteTable();
-  virtual void PutKeyValue(yb::client::YBSession* session, std::string key, std::string value);
-  virtual void PutKeyValue(std::string key, std::string value);
+  virtual Status PutKeyValue(yb::client::YBSession* session,
+                             const std::string& key,
+                             const std::string& value);
+  virtual void PutKeyValue(const std::string& key, const std::string& value);
+  virtual void PutKeyValueIgnoreError(const std::string& key, const std::string& value);
   void RestartCluster();
   std::vector<std::pair<std::string, std::string>> GetScanResults(const client::TableRange& range);
   void FetchTSMetricsPage();

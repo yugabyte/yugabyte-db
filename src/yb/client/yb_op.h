@@ -144,12 +144,8 @@ class YBOperation {
     request_id_ = id;
   }
 
-  std::optional<RetryableRequestId> min_running_request_id() const {
-    return min_running_request_id_;
-  }
-
-  void set_min_running_request_id(RetryableRequestId id) {
-    min_running_request_id_ = id;
+  void reset_request_id() {
+    request_id_.reset();
   }
 
   // Returns the partition key of the operation.
@@ -190,8 +186,9 @@ class YBOperation {
 
   boost::optional<PartitionListVersion> partition_list_version_;
 
+  // Persist retryable request ID across internal retries within the same YBSession
+  // to prevent duplicate writes due to internal retries.
   std::optional<RetryableRequestId> request_id_;
-  std::optional<RetryableRequestId> min_running_request_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };

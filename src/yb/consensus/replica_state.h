@@ -418,7 +418,8 @@ class ReplicaState {
 
   OpId MinRetryableRequestOpId();
 
-  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
+  Result<bool> RegisterRetryableRequest(
+    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side);
 
   RestartSafeCoarseMonoClock& Clock();
 

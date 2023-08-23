@@ -68,9 +68,9 @@ AsyncClientInitialiser::~AsyncClientInitialiser() {
   }
 }
 
-void AsyncClientInitialiser::Start() {
+void AsyncClientInitialiser::Start(const server::ClockPtr& clock) {
   CHECK_OK(Thread::Create(
-      "async_client_initialiser", "init_client", &AsyncClientInitialiser::InitClient, this,
+      "async_client_initialiser", "init_client", &AsyncClientInitialiser::InitClient, this, clock,
       &init_client_thread_));
 }
 
@@ -78,10 +78,10 @@ YBClient* AsyncClientInitialiser::client() const {
   return client_future_.get();
 }
 
-void AsyncClientInitialiser::InitClient() {
+void AsyncClientInitialiser::InitClient(const server::ClockPtr& clock) {
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
-    auto result = client_builder_->Build(messenger_);
+    auto result = client_builder_->Build(messenger_, clock);
     if (result.ok()) {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());

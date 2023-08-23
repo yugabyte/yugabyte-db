@@ -1533,6 +1533,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                 << ResultToStatus(parent_tablet_requests);
     }
   }
+  retryable_requests.SetServerClock(server_->Clock());
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.

@@ -702,7 +702,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
-      auto result = retryable_requests_.Register(round);
+      auto result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
       if (!result.ok()) {
         // This can happen if retryable requests have been cleaned up on leader before the follower,
@@ -711,7 +711,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
         VLOG_WITH_PREFIX(1) << error_msg << ": " << result.status()
                             << ". Cleaning retryable requests";
         auto min_op_id ATTRIBUTE_UNUSED = retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
-        result = retryable_requests_.Register(round);
+        result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       }
       if (!result.ok()) {
         return result.status()
@@ -1383,8 +1383,10 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
-  return retryable_requests_.Register(round);
+Result<bool> ReplicaState::RegisterRetryableRequest(
+    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side) {
+  CHECK(is_leader_side);
+  return retryable_requests_.Register(round, tablet::IsLeaderSide::kTrue);
 }
 
 OpId ReplicaState::MinRetryableRequestOpId() {

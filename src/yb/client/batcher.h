@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "yb/client/async_rpc.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
 
@@ -78,6 +79,16 @@ struct InFlightOpsGroupsWithMetadata {
   boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
   InFlightOpsTransactionMetadata metadata;
 };
+
+struct RequestDetails {
+  RetryableRequestId min_running_request_id;
+  MicrosTime start_time_micros;
+
+  RequestDetails(RetryableRequestId min_running_request_id_, MicrosTime start_time_micros_) :
+      min_running_request_id(min_running_request_id_), start_time_micros(start_time_micros_) {}
+};
+
+using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
 
 class TxnBatcherIf {
  public:
@@ -223,16 +234,25 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const ClientId& client_id() const;
 
+  server::Clock* Clock() const;
+
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
   void RequestsFinished();
 
-  void RegisterRequest(RetryableRequestId id) {
-    retryable_request_ids_.insert(id);
+  void RegisterRequest(
+      RetryableRequestId id, RetryableRequestId min_running_id, MicrosTime start_time_micros) {
+    retryable_requests_.emplace(id, RequestDetails(min_running_id, start_time_micros));
   }
 
-  void RemoveRequest(RetryableRequestId id) {
-    retryable_request_ids_.erase(id);
+  void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
+
+  const RequestDetails& GetRequestDetails(RetryableRequestId id) {
+    const auto it = retryable_requests_.find(id);
+    if (PREDICT_FALSE(it == retryable_requests_.end())) {
+      LOG(FATAL) << "Cannot find retryable request detail of id " << id;
+    }
+    return it->second;
   }
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
@@ -341,13 +361,14 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   RejectionScoreSourcePtr rejection_score_source_;
 
-  // Set of retryable request ids used in current batcher.
-  // When creating WriteRpc, new ids will be registered into this set.
+  // Map to store retryable request ids used in current batcher.
+  // retryable_request_id => { min_running_request_id, start_time_micros }
+  // When creating WriteRpc, new ids will be registered into this map.
   // If the batcher has requests to be retried, request id is removed from current batcher
   // and transmit to the retry batcher.
-  // At destruction of the batcher, all request ids in the set will be removed from the client
+  // At destruction of the batcher, all request ids in the map will be removed from the client
   // running requests.
-  std::set<RetryableRequestId> retryable_request_ids_;
+  BatcherRequestsMap retryable_requests_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
