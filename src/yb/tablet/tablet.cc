@@ -3412,7 +3412,6 @@ void Tablet::TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush) {
 
 Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
     docdb::SkipFlush skip_flush) {
-  
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_operation);
   rocksdb::CompactRangeOptions options;
