@@ -524,7 +524,7 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Releases"
+  name = "YugabyteDB releases overview"
   weight = 3
   identifier = "releases"
   url = "/preview/releases/"
@@ -532,12 +532,36 @@
     showSection = true
 
 [[preview_releases]]
-  name = "YugabyteDB Anywhere releases"
+  name = "YugabyteDB earlier releases"
   weight = 4
+  identifier = "earlier-releases"
+  url = "/preview/releases/release-notes/earlier-releases/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Anywhere releases"
+  weight = 5
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
     showSection = true
+
+# [[preview_releases]]
+#   name = "YugabyteDB Managed releases"
+#   weight = 5
+#   identifier = "ybm-releases"
+#   url = "/preview/yugabyte-cloud/release-notes/"
+#   [preview_releases.params]
+#     showSection = true
+
+# [[preview_releases]]
+#   name = "YugabyteDB Voyager releases"
+#   weight = 6
+#   identifier = "ybv-releases"
+#   url = "/preview/yugabyte-voyager/release-notes/"
+#   [preview_releases.params]
+#     showSection = true
 
 ########## Menus (in preview) for FAQ section
 
