@@ -188,7 +188,7 @@ func (plat Platform) createNecessaryDirectories() error {
 	userName := viper.GetString("service_username")
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			if mkErr := common.MkdirAll(dir, os.ModePerm); mkErr != nil {
+			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
 				log.Error("failed to make " + dir + ": " + err.Error())
 				return mkErr
 			}

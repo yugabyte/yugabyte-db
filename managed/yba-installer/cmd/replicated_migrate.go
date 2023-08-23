@@ -88,7 +88,7 @@ var replicatedMigrationStart = &cobra.Command{
 
 		// Take a backup of running YBA using replicated settings.
 		replBackupDir := "/tmp/replBackupDir"
-		common.MkdirAllOrFail(replBackupDir, os.ModePerm)
+		common.MkdirAllOrFail(replBackupDir, common.DirMode)
 		CreateReplicatedBackupScript(replBackupDir, config.Get("storage_path").Value,
 			config.Get("dbuser").Value, config.Get("db_external_port").Value, true, plat)
 

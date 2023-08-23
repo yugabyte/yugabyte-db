@@ -146,7 +146,7 @@ func HasSudoAccess() bool {
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
 	log.Debug("creating file (and parent directories) " + p)
-	if err := MkdirAll(filepath.Dir(p), 0777); err != nil {
+	if err := MkdirAll(filepath.Dir(p), DirMode); err != nil {
 		return nil, err
 	}
 	return os.Create(p)
