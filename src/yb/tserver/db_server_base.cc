@@ -53,7 +53,7 @@ Status DbServerBase::Init() {
 
 Status DbServerBase::Start() {
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
-  async_client_init_->Start();
+  async_client_init_->Start(clock_);
   return Status::OK();
 }
 

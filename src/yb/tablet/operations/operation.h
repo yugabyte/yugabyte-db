@@ -71,6 +71,7 @@ YB_DEFINE_ENUM(
     ((kSplit, consensus::SPLIT_OP)));
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
+YB_STRONGLY_TYPED_BOOL(IsLeaderSide);
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute

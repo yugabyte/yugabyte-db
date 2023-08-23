@@ -131,12 +131,9 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
-void FillRequestIds(const RetryableRequestId request_id,
-                    const RetryableRequestId min_running_request_id,
-                    InFlightOps* ops) {
+void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
   for (auto& op : *ops) {
     op.yb_op->set_request_id(request_id);
-    op.yb_op->set_min_running_request_id(min_running_request_id);
   }
 }
 
@@ -530,15 +527,25 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
     req_.set_client_id1(temp.first);
     req_.set_client_id2(temp.second);
     const auto& first_yb_op = ops_.begin()->yb_op;
-    if (first_yb_op->request_id().has_value()) {
-      req_.set_request_id(first_yb_op->request_id().value());
-      req_.set_min_running_request_id(first_yb_op->min_running_request_id().value());
+    // That means we are trying to resend all ops from this RPC and need to reuse retryable
+    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    if (first_yb_op->request_id()) {
+      const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
+      req_.set_request_id(*first_yb_op->request_id());
+      req_.set_min_running_request_id(request_detail.min_running_request_id);
+      if (request_detail.start_time_micros > 0) {
+        req_.set_start_time_micros(request_detail.start_time_micros);
+      }
     } else {
       const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
+      if (batcher_->Clock()) {
+        req_.set_start_time_micros(batcher_->Clock()->Now().GetPhysicalValueMicros());
+      }
       req_.set_request_id(request_pair.first);
       req_.set_min_running_request_id(request_pair.second);
+      batcher_->RegisterRequest(request_pair.first, request_pair.second, req_.start_time_micros());
     }
-    FillRequestIds(req_.request_id(), req_.min_running_request_id(), &ops_);
+    FillRequestIds(req_.request_id(), &ops_);
   }
 }
 
