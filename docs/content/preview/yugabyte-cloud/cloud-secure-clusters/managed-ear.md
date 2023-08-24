@@ -14,11 +14,9 @@ type: docs
 
 For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
-You enable YugabyteDB cluster encryption at rest (EAR) when you create it. See [Create your cluster](../../cloud-basics/create-clusters/).
-
 You can enable YugabyteDB EAR for a cluster as follows:
 
-- On the **Security** page of the **Create Cluster** wizard when you create a cluster.
+- On the **Security** page of the **Create Cluster** wizard when you [create your cluster](../../cloud-basics/create-clusters/).
 - On the cluster **Settings** tab under **Encryption at rest** (database version 2.16.7 and later only).
 
 Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
