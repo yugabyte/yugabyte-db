@@ -65,6 +65,7 @@ DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
+DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -1072,6 +1073,84 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
     expected_clause << ")";
     ASSERT_EQ(range_clause, expected_clause.str());
   }
+}
+
+class PgLocksTabletSplitTest : public PgTabletSplitTest {
+ protected:
+  void SetUp() override {
+    PgTabletSplitTest::SetUp();
+  }
+
+  Result<PGConn> InitConnection(const std::string& table, int num_keys_to_lock) {
+    const auto num_rows_str = "10000";
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS", table));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, $1), 0", table, num_rows_str));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (auto i = 1 ; i <= num_keys_to_lock ; i++) {
+      RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, i));
+    }
+    return conn;
+  }
+
+  static constexpr int kMinTxnAgeSeconds = 1;
+};
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  auto locks_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  SleepFor(FLAGS_cleanup_split_tablets_interval_sec * 2s * kTimeMultiplier);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return ListTabletIdsForTable(cluster_.get(), table_id).size() == 2;
+  }, 5s * kTimeMultiplier, "Wait for clean up of split parent tablet."));
+
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(*) FROM pg_locks")), num_keys_to_lock * 2);
+}
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_get_locks_status_ms) =
+      15 * kTimeMultiplier * 1s / 1ms;
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto locks_conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+    auto num_txns = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_txns, 1, IllegalState,
+                      Format("Expected to see $0 (vs $1) transactions in pg_locks", 1, num_txns));
+    auto num_locks = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(*) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_locks, 2, IllegalState,
+                      Format("Expected to see $0 (vs $1) locks", 2 * num_keys_to_lock, num_locks));
+    return Status::OK();
+  });
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+  ASSERT_OK(status_future.get());
 }
 
 class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {

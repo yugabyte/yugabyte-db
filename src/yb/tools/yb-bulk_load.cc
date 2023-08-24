@@ -434,11 +434,13 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
   }
 
   // Find replicas for the tablet.
-  master::TabletLocationsPB tablet_locations;
-  RETURN_NOT_OK(client_->GetTabletLocation(tablet_id, &tablet_locations));
+  auto resp = VERIFY_RESULT(client_->GetTabletLocations({tablet_id}));
+  RSTATUS_DCHECK(
+      resp.tablet_locations_size() == 1, InternalError,
+      Format("Unexpected number of tablet locations in response: $0", resp.ShortDebugString()));
   string csv_replicas;
   std::map<string, int32_t> host_to_rpcport;
-  for (const master::TabletLocationsPB_ReplicaPB &replica : tablet_locations.replicas()) {
+  for (const master::TabletLocationsPB_ReplicaPB &replica : resp.tablet_locations(0).replicas()) {
     if (!csv_replicas.empty()) {
       csv_replicas += ",";
     }
