@@ -238,13 +238,15 @@ class CDCServiceImpl : public CDCServiceIf {
       const ProducerTabletInfo& producer_tablet, bool ignore_cache = false);
 
   Result<OpId> GetLastCheckpoint(
-      const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source);
+      const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source,
+      const bool ignore_unpolled_tablets = true);
 
   Result<uint64_t> GetSafeTime(const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Result<CDCSDKCheckpointPB> GetLastCheckpointFromCdcState(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id,
-      const CDCRequestSource& request_source, const TableId& colocated_table_id = "");
+      const CDCRequestSource& request_source, const TableId& colocated_table_id = "",
+      const bool ignore_unpolled_tablets = true);
 
   Status InsertRowForColocatedTableInCDCStateTable(
       const ProducerTabletInfo& producer_tablet,
