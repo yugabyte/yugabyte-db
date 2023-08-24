@@ -62,17 +62,6 @@ typedef struct circularBufferIndex
   int index;
 } circularBufferIndex;
 
-// typedef struct auhEntryTemp
-// {
-//   uint64_t top_level_request_id[2];
-//   uint32 wait_event_info;
-//   uint64_t top_level_node_id[2];
-//   uint32 client_node_host;
-//   uint16 client_node_port;
-//   int64	queryid;
-//   int numprocs;
-//} auhEntryTemp;
-
 ybauhEntry *AUHEntryArray = NULL;
 LWLock *auh_entry_array_lock;
 
@@ -188,16 +177,10 @@ yb_auh_main(Datum main_arg) {
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs)
 {
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
-  PgProcAuhNode* nodes_head = pg_collect_samples_proc();
+  PgProcAuhNode *nodes_head = pg_collect_samples_proc();
   PgProcAuhNode *current = nodes_head;
-
-  int	procCount = procArrayData[0].numprocs;
-  float8 sample_rate = 0;
-  if(procCount != 0)
-    sample_rate = (float)Min(sample_size_procs, procCount)/procCount;
-
   while (current != NULL) {
-    auhEntryTemp proc = current->data;
+    PGProcAUHEntryList proc = current->data;
     int procCount = proc.numprocs;
     float8 sample_rate = 0;
     if (procCount != 0) {
@@ -213,16 +196,6 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
     current = current->next;
   }
   freeLinkedList(nodes_head);
-  // for (int i = 0; i < procCount; i++)
-  // {
-  //   auhEntryTemp proc = procArrayData[i];
-  //   if ((random() < sample_rate * MAX_RANDOM_VALUE)){
-  //     auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
-  //                     proc.wait_event_info, "", proc.top_level_node_id,
-  //                     proc.client_node_host, proc.client_node_port,
-  //                     proc.queryid, auh_sample_time, sample_rate);
-  //   }
-  // }
   LWLockRelease(auh_entry_array_lock);  
 }
 
