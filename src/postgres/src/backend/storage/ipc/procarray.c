@@ -2811,7 +2811,7 @@ MinimumActiveBackends(int min)
 }
 
 void insertNode(PgProcAuhNode **head, PGProcAUHEntryList data) {
-    PgProcAuhNode *newNode = malloc(sizeof(PgProcAuhNode));
+    PgProcAuhNode *newNode = palloc(sizeof(PgProcAuhNode));
     newNode->data = data;
     newNode->next = *head;
     *head = newNode;
@@ -2820,7 +2820,7 @@ void freeLinkedList(PgProcAuhNode *head) {
     while (head != NULL) {
         PgProcAuhNode *temp = head;
         head = head->next;
-        free(temp);
+        pfree(temp);
     }
 }
 
@@ -2854,8 +2854,6 @@ CountDBBackends(Oid databaseid)
 	int			index;
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
-	ereport(LOG, (errmsg("numprocs %d", arrayP->numProcs)));
-
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int			pgprocno = arrayP->pgprocnos[index];
