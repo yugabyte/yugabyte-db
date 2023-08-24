@@ -19,19 +19,20 @@ import Container from '../../common/Container';
 import ListPermissionsModal from '../../permission/ListPermissionsModal';
 import { YBButton, YBInputField } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
-import { IRole } from '../IRoles';
+import { Role } from '../IRoles';
 import { Permission } from '../../permission';
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { createRole, editRole, getAllAvailablePermissions } from '../../api';
 import { getPermissionDisplayText } from '../../rbacUtils';
+import { RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
+import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { Create } from '@material-ui/icons';
 
 const useStyles = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(4),
     width: '700px',
-    height: '700px'
+    minHeight: '350px'
   },
   title: {
     fontSize: '17px',
@@ -78,7 +79,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     RoleViewContext
   ) as unknown) as RoleContextMethods;
 
-  const { control, setValue, handleSubmit, watch } = useForm<IRole>({
+  const { control, setValue, handleSubmit, watch } = useForm<Role>({
     defaultValues: currentRole
       ? {
           ...currentRole,
@@ -92,7 +93,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   });
 
   const doCreateRole = useMutation(
-    (role: IRole) => {
+    (role: Role) => {
       return createRole(role);
     },
     {
@@ -107,7 +108,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   );
 
   const doEditRole = useMutation(
-    (role: IRole) => {
+    (role: Role) => {
       return editRole(role);
     },
     {
@@ -123,7 +124,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
 
   const onSave = () => {
     handleSubmit((val) => {
-      if (currentRole === null) {
+      if (!isDefinedNotNull(currentRole?.roleUUID)) {
         doCreateRole.mutate(val);
       } else {
         doEditRole.mutate(val);
@@ -145,34 +146,32 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   );
 
   return (
-    <Container onSave={onSave} onCancel={onCancel}>
-      <Box className={classes.root}>
-        <div className={classes.title}>{t(currentRole ? 'edit' : 'title')}</div>
-        <form className={classes.form}>
-          <YBInputField
-            name="name"
-            control={control}
-            label={t('form.name')}
-            placeholder={t('form.namePlaceholder')}
-            fullWidth
-            disabled={currentRole !== null}
-          />
-          <YBInputField
-            name="description"
-            control={control}
-            label={t('form.description')}
-            placeholder={t('form.descriptionPlaceholder')}
-            fullWidth
-          />
-          <SelectPermissions
-            selectedPermissions={watch('permissionDetails.permissionList')}
-            setSelectedPermissions={(perm: Permission[]) => {
-              setValue('permissionDetails.permissionList', perm);
-            }}
-          />
-        </form>
-      </Box>
-    </Container>
+    <Box className={classes.root}>
+      <div className={classes.title}>{t(currentRole?.roleUUID ? 'edit' : 'title')}</div>
+      <form className={classes.form}>
+        <YBInputField
+          name="name"
+          control={control}
+          label={t('form.name')}
+          placeholder={t('form.namePlaceholder')}
+          fullWidth
+          disabled={isNonEmptyString(currentRole?.roleUUID)}
+        />
+        <YBInputField
+          name="description"
+          control={control}
+          label={t('form.description')}
+          placeholder={t('form.descriptionPlaceholder')}
+          fullWidth
+        />
+        <SelectPermissions
+          selectedPermissions={watch('permissionDetails.permissionList')}
+          setSelectedPermissions={(perm: Permission[]) => {
+            setValue('permissionDetails.permissionList', perm);
+          }}
+        />
+      </form>
+    </Box>
   );
 });
 

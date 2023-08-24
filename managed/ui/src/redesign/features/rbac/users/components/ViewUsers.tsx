@@ -1,5 +1,5 @@
 /*
- * Created on Wed Jul 12 2023
+ * Created on Mon Jul 31 2023
  *
  * Copyright 2021 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
@@ -10,24 +10,20 @@
 import { useContext, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { useToggle } from 'react-use';
+
 import { Box, makeStyles } from '@material-ui/core';
 import { TableHeaderColumn } from 'react-bootstrap-table';
 import { YBTable } from '../../../../../components/common/YBTable';
 import { MoreActionsMenu } from '../../../../../components/customCACerts/MoreActionsMenu';
-import { DeleteRoleModal } from './DeleteRoleModal';
 import { YBButton } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
-import { RoleTypeComp } from '../../common/RbacUtils';
 
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
-import { Role } from '../IRoles';
-import { getAllRoles } from '../../api';
-
+import { getAllUsers } from '../../api';
+import { ybFormatDate } from '../../../../helpers/DateUtils';
+import { UserContextMethods, UserViewContext } from './UserContext';
+import { RbacUser } from '../interface/Users';
 import { Add, ArrowDropDown } from '@material-ui/icons';
-import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
-import { ReactComponent as Clone } from '../../../../assets/copy.svg';
 import { ReactComponent as User } from '../../../../assets/user.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
 
@@ -54,6 +50,16 @@ const useStyles = makeStyles((theme) => ({
       height: theme.spacing(3)
     }
   },
+  roleType: {
+    borderRadius: theme.spacing(0.5),
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
+    padding: '2px 6px',
+    '&.custom': {
+      border: `1px solid ${theme.palette.primary[300]}`,
+      background: theme.palette.primary[200],
+      color: theme.palette.primary[600]
+    }
+  },
   actions: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -62,7 +68,7 @@ const useStyles = makeStyles((theme) => ({
   title: {
     fontSize: '18px',
     fontWeight: 600,
-    marginRight: '38px'
+    marginRight: theme.spacing(4)
   },
   search: {
     display: 'flex',
@@ -73,21 +79,21 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const ListRoles = () => {
+export const ViewUsers = () => {
   const classes = useStyles();
 
-  const { isLoading, data: roles } = useQuery('roles', getAllRoles, {
+  const { isLoading, data: roles } = useQuery('users', getAllUsers, {
     select: (data) => data.data
   });
 
   const { t } = useTranslation('translation', {
-    keyPrefix: 'rbac.roles.list'
+    keyPrefix: 'rbac.users.list'
   });
 
-  const [, { setCurrentPage, setCurrentRole }] = (useContext(
-    RoleViewContext
-  ) as unknown) as RoleContextMethods;
-  const [showDeleteModal, toggleDeleteModal] = useToggle(false);
+  const [, { setCurrentPage, setCurrentUser }] = (useContext(
+    UserViewContext
+  ) as unknown) as UserContextMethods;
+
   const [searchText, setSearchText] = useState('');
 
   if (isLoading) return <YBLoadingCircleIcon />;
@@ -95,47 +101,27 @@ const ListRoles = () => {
   let filteredRoles = roles;
 
   if (searchText) {
-    filteredRoles = filteredRoles?.filter((role) =>
-      role.name.toLowerCase().includes(searchText.toLowerCase())
+    filteredRoles = filteredRoles?.filter((user: RbacUser) =>
+      user.email.toLowerCase().includes(searchText.toLowerCase())
     );
   }
 
-  const getActions = (_: undefined, role: Role) => {
+  const getActions = (_: undefined, user: RbacUser) => {
     return (
       <MoreActionsMenu
         menuOptions={[
           {
-            text: t('table.moreActions.editRole'),
-            icon: <Create />,
-            callback: () => {
-              setCurrentRole(role);
-              setCurrentPage('EDIT_ROLE');
-            }
-          },
-          {
-            text: t('table.moreActions.cloneRole'),
-            icon: <Clone />,
-            callback: () => {
-              setCurrentRole({
-                ...role,
-                roleUUID: '',
-                name: ''
-              });
-              setCurrentPage('CREATE_ROLE');
-            }
-          },
-          {
-            text: t('table.moreActions.viewUsers'),
+            text: t('table.moreActions.editAssignedRoles'),
             icon: <User />,
-            callback: () => {}
+            callback: () => {
+              setCurrentUser(user);
+              setCurrentPage('EDIT_USER');
+            }
           },
           {
-            text: t('table.moreActions.deleteRole'),
+            text: t('table.moreActions.deleteUser'),
             icon: <Delete />,
-            callback: () => {
-              setCurrentRole(role);
-              toggleDeleteModal(true);
-            }
+            callback: () => {}
           }
         ]}
       >
@@ -161,38 +147,25 @@ const ListRoles = () => {
           size="large"
           variant="primary"
           onClick={() => {
-            setCurrentRole(null);
-            setCurrentPage('CREATE_ROLE');
+            setCurrentUser(null);
+            setCurrentPage('CREATE_USER');
           }}
         >
-          {t('createRole')}
+          {t('createUser')}
         </YBButton>
       </div>
       <YBTable data={filteredRoles ?? []}>
-        <TableHeaderColumn dataField="roleUUID" hidden isKey />
-        <TableHeaderColumn dataSort dataField="name">
-          {t('table.name')}
+        <TableHeaderColumn dataField="uuid" hidden isKey />
+        <TableHeaderColumn dataSort dataField="email">
+          {t('table.email')}
         </TableHeaderColumn>
-        <TableHeaderColumn dataSort dataField="description" dataFormat={(desc) => desc ?? '-'}>
-          {t('table.description')}
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataSort
-          dataField="roleType"
-          dataFormat={(_, role: Role) => <RoleTypeComp role={role} />}
-        >
-          {t('table.type')}
-        </TableHeaderColumn>
-        <TableHeaderColumn dataSort dataField="users">
-          {t('table.users')}
+        <TableHeaderColumn dataSort dataField="createdAt" dataFormat={(cell) => ybFormatDate(cell)}>
+          {t('table.createdAt')}
         </TableHeaderColumn>
         <TableHeaderColumn dataField="actions" dataFormat={getActions}>
           {t('table.actions')}
         </TableHeaderColumn>
       </YBTable>
-      <DeleteRoleModal open={showDeleteModal} onHide={() => toggleDeleteModal(false)} />
     </Box>
   );
 };
-
-export default ListRoles;
