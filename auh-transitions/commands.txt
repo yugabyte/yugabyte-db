@@ -1,5 +1,11 @@
+Command to run the job/compile:
 
-# !grep "setting state to" % | sed 's/^ *//; s/.*code: //; s/aux_info:.*method: /method:/; s/\}.*setting/setting/' | sort | uniq -c > ~/code/yugabyte/wait-state-transitions2.txt
+cdy; ybd --sj && bin/yb-ctl restart --tserver_flags vmodule=wait_state\=3,global_memstore_size_mb_max=1,db_block_cache_size_bytes=10240,enable_tracing=false && bin/yb-ctl status && cd ~/code/yb-sample-apps && bash ./run_sql.sh 10 1
+
+Let it run for ~5-10 mins.
+Kill it, and grep the yb-tserver.INFO for the following lines:
+
+VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
 
 LOG_FILE=/Users/amitanand/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/yb-tserver.INFO
 CSV_FILE=transactions_new.csv
@@ -14,6 +20,8 @@ grep "setting state to" ${LOG_FILE} | sed 's/.*code: //; s/ aux_info:.*method: /
 
 gsed -i '1i\count,current_wait_state,method_name,next_wait_state' ${CSV_FILE}
 
+-- Load up the data into sqlite3 and query the state transitions by method, or for next state.
+
 echo .import ${CSV_FILE} transitions
 
 sqlite3 $DB_FILE
@@ -26,5 +34,11 @@ create view outgoing_counts as select current_wait_state as wait_state, sum(coun
 create view transition_counts as select current_wait_state, next_wait_state, sum(count) as count from transitions group by current_wait_state, next_wait_state;
 create view transition_curr_and_next as select current_wait_state, next_wait_state from transitions group by current_wait_state, next_wait_state;
 
-create view num_next_states as select current_wait_state, count(*) as num_next from transition_curr_and_next group by current_wait_state;
+create view num_next_states as select current_wait_state, count(*) as num_next from !transition_curr_and_next group by current_wait_state;
 create view num_prev_states as select next_wait_state as state, count(*) as num_prev from transition_curr_and_next group by next_wait_state;
+
+select * from transitions  where method_name = 'ActiveUniverseHistory';
+select * from transitions  where current_wait_state = 'ResponseQueued';
+select * from transitions  where next_wait_state = 'HandlingDone';
+select * from num_prev_states;
+select * from num_next_states;
