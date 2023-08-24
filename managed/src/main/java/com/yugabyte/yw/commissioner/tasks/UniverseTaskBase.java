@@ -733,9 +733,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
+    boolean changeYCQLAdminPass =
+        primaryCluster.userIntent.enableYCQL
+            && primaryCluster.userIntent.enableYCQLAuth
+            && !primaryCluster.userIntent.defaultYcqlPassword;
+    boolean changeYSQLAdminPass =
+        primaryCluster.userIntent.enableYSQL
+            && primaryCluster.userIntent.enableYSQLAuth
+            && !primaryCluster.userIntent.defaultYsqlPassword;
     // Change admin password for Admin user, as specified.
-    if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
-        || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
+    if (changeYCQLAdminPass || changeYSQLAdminPass) {
       createChangeAdminPasswordTask(
               primaryCluster,
               ysqlPassword,
