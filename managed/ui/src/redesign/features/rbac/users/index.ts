@@ -1,5 +1,5 @@
 /*
- * Created on Mon Jul 17 2023
+ * Created on Mon Jul 31 2023
  *
  * Copyright 2021 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
@@ -7,8 +7,4 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Permission } from "./permission";
-
-export const getPermissionDisplayText = (permission: Permission['prerequisitePermissions'][number]) => {
-    return `${permission.resourceType}.${permission.action}`;
-};
+export * from './components/ViewUsers';
