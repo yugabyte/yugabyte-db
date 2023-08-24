@@ -1003,6 +1003,14 @@ void PgClient::PerformAsync(
     tserver::PgPerformOptionsPB* options,
     PgsqlOps* operations,
     const PerformCallback& callback) {
+  if (options->has_auh_metadata()) {
+    VLOG(0) << __PRETTY_FUNCTION__ << " with options/auh_metadata " << options->auh_metadata().ShortDebugString();
+    if (!options->auh_metadata().has_query_id()) {
+      VLOG(0) << " No query id at " << yb::GetStackTrace();
+    }
+  } else {
+    VLOG(0) << __PRETTY_FUNCTION__ << " No auh_metadata";
+  }
   impl_->PerformAsync(options, operations, callback);
 }
 

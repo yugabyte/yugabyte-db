@@ -452,6 +452,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 
   util::AUHMetadata auh_metadata_;
+  std::string set_query_stack_trace_;
 };
 
 }  // namespace pggate

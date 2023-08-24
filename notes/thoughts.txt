@@ -1,0 +1,37 @@
+
+How do we update the status in WriteOperation?
+Looks like WriteOperation does not own a trace_ either.
+
+The trace seems to get "adopted" higher up, and 
+DoReplicated does update the TRACE.
+
+May be we can follow a similar model.
+
+
+TBD: Find out where is the DoReplicated being called.
+
+OperationDriver has a trace_ object and calls the appropriate ADOPT before
+passing down the control to the operation.
+
+void OperationDriver::ExecuteAsync() {
+  VLOG_WITH_PREFIX(4) << "ExecuteAsync()";
+  TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
+  ADOPT_TRACE(trace());
+  TRACE_FUNC();
+
+
+class DBImpl {
+	...
+  // Each flush or compaction gets its own job id. this counter makes sure
+  // they're unique
+  std::atomic<int> next_job_id_;
+	...
+};
+
+Each tablet has a job-id which is unique and increasing within that tablet.
+ To make it globally unique, we'd need to append it with
+   a) uuid of the node running it
+   b) tablet id/number, and
+   c) some kind of an epoch/restart id.
+
+Do we even need this to be globally unique? Can filter by date suffice, and ignore (c)?

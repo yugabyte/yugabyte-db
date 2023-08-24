@@ -196,8 +196,8 @@ void Batcher::FlushFinished() {
 }
 
 void Batcher::Run() {
+  SET_WAIT_STATUS(util::WaitStateCode::YBCCallingCallback);
   flush_callback_(combined_error_);
-  SET_WAIT_STATUS(util::WaitStateCode::YBCCallbackCalled);
   flush_callback_ = StatusFunctor();
 }
 

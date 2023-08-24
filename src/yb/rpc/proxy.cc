@@ -56,6 +56,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_int32(num_connections_to_server, 8,
@@ -90,8 +91,8 @@ Proxy::Proxy(ProxyContext* context,
       // Use the context->num_connections_to_server() here as opposed to directly reading the
       // FLAGS_num_connections_to_server, because the flag value could have changed since then.
       num_connections_to_server_(context_->num_connections_to_server()) {
-  VLOG(1) << "Create proxy to " << remote << " with num_connections_to_server="
-          << num_connections_to_server_;
+  VLOG_IF(1, call_local_service_) << "Create proxy to " << remote << " with num_connections_to_server="
+          << num_connections_to_server_ << yb::GetStackTrace();
   if (context_->parent_mem_tracker()) {
     mem_tracker_ = MemTracker::FindOrCreateTracker(
         "Queueing", context_->parent_mem_tracker());

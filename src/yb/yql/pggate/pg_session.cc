@@ -39,6 +39,7 @@
 
 #include "yb/tserver/pg_client.messages.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -997,6 +998,17 @@ Status PgSession::SetTopLevelNodeId() {
 }
 
 void PgSession::SetQueryId(int64_t query_id) {
+  CHECK(auh_metadata_.query_id == 0
+      || query_id == 0 || query_id == -3
+      || auh_metadata_.query_id == query_id) 
+    << " auh_metadata_.query_id : " << auh_metadata_.query_id
+    << " Setting query_id : " << query_id
+    << "\nPreviously set at : " << set_query_stack_trace_
+    << "\n--------------------\n";
+  set_query_stack_trace_ = yb::GetStackTrace();
+  VLOG(2) <<  this 
+      << " auh_metadata_.query_id : " << auh_metadata_.query_id
+      << " Setting query_id to " << query_id << " at " << yb::GetStackTrace();
   auh_metadata_.query_id = query_id;
 }
 

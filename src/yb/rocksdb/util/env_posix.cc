@@ -793,6 +793,7 @@ unsigned int PosixEnv::GetThreadPoolQueueLen(Priority pri) const {
 }
 
 std::vector<yb::util::WaitStateInfoPtr> PosixEnv::GetThreadpoolWaitStates() {
+  VLOG(1) << __PRETTY_FUNCTION__;
   std::vector<yb::util::WaitStateInfoPtr> res;
   auto low_priority_wait_events = thread_pools_[Priority::LOW].GetThreadpoolWaitStates();
   auto high_priority_wait_events = thread_pools_[Priority::HIGH].GetThreadpoolWaitStates();

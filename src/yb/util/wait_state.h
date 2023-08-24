@@ -97,14 +97,14 @@ YB_DEFINE_ENUM_TYPE(
 
     // Writes
     ((AcquiringLocks, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
-        (ConflictResolution)            // Doing conflict resolution.
         (ExecuteWrite)   // Write query is executing
+        (ConflictResolution)            // Doing conflict resolution.
         (SubmittingToRaft)   // Write query is submitting the write operation to Raft.
     // Reads
     (GetSafeTime)(GetSubDoc)(DoRead)
 
     // OperationDriver
-    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer.
+    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen
         (PrepareAndStart) // 
         (SubmittedToPreparer) // raft-operation has been submitted to preparer.
         (AddedToLeader) // raft-operation written to the leader's log. Waiting for response from followers.
@@ -112,6 +112,7 @@ YB_DEFINE_ENUM_TYPE(
         (HandleFailure) // Ran into some kind of failure.
       (Applying) // operation has been replicated/acknowledged by a majority. Applying it to the tablet.
       (ApplyDone) // apply is done.
+      (WALLogSync) // waiting for WALEdits to be persisted.
 
     // UpdateConsensus
       (Updating) // Update rpc is called on a follower
@@ -150,11 +151,11 @@ YB_DEFINE_ENUM_TYPE(
 
     // YBClient
     ((Flushing, YB_CLIENT))
-      (FlushedWaitingForCB)
-      (YBClientRpcsSent)
-      (YBCCallbackCalled)
+      (FlushedWaitingForCB) // Unseen although used.
       (LookingUpTablet)
       (TabletLookupFinished)
+      (YBClientRpcsSent)
+      (YBCCallingCallback)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
@@ -175,6 +176,7 @@ struct AUHMetadata {
   }
 
   void UpdateFrom(const AUHMetadata &other) {
+    VLOG(2) << "Before Updating " << ToString();
     if (!other.top_level_request_id.empty()) {
       top_level_request_id = other.top_level_request_id;
     }
@@ -193,6 +195,7 @@ struct AUHMetadata {
     if (other.client_node_port != 0) {
       client_node_port = other.client_node_port;
     }
+    VLOG(2) << "After Updating " << ToString();
   }
 
   template <class PB>
@@ -217,6 +220,7 @@ struct AUHMetadata {
     if (client_node_port != 0) {
       pb->set_client_node_port(client_node_port);
     }
+    VLOG(2) << "After ToPB " << ToString() << "\n returned " << pb->DebugString();
   }
 
   template <class PB>
@@ -315,6 +319,7 @@ class WaitStateInfo {
 
   template <class PB>
   void ToPB(PB *pb) {
+    {
     std::lock_guard<simple_spinlock> l(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = get_state();
@@ -323,6 +328,8 @@ class WaitStateInfo {
     pb->set_wait_status_code_as_string(yb::ToString(code));
 #endif
     aux_info_.ToPB(pb->mutable_aux_info());
+    }
+    VLOG(1) << "Wrote ToPB " << pb->ShortDebugString();
   }
 
   AUHMetadata& metadata() REQUIRES(mutex_) {

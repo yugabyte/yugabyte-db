@@ -450,6 +450,28 @@ TEST_F(PgMiniTest, Simple) {
   ASSERT_EQ(value, "hello");
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(AUH)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION yb_auh;"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  constexpr int kLoops = 10;
+  for (int i = 0; i < kLoops; i++) {
+    LOG(INFO) << "Inserting. Loop " << i;
+    ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+    SleepFor(1s);
+  }
+
+  for (int i = 0; i < kLoops; i++) {
+    LOG(INFO) << "Selecting. Loop " << i;
+    auto value = ASSERT_RESULT(conn.FetchValue<std::string>(yb::Format("SELECT value FROM t WHERE key = $0", i)));
+    ASSERT_EQ(value, yb::Format("v-$0", i));
+    SleepFor(1s);
+  }
+}
+
 TEST_F(PgMiniTest, Tracing) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
   auto conn = ASSERT_RESULT(Connect());
