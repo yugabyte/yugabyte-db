@@ -1604,7 +1604,7 @@ void CDCServiceImpl::GetChanges(
   // Get opId from request.
   if (!GetFromOpId(req, &from_op_id, &cdc_sdk_from_op_id)) {
     auto last_checkpoint = RPC_VERIFY_RESULT(
-        GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType()),
+        GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType(), false),
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     LOG(WARNING) << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
                  << " without an index. Using last checkpoint: " << last_checkpoint;
@@ -3766,7 +3766,8 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
 
 Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCheckpointFromCdcState(
     const xrepl::StreamId& stream_id, const TabletId& tablet_id,
-    const CDCRequestSource& request_source, const TableId& colocated_table_id) {
+    const CDCRequestSource& request_source, const TableId& colocated_table_id,
+    const bool ignore_unpolled_tablets) {
   auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
       {tablet_id, stream_id, colocated_table_id},
       CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime().IncludeData()));
@@ -3790,7 +3791,8 @@ Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCheckpointFromCdcState(
   const auto& entry = *entry_opt;
   auto& cdc_sdk_op_id = *entry.checkpoint;
 
-  if (!entry.last_replication_time && request_source == CDCRequestSource::CDCSDK) {
+  if (ignore_unpolled_tablets && !entry.last_replication_time
+        && request_source == CDCRequestSource::CDCSDK) {
     // This would mean the row is un-polled through GetChanges, since the 'kCdcLastReplicationTime'
     // column is null. There is a small window where children tablets after tablet split have a
     // valid checkpoint but they will not have the 'kCdcLastReplicationTime' value set.
@@ -3818,7 +3820,8 @@ Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCheckpointFromCdcState(
 }
 
 Result<OpId> CDCServiceImpl::GetLastCheckpoint(
-    const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source) {
+    const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source,
+    const bool ignore_unpolled_tablets) {
   if (!PREDICT_FALSE(FLAGS_TEST_force_get_checkpoint_from_cdc_state)) {
     auto result = impl_->GetLastCheckpoint(producer_tablet);
     if (result) {
@@ -3827,7 +3830,8 @@ Result<OpId> CDCServiceImpl::GetLastCheckpoint(
   }
 
   const auto cdc_sdk_checkpoint = VERIFY_RESULT(GetLastCheckpointFromCdcState(
-      producer_tablet.stream_id, producer_tablet.tablet_id, request_source));
+      producer_tablet.stream_id, producer_tablet.tablet_id, request_source,
+      "", ignore_unpolled_tablets /* ignore_unpolled_tablets */));
   return OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index());
 }
 
