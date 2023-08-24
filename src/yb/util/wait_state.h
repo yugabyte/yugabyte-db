@@ -97,14 +97,14 @@ YB_DEFINE_ENUM_TYPE(
 
     // Writes
     ((AcquiringLocks, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
-        (ConflictResolution)            // Doing conflict resolution.
         (ExecuteWrite)   // Write query is executing
+        (ConflictResolution)            // Doing conflict resolution.
         (SubmittingToRaft)   // Write query is submitting the write operation to Raft.
     // Reads
     (GetSafeTime)(GetSubDoc)(DoRead)
 
     // OperationDriver
-    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer.
+    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen
         (PrepareAndStart) // 
         (SubmittedToPreparer) // raft-operation has been submitted to preparer.
         (AddedToLeader) // raft-operation written to the leader's log. Waiting for response from followers.
@@ -151,11 +151,11 @@ YB_DEFINE_ENUM_TYPE(
 
     // YBClient
     ((Flushing, YB_CLIENT))
-      (FlushedWaitingForCB)
-      (YBClientRpcsSent)
-      (YBCCallbackCalled)
+      (FlushedWaitingForCB) // Unseen although used.
       (LookingUpTablet)
       (TabletLookupFinished)
+      (YBClientRpcsSent)
+      (YBCCallingCallback)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
