@@ -54,10 +54,15 @@ A Kubernetes node is expected to meet the following requirements:
 
 ## Prepare the cluster
 
-The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+The minimum versions for your Kubernetes clusters and Helm chart are as follows:
 
 - Kubernetes 1.22
-- Helm 3.10
+- Helm 3.11.3
+
+The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+
+- Kubernetes - 1.22 to 1.25
+- Helm - 3.11.3
 
 Before installing YugabyteDB Anywhere, verify that you have the following:
 
@@ -67,7 +72,7 @@ Before installing YugabyteDB Anywhere, verify that you have the following:
 
 In addition, ensure the following:
 
-- The nodes can pull container images from the [quay.io](https://quay.io/) container registry. If the nodes cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+- The nodes can pull container images from the [quay.io](https://quay.io/) container registry. If the nodes cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](../../prepare-environment/kubernetes#specify-ulimit-and-remember-the-location-of-core-dumps).
 - You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../../prepare-environment/kubernetes#install-kube-state-metrics).
 - A load balancer controller is available in your Kubernetes cluster.
