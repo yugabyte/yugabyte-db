@@ -17,7 +17,8 @@
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
-    "install-third-party.yml"
+    "install-third-party.yml",
+    "Dockerfile"
   ],
   "bin": [
     "bin/common.sh",
