@@ -338,7 +338,7 @@ ProcArrayAdd(PGPROC *proc)
 	LWLockRelease(ProcArrayLock);
 }
 
-/*ß
+/*
  * Remove the specified PGPROC from the shared array.
  *
  * When latestXid is a valid XID, we are removing a live 2PC gxact from the
