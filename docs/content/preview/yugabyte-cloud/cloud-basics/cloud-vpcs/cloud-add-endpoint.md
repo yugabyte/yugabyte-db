@@ -36,10 +36,6 @@ Each provider refers to the elements of a private link service in different ways
 | Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) |
 | Virtual Private Cloud (VPC) | VPC | VNet |
 
-Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an IP allow list to your cluster.
-
-For detailed steps describing how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
-
 ## Limitations
 
 - Currently, PSEs are supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
@@ -57,3 +53,23 @@ To use ybm CLI, you need to do the following:
 
 - Create an API key. Refer to [API keys](../../../managed-automation/managed-apikeys/).
 - Install and configure ybm CLI. Refer to [Install and configure](../../../managed-automation/managed-cli/managed-cli-overview/).
+
+Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an IP allow list to your cluster.
+
+## Get started
+
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="Set up PrivateLink on AWS"
+    description="Add PSEs to your cluster and create interface endpoints on your application VPC in AWS."
+    buttonText="Setup Guide"
+    buttonUrl="../managed-endpoint-aws/"
+  >}}
+
+  {{< sections/bottom-image-box
+    title="Set up Private Link on Azure"
+    description="Add a PSE to your cluster and create a private endpoint on your application VNet in Azure."
+    buttonText="Setup Guide"
+    buttonUrl="../managed-endpoint-azure/"
+  >}}
+{{< /sections/2-boxes >}}
