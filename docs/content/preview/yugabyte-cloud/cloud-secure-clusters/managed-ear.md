@@ -25,6 +25,7 @@ Note that, regardless of whether you enable YugabyteDB EAR for a cluster, Yugaby
 
 - You can't remove or rotate the CMK of clusters with YugabyteDB versions earlier than 2.16.7.
 - You can't enable cluster EAR on clusters with YugabyteDB versions earlier than 2.16.7.
+- Currently, Azure is not supported for CMKs.
 
 Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
 
