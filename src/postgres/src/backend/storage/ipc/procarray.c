@@ -2831,7 +2831,7 @@ PgProcAuhNode* pg_collect_samples_proc()
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
-		int	pgprocno = arrayP->pgprocnos[i];
+		volatile int pgprocno = arrayP->pgprocnos[i];
 		PGPROC *proc  = &allProcs[pgprocno];
 		if(proc != NULL && proc->pid != 0 && proc->wait_event_info!=0)
 		{
