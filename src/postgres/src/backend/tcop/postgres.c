@@ -4794,6 +4794,7 @@ yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 	*/
 	MyProc->queryid = 0;
 	MyProc->top_level_request_id[0] = '\0';
+	MyProc->aux_info[0] = '\0';
 }
 
 typedef struct YBExecuteMessageFunctorContext
@@ -5983,6 +5984,7 @@ PostgresMain(int argc, char *argv[],
 			YBCSetQueryId(0);
 			MyProc->top_level_request_id[0] = '\0';
 			MyProc->wait_event_info = 0;
+			MyProc->aux_info[0] = '\0';
 		}
 	}							/* end of input-reading loop */
 }
