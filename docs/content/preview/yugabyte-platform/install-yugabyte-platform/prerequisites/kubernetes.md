@@ -54,7 +54,7 @@ A Kubernetes node is expected to meet the following requirements:
 
 ## Prepare the cluster
 
-The minimum versions for your Kubernetes clusters and Helm chart are as follows:
+The minimum version for a Kubernetes cluster and Helm chart are as follows:
 
 - Kubernetes 1.22
 - Helm 3.11.3
