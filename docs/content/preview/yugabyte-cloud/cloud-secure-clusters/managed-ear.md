@@ -91,7 +91,7 @@ To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Managed
 ## Rotate your CMK
 
 {{< warning title="Deleting your CMK" >}}
-When you delete a CMK, you will no longer be able to decrypt clusters encrypted using the key. Before deleting a CMK, make sure that you no longer need it. Retain all CMKs used to encrypt data in backups and snapshots.
+If you delete a CMK, you will no longer be able to decrypt clusters encrypted using the key. Before deleting a CMK, make sure that you no longer need it. Retain all CMKs used to encrypt data in backups and snapshots.
 {{< /warning >}}
 
 To rotate the CMK used for EAR, do the following:
