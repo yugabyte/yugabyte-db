@@ -704,8 +704,8 @@ class YBClient {
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletLocation(const TabletId& tablet_id,
-                           master::TabletLocationsPB* tablet_location);
+  Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
+      const std::vector<TabletId>& tablet_ids);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
