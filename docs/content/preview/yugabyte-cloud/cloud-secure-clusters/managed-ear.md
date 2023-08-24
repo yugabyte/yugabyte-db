@@ -69,7 +69,7 @@ For more information on GCP KMS, refer to [Cloud Key Management Service overview
 
 ## Encrypt a cluster using a CMK
 
-You can enable EAR using a CMK for clusters in AWS and GCP as follows:
+You can enable EAR using a CMK for clusters in AWS and GCP (database version 2.16.7 and later only) as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Cluster Encryption at Rest**.
@@ -85,3 +85,28 @@ You can enable EAR using a CMK for clusters in AWS and GCP as follows:
 1. Click **Save**.
 
 YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
+
+To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Managed uses lazy decryption to decrypt the cluster.
+
+## Rotate your CMK
+
+{{< warning title="Deleting your CMK" >}}
+When you delete a CMK, you will no longer be able to decrypt clusters encrypted using the key. Before deleting a CMK, make sure that you no longer need it. Retain all CMKs used to encrypt data in backups and snapshots.
+{{< /warning >}}
+
+To rotate the CMK used for EAR, do the following:
+
+1. On the cluster **Settings** tab, select **Encryption at rest**.
+1. Click **Edit CMK Configuration**.
+1. For AWS, provide the following details:
+
+    - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the new CMK to use to encrypt the cluster.
+    - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+
+    For GCP:
+    - **Resource ID**: Enter the resource ID of the key ring where the new CMK is stored.
+    - **Service Account Credentials**: Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
+
+1. Click **Save**.
+
+YugabyteDB Managed uses lazy decryption and encryption to encrypt the cluster using the new key.
