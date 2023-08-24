@@ -179,13 +179,16 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   PgProcAuhNode *nodes_head = pg_collect_samples_proc();
   PgProcAuhNode *current = nodes_head;
+  float8 sample_rate = 0;
+  if (nodes_head != NULL) {
+      PGProcAUHEntryList first_proc = nodes_head->data;
+      int procCount = first_proc.numprocs;
+      if (procCount != 0) {
+          sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
+      }
+  }
   while (current != NULL) {
     PGProcAUHEntryList proc = current->data;
-    int procCount = proc.numprocs;
-    float8 sample_rate = 0;
-    if (procCount != 0) {
-        sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
-    }
     if (random() < sample_rate * MAX_RANDOM_VALUE) {
         auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                         proc.wait_event_info, "", proc.top_level_node_id,
