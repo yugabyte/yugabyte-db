@@ -43,7 +43,7 @@ Make sure that default security group in your application VPC allows internal co
 
 Make sure that the **Enable DNS resolution** and **Enable DNS hostnames** DNS settings in your application VPC are enabled. To access these settings, in the AWS [VPC console](https://console.aws.amazon.com/vpc/), select the VPC, click **Actions**, and choose **Edit VPC Settings**.
 
-To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) for each region on your cluster, then create corresponding interface VPC endpoints in AWS.
+To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) for each region of your cluster, then create corresponding interface VPC endpoints in AWS.
 
 ## Create a PSE in YugabyteDB Managed
 
@@ -213,7 +213,7 @@ aws ec2 describe-subnets \
     --query "Subnets[*].SubnetId" 
 ```
 
-This command returns the subnet IDs of the of the application VPC (`subnet_ids` in the following command). Note that the interface endpoint can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
+This command returns the subnet IDs of the application VPC (`subnet_ids` in the following command). Note that the interface endpoint can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
 
 Create the interface VPC endpoint, as follows:
 

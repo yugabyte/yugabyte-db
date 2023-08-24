@@ -12,18 +12,18 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service. 
+A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service.
 
 Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 
 1. Deploy your cluster in a VPC. You must create a VPC and deploy your cluster before you can configure the PSE.
-1. Create a PSE in each region of your cluster. The PSE is an endpoint service, and you activate it by granting access to a service principal on your application VPC.
+1. Create a PSE in each region of your cluster. The PSE is an endpoint service, and you activate it by granting access to a security principal on your application VPC.
 
     In the case of AWS, a security principal is an AWS principal, in the form of Amazon resource names (ARNs).
 
     For Azure, a security principal is a subscription ID of the service you want to have access.
 
-1. On the cloud provider, create an interface VPC endpoint (AWS) or private endpoint (Azure) on the VPC (VNet) hosting your application. You create an endpoint for each region in your cluster.
+1. On the cloud provider, create an interface VPC endpoint (AWS) or a private endpoint (Azure) on the VPC (VNet) hosting your application. You create an endpoint for each region in your cluster.
 
 ![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
 
@@ -54,20 +54,20 @@ To use ybm CLI, you need to do the following:
 - Create an API key. Refer to [API keys](../../../managed-automation/managed-apikeys/).
 - Install and configure ybm CLI. Refer to [Install and configure](../../../managed-automation/managed-cli/managed-cli-overview/).
 
-Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an IP allow list to your cluster.
+Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an [IP allow list](../../../cloud-secure-clusters/add-connections/) to your cluster.
 
 ## Get started
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
-    title="Set up PrivateLink on AWS"
+    title="Set up an AWS PrivateLink"
     description="Add PSEs to your cluster and create interface endpoints on your application VPC in AWS."
     buttonText="Setup Guide"
     buttonUrl="../managed-endpoint-aws/"
   >}}
 
   {{< sections/bottom-image-box
-    title="Set up Private Link on Azure"
+    title="Set up an Azure Private Link"
     description="Add a PSE to your cluster and create a private endpoint on your application VNet in Azure."
     buttonText="Setup Guide"
     buttonUrl="../managed-endpoint-azure/"
