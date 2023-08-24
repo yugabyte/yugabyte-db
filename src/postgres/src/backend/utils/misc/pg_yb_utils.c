@@ -772,8 +772,7 @@ YBInitPostgresBackend(
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
-		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
-		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
