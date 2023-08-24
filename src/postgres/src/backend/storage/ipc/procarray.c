@@ -2827,9 +2827,9 @@ void freeLinkedList(PgProcAuhNode *head) {
 PgProcAuhNode* pg_collect_samples_proc()
 {
 	ProcArrayStruct *arrayP = procArray;
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
 	PgProcAuhNode *head = NULL;
-	for (int i = 0; i < procArray->numProcs; i++)
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+	for (int i = 0; i < arrayP->numProcs; i++)
 	{
 		int	pgprocno = arrayP->pgprocnos[i];
 		PGPROC *proc  = &allProcs[pgprocno];
