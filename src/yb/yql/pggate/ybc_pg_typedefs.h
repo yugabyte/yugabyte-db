@@ -366,6 +366,7 @@ typedef struct PgCallbacks {
   void (*SignalWaitEnd)();
   void (*ProcSetTopLevelNodeId)(const uint64_t*);
   void (*ProcSetTopLevelRequestId)(const uint64_t*);
+  void (*ProcSetAuxInfo)(const char*);
   /* yb_type.c */
   int64_t (*PostgresEpochToUnixEpoch)(int64_t);
   int64_t (*UnixEpochToPostgresEpoch)(int64_t);

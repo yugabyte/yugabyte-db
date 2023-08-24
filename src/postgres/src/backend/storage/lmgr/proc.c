@@ -444,6 +444,7 @@ InitProcess(void)
 	MyProc->client_node_port = 0;
 	MyProc->top_level_node_id[0] = '\0';
 	MyProc->top_level_request_id[0] = '\0';
+	MyProc->aux_info[0] = '\0';
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -593,6 +594,7 @@ InitAuxiliaryProcess(void)
 	MyProc->client_node_port = 0;
 	MyProc->top_level_node_id[0] = '\0';
 	MyProc->top_level_request_id[0] = '\0';
+	MyProc->aux_info[0] = '\0';
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;

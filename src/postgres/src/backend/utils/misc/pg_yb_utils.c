@@ -662,6 +662,7 @@ YBInitPostgresBackend(
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
 		callbacks.ProcSetTopLevelNodeId = &ProcSetTopLevelNodeId;
 		callbacks.ProcSetTopLevelRequestId = &ProcSetTopLevelRequestId;
+		callbacks.ProcSetAuxInfo = &ProcSetAuxInfo;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
 		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
@@ -3586,6 +3587,14 @@ void ProcSetTopLevelRequestId(const uint64_t *top_level_request_id)
 {
 	MyProc->top_level_request_id[0] = top_level_request_id[0];
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
+}
+
+void ProcSetAuxInfo(const char* table_id)
+{
+	int len = Min(strlen(table_id) + 1, 15);
+	// copy the last 15 bytes because the prefix seems to be the same for system tables
+	memcpy(MyProc->aux_info, table_id + strlen(table_id) - len, len);
+	MyProc->aux_info[len] = '\0';
 }
 
 void uint128_to_char(const uint64_t uint_id[2], char *char_id)

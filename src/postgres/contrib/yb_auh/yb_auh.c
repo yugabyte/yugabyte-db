@@ -186,7 +186,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
     PGPROC *proc = &ProcGlobal->allProcs[i];
     if (proc != NULL && proc->pid != 0 && (random() < sample_rate * MAX_RANDOM_VALUE)){
       auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
-                      proc->wait_event_info, "", proc->top_level_node_id,
+                      proc->wait_event_info, proc->aux_info, proc->top_level_node_id,
                       proc->client_node_host, proc->client_node_port,
                       proc->queryid, auh_sample_time, sample_rate);
     }

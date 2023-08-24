@@ -812,10 +812,12 @@ Status PgApiImpl::CancelTransaction(const unsigned char* transaction_id) {
 }
 
 Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   return pg_session_->LoadTable(table_id);
 }
 
 void PgApiImpl::InvalidateTableCache(const PgObjectId& table_id) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   pg_session_->InvalidateTableCache(table_id, InvalidateOnPgClient::kTrue);
 }
 
@@ -878,6 +880,7 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_matview,
                                  const PgObjectId& matview_pg_table_oid,
                                  PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
@@ -931,6 +934,7 @@ Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
 
 Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
@@ -993,6 +997,7 @@ Status PgApiImpl::AlterTableIncrementSchemaVersion(PgStatement *handle) {
 }
 
 Status PgApiImpl::AlterTableSetTableId(PgStatement *handle, const PgObjectId &table_id) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
@@ -1015,6 +1020,7 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   auto stmt = std::make_unique<PgDropTable>(pg_session_, table_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1022,6 +1028,7 @@ Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
 
 Status PgApiImpl::NewTruncateTable(const PgObjectId& table_id,
                                    PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   auto stmt = std::make_unique<PgTruncateTable>(pg_session_, table_id);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1037,6 +1044,7 @@ Status PgApiImpl::ExecTruncateTable(PgStatement *handle) {
 
 Status PgApiImpl::GetTableDesc(const PgObjectId& table_id,
                                PgTableDesc **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   // First read from memory context.
   size_t hash_id = hash_value(table_id);
   RETURN_NOT_OK(GetTabledescFromCurrentPgMemctx(hash_id, handle));
@@ -1116,6 +1124,7 @@ Status PgApiImpl::SetCatalogCacheVersion(
 }
 
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
+  pg_callbacks_.ProcSetAuxInfo(table_oid.GetYbTableId().c_str());
   return pg_session_->GetTableDiskSize(table_oid);
 }
 
@@ -1135,6 +1144,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(base_table_id.GetYbTableId().c_str());
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
@@ -1225,6 +1235,7 @@ Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t versi
 }
 
 Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
   return pg_session_->pg_client().BackfillIndex(
@@ -1362,6 +1373,7 @@ Status PgApiImpl::NewInsert(const PgObjectId& table_id,
                             bool is_single_row_txn,
                             bool is_region_local,
                             PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   *handle = nullptr;
   auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
@@ -1411,6 +1423,7 @@ Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
                             bool is_single_row_txn,
                             bool is_region_local,
                             PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   *handle = nullptr;
   auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
@@ -1432,6 +1445,7 @@ Status PgApiImpl::NewDelete(const PgObjectId& table_id,
                             bool is_single_row_txn,
                             bool is_region_local,
                             PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   *handle = nullptr;
   auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn, is_region_local);
   RETURN_NOT_OK(stmt->Prepare());
@@ -1451,6 +1465,7 @@ Status PgApiImpl::NewSample(const PgObjectId& table_id,
                             int targrows,
                             bool is_region_local,
                             PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   *handle = nullptr;
   auto sample = std::make_unique<PgSample>(pg_session_, targrows, table_id, is_region_local);
   RETURN_NOT_OK(sample->Prepare());
@@ -1509,6 +1524,7 @@ Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
                                        bool is_single_row_txn,
                                        bool is_region_local,
                                        PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   *handle = nullptr;
   auto stmt = std::make_unique<PgTruncateColocated>(
       pg_session_, table_id, is_single_row_txn, is_region_local);
@@ -1532,6 +1548,7 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
                             const PgPrepareParameters *prepare_params,
                             bool is_region_local,
                             PgStatement **handle) {
+  pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
   // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
@@ -2044,6 +2061,7 @@ void PgApiImpl::RegisterSysTableForPrefetching(
   if (!pg_sys_table_prefetcher_) {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
+    pg_callbacks_.ProcSetAuxInfo(table_id.GetYbTableId().c_str());
     pg_sys_table_prefetcher_->Register(table_id, index_id, row_oid_filtering_attr);
   }
 }

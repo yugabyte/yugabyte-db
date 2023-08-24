@@ -908,6 +908,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
 
 void ProcSetTopLevelNodeId(const uint64_t*);
 void ProcSetTopLevelRequestId(const uint64_t*);
+void ProcSetAuxInfo(const char*);
 
 void uint128_to_char(const uint64_t uint_id[2], char *char_id);
 
