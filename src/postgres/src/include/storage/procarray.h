@@ -107,7 +107,7 @@ extern VirtualTransactionId *GetConflictingVirtualXIDs(TransactionId limitXmin, 
 extern pid_t CancelVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode);
 
 extern bool MinimumActiveBackends(int min);
-extern PGProcAUHEntryList proc_getter(PGPROC *proc, int numprocs);
+extern PGProcAUHEntryList proc_getter(volatile PGPROC *proc, int numprocs);
 extern void insertNode(PgProcAuhNode **head, PGProcAUHEntryList data); 
 extern void freeLinkedList(PgProcAuhNode *head);
 extern PgProcAuhNode* pg_collect_samples_proc(void);

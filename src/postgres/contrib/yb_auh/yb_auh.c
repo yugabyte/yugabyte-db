@@ -176,7 +176,6 @@ yb_auh_main(Datum main_arg) {
 
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
-  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   PgProcAuhNode *nodes_head = pg_collect_samples_proc();
   PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
@@ -198,8 +197,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
     
     current = current->next;
   }
-  freeLinkedList(nodes_head);
-  LWLockRelease(auh_entry_array_lock);  
+  freeLinkedList(nodes_head); 
 }
 
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
@@ -208,7 +206,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   YBCAUHDescriptor *rpcs = NULL;
   size_t numrpcs = 0;
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
-  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   float8 sample_rate= 0;
   if(numrpcs != 0)
     sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
@@ -221,7 +218,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
   }
-  LWLockRelease(auh_entry_array_lock);
 }
 
 void
@@ -300,6 +296,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate)
 {
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int inserted;
   if (!AUHEntryArray) { return; }
 
@@ -343,6 +340,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
+  LWLockRelease(auh_entry_array_lock); 
 }
 
 static void

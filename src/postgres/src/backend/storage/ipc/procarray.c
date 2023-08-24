@@ -272,13 +272,14 @@ CreateSharedProcArray(void)
 }
 
 
-PGProcAUHEntryList proc_getter(PGPROC *proc, int numprocs)
+PGProcAUHEntryList proc_getter(volatile PGPROC *proc, int numprocs)
 {
 	PGProcAUHEntryList procEntry;
-	for (int i = 0; i < 2; i++) 
+	int index = 0;
+	for (index = 0; index < 2; index++) 
 	{
-        procEntry.top_level_request_id[i] = proc->top_level_request_id[i];
-        procEntry.top_level_node_id[i] = proc->top_level_node_id[i];
+        procEntry.top_level_request_id[index] = proc->top_level_request_id[index];
+        procEntry.top_level_node_id[index] = proc->top_level_node_id[index];
     }
 	procEntry.wait_event_info = proc->wait_event_info;
 	procEntry.client_node_host = proc->client_node_host;
@@ -2828,12 +2829,13 @@ PgProcAuhNode* pg_collect_samples_proc()
 {
 	ProcArrayStruct *arrayP = procArray;
 	PgProcAuhNode *head = NULL;
+	int			index;
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
-	for (int i = 0; i < arrayP->numProcs; i++)
+	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		volatile int pgprocno = arrayP->pgprocnos[i];
-		PGPROC *proc  = &allProcs[pgprocno];
-		if(proc != NULL && proc->pid != 0 && proc->wait_event_info!=0)
+		int 		pgprocno = arrayP->pgprocnos[index];
+		volatile PGPROC *proc  = &allProcs[pgprocno];
+		if(proc != NULL && proc->pid != 0 && proc->wait_event_info != 0)
 		{
 			PGProcAUHEntryList entry = proc_getter(proc, procArray->numProcs);
 			insertNode(&head, entry);
