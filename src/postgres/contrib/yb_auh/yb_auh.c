@@ -90,8 +90,8 @@ static void auh_entry_store(TimestampTz auh_time,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate);
-static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs);
-static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs);
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -174,7 +174,7 @@ yb_auh_main(Datum main_arg) {
   proc_exit(0);
 }
 
-static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs)
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   PgProcAuhNode *nodes_head = pg_collect_samples_proc();
@@ -184,7 +184,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
     int procCount = proc.numprocs;
     float8 sample_rate = 0;
     if (procCount != 0) {
-        sample_rate = (float)Min(sample_size_procs, procCount) / procCount;
+        sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
     }
     if (random() < sample_rate * MAX_RANDOM_VALUE) {
         auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
@@ -199,7 +199,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_p
   LWLockRelease(auh_entry_array_lock);  
 }
 
-static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs)
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
 {
   //TODO:
   YBCAUHDescriptor *rpcs = NULL;
@@ -208,7 +208,7 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_s
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   float8 sample_rate= 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(sample_size_rpcs, numrpcs)/numrpcs;  
+    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
