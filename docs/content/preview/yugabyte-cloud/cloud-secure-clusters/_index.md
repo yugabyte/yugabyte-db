@@ -80,7 +80,7 @@ YugabyteDB Managed clusters include the following security features:
         <div class="title">Encryption at rest</div>
       </div>
       <div class="body">
-        Use YugabyteDB encryption at rest to encrypt your clusters.
+        Use your own customer managed key to encrypt your clusters.
       </div>
     </a>
   </div>
