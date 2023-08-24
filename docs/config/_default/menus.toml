@@ -524,10 +524,18 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Releases"
+  name = "YugabyteDB Releases"
   weight = 3
   identifier = "releases"
   url = "/preview/releases/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "End of life"
+  parent = "releases"
+  weight = 9999
+  identifier = "end-of-life"
   [preview_releases.params]
     showSection = true
 
