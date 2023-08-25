@@ -4389,10 +4389,6 @@ static Node *make_qual(cypher_parsestate *cpstate,
         char *entity_name;
         ColumnRef *cr = makeNode(ColumnRef);
 
-        // cast graphid to agtype
-        qualified_name = list_make2(makeString("ag_catalog"),
-                                    makeString("graphid_to_agtype"));
-
         if (entity->type == ENT_EDGE)
         {
             entity_name = entity->entity.node->name;
