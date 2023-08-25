@@ -1609,7 +1609,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateSchemaStmt:
 		case T_CreateStatsStmt:
 		case T_CreateSubscriptionStmt:
-		case T_CreateTableAsStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
 		case T_CreateUserMappingStmt:
@@ -1685,6 +1684,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				break;
 			}
 
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+		}
+		/*
+		 * Create Table As Select need not include the same checks as Create Table as complex tables
+		 * (eg: partitions) cannot be created using this statement.
+		*/
+		case T_CreateTableAsStmt:
+		{
+			/*
+			 * Simple add objects are not breaking changes, and they do not even require
+			 * a version increment because we do not do any negative caching for them.
+			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
 			break;
