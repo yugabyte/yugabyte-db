@@ -1134,8 +1134,11 @@ void TabletServer::InvalidatePgTableCache() {
 }
 
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  LOG(INFO)<<"Sid: (Tserver) Called the TabletServer::SetupMessengerBuilder";
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
+  LOG(INFO) <<"Sid: (Tserver) Calling server::SetupInternalSecureContext";
+  LOG(INFO) <<"Sid: (Tserver) Local hosts param value: "<<options_.HostsString();
   secure_context_ = VERIFY_RESULT(
       server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
 

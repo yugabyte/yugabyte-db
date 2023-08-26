@@ -541,6 +541,7 @@ Status SecureContext::Impl::AddCertificateAuthorityFileUnlocked(const std::strin
                         SSLErrorMessage(ERR_get_error()),
                         file.c_str());
   }
+  LOG(INFO)<<"Sid: CA cert file succesfully added.";
 
   return Status::OK();
 }
@@ -579,7 +580,7 @@ Status SecureContext::Impl::UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKE
 
   certificate_ = std::move(certificate);
   pkey_ = std::move(pkey);
-
+  LOG(INFO)<< "Sid: Added node cert & key succesfully";
   return Status::OK();
 }
 

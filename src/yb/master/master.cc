@@ -672,8 +672,11 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
 }
 
 Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  LOG(INFO)<<"Sid: (Master) Called the Master::SetupMessengerBuilder";
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
+  LOG(INFO) <<"Sid: (Master) Calling server::SetupInternalSecureContext";
+  LOG(INFO) <<"Sid: (Master) Local hosts param value: "<<options_.HostsString();
   secure_context_ = VERIFY_RESULT(
       server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
 

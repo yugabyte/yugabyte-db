@@ -33,7 +33,7 @@ class SecureContext;
 
 namespace server {
 
-YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
+YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal)(kCDC));
 
 std::string DefaultCertsDir(const FsManager& fs_manager);
 

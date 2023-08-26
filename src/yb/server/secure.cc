@@ -56,6 +56,11 @@ DEFINE_UNKNOWN_string(cert_node_filename, "",
               "If this flag is not set, then --server_broadcast_addresses will be "
               "used if it is set, and if not, --rpc_bind_addresses will be used.");
 
+DEFINE_UNKNOWN_string(cdc_certs_dir, "", "Directory that contains certificate authority, "
+              "private key and certificates for this cdc-master-server/cdc-tserver-server that "
+              "should be used for client to server communications."
+              "When empty, the same dir as for server to server " "communications is used.");
+
 DEFINE_UNKNOWN_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
 
 DEFINE_UNKNOWN_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
@@ -70,10 +75,15 @@ namespace {
 
 string CertsDir(const std::string& root_dir, SecureContextType type) {
   string certs_dir;
+  if(type == SecureContextType::kCDC) {
+    LOG(INFO) <<"Sid: FLAGS_cdc_certs_dir" << FLAGS_cdc_certs_dir;
+    certs_dir = FLAGS_cdc_certs_dir;
+  }
   if (type == SecureContextType::kExternal) {
     certs_dir = FLAGS_certs_for_client_dir;
   }
   if (certs_dir.empty()) {
+    LOG(INFO) << "Sid: Value of FLAGS_certs_dir: "<<FLAGS_certs_dir;
     certs_dir = FLAGS_certs_dir;
   }
   if (certs_dir.empty()) {
@@ -99,6 +109,7 @@ string DefaultCertsDir(const FsManager& fs_manager) {
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& hosts, const FsManager& fs_manager, SecureContextType type,
     rpc::MessengerBuilder* builder) {
+      LOG(INFO) <<"Sid: hosts: "<<hosts<<" Called SetupSecureContext";
   std::vector<HostPort> host_ports;
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
@@ -115,13 +126,19 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
 Result<std::unique_ptr<rpc::SecureContext>> SetupInternalSecureContext(
     const string& local_hosts, const FsManager& fs_manager,
     rpc::MessengerBuilder* messenger_builder) {
+      LOG(INFO) <<"Sid: local_hosts:"<<local_hosts<<" Called SetupInternalSecureContext";
+      
   if (!FLAGS_cert_node_filename.empty()) {
+    LOG(INFO) <<"Sid: Local_hosts: "<<local_hosts<<" FLAGS_cert_node_filename: " << FLAGS_cert_node_filename;
+    LOG(INFO)<<"Sid: Local_hosts: "<<local_hosts<<" fs_manager.GetDefaultRootDir(): "<< fs_manager.GetDefaultRootDir();
     return VERIFY_RESULT(server::SetupSecureContext(
         fs_manager.GetDefaultRootDir(),
         FLAGS_cert_node_filename,
         server::SecureContextType::kInternal,
         messenger_builder));
   }
+
+  LOG(INFO) <<"Sid: Local_hosts: "<<local_hosts<<" FLAGS_cert_node_filename is empty";
 
   return VERIFY_RESULT(server::SetupSecureContext(
       local_hosts, fs_manager, server::SecureContextType::kInternal, messenger_builder));
@@ -144,6 +161,8 @@ void ApplyCompressedStream(
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, rpc::MessengerBuilder* builder) {
+      LOG(INFO)<<"Sid: Called SetupSecureContext";
+      LOG(INFO)<<"Sid: Params values: cert_dir: "<<cert_dir<<" root_dir: "<<root_dir<<" name: "<<name<<" type: "<<type;
   auto use = type == SecureContextType::kInternal ? FLAGS_use_node_to_node_encryption
                                                   : FLAGS_use_client_to_server_encryption;
   LOG(INFO) << __func__ << ": " << type << ", " << use;
@@ -153,6 +172,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   }
 
   std::string dir = cert_dir.empty() ? CertsDir(root_dir, type) : cert_dir;
+  LOG(INFO)<<"Sid: dir: "<<dir;
 
   UseClientCerts use_client_certs = UseClientCerts::kFalse;
   std::string required_uid;
@@ -168,6 +188,8 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
     const std::string& certs_dir, UseClientCerts use_client_certs, const std::string& node_name,
     const std::string& required_uid) {
+      LOG(INFO)<<"Sid: Called CreateSecureContext with params: 1. "<<certs_dir<<" 2."<<use_client_certs<<" 3."<<node_name<<" 4."<<required_uid;;
+
 
   auto result = std::make_unique<rpc::SecureContext>(
       rpc::RequireClientCertificate(use_client_certs), rpc::UseClientCertificate(use_client_certs),
@@ -201,10 +223,11 @@ Status ReloadSecureContextKeysAndCertificates(
 
 Status ReloadSecureContextKeysAndCertificates(
     rpc::SecureContext* context, const std::string& certs_dir, const std::string& node_name) {
-
+    LOG(INFO) << "Sid: Called ReloadSecureContextKeysAndCertificates";
   LOG(INFO) << "Certs directory: " << certs_dir << ", node name: " << node_name;
 
   auto ca_cert_file = JoinPathSegments(certs_dir, "ca.crt");
+  LOG(INFO)<<"Sid: ca_cert_file: "<<ca_cert_file;
   if (!node_name.empty()) {
     faststring cert_data, pkey_data;
     RETURN_NOT_OK(ReadFileToString(
@@ -214,6 +237,7 @@ Status ReloadSecureContextKeysAndCertificates(
         Env::Default(), JoinPathSegments(certs_dir, Format(FLAGS_key_file_pattern, node_name)),
         &pkey_data));
 
+    LOG(INFO) <<"Sid: cert_data: "<<cert_data<<" key: "<<pkey_data;
     RETURN_NOT_OK(context->UseCertificates(ca_cert_file, cert_data, pkey_data));
   } else {
     RETURN_NOT_OK(context->AddCertificateAuthorityFile(ca_cert_file));

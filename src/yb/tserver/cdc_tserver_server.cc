@@ -45,6 +45,8 @@
 #include "yb/tserver/cdc_tserver_service.h"
 #include "yb/tserver/tablet_server.h"
 
+DECLARE_string(cdc_certs);
+
 namespace yb {
 namespace cdcserver {
 
@@ -81,7 +83,7 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
 // TODO: Verify params passed to to RpcServerBase (metrics, mem_tracker)
 CDCTServerServer::CDCTServerServer(tserver::TabletServer* tserver, const CDCServerOptions& opts)
-    : RpcServerBase(
+    : RpcAndWebServerBase(
           "CDCTServerServer", opts, "yb.cdctserverserver",
           MemTracker::CreateTracker(
               "CDC_TServer", MemTracker::GetRootTracker(), AddToParent::kTrue,
@@ -95,9 +97,9 @@ CDCTServerServer::CDCTServerServer(tserver::TabletServer* tserver, const CDCServ
 }
 
 Status CDCTServerServer::Start() {
-  RETURN_NOT_OK(server::RpcServerBase::Init());
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(server::RpcServerBase::Start());
+  RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 
   return Status::OK();
 }
@@ -112,7 +114,35 @@ Status CDCTServerServer::RegisterServices() {
   return Status::OK();
 }
 
-void CDCTServerServer::Shutdown() { server::RpcServerBase::Shutdown(); }
+void CDCTServerServer::Shutdown() { server::RpcAndWebServerBase::Shutdown(); }
+
+Status CDCTServerServer::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(),
+      fs_manager_->GetDefaultRootDir(),
+      server::SecureContextType::kCDC,
+      options_.HostsString());
+}
+
+Status CDCTServerServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  LOG(INFO) <<"Sid: Called CDCTServerServer::SetupMessengerBuilder";
+  RETURN_NOT_OK(server::RpcAndWebServerBase::SetupMessengerBuilder(builder));
+  if(!FLAGS_cert_node_filename.empty()) {
+      secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        fs_manager_->GetDefaultRootDir(),
+        FLAGS_cert_node_filename,
+        server::SecureContextType::kCDC,
+        builder));
+  } else {
+    secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+        options_.HostsString(), *fs_manager_, server::SecureContextType::kCDC, builder));
+  }
+  return Status::OK();
+}
 
 }  // namespace cdcserver
 }  // namespace yb

@@ -54,7 +54,7 @@ namespace yb {
 
 namespace cdcserver {
 
-class CDCTServerServer : public server::RpcServerBase {
+class CDCTServerServer : public server::RpcAndWebServerBase {
  public:
   static const uint16_t kDefaultPort = 9200;
   static const uint16_t kDefaultWebPort = 12000;
@@ -64,10 +64,13 @@ class CDCTServerServer : public server::RpcServerBase {
   Status Start() override;
   Status RegisterServices();
   void Shutdown() override;
+  Status ReloadKeysAndCertificates() override;
 
  private:
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
   CDCServerOptions opts_;
   tserver::TabletServer* tserver_;
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 };
 
 }  // namespace cdcserver
