@@ -52,7 +52,7 @@ public class UniversePerfController extends AuthenticatedController {
       response = QueryDistributionSuggestionResponse.class)
   public Result getQueryDistributionSuggestions(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         universePerfHandler.universeQueryDistributionSuggestion(universe));
   }
@@ -71,7 +71,7 @@ public class UniversePerfController extends AuthenticatedController {
       response = HashedTimestampColumnFinderResponse.class)
   public Result getRangeHash(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<HashedTimestampColumnFinderResponse> result =
         hashedTimestampColumnFinder.getHashedTimestampColumns(universe);
@@ -93,7 +93,7 @@ public class UniversePerfController extends AuthenticatedController {
       response = UnusedIndexFinderResponse.class)
   public Result getUnusedIndexes(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<UnusedIndexFinderResponse> result = unusedIndexFinder.getUniverseUnusedIndexes(universe);
 

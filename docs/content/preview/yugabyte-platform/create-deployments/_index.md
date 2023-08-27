@@ -8,11 +8,13 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: create-deployments
-    weight: 643
+    weight: 620
 type: indexpage
 ---
 
-YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance.
+YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, and so on, provided by IaaS), logically grouped together to form one distributed database.
+
+A universe includes one primary cluster and, optionally, one read replica cluster. All instances belonging to a cluster run on the same type of cloud provider instance.
 
 <div class="row">
 
@@ -90,4 +92,15 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
     </a>
   </div>
 
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="dedicated-master">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Place YB-Masters on dedicated nodes</div>
+      </div>
+      <div class="body">
+        Create a universe with YB-Master and YB-TServer processes on dedicated nodes.
+      </div>
+    </a>
+  </div>
 </div>

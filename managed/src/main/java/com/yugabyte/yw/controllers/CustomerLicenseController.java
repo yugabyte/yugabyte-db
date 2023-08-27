@@ -4,11 +4,13 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerLicenseManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CustomerLicenseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerLicense;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -34,6 +36,8 @@ public class CustomerLicenseController extends AuthenticatedController {
 
   @Inject CustomerLicenseManager cLicenseManager;
 
+  @Inject FileHelperService fileHelperService;
+
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseController.class);
 
   @ApiOperation(
@@ -41,6 +45,7 @@ public class CustomerLicenseController extends AuthenticatedController {
       value = "Uploads the license",
       response = CustomerLicense.class)
   public Result upload(UUID customerUUID, Http.Request request) throws IOException {
+    Customer.getOrBadRequest(customerUUID);
     CustomerLicenseFormData formData =
         formFactory.getFormDataOrBadRequest(request, CustomerLicenseFormData.class).get();
 
@@ -70,7 +75,7 @@ public class CustomerLicenseController extends AuthenticatedController {
     } else if (licenseContent != null && !licenseContent.isEmpty()) {
       String fileName = licenseType + ".txt";
       // Create temp file and fill with content
-      Path tempFile = Files.createTempFile(UUID.randomUUID().toString(), ".txt");
+      Path tempFile = fileHelperService.createTempFile(UUID.randomUUID().toString(), ".txt");
       Files.write(tempFile, licenseContent.getBytes());
 
       // Upload temp file to upload the license and return success/failure
@@ -94,6 +99,7 @@ public class CustomerLicenseController extends AuthenticatedController {
 
   @ApiOperation(value = "Delete a license", response = YBPSuccess.class, nickname = "deleteLicense")
   public Result delete(UUID customerUUID, UUID licenseUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     cLicenseManager.delete(customerUUID, licenseUUID);
     auditService()
         .createAuditEntry(

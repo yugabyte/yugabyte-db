@@ -20,13 +20,14 @@ type Schedule_List_Reponse = {
   totalCount: number;
 };
 
-export const getScheduledBackupList = (pageno: number) => {
+export const getScheduledBackupList = (pageno: number, universeUUID: string) => {
   const cUUID = localStorage.getItem('customerId');
   const records_to_fetch = 500;
   const params = {
     direction: 'ASC',
     filter: {
-      taskTypes: ['BackupUniverse', 'MultiTableBackup', 'CreateBackup']
+      taskTypes: ['BackupUniverse', 'MultiTableBackup', 'CreateBackup'],
+      universeUUIDList: [universeUUID]
     },
     limit: records_to_fetch,
     offset: pageno * records_to_fetch,
@@ -52,7 +53,7 @@ export const editBackupSchedule = (
 
 export const createBackupSchedule = (values: Record<string, any>) => {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/create_backup_schedule`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/create_backup_schedule_async`;
 
   const payload = prepareBackupCreationPayload(values, cUUID);
 

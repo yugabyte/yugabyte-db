@@ -29,19 +29,20 @@ PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 CONFIG_FILE_FOLDER:=$(CURDIR)/config/templates
 CRONTAB_SCRIPT_FOLDER:=$(CURDIR)/config/cron
 CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-ctl.yml.reference
+CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
-# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-04-04-02-48
-PG_BINARY_NAME ?= postgres-linux-14.6.tar.gz
-PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.6.tar.gz
+# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-08-010-02-48
+PG_BINARY_NAME ?= postgres-linux-14.8.tar.gz
+PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.8.tar.gz
 
 # https://adoptium.net/temurin/releases/
-JDK_BINARY_NAME ?= OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u362-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
+JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.7%2B7/OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
 # Package stable ybdb release in yba-installer.
 # Currently disabled.
 YBDB_BINARY_NAME ?= yugabyte-2.17.2.0-b216-linux-x86_64.tar.gz
@@ -73,11 +74,11 @@ ${PREREQS_DIR}/${YBDB_BINARY_NAME}:
 	curl -Lo $@ ${YBDB_BINARY_URL}
 	@echo downloaded $@
 
-yba-ctl: test ${BIN_DIR}/${BIN_NAME}
+yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl.Version=${VERSION}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl.BuildID=${BUILD_ID}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}'"
 
 
 package: ${PACKAGE_NAME}
@@ -104,3 +105,7 @@ clean-package:
 
 .PHONY: test
 test:
+
+.PHONY: config
+config:
+	cp ${CONFIG_INPUT_FILE_NAME} ${CONFIG_EMBEDED_NAME}

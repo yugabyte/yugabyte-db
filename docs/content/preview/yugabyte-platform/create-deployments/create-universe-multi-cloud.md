@@ -48,7 +48,7 @@ Note the following:
 
 You need to set up multi-cloud VPC peering through a VPN tunnel.
 
-YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations, which you set up in the previous section.
+YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../../yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations, which you set up in the previous section.
 
 You should use non-overlapping Classless Inter-Domain Routing (CIDR) blocks for each subnet across different clouds.
 
@@ -78,7 +78,7 @@ You need to navigate to **Configs > On-Premises Datacenters**, click **Add Confi
   ssh-keygen -m PEM -t rsa -b 2048 -f test_id_rsa
     ```
 
-* **Air Gap Install** should only be enabled if your nodes do not have the Internet connectivity.<br>
+* **Air Gap Install** should only be enabled if your nodes do not have the Internet connectivity.
 
   ![caption](/images/ee/multi-cloud-provider-info.png)
 
@@ -100,7 +100,7 @@ Click **Finish** to create your cloud provider. Once fully configured, the provi
 
 ### Provision instances
 
-Once you have defined your cloud provider configuration, click **Manage Instances** to provision as many nodes as your application requires. Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-yugabytedb-nodes).
+After you have defined your cloud provider configuration, click **Manage Instances** to provision as many nodes as your application requires. Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-yugabytedb-nodes).
 
 The provider's instance list should be similar to the following:
 
@@ -112,11 +112,11 @@ You can create a multi-region universe as follows:
 
 1. Navigate to **Dashboard** or **Universes** and click **Create Universe**.
 
-1. Complete the **Primary Cluster** fields, as shown in the following illustration:<br>
+1. Complete the **Primary Cluster** fields, as shown in the following illustration:
 
-    ![New universe details](/images/ee/multi-cloud-create-universe.png)
+    ![New universe details](/images/ee/multi-cloud-create-universe1.png)
 
-1. Enter the universe name: `multi-cloud-demo-6node`
+1. Enter the universe name: `helloworld2`
 
 1. Enter the set of regions: `us-aws-west-2`, `us-azu-east-1`, `us-centra1-b`
 
@@ -124,10 +124,11 @@ You can create a multi-region universe as follows:
 
 1. Add the following flags for Master and T-Server:
 
-    * `leader_failure_max_missed_heartbeat_periods=10` - Since the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
-
+    * `leader_failure_max_missed_heartbeat_periods=10` - As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
     * `use_cassandra_authentication=true` - Deployments on public clouds require security.
     * `ysql_enable_auth=true` - Deployments on public clouds require security.
+
+    ![New universe flags details](/images/ee/multi-cloud-create-universe2.png)
 
 1. Click **Create**.
 

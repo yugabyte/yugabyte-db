@@ -5,10 +5,6 @@ linkTitle: Integrations
 description: Integrate popular third party tools with YugabyteDB, including Presto, Prisma, Sequelize, Spring, Flyway, Django, Hasura, Kafka.
 headcontent: Use YugabyteDB with popular third-party integrations
 image: /images/section_icons/develop/api-icon.png
-aliases:
-  - /develop/client-drivers/
-  - /preview/develop/client-drivers/
-  - /preview/quick-start/build-apps/
 type: indexpage
 ---
 
@@ -33,6 +29,18 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
       Apache Atlas
     </a>
   </li>
+  <li>
+    <a href="apache-beam/">
+      <img src="/images/section_icons/develop/ecosystem/beam.png">
+      Apache Beam
+    </a>
+  </li>
+  <li>
+    <a href="apache-flink/">
+      <img src="/images/section_icons/develop/ecosystem/apache-flink.png">
+      Apache Flink
+    </a>
+  </li>
 
   <li>
     <a href="apache-kafka/">
@@ -49,9 +57,37 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="ataccama/">
+      <img src="/images/section_icons/develop/ecosystem/ataccama.png">
+      Ataccama DQ Analyzer
+    </a>
+  </li>
+
+  <li>
+    <a href="atomicjar/">
+      <img src="/images/section_icons/develop/ecosystem/atomicjar-icon.png">
+      AtomicJar Testcontainers
+    </a>
+  </li>
+
+  <li>
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
+    </a>
+  </li>
+
+   <li>
+    <a href="datahub/">
+      <img src="/images/section_icons/develop/ecosystem/datahub.png">
+      Datahub
+    </a>
+  </li>
+
+  <li>
+    <a href="dataedo/">
+      <img src="/images/section_icons/develop/ecosystem/dataedo.png">
+      Dataedo
     </a>
   </li>
 
@@ -84,9 +120,22 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="hashicorp-vault/">
+      <img src="/images/section_icons/develop/ecosystem/hashicorp-vault.png">
+      Hashicorp Vault
+    </a>
+  </li>
+  <li>
     <a href="hasura/">
       <img src="/images/section_icons/develop/ecosystem/hasura.png">
       Hasura
+    </a>
+  </li>
+
+   <li>
+    <a href="hevodata/">
+      <img src="/images/section_icons/develop/ecosystem/hevodata.png">
+      Hevo Data
     </a>
   </li>
 
@@ -111,6 +160,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="kinesis/">
+      <img src="/images/section_icons/develop/ecosystem/kinesis.png">
+      Kinesis Data Streams
+    </a>
+  </li>
+
+  <li>
     <a href="liquibase/">
       <img src="/images/section_icons/develop/ecosystem/liquibase.png">
       Liquibase
@@ -124,10 +180,23 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+  <li>
+    <a href="metacat/">
+      <img src="/images/section_icons/develop/ecosystem/metabase.png">
+      Metacat
+    </a>
+  </li>
+
    <li>
     <a href="mirantis/">
       <img src="/images/section_icons/develop/ecosystem/mirantis.png">
       Mirantis MKE
+    </a>
+  </li>
+   <li>
+    <a href="pgmigrate/">
+      <img src="/images/section_icons/develop/ecosystem/pgmigrate.png">
+      PGmigrate
     </a>
   </li>
   <li>
@@ -141,6 +210,19 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="prisma/">
       <img src="/images/develop/graphql/prisma/prisma.png">
       Prisma
+    </a>
+  </li>
+
+  <li>
+    <a href="rabbitmq/">
+      <img src="/images/section_icons/develop/ecosystem/rabbitmq.png">
+      RabbitMQ
+    </a>
+  </li>
+
+  <li>
+    <a href="schema-evolution-mgr/">
+      Schema Evolution Manager
     </a>
   </li>
 
@@ -183,6 +265,33 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="ysql-loader/">
       <i class="icon-postgres"></i>
       YSQL Loader
+    </a>
+  </li>
+
+</ul>
+
+### Development platforms
+
+<ul class="nav yb-pills">
+
+  <li>
+    <a href="caspio/">
+      <img src="/images/section_icons/develop/ecosystem/caspio.png">
+      Caspio
+    </a>
+  </li>
+
+  <li>
+    <a href="retool/">
+      <img src="/images/section_icons/develop/ecosystem/retool.png">
+      Retool
+    </a>
+  </li>
+
+  <li>
+    <a href="superblocks/">
+      <img src="/images/section_icons/develop/ecosystem/superblocks.png">
+      Superblocks
     </a>
   </li>
 

@@ -148,7 +148,7 @@ components:
       - source: public
         image_name: postgres
         name: postgres
-        version: 14.7
+        version: 14.8
         env_vars:
           - name: POSTGRES_DB
             static_val: "yugaware"
@@ -226,7 +226,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.42.0
+        version: v2.46.0
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
@@ -297,6 +297,13 @@ components:
                     - targets: [
                       '{{repl ConfigOption "docker_gateway" }}:{{repl if ConfigOptionEquals "https_enabled" "1"}}9543{{repl else}}9100{{repl end}}'
                     ]
+
+                - job_name: 'node-agent'
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
+                  metrics_path: "/metrics"
+                  file_sd_configs:
+                    - files:
+                      - '/opt/yugabyte/prometheus/targets/node-agent.*.json'
 
                 - job_name: "node"
                   file_sd_configs:
@@ -440,17 +447,6 @@ components:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
             container_path: /prometheus_configs
         env_vars:
-          - name: JAVA_OPTS
-            static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m {{repl if ConfigOptionEquals "enable_proxy" "1"}} -Dhttp.nonProxyHost={{repl ConfigOption "java_non_proxy"}} -Dhttp.proxyHost={{repl ConfigOption "java_http_proxy_host"}} -Dhttp.proxyPort={{repl ConfigOption "java_http_proxy_port"}} -Dhttps.proxyHost={{repl ConfigOption "java_https_proxy_host"}} -Dhttps.proxyPort={{repl ConfigOption "java_https_proxy_port"}}{{repl end}}'
-          - name: HTTP_PROXY
-            value: '{{repl ConfigOption "http_proxy"}}'
-            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
-          - name: HTTPS_PROXY
-            value: '{{repl ConfigOption "https_proxy"}}'
-            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
-          - name: NO_PROXY
-            value: '{{repl ConfigOption "no_proxy"}}'
-            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
           - name: http_proxy
             value: '{{repl ConfigOption "http_proxy"}}'
             when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
@@ -712,51 +708,21 @@ config:
         default: '{{repl ConsoleSetting "http.proxy.enabled"}}'
       - name: http_proxy
         title: HTTP Proxy setting
-        help_text: Specify the setting for HTTP_PROXY
+        help_text: Specify the setting for http_proxy
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
-        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
-      - name: java_http_proxy_host
-        title: HTTP Proxy host setting for Java
-        help_text: Specify -Dhttp.proxyHost
-        type: text
-        # default: TODO extract host out of http.proxy
-        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
-      - name: java_http_proxy_port
-        title: HTTP Proxy Port setting for Java
-        help_text: Specify -Dhttp.proxyPort
-        type: text
-        # default: TODO extract host out of http.proxy
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: https_proxy
         title: HTTPS Proxy setting
-        help_text: Specify the setting for HTTPS_PROXY
+        help_text: Specify the setting for https_proxy
         type: text
         default: '{{repl ConsoleSetting "http.proxy"}}'
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
-      - name: java_https_proxy_host
-        title: HTTPS Proxy host setting for Java
-        help_text: Specify -Dhttps.proxyHost
-        type: text
-        # default: TODO extract host out of http.proxy
-        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
-      - name: java_https_proxy_port
-        title: HTTPS Proxy Port setting for Java
-        help_text: Specify -Dhttps.proxyPort
-        type: text
-        # default: TODO extract host out of http.proxy
-        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: no_proxy
         title: HTTP no proxy setting
-        help_text: Specify the setting for NO_PROXY
+        help_text: Specify the setting for no_proxy
         type: text
-        default: ""
-        when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
-      - name: java_non_proxy
-        title: HTTP Proxy Port setting for Java
-        help_text: Specify  -Dhttps.nonProxyHosts.
-        type: text
-        # default: TODO extract host out of http.proxy
+        default: '{{repl ConfigOption "docker_gateway" }}'
         when: '{{repl ConfigOptionEquals "enable_proxy" "1" }}'
       - name: tls_version
         title: TLS Versions

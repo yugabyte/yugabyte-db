@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   BootstrapTable,
   ExpandColumnComponentProps,
@@ -16,13 +16,19 @@ import {
   fetchTablesInUniverse,
   fetchXClusterConfig
 } from '../../../../actions/xClusterReplication';
-import { api, runtimeConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
+import {
+  api,
+  runtimeConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../../redesign/helpers/api';
 import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   adaptTableUUID,
   formatBytes,
+  getAllXClusterConfigs,
   getSharedXClusterConfigs,
   tableSort
 } from '../../ReplicationUtils';
@@ -56,6 +62,7 @@ import {
   ReplicationItems,
   XClusterTableCandidate
 } from '../..';
+import { isColocatedParentTable } from '../../../../utils/tableUtils';
 
 import styles from './TableSelect.module.scss';
 
@@ -76,6 +83,8 @@ interface CommonTableSelectProps {
 type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
+      isTransactionalConfig: boolean;
+      handleTransactionalConfigCheckboxClick: () => void;
     })
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.ADD_TABLE;
@@ -139,23 +148,16 @@ const NOTE_EXPAND_CONTENT = (
   <div>
     <b>Which tables are considered eligible for xCluster replication?</b>
     <p>
-      We have 2 criteria for <b>eligible tables</b>:
-      <ol>
-        <li>
+      We have the following criteria for <b>eligible tables</b>:
+      <ul>
+        <li style={{ listStyle: 'disc' }}>
           <b>Table not already in use</b>
           <p>
             The table is not involved in another xCluster configuration between the same two
             universes in the same direction.
           </p>
         </li>
-        <li>
-          <b>Matching table exists on target universe</b>
-          <p>
-            A table with the same name in the same keyspace and schema exists on the target
-            universe.
-          </p>
-        </li>
-      </ol>
+      </ul>
       If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
       table for xCluster purposes.
     </p>
@@ -235,9 +237,9 @@ export const TableSelect = (props: TableSelectProps) => {
    * Queries for shared xCluster config UUIDs
    */
   const sharedXClusterConfigQueries = useQueries(
-    sharedXClusterConfigUUIDs.map((UUID) => ({
-      queryKey: ['Xcluster', UUID],
-      queryFn: () => fetchXClusterConfig(UUID)
+    sharedXClusterConfigUUIDs.map((xClusterConfigUUID) => ({
+      queryKey: xClusterQueryKey.detail(xClusterConfigUUID),
+      queryFn: () => fetchXClusterConfig(xClusterConfigUUID)
     }))
     // The unsafe cast is needed due to an issue with useQueries typing
     // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
@@ -417,13 +419,19 @@ export const TableSelect = (props: TableSelectProps) => {
   );
   const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
     ?.userIntent.ybSoftwareVersion;
+  const hasExisitingReplicationConfig =
+    [
+      ...getAllXClusterConfigs(sourceUniverseQuery.data),
+      ...getAllXClusterConfigs(targetUniverseQuery.data)
+    ].length > 0;
   const isTransactionalAtomicitySupported =
     !!ybSoftwareVersion &&
     compareYBSoftwareVersions(
       TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
       ybSoftwareVersion,
       true
-    ) < 0;
+    ) < 0 &&
+    !hasExisitingReplicationConfig;
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -433,6 +441,8 @@ export const TableSelect = (props: TableSelectProps) => {
             <Field
               name="isTransactionalConfig"
               component={YBCheckBox}
+              checkState={props.isTransactionalConfig}
+              onClick={props.handleTransactionalConfigCheckboxClick}
               label="Enable transactional atomicity"
               disabled={!isTransactionalAtomicitySupported}
             />
@@ -444,10 +454,13 @@ export const TableSelect = (props: TableSelectProps) => {
                   YBA support for transactional atomicity has the following constraints:
                   <ol>
                     <li>
-                      The minimum YBDB version that supports transactional atomicity is 2.17.3.0-b2.
+                      The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
-                    <li>enable_pg_savepoint must be set to false for both tserver and master</li>
+                    <li>
+                      Neither the source universe nor the target universe is a participant in any
+                      other xCluster configuration.
+                    </li>
                   </ol>
                   You may find further information on this feature on our{' '}
                   <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
@@ -668,20 +681,30 @@ function getReplicationItemsFromTables(
   );
 }
 
+// Colocated parent tables have table.tablename in the following format:
+//   <uuid>.colocation.parent.tablename
+// We return colocation.parent.tablename for colocated parent tables and
+// table.tablename otherwise.
+const getTableNameIdentifier = (table: YBTable) =>
+  isColocatedParentTable(table)
+    ? table.tableName.slice(table.tableName.indexOf('.') + 1)
+    : table.tableName;
+
 // Comma is not a valid identifier:
 // https://www.postgresql.org/docs/9.2/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 // https://cassandra.apache.org/doc/latest/cassandra/cql/definitions.html
 // Hence, by joining with commas, we avoid issues where the fields are unique individually
 // but result in a string that not unique.
 const getTableIdentifier = (table: YBTable): string =>
-  `${table.keySpace},${table.pgSchemaName},${table.tableName}`;
+  `${table.keySpace},${table.pgSchemaName},${getTableNameIdentifier(table)}`;
 
 /**
  * A table is eligible for replication if all of the following holds true:
- * - there exists another table with same keyspace, table name, and schema name
- *   in target universe
- * - the table is NOT part of another existing xCluster config between the same universes
- *   in the same direction
+ * - There exists another table with same keyspace, table name, and schema name
+ *   in target universe OR the user is selecting tables for a new xCluster config (YBA will do a backup/restore
+ *   to handle it during xCluster config creation).
+ * - The table is NOT part of another existing xCluster config between the same universes
+ *   in the same direction.
  */
 function getXClusterTableEligibilityDetails(
   sourceTable: YBTable,
@@ -689,11 +712,15 @@ function getXClusterTableEligibilityDetails(
   sharedXClusterConfigs: XClusterConfig[],
   currentXClusterConfigUUID?: string
 ): EligibilityDetails {
-  const targetUniverseTableIds = new Set(
-    targetUniverseTables.map((table) => getTableIdentifier(table))
-  );
-  if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
-    return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  if (currentXClusterConfigUUID) {
+    // Adding a table to an existing xCluster config requires that there exists another table
+    // with same keyspace, table name, and schema name on the target universe.
+    const targetUniverseTableIds = new Set(
+      targetUniverseTables.map((table) => getTableIdentifier(table))
+    );
+    if (!targetUniverseTableIds.has(getTableIdentifier(sourceTable))) {
+      return { status: XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+    }
   }
 
   for (const xClusterConfig of sharedXClusterConfigs) {

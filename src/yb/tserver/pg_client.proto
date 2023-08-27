@@ -44,8 +44,8 @@ service PgClientService {
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -78,8 +78,13 @@ service PgClientService {
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
+  rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
+      returns (PgIsObjectPartOfXReplResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
+  rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
+      returns (PgGetActiveTransactionListResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -171,6 +176,7 @@ message PgCreateColumnPB {
   bool is_range = 5;
   int32 sorting_type = 6;
   int32 attr_pgoid = 7;
+  QLValuePB attr_missing_val = 8;
 }
 
 message PgCreateSplitBoundaryPB {
@@ -301,8 +307,15 @@ message PgGetLockStatusRequestPB {
   // The table to scan. If unset, scan all tables
   bytes table_id = 1;
 
-  // If specified, only read the locks associated with this txn_id.
+  // If set, only read the locks associated with this txn_id and ignore the fields
+  // min_txn_age_ms and max_num_txns.
   bytes transaction_id = 2;
+
+  // Return lock statuses of transactions with age >= 'min_txn_age_ms'
+  uint32 min_txn_age_ms = 3;
+
+  // Limit number of old transactions whose lock info is retrieved.
+  uint32 max_num_txns = 4;
 }
 
 message PgGetLockStatusResponsePB {
@@ -315,6 +328,13 @@ message PgGetLockStatusResponsePB {
   }
 
   repeated NodeLockStatusResponsePB node_locks = 2;
+
+  message TransactionList {
+    repeated bytes transaction_ids = 1;
+  }
+
+  // Map of transactions keyed by the host node uuid.
+  map<string, TransactionList> transactions_by_node = 3;
 }
 
 message PgListLiveTabletServersRequestPB {
@@ -386,8 +406,8 @@ message PgPerformOpPB {
 
 enum ReadTimeManipulation {
   NONE = 0;
-  RESET = 1;
-  RESTART = 2;
+  RESTART = 1;
+  ENSURE_READ_TIME_IS_SET = 2;
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -400,6 +420,8 @@ message OptionalUint32PB {
   uint32 value = 1;
 }
 
+message OptionalUint64PB { uint64 value = 1; }
+
 message PgPerformOptionsPB {
   message CachingInfoPB {
     bytes key = 1;
@@ -411,6 +433,7 @@ message PgPerformOptionsPB {
   uint32 isolation = 2;
   bool ddl_mode = 3;
   uint64 txn_serial_no = 4;
+  uint64 read_time_serial_no = 20;
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
@@ -623,6 +646,15 @@ message PgCheckIfPitrActiveResponsePB {
   AppStatusPB status = 2;
 }
 
+message PgIsObjectPartOfXReplRequestPB {
+  PgObjectIdPB table_id = 2;
+}
+
+message PgIsObjectPartOfXReplResponsePB {
+  AppStatusPB status = 1;
+  bool is_object_part_of_xrepl = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -648,4 +680,28 @@ message PgWaitForBackendsCatalogVersionResponsePB {
   // Number of YSQL backends (across all tservers) that have not reached the requested catalog
   // version.  If the field is -1, the counting is in-progress.
   int32 num_lagging_backends = 2;
+}
+
+message PgCancelTransactionRequestPB {
+  bytes transaction_id = 1;
+
+  // Populating the field is optional. When populated, the cancel request is sent to the specified
+  // status tablet alone. If not, the request is forwarded to all tablet servers and is thereafter
+  // broadcast to all status tablets hosted by the tablet server.
+  bytes status_tablet_id = 2;
+}
+
+message PgCancelTransactionResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
+
+message PgGetActiveTransactionListResponsePB {
+  message EntryPB {
+    uint64 session_id = 1;
+    bytes txn_id = 2;
+  }
+  AppStatusPB status = 1;
+  repeated EntryPB entries = 2;
 }

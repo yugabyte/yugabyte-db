@@ -21,7 +21,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -116,7 +116,9 @@ public class ShellProcessHandler {
 
                 try {
                   JsonNode valueJson = Json.mapper().readTree(value);
-                  redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+                  redactedCommand.add(
+                      RedactingService.filterSecretFields(valueJson, RedactionTarget.LOGS)
+                          .toString());
 
                 } catch (JsonProcessingException e) {
                   redactedCommand.add(RedactingService.redactString(value));
@@ -338,6 +340,33 @@ public class ShellProcessHandler {
             .build());
   }
 
+  // This method is copied mostly from Process.waitFor(long, TimeUnit) to make poll interval longer
+  // than the default 100ms.
+  private static boolean waitFor(Process process, Duration timeout, Duration pollInterval)
+      throws InterruptedException {
+    long remMs = timeout.toMillis();
+    long timeoutMs = timeout.toMillis();
+    long pollIntervalMs = pollInterval.toMillis();
+    long startTime = System.currentTimeMillis();
+
+    while (true) {
+      try {
+        process.exitValue();
+        return true;
+      } catch (IllegalThreadStateException e) {
+        if (remMs < 0) {
+          // A last call to exitValue() has been made once before exiting.
+          break;
+        }
+      }
+      remMs = timeoutMs - (System.currentTimeMillis() - startTime);
+      if (remMs > 0) {
+        Thread.sleep(Math.min(remMs + 1, pollIntervalMs));
+      }
+    }
+    return false;
+  }
+
   private static void waitForProcessExit(
       Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
@@ -347,7 +376,7 @@ public class ShellProcessHandler {
         InputStreamReader errReader = new InputStreamReader(errInputStream);
         BufferedReader outputStream = new BufferedReader(outputReader);
         BufferedReader errorStream = new BufferedReader(errReader)) {
-      while (!process.waitFor(1, TimeUnit.SECONDS)) {
+      while (!waitFor(process, Duration.ofSeconds(1), Duration.ofMillis(500))) {
         // read a limited number of lines so that we don't
         // get stuck infinitely without getting to the time check
         tailStream(outputStream, 10000 /*maxLines*/);

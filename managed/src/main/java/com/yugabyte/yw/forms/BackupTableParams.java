@@ -3,8 +3,8 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
@@ -17,7 +17,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import org.apache.commons.collections.CollectionUtils;
 import org.yb.CommonTypes.TableType;
@@ -68,6 +70,11 @@ public class BackupTableParams extends TableManagerParams {
 
   @ApiModelProperty(value = "Table UUIDs")
   public List<UUID> tableUUIDList;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Map<String, Set<String>> tablesWithIndexesMap;
 
   // Allows bundling multiple backup params. Used only in the case
   // of backing up an entire universe transactionally
@@ -248,6 +255,7 @@ public class BackupTableParams extends TableManagerParams {
     this.expiryTimeUnit = tableParams.expiryTimeUnit;
     this.backupType = tableParams.backupType;
     this.isFullBackup = tableParams.isFullBackup;
+    this.allTables = tableParams.allTables;
     this.scheduleUUID = tableParams.scheduleUUID;
     this.scheduleName = tableParams.scheduleName;
     this.disableChecksum = tableParams.disableChecksum;
@@ -257,8 +265,8 @@ public class BackupTableParams extends TableManagerParams {
     this.disableMultipart = tableParams.disableMultipart;
     this.baseBackupUUID = tableParams.baseBackupUUID;
     this.setKeyspace(tableParams.getKeyspace());
-    this.tableNameList = new ArrayList<>(tableParams.tableNameList);
-    this.tableUUIDList = new ArrayList<>(tableParams.tableUUIDList);
+    this.tableNameList = new ArrayList<>(tableParams.getTableNameList());
+    this.tableUUIDList = new ArrayList<>(tableParams.getTableUUIDList());
     this.setTableName(tableParams.getTableName());
     this.tableUUID = tableParams.tableUUID;
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;

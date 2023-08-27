@@ -84,15 +84,18 @@ set_python_executable() {
 # Constants
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
-readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
+readonly PYTHON3_EXECUTABLES=('python3.8' 'python3' 'python3.7' 'python3.6')
 readonly PYTHON2_VERSIONS=('python2.7')
 readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9' 'python3.10' \
                            'python3.11')
 readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-36-cp36m' 'manylinux2014_x86_64-cp-37-cp37m' \
-                         'manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39')
-readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m', \
-                         'macosx-10.10-x86_64-cp-38-cp38' 'macosx-10.10-x86_64-cp-39-cp39')
-DOCKER_IMAGE_NAME="yb-anywhere-pex-builder"
+                         'manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39' \
+                         'manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
+readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m' \
+                         'macosx-10.10-x86_64-cp-38-cp38' 'macosx-10.10-x86_64-cp-39-cp39' \
+                         'macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
+DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"
+DOCKER_VENV_IMAGE_NAME="yba-devops-venv-builder"
 PYTHON_EXECUTABLE=""
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
@@ -339,7 +342,6 @@ activate_virtualenv() {
   export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
   PYTHON_EXECUTABLE="python"
   log "Using virtualenv python executable now."
-  run_pip install --upgrade pip > /dev/null
 
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
@@ -348,10 +350,12 @@ activate_virtualenv() {
 create_pymodules_package() {
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
+  chmod 777 "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     extra_install_flags="setuptools<45"
   fi
+  run_pip install --upgrade pip > /dev/null
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
@@ -608,6 +612,7 @@ activate_pex() {
   export PEX_EXTRA_SYS_PATH
   # Used by other devops scripts
   PEX_PATH="$yb_devops_home/pex/pexEnv"
+  export PEX_ROOT="$PEX_PATH"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
   mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \

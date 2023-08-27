@@ -67,7 +67,9 @@ class TransactionLoader {
   TransactionLoader(TransactionLoaderContext* context, const scoped_refptr<MetricEntity>& entity);
   ~TransactionLoader();
 
-  void Start(RWOperationCounter* pending_op_counter, const docdb::DocDB& db);
+  void Start(
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+      const docdb::DocDB& db);
 
   bool complete() const {
     return state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted;

@@ -36,7 +36,7 @@ using dockv::KeyEntryValue;
 
 namespace {
 
-bool AreColumnsContinous(ColumnListVector col_idxs) {
+bool AreColumnsContinous(qlexpr::ColumnListVector col_idxs) {
   std::sort(col_idxs.begin(), col_idxs.end());
   for (size_t i = 0; i < col_idxs.size() - 1; ++i) {
     if (col_idxs[i] == kYbHashCodeColId) {
@@ -154,9 +154,11 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
         ColumnId col_id = ColumnId(lhs.column_id());
         size_t col_idx = schema().find_column_by_id(col_id);
 
-        // Skip any non-range columns. Hashed columns should always be sent as tuples along with
-        // their yb_hash_code. Hence, for hashed columns lhs should never be a column id.
-        DCHECK(schema().is_range_column(col_idx));
+        // Skip any non-range columns.
+        if (!schema().is_range_column(col_idx)) {
+          DCHECK(!schema().is_hash_key_column(col_idx));
+          return;
+        }
 
         auto sorting_type = get_sorting_type(col_idx);
 
@@ -192,7 +194,7 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
         size_t total_cols = lhs.tuple().elems_size();
         DCHECK_GT(total_cols, 0);
 
-        ColumnListVector col_idxs;
+        qlexpr::ColumnListVector col_idxs;
         col_idxs.reserve(total_cols);
         options_groups_.BeginNewGroup();
 
@@ -233,8 +235,8 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
             reverse.push_back(get_scan_direction(col_idxs[i]));
           }
 
-          const auto sorted_options =
-              GetTuplesSortedByOrdering(options, schema(), is_forward_scan(), col_idxs);
+          const auto sorted_options = qlexpr::GetTuplesSortedByOrdering(
+              options, schema(), is_forward_scan(), col_idxs);
 
           int num_options = options.elems_size();
           for (int i = 0; i < num_options; i++) {
@@ -363,12 +365,11 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
 
   // If we have a start_doc_key, we need to use it as a starting point (lower bound for forward
   // scan, upper bound for reverse scan).
-  if (range_bounds() != nullptr &&
-      !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
-    return STATUS_FORMAT(
-        Corruption, "Invalid start_doc_key: $0. Range: $1, $2", start_doc_key_, lower_doc_key_,
-        upper_doc_key_);
-  }
+  RSTATUS_DCHECK(
+      range_bounds() == nullptr || KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_),
+      Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
+      start_doc_key_.AsSlice().ToDebugHexString(), lower_doc_key_.AsSlice().ToDebugHexString(),
+      upper_doc_key_.AsSlice().ToDebugHexString());
 
   // Paging state + forward scan.
   if (is_forward_scan()) {

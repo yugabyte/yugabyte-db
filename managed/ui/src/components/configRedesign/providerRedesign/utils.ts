@@ -176,8 +176,10 @@ export const getDeletedZones = <
 
 export const usePillStyles = makeStyles((theme) => ({
   pill: {
-    height: 'fit-content',
     padding: '4px 6px',
+    height: 'fit-content',
+    width: 'fit-content',
+
     fontSize: '10px',
     borderRadius: '6px',
     backgroundColor: theme.palette.grey[200]

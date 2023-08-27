@@ -11,6 +11,7 @@ import static org.mockito.Mockito.spy;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -35,6 +36,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -44,6 +46,9 @@ public class CertificateHelperTest extends FakeDBApplication {
 
   private String certPath;
   private Config spyConf;
+  private CertificateHelper certificateHelper;
+
+  @Mock private RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setUp() {
@@ -55,6 +60,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     spyConf = spy(app.config());
     doReturn("/tmp/" + getClass().getSimpleName()).when(spyConf).getString("yb.storage.path");
     new File(certPath).mkdirs();
+    certificateHelper = new CertificateHelper(mockConfGetter);
   }
 
   @After
@@ -66,7 +72,7 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateRootCAWithoutClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
     assertNotNull(CertificateInfo.get(rootCA));
     try {
       InputStream in = new FileInputStream(certPath + String.format("/%s/ca.root.crt", rootCA));
@@ -82,7 +88,7 @@ public class CertificateHelperTest extends FakeDBApplication {
   public void testCreateRootCAWithClientCert() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
     CertificateHelper.createClientCertificate(
         spyConf, rootCA, String.format(certPath + "/%s", rootCA), "yugabyte", null, null);
     assertNotNull(CertificateInfo.get(rootCA));
@@ -105,7 +111,7 @@ public class CertificateHelperTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID clientRootCA =
-        CertificateHelper.createClientRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
+        certificateHelper.createClientRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
     CertificateHelper.createClientCertificate(
         spyConf,
         clientRootCA,
@@ -135,7 +141,7 @@ public class CertificateHelperTest extends FakeDBApplication {
           NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
     assertNotNull(CertificateInfo.get(rootCA));
 
     CertificateInfo cert = CertificateInfo.get(rootCA);
@@ -164,7 +170,7 @@ public class CertificateHelperTest extends FakeDBApplication {
           NoSuchProviderException, SignatureException, IOException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, taskParams.nodePrefix, c.getUuid());
     assertNotNull(CertificateInfo.get(rootCA));
 
     CertificateInfo cert = CertificateInfo.get(rootCA);

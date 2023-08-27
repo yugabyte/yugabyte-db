@@ -14,12 +14,15 @@
 #include "yb/docdb/docdb_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/key_entry_value.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -64,7 +67,7 @@ DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
 DocReadContext& DocDBRocksDBUtil::doc_read_context() {
   if (!doc_read_context_) {
     doc_read_context_ = std::make_shared<DocReadContext>(
-        kEmptyLogPrefix, TableType::YQL_TABLE_TYPE, CreateSchema(), 0);
+        DocReadContext::TEST_Create(CreateSchema()));
   }
   return *doc_read_context_;
 }
@@ -141,7 +144,7 @@ class DirectWriteToWriteBatchHandler : public rocksdb::DirectWriteHandler {
   rocksdb::WriteBatch *write_batch_;
 };
 
-} // namespace
+} //  namespace
 
 Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     const DocWriteBatch& dwb,
@@ -280,6 +283,29 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
   return Status::OK();
 }
 
+Result<Uuid> DocDBRocksDBUtil::WriteSimpleWithCotablePrefix(
+    int index, HybridTime write_time, Uuid cotable_id) {
+  uint16_t key_hash = index;
+  dockv::KeyEntryValues hash_components =
+      dockv::MakeKeyEntryValues(Format("row$0", index), 11111 * index);
+  if (cotable_id.IsNil()) {
+    uint32_t db_oid = 16234 + index;
+    uint32_t table_oid = 16234 + index;
+    std::string table_id = GetPgsqlTableId(db_oid, table_oid);
+    cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
+  }
+  auto encoded_doc_key = dockv::DocKey(cotable_id, key_hash, hash_components).Encode();
+  op_id_.term = index / 2;
+  op_id_.index = index;
+  auto& dwb = DefaultDocWriteBatch();
+  QLValuePB value;
+  value.set_int32_value(index);
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+  RETURN_NOT_OK(WriteToRocksDBAndClear(&dwb, write_time));
+  return cotable_id;
+}
+
 Status DocDBRocksDBUtil::WriteSimple(int index) {
   auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode();
   op_id_.term = index / 2;
@@ -297,14 +323,21 @@ void DocDBRocksDBUtil::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
 }
 
 void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
-  doc_read_context().schema.SetDefaultTimeToLive(ttl_msec);
+  doc_read_context().TEST_SetDefaultTimeToLive(ttl_msec);
   retention_policy_->SetTableTTLForTests(MonoDelta::FromMilliseconds(ttl_msec));
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return docdb::DocDBDebugDumpToStr(rocksdb(), doc_read_context().schema_packing_storage) +
+  return docdb::DocDBDebugDumpToStr(rocksdb(), this /*schema_packing_provider*/) +
          docdb::DocDBDebugDumpToStr(
-             intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
+             intents_db(), this /*schema_packing_provider*/, StorageDbType::kIntents);
+}
+
+void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>* out) {
+  DocDB db;
+  db.regular = rocksdb();
+  db.intents = intents_db();
+  docdb::DocDBDebugDumpToContainer(db, this /*schema_packing_provider*/, out);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -314,7 +347,8 @@ Status DocDBRocksDBUtil::SetPrimitive(
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.SetPrimitive(doc_path, control_fields, value, read_ht));
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      doc_path, control_fields, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -328,6 +362,7 @@ Status DocDBRocksDBUtil::SetPrimitive(
 
 Status DocDBRocksDBUtil::AddExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     const std::vector<ExternalIntent>& intents,
     const Uuid& involved_tablet,
     HybridTime hybrid_time) {
@@ -347,14 +382,17 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     }
 
     void Apply(rocksdb::WriteBatch* batch) {
-      ThreadSafeArena arena;
-      LWKeyValuePairPB kv_pair(&arena);
-      kv_pair.dup_key(key_.AsSlice());
-      kv_pair.dup_value(value_.AsSlice());
-      ExternalTxnApplyState external_txn_apply_state;
-      AddExternalPairToWriteBatch(
-          kv_pair, hybrid_time_, &external_txn_apply_state,
-          /* regular_write_batch= */ nullptr, batch, nullptr);
+      DocHybridTimeBuffer doc_ht_buffer;
+      dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
+      auto key_value = value_.AsSlice();
+
+      std::array<Slice, 2> key_parts = {{
+          key_.AsSlice(),
+          doc_ht_buffer.EncodeWithValueType(hybrid_time_, /*write_id=*/0),
+      }};
+      key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
+      constexpr size_t kNumValueParts = 1;
+      batch->Put(key_parts, {&key_value, kNumValueParts});
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {
@@ -392,7 +430,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
   };
 
   Provider provider(&intents, involved_tablet, hybrid_time);
-  CombineExternalIntents(txn_id, &provider);
+  CombineExternalIntents(txn_id, subtransaction_id, &provider);
 
   rocksdb::WriteBatch rocksdb_write_batch;
   provider.Apply(&rocksdb_write_batch);
@@ -407,8 +445,8 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.InsertSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -419,8 +457,8 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     MonoDelta ttl,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, read_ht,
-                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
+  RETURN_NOT_OK(dwb.ExtendSubDocument(
+      doc_path, value, ReadOperationData::FromReadTime(read_ht), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -430,7 +468,7 @@ Status DocDBRocksDBUtil::ExtendList(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, CoarseTimePoint::max()));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -446,8 +484,8 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, target_cql_index, value, read_ht, CoarseTimePoint::max(), query_id, default_ttl,
-      ttl));
+      doc_path, target_cql_index, value, ReadOperationData::FromReadTime(read_ht), query_id,
+      default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -456,14 +494,13 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, read_ht));
+  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData::FromReadTime(read_ht)));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, doc_read_context().schema_packing_storage,
-      StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, this /*schema_packing_provider*/, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -499,12 +536,14 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior_,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
-      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(regular_db_.get()), init_marker_behavior,
+      dummy_scoped_rw_operation_, &monotonic_counter_);
 }
 
 DocWriteBatch& DocDBRocksDBUtil::DefaultDocWriteBatch() {
@@ -524,18 +563,21 @@ void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_beha
 
 Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
     const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) {
-  if (schema_version == docdb::kLatestSchemaVersion) {
+  if (schema_version == kLatestSchemaVersion) {
     schema_version = 0;
   }
+  ANNOTATE_IGNORE_READS_BEGIN();
   auto& packing = VERIFY_RESULT_REF(
       doc_read_context().schema_packing_storage.GetPacking(schema_version));
-  return docdb::CompactionSchemaInfo {
+  ANNOTATE_IGNORE_READS_END();
+  return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
     .schema_packing = rpc::SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
-    .enabled = docdb::PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+    .packed_row_version = PackedRowVersion(TableType::YQL_TABLE_TYPE, false),
+    .schema = rpc::SharedField(doc_read_context_, &doc_read_context_->schema())
   };
 }
 

@@ -104,25 +104,31 @@ inline std::string ComplementZeroEncodeStr(const Slice& s) {
 // Reverses the encoding we use for string fields in a RocksDB key where a zero is represented as
 // \0x00\0x01 and the string is terminated with \x00\x00.
 // Input/output:
-//   slice - a slice containing an encoded string, optionally terminated by \x00\x00. A prefix of
+//   slice - a slice that starts with an encoded string that is terminated by \x00\x00. A prefix of
 //           this slice is consumed.
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
+// Returns OK status if and only if string is properly encoded.
 Status DecodeZeroEncodedStr(Slice* slice, std::string* result);
+Result<const char*> DecodeZeroEncodedStr(const char* begin, const char* end, ValueBuffer* out);
+Result<const char*> SkipZeroEncodedStr(const char* begin, const char* end);
 
 // A version of the above function that ensures the encoding is correct and all characters are
 // consumed.
 Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str);
 
 // Reverses the encoding for a string that was encoded with ComplementZeroEncodeAndAppendStrToKey.
-// In this representation the string termination changes from \x00\x00 to
-// \xFF\xFF.
+// In this representation the string termination changes from \x00\x00 to \xFF\xFF.
 // Input/output:
-//   slice - a slice containing an encoded string, optionally terminated by \xFF\xFF. A prefix of
+//   slice - a slice that starts with an encoded string that is terminated by \xFF\xFF. A prefix of
 //           this slice is consumed.
 // Output (undefined in case of an error):
 //   result - the resulting decoded string
+// Returns OK status if and only if string is properly encoded.
 Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result);
+Result<const char*> DecodeComplementZeroEncodedStr(
+    const char* begin, const char* end, ValueBuffer* out);
+Result<const char*> SkipComplementZeroEncodedStr(const char* begin, const char* end);
 
 Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str);
 

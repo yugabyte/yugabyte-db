@@ -13,7 +13,9 @@ aliases:
 type: docs
 ---
 
-The yb-ctl utility, located in the bin directory of YugabyteDB home, provides a command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
+## Overview
+
+The yb-ctl utility provides a command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
 
 yb-ctl is meant for managing local clusters only. This means that a single host machine like a local laptop is used to simulate YugabyteDB clusters even though the YugabyteDB cluster can have 3 nodes or more. For creating multi-host clusters, follow the instructions in the [Deploy](../../deploy/) section.
 
@@ -30,6 +32,10 @@ macOS Monterey enables AirPlay receiving by default, which listens on port 7000.
 Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
 {{% /note %}}
+
+### Installation
+
+yb-ctl is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
 ## Syntax
 

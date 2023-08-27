@@ -15,6 +15,7 @@
 
 #include <chrono>
 
+#include "yb/client/session.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_helpers.h"
@@ -61,7 +62,7 @@ StatefulServiceBase::StatefulServiceBase(
       client_future_(client_future) {}
 
 StatefulServiceBase::~StatefulServiceBase() {
-  LOG_IF(DFATAL, !shutdown_) << "Shutdown was not called for " << ServiceName();
+  LOG_IF(DFATAL, initialized_ && !shutdown_) << "Shutdown was not called for " << ServiceName();
 }
 
 Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
@@ -79,8 +80,10 @@ Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
       &FLAGS_stateful_service_periodic_task_interval_ms, ServiceName(),
       [this]() { StartPeriodicTaskIfNeeded(); }));
 
-  return ts_manager->RegisterServiceCallback(
-      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this)));
+  RETURN_NOT_OK(ts_manager->RegisterServiceCallback(
+      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this))));
+  initialized_ = true;
+  return Status::OK();
 }
 
 void StatefulServiceBase::Shutdown() {
@@ -130,34 +133,50 @@ void StatefulServiceBase::RaftConfigChangeCallback(TabletPeerPtr peer) {
   StartPeriodicTaskIfNeeded();
 }
 
-bool StatefulServiceBase::IsActive() const {
-  SharedLock lock(service_state_mutex_);
-  return leader_term_ != OpId::kUnknownTerm;
+namespace {
+bool* GetThreadLocalIsActivator() {
+  BLOCK_STATIC_THREAD_LOCAL(bool, is_activation_thread, false);
+  return is_activation_thread;
 }
 
-int64_t StatefulServiceBase::GetLeaderTerm() {
+class ScopedSetIsActivatorThread {
+ public:
+  ScopedSetIsActivatorThread() {
+    DCHECK(!*GetThreadLocalIsActivator()) << "Nested activation threads are not supported";
+    *GetThreadLocalIsActivator() = true;
+  }
+  ~ScopedSetIsActivatorThread() { *GetThreadLocalIsActivator() = false; }
+};
+}  // namespace
+
+bool StatefulServiceBase::IsActive() const {
+  return !shutdown_ && (is_active_ || *GetThreadLocalIsActivator());
+}
+
+Result<int64_t> StatefulServiceBase::GetLeaderTerm() {
+  SCHECK(IsActive(), ServiceUnavailable, GetServiceNotActiveErrorStr());
+
   TabletPeerPtr tablet_peer;
   int64_t leader_term;
   {
     SharedLock lock(service_state_mutex_);
-    if (leader_term_ == OpId::kUnknownTerm) {
-      return leader_term_;
-    }
+
+    SCHECK(leader_term_ != OpId::kUnknownTerm, ServiceUnavailable, GetServiceNotActiveErrorStr());
     tablet_peer = tablet_peer_;
     leader_term = leader_term_;
   }
 
   // Make sure term and lease are still valid.
-  if (tablet_peer->LeaderTerm() == leader_term) {
-    return leader_term;
-  }
+  SCHECK(
+      tablet_peer->LeaderTerm() == leader_term, ServiceUnavailable, GetServiceNotActiveErrorStr());
 
-  return OpId::kUnknownTerm;
+  return leader_term;
 }
 
 void StatefulServiceBase::DoDeactivate() {
   {
     std::lock_guard lock(service_state_mutex_);
+    is_active_ = false;
     if (leader_term_ == OpId::kUnknownTerm) {
       return;
     }
@@ -165,6 +184,7 @@ void StatefulServiceBase::DoDeactivate() {
   }
 
   LOG(INFO) << "Deactivating " << ServiceName();
+  DrainForDeactivation();
   Deactivate();
 }
 
@@ -202,12 +222,17 @@ void StatefulServiceBase::ActivateOrDeactivateServiceIfNeeded() {
 
   if (new_leader_term != OpId::kUnknownTerm) {
     LOG(INFO) << "Activating " << ServiceName() << " on term " << new_leader_term;
-    Activate(new_leader_term);
+    {
+      std::lock_guard lock(service_state_mutex_);
+      leader_term_ = new_leader_term;
+      tablet_peer_ = new_tablet_peer;
+    }
 
-    // Only after Activate completes we can set the leader_term_ and serve user requests.
-    std::lock_guard lock(service_state_mutex_);
-    leader_term_ = new_leader_term;
-    tablet_peer_ = new_tablet_peer;
+    {
+      ScopedSetIsActivatorThread se;
+      Activate();
+    }
+    is_active_ = true;
   }
 }
 
@@ -217,12 +242,13 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
   }
 
   const auto& tablet_id = tablet_peer->tablet_id();
-  auto consensus = tablet_peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer->GetConsensus();
+  if (!consensus_result) {
     VLOG(1) << ServiceName() << " Received notification of tablet leader change "
             << "but tablet no longer running. Tablet ID: " << tablet_id;
     return OpId::kUnknownTerm;
   }
+  auto& consensus = consensus_result.get();
 
   auto leader_status = consensus->CheckIsActiveLeaderAndHasLease();
   // The possible outcomes are:
@@ -335,6 +361,12 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   }
 
   StartPeriodicTaskIfNeeded();
+}
+
+Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(MonoDelta delta) {
+  auto session = GetYBClient()->NewSession(delta);
+  session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
+  return session;
 }
 
 Result<client::TableHandle*> StatefulServiceBase::GetServiceTable() {

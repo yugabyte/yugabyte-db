@@ -1,4 +1,4 @@
-import React, { FC, useContext, useState } from 'react';
+import { FC, useContext, useState } from 'react';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { browserHistory } from 'react-router';
@@ -38,7 +38,8 @@ import {
   REPLICATION_FACTOR_FIELD,
   TOAST_AUTO_DISMISS_INTERVAL,
   TOTAL_NODES_FIELD,
-  USER_TAGS_FIELD
+  USER_TAGS_FIELD,
+  SPOT_INSTANCE_FIELD
 } from './utils/constants';
 
 export enum UPDATE_ACTIONS {
@@ -70,7 +71,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
         try {
           const configureResponse = await api.universeConfigure({
             ..._.cloneDeep(resp.universeDetails),
-            clusterOperation: ClusterModes.EDIT
+            clusterOperation: ClusterModes.EDIT,
+            currentClusterType: ClusterType.PRIMARY
           });
           initializeForm({
             clusterType: ClusterType.PRIMARY,
@@ -78,7 +80,10 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
             universeConfigureTemplate: _.cloneDeep(configureResponse)
           });
           //set Universe Resource Template
-          const resourceResponse = await api.universeResource(_.cloneDeep(resp.universeDetails));
+          const resourceResponse = await api.universeResource({
+            ..._.cloneDeep(resp.universeDetails),
+            currentClusterType: ClusterType.PRIMARY
+          });
           setUniverseResourceTemplate(resourceResponse);
         } catch (error) {
           toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
@@ -125,6 +130,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       userIntent.numNodes = _.get(formData, TOTAL_NODES_FIELD);
       userIntent.replicationFactor = _.get(formData, REPLICATION_FACTOR_FIELD);
       userIntent.instanceType = _.get(formData, INSTANCE_TYPE_FIELD);
+      userIntent.useSpotInstance = _.get(formData, SPOT_INSTANCE_FIELD);
       userIntent.deviceInfo = _.get(formData, DEVICE_INFO_FIELD);
       userIntent.instanceTags = transformTagsArrayToObject(_.get(formData, USER_TAGS_FIELD, []));
       userIntent.dedicatedNodes = masterPlacement === MasterPlacementMode.DEDICATED;

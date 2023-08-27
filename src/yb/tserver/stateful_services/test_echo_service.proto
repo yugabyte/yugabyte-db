@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 
 service TestEchoService {
   rpc GetEcho(GetEchoRequestPB) returns (GetEchoResponsePB);
+  rpc GetEchoCount(GetEchoCountRequestPB) returns (GetEchoCountResponsePB);
 }
 
 message GetEchoRequestPB { string message = 1; }
@@ -31,4 +32,11 @@ message GetEchoResponsePB {
   AppStatusPB error = 1;
   string message = 2;
   string node_id = 3;
+}
+
+message GetEchoCountRequestPB {}
+
+message GetEchoCountResponsePB {
+  AppStatusPB error = 1;
+  int32 count = 2;
 }

@@ -75,7 +75,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
 
     // GCP Provider Check
     assertNotNull(gcpProvider.getDetails());
-    GCPCloudInfo gcpCloudInfo = gcpProvider.getDetails().cloudInfo.gcp;
+    GCPCloudInfo gcpCloudInfo = gcpProvider.getDetails().getCloudInfo().gcp;
     assertNotNull(gcpCloudInfo);
     assertEquals("GCP Project ID", gcpCloudInfo.getGceProject());
     assertEquals("GCP Custom network", gcpCloudInfo.getDestVpcId());
@@ -83,14 +83,14 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
 
     // AWS Provider Check
     assertNotNull(awsProvider.getDetails());
-    AWSCloudInfo awsCloudInfo = awsProvider.getDetails().cloudInfo.aws;
+    AWSCloudInfo awsCloudInfo = awsProvider.getDetails().getCloudInfo().aws;
     assertNotNull(awsCloudInfo);
     assertEquals("awsAccessKeyID", awsCloudInfo.awsAccessKeyID);
     assertEquals("awsAccessKeySecret", awsCloudInfo.awsAccessKeySecret);
 
     // Azure Provider Check
     assertNotNull(azureProvider.getDetails());
-    AzureCloudInfo azureCloudInfo = azureProvider.getDetails().cloudInfo.azu;
+    AzureCloudInfo azureCloudInfo = azureProvider.getDetails().getCloudInfo().azu;
     assertNotNull(azureCloudInfo);
     assertEquals("azuClientId", azureCloudInfo.azuClientId);
     assertEquals("azuClientSecret", azureCloudInfo.azuClientSecret);

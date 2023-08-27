@@ -77,7 +77,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 
 namespace client {
 
@@ -143,6 +143,11 @@ class RemoteTabletServer {
 
   HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
 
+  yb::CloudInfoPB cloud_info_pb() const {
+    SharedLock<rw_spinlock> lock(mutex_);
+    return cloud_info_pb_;
+  }
+
   std::string TEST_PlacementZone() const;
 
  private:
@@ -155,7 +160,7 @@ class RemoteTabletServer {
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
   ::yb::HostPort proxy_endpoint_;
   const tserver::LocalTabletServer* const local_tserver_ = nullptr;
-  scoped_refptr<Histogram> dns_resolve_histogram_;
+  scoped_refptr<EventStats> dns_resolve_stats_;
   std::vector<CapabilityId> capabilities_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RemoteTabletServer);
@@ -362,7 +367,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
-  std::vector<RemoteReplica> replicas_;
+  std::vector<std::shared_ptr<RemoteReplica>> replicas_;
   PartitionListVersion last_known_partition_list_version_ = 0;
 
   std::atomic<ReplicasCount> replicas_count_{{0, 0}};

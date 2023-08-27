@@ -208,7 +208,12 @@ export const mainTheme = createTheme({
         '&$disabled': {
           backgroundColor: colors.grey[300],
           color: colors.grey[600],
-          cursor: 'not-allowed'
+          cursor: 'not-allowed',
+          pointerEvents: 'unset',
+          '&:hover': {
+            backgroundColor: colors.grey[300],
+            color: colors.grey[600]
+          }
         }
       },
       // "secondary" variant
@@ -225,9 +230,14 @@ export const mainTheme = createTheme({
           borderColor: colors.ybacolors.ybDarkGray2
         },
         '&$disabled': {
-          backgroundColor: colors.ybacolors.backgroundDisabled,
-          color: colors.ybacolors.colorDisabled,
-          cursor: 'not-allowed'
+          opacity: 0.65,
+          color: colors.ybacolors.ybDarkGray,
+          cursor: 'not-allowed',
+          pointerEvents: 'unset',
+          '&:hover': {
+            opacity: 0.65,
+            color: colors.ybacolors.ybDarkGray
+          }
         }
       },
       // "ghost" variant
@@ -241,9 +251,12 @@ export const mainTheme = createTheme({
           backgroundColor: 'transparent'
         },
         '&$disabled': {
-          backgroundColor: colors.grey[300],
           color: colors.grey[600],
-          cursor: 'not-allowed'
+          cursor: 'not-allowed',
+          pointerEvents: 'unset',
+          '&:hover': {
+            color: colors.grey[600]
+          }
         }
       }
     },
@@ -348,7 +361,7 @@ export const mainTheme = createTheme({
         },
         '&$focused': {
           borderColor: colors.ybacolors.ybOrangeFocus,
-          boxShadow: colors.ybacolors.inputBoxShadow
+          boxShadow: colors.ybaShadows.inputBoxShadow
         },
         '&$error': {
           color: colors.error[500],
@@ -605,6 +618,22 @@ export const mainTheme = createTheme({
         '@media (min-width: 600px)': {
           margin: '8px -2px'
         }
+      }
+    },
+    MuiTabs: {
+      root: {
+        '& .MuiTabs-indicator': {
+          backgroundColor: colors.orange[500],
+          height: 4
+        },
+        '& .MuiButtonBase-root': {
+          padding: 0,
+          textTransform: 'none',
+          fontSize: 14,
+          fontWeight: 500,
+          color: colors.ybacolors.labelBackground
+        },
+        borderBottom: `1px solid ${colors.ybacolors.ybBorderGray}`
       }
     },
     MuiSnackbar: {

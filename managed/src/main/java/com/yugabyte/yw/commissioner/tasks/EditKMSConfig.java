@@ -70,8 +70,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
     KmsConfig updateResult =
         kmsManager
             .getServiceInstance(taskParams().kmsProvider.name())
-            .updateAuthConfig(
-                taskParams().customerUUID, taskParams().configUUID, taskParams().providerConfig);
+            .updateAuthConfig(taskParams().configUUID, taskParams().providerConfig);
 
     if (updateResult == null) {
       throw new RuntimeException(

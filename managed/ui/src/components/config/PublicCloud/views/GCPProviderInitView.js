@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { connect } from 'react-redux';
 import { Row, Col } from 'react-bootstrap';
 import { toast } from 'react-toastify';
@@ -18,7 +18,12 @@ import {
 import { change, Field, reduxForm, FieldArray } from 'redux-form';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
+import {
+  isNonEmptyArray,
+  isNonEmptyObject,
+  isNonEmptyString,
+  trimString
+} from '../../../../utils/ObjectUtils';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
@@ -41,7 +46,7 @@ class renderRegionInput extends Component {
           <Row>
             <Col lg={6}>
               <Field
-                name={`${item}.region`}
+                name={`${item}.code`}
                 validate={validationIsRequired}
                 component={YBInputField}
                 placeHolder="Region Name"
@@ -122,7 +127,7 @@ class GCPProviderInitView extends Component {
     if (vals.network_setup !== 'new_vpc') {
       vals.regionMapping.forEach(
         (item) =>
-          (perRegionMetadata[item.region] = {
+          (perRegionMetadata[item.code] = {
             subnetId: item.subnet,
             customImageId: item.customImageId
           })
@@ -414,7 +419,7 @@ class GCPProviderInitView extends Component {
 }
 
 const validate = (values) => {
-  const errors = {};
+  const errors = { regionMapping: [] };
   if (!isNonEmptyString(values.accountName)) {
     errors.accountName = 'Account Name is Required';
   } else if (!ACCEPTABLE_CHARS.test(values.accountName)) {
@@ -434,6 +439,17 @@ const validate = (values) => {
   }
   if (values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0) {
     errors.ntpServers = 'NTP servers cannot be empty';
+  }
+
+  if (values.regionMapping && isNonEmptyArray(values.regionMapping)) {
+    const requestedRegions = new Set();
+    values.regionMapping.forEach((region, idx) => {
+      if (requestedRegions.has(region.code)) {
+        errors.regionMapping[idx] = { code: 'Duplicate region code is not allowed.' };
+      } else {
+        requestedRegions.add(region.code);
+      }
+    });
   }
   return errors;
 };

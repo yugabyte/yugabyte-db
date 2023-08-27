@@ -82,8 +82,8 @@ public class DeleteBackupYbTest extends FakeDBApplication {
     DeleteBackupYb deleteBackupTask = AbstractTaskBase.createTask(DeleteBackupYb.class);
     deleteBackupTask.initialize(params);
     doThrow(new RuntimeException("Invalid StorageConfig UUID: " + invalidStorageConfigUUID))
-        .when(mockBackupUtil)
-        .validateBackupStorageConfig(any());
+        .when(mockBackupHelper)
+        .validateStorageConfigOnBackup(any());
     RuntimeException re = assertThrows(RuntimeException.class, () -> deleteBackupTask.run());
     assertEquals("Invalid StorageConfig UUID: " + invalidStorageConfigUUID, re.getMessage());
     backup.refresh();

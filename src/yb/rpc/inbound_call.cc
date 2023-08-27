@@ -88,7 +88,7 @@ InboundCall::~InboundCall() {
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -103,7 +103,7 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
 void InboundCall::EnsureTraceCreated() {
   scoped_refptr<Trace> trace = nullptr;
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (trace_holder_) {
       return;
     }
@@ -148,7 +148,7 @@ void InboundCall::RecordCallReceived() {
   timing_.time_received = MonoTime::Now();
 }
 
-void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
+void InboundCall::RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
@@ -225,16 +225,17 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
 
 void InboundCall::Clear() {
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cleared_ = true;
   }
   serialized_request_.clear();
   request_data_.Reset();
-  request_data_memory_usage_.store(0, std::memory_order_release);
 }
 
+// Overrides OutboundData::DynamicMemoryUsage() to track response buffer memory.
+// TODO: remove the trace() usage from OutboundData/Sending mem-tracker to call tracker.
 size_t InboundCall::DynamicMemoryUsage() const {
-  return request_data_memory_usage_.load(std::memory_order_acquire) + DynamicMemoryUsageOf(trace());
+  return DynamicMemoryUsageOf(trace());
 }
 
 void InboundCall::InboundCallTask::Run() {

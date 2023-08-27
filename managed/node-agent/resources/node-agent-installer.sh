@@ -10,33 +10,36 @@ NODE_AGENT_HOME=""
 NODE_AGENT_PKG_DIR=""
 NODE_AGENT_RELEASE_DIR=""
 NODE_AGENT_PKG_TGZ_PATH=""
+NODE_AGENT_CONFIG_FILEPATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
 #Disable node to Yugabyte Anywhere connection.
 DISABLE_EGRESS="false"
-#Unregister (if any) and register again.
-FORCE_INSTALL="false"
+SILENT_INSTALL="false"
 CERT_DIR=""
 CUSTOMER_ID=""
+NODE_NAME=""
 NODE_IP=""
-NODE_PORT="9070"
+NODE_PORT=""
 API_TOKEN=""
 PLATFORM_URL=""
+PROVIDER_ID=""
+INSTANCE_TYPE=""
+ZONE_NAME=""
 COMMAND=""
 VERSION=""
-JWT=""
 NODE_AGENT_BASE_URL=""
 NODE_AGRNT_CERT_PATH=""
 NODE_AGENT_DOWNLOAD_URL=""
 NODE_AGENT_ID=""
 NODE_AGENT_PKG_TGZ="node-agent.tgz"
 API_TOKEN_HEADER="X-AUTH-YW-API-TOKEN"
-JWT_HEADER="X-AUTH-YW-API-JWT"
 INSTALLER_NAME="node-agent-installer.sh"
 SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_NAME="yb-node-agent.service"
 SERVICE_RESTART_INTERVAL_SEC=2
+SESSION_INFO_URL=""
 
 ARCH=$(uname -m)
 OS=$(uname -s)
@@ -57,27 +60,50 @@ add_path() {
   fi
 }
 
-node_agent_dir_setup() {
+setup_node_agent_dir() {
   pushd "$INSTALL_USER_HOME"
   echo "* Creating Node Agent Directory."
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
-  #Copy installer script to the node-agent directory.
-  cp "$0" "$NODE_AGENT_HOME/$INSTALLER_NAME"
   #Change permissions.
-  chmod 754 "$NODE_AGENT_HOME"
+  chmod 755 "$NODE_AGENT_HOME"
   echo "* Changing directory to node agent."
   #Change directory.
   pushd "$NODE_AGENT_HOME"
   echo "* Creating Sub Directories."
   mkdir -p cert config logs release
-  chmod -R 754 .
+  chmod -R 755 .
   popd
   add_path "$NODE_AGENT_PKG_DIR/bin"
   popd
 }
 
-unregister_node_agent() {
+set_log_dir_permission() {
+  #Change directory.
+  pushd "$NODE_AGENT_HOME"
+  chmod 755 logs
+  popd
+}
+
+set_node_agent_base_url() {
+  local RESPONSE_FILE="/tmp/session_info_${INSTALL_USER}.json"
+  local STATUS_CODE=""
+  STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
+    "$SESSION_INFO_URL" --header "$HEADER: $HEADER_VAL" --output "$RESPONSE_FILE"
+    )
+  if [ "$STATUS_CODE" != "200" ]; then
+    rm -rf "$RESPONSE_FILE"
+    echo "Fail to get session info. Status code $STATUS_CODE"
+    exit 1
+  fi
+  set +e
+  CUSTOMER_ID="$(grep -o '"customerUUID":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
+  NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
+  rm -rf "$RESPONSE_FILE"
+  set -e
+}
+
+uninstall_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
@@ -85,6 +111,7 @@ unregister_node_agent() {
     --output "$RESPONSE_FILE"
     )
   if [ "$STATUS_CODE" != "200" ]; then
+    rm -rf "$RESPONSE_FILE"
     echo "Fail to check existing node agent. Status code $STATUS_CODE"
     exit 1
   fi
@@ -93,6 +120,7 @@ unregister_node_agent() {
   set +e
   local NODE_AGENT_UUID=""
   NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
+  rm -rf "$RESPONSE_FILE"
   local RUNNING=""
   RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
   if [ -n "$RUNNING" ]; then
@@ -259,11 +287,13 @@ Usage: ${0##*/} [<options>]
 
 Options:
   -c, --command (REQUIRED)
-    Command to run. Must be in ['install', 'install_service' (Requires sudo access)].
+    Command to run. Must be in ['install', 'uninstall', 'install_service'].
   -u, --url (REQUIRED)
     Yugabyte Anywhere URL.
   -t, --api_token (REQUIRED with install command)
     Api token to download the build files.
+  -p, --node_port (OPTIONAL with install command)
+    Server port.
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
@@ -286,16 +316,10 @@ main() {
       exit 1
     fi
     install_systemd_service
-  elif [ "$COMMAND" = "download_package" ]; then
-    if [ -z "$JWT" ]; then
-      echo "JWT is required."
-      show_usage >&2
-      exit 1
-    fi
-    download_package >/dev/null
   elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
     setup_symlink > /dev/null
+    set_log_dir_permission > /dev/null
   elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then
@@ -310,45 +334,68 @@ main() {
         show_usage >&2
         exit 1
       fi
-      if [ "$FORCE_INSTALL" = "true" ]; then
-        if [ -z "$CUSTOMER_ID" ]; then
-          echo "Customer ID is required."
+      #For non-silent, the following inputs are read interactively.
+      if [ "$SILENT_INSTALL" = "true" ]; then
+        # This mode is hidden from usage.
+        if [ -z "$NODE_NAME" ]; then
+          echo "Node name is required."
           exit 1
         fi
-        unregister_node_agent
+        if [ -z "$PROVIDER_ID" ]; then
+          echo "Provider ID is required."
+          exit 1
+        fi
+        if [ -z "$INSTANCE_TYPE" ]; then
+          echo "Instance type is required."
+          exit 1
+        fi
+        if [ -z "$ZONE_NAME" ]; then
+          echo "Zone name is required."
+          exit 1
+        fi
       fi
       download_package
       NODE_AGENT_CONFIG_ARGS+=(--api_token "$API_TOKEN" --url "$PLATFORM_URL" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      if [ "$SILENT_INSTALL" = "true" ]; then
+        NODE_AGENT_CONFIG_ARGS+=(--silent --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
+        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --zone_name "$ZONE_NAME")
+      fi
     else
+        # This path is hidden from usage.
+      if [ -z "$CUSTOMER_ID" ]; then
+        echo "Customer ID is required."
+        exit 1
+      fi
+      if [ -z "$NODE_NAME" ]; then
+        echo "Node name is required."
+        exit 1
+      fi
       if [ -z "$NODE_IP" ]; then
         echo "Node IP is required."
         exit 1
       fi
       if [ -z "$CERT_DIR" ]; then
         echo "Cert directory is required."
-        show_usage >&2
         exit 1
       fi
       if [ -z "$NODE_AGENT_ID" ]; then
         echo "Cert directory is required."
-        show_usage >&2
         exit 1
       fi
       if [ ! -f "$NODE_AGENT_PKG_TGZ_PATH" ]; then
         echo "$NODE_AGENT_PKG_TGZ_PATH is not found."
-        show_usage >&2
         exit 1
       fi
       if [ ! -d "$NODE_AGRNT_CERT_PATH" ]; then
         echo "$NODE_AGRNT_CERT_PATH is not found."
-        show_usage >&2
         exit 1
       fi
-      NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --cert_dir "$CERT_DIR" \
-      --node_ip "$NODE_IP" --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
+      --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
+      --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
     fi
-    node_agent_dir_setup
+    setup_node_agent_dir
     extract_package
     setup_symlink
     node-agent node configure ${NODE_AGENT_CONFIG_ARGS[@]}
@@ -357,8 +404,31 @@ main() {
       exit 1
     fi
     echo "Source ~/.bashrc to make node-agent available in the PATH."
+  elif [ "$COMMAND" = "uninstall" ]; then
+    if [ -z "$PLATFORM_URL" ]; then
+      echo "Yugabyte Anywhere URL is required."
+      show_usage >&2
+      exit 1
+    fi
+    if [ -z "$API_TOKEN" ]; then
+      echo "API token is required."
+      show_usage >&2
+      exit 1
+    fi
+    if [ -z "$NODE_IP" ]; then
+      echo "Node IP is required."
+      show_usage >&2
+      exit 1
+    fi
+    if [ "$SUDO_ACCESS" = "false" ]; then
+      echo "SUDO access is required."
+      show_usage >&2
+      exit 1
+    fi
+    set_node_agent_base_url
+    uninstall_node_agent
   else
-    err_msg "Invalid option: $COMMAND. Must be one of ['install [--force] [--skip_verify_cert]', \
+    err_msg "Invalid option: $COMMAND. Must be one of ['install, uninstall, \
 'install_service'].\n"
     show_usage >&2
     exit 1
@@ -386,6 +456,25 @@ while [[ $# -gt 0 ]]; do
     --disable_egress)
       DISABLE_EGRESS="true"
     ;;
+    --silent)
+      SILENT_INSTALL="true"
+    ;;
+    --node_name)
+      NODE_NAME="$2"
+      shift
+    ;;
+    --provider_id)
+      PROVIDER_ID="$2"
+      shift
+    ;;
+    --instance_type)
+      INSTANCE_TYPE="$2"
+      shift
+    ;;
+    --zone_name)
+      ZONE_NAME="$2"
+      shift
+    ;;
     --id)
       NODE_AGENT_ID="$2"
       shift
@@ -393,9 +482,6 @@ while [[ $# -gt 0 ]]; do
     --cert_dir)
       CERT_DIR="$2"
       shift
-    ;;
-    --force)
-      FORCE_INSTALL="true"
     ;;
     -c|--customer_id)
       CUSTOMER_ID="$2"
@@ -415,10 +501,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     -t|--api_token)
       API_TOKEN="$2"
-      shift
-    ;;
-    --jwt)
-      JWT="$2"
       shift
     ;;
     --cleanup)
@@ -451,6 +533,7 @@ if [ -z "$INSTALL_USER" ]; then
   fi
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
+  show_usage >&2
   echo "Different user can be passed only for installing service."
   exit 1
 fi
@@ -461,22 +544,29 @@ NODE_AGENT_PKG_DIR="$NODE_AGENT_HOME/pkg"
 NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
 NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_DIR/$NODE_AGENT_PKG_TGZ"
 NODE_AGRNT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
+NODE_AGENT_CONFIG_PATH="$NODE_AGENT_HOME/config/config.yml"
 
-if [ "$COMMAND" = "install" ]; then
-  HEADER="$API_TOKEN_HEADER"
-  HEADER_VAL="$API_TOKEN"
-else
-  HEADER="$JWT_HEADER"
-  HEADER_VAL="$JWT"
+if [ -z "$NODE_PORT" ]; then
+  if [ -f "$NODE_AGENT_CONFIG_PATH" ]; then
+    NODE_PORT=$(cat "$NODE_AGENT_CONFIG_PATH" | awk -F":" '/port/{gsub(/[" ]/, "", $2); print $2}')
+  fi
 fi
+
+if [ -z "$NODE_PORT" ]; then
+  NODE_PORT=9070
+fi
+
+echo "Using node agent port $NODE_PORT."
+
+HEADER="$API_TOKEN_HEADER"
+HEADER_VAL="$API_TOKEN"
 
 #Trim leading and trailing whitespaces.
 PLATFORM_URL=$(echo "$PLATFORM_URL" | xargs)
 API_TOKEN=$(echo "$API_TOKEN" | xargs)
-JWT=$(echo "$JWT" | xargs)
 
-NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
-NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/node_agents/download"
+NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/v1/node_agents/download"
+SESSION_INFO_URL="$PLATFORM_URL/api/v1/session_info"
 
 check_sudo_access
 main
@@ -484,7 +574,7 @@ main
 if [ "$?" -eq 0 ] && [ "$COMMAND" = "install" ]; then
   if [ "$SUDO_ACCESS" = "false" ]; then
     echo "You can install a systemd service on linux machines\
- by running $INSTALLER_NAME -c install_service (Requires sudo access)."
+ by running $INSTALLER_NAME -c install_service --user yugabyte (Requires sudo access)."
   else
      install_systemd_service
   fi

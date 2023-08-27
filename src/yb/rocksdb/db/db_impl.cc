@@ -4492,17 +4492,17 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
 }
 
 std::function<void()> DBImpl::GetFilesChangedListener() const {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   return files_changed_listener_;
 }
 
 bool DBImpl::HasFilesChangedListener() const {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   return files_changed_listener_ != nullptr;
 }
 
 void DBImpl::ListenFilesChanged(std::function<void()> files_changed_listener) {
-  std::lock_guard<std::mutex> lock(files_changed_listener_mutex_);
+  std::lock_guard lock(files_changed_listener_mutex_);
   files_changed_listener_ = std::move(files_changed_listener);
 }
 
@@ -5810,7 +5810,7 @@ yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
 }
 
 void DBImpl::TEST_SwitchMemtable() {
-  std::lock_guard<InstrumentedMutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   WriteContext context;
   CHECK_OK(SwitchMemtable(default_cf_handle_->cfd(), &context));
 }
@@ -6079,12 +6079,11 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
           auto frontier = mem->GetFrontier(type);
+          // Non-empty MemTable could have no (or stale) frontier if we've written to the MemTable,
+          // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
+          // under lock).
           if (frontier) {
             UserFrontier::Update(frontier.get(), type, &accumulated);
-          } else {
-            YB_LOG_EVERY_N_SECS(DFATAL, 5)
-                << db_options_.log_prefix << "[" << cfd->GetName()
-                << "] " << ToString(type) << " frontier is not initialized for non-empty MemTable";
           }
         }
       } else {

@@ -15,8 +15,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -130,7 +132,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.UpdateClusterUserIntent);
+          TaskType.UpdateClusterUserIntent,
+          TaskType.CheckUnderReplicatedTablets);
 
   @Override
   @Before
@@ -166,7 +169,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.ybSoftwareVersion = "2.14.12.0-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
@@ -233,6 +236,15 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
           .thenReturn(autoFlagsPerServer);
+      lenient()
+          .doAnswer(
+              inv -> {
+                ObjectNode res = newObject();
+                res.put("response", "success");
+                return res;
+              })
+          .when(mockYsqlQueryExecutor)
+          .executeQueryInNodeShell(any(), any(), any());
     } catch (Exception ignored) {
       fail();
     }
@@ -325,18 +337,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             :
             // Primary cluster first, then read replica.
             Arrays.asList(2, 1, 3, 6, 4, 5);
-  }
-
-  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals(expectedTaskType, taskType);
-    return taskType;
-  }
-
-  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType, int position) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals("at position " + position, expectedTaskType, taskType);
-    return taskType;
   }
 
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {

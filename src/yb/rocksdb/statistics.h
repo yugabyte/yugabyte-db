@@ -38,6 +38,8 @@ namespace rocksdb {
  * Keep adding ticker's here.
  *  1. Any ticker should be added before TICKER_ENUM_MAX.
  *  2. Add a readable string in TickersNameMap below for the newly added ticker.
+ *  3. Make sure to add the ticker to the list in src/yb/yql/pggate/pg_metrics_list.h and
+ *     src/yb/docdb/docdb_statistics.cc as well.
  */
 enum Tickers : uint32_t {
   // total block cache misses
@@ -368,11 +370,7 @@ struct HistogramData {
   double min;
   double max;
   double sum;
-  double median;
-  double percentile95;
-  double percentile99;
   double average;
-  double standard_deviation;
 };
 
 enum StatsLevel {

@@ -1,10 +1,10 @@
 ```output.ebnf
 create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
-                 table_name ( [ table_elem [ , ... ] ] ) 
-                 [ WITH ( { COLOCATED = { 'true' | 'false' }
+                 table_name ( [ table_elem [ , ... ] ] )  
+                 [ WITH ( { COLOCATION = { 'true' | 'false' }
                             | storage_parameters } )
                    | WITHOUT OIDS ]  [ TABLESPACE tablespace_name ] 
-                 [ SPLIT { INTO integer TABLETS
+                 [ SPLIT { INTO positive_int_literal TABLETS
                            | AT VALUES ( split_row [ , ... ] ) } ]
 
 table_elem ::= column_name data_type [ column_constraint [ ... ] ]
@@ -17,7 +17,7 @@ column_constraint ::= [ CONSTRAINT constraint_name ]
                         | DEFAULT expression
                         | UNIQUE index_parameters
                         | PRIMARY KEY
-                        | references_clause } 
+                        | references_clause }  
                       [ DEFERRABLE | NOT DEFERRABLE ] 
                       [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
@@ -26,7 +26,7 @@ table_constraint ::= [ CONSTRAINT constraint_name ]
                        | UNIQUE ( column_names ) index_parameters
                        | PRIMARY KEY ( key_columns )
                        | FOREIGN KEY ( column_names ) 
-                         references_clause } 
+                         references_clause }  
                      [ DEFERRABLE | NOT DEFERRABLE ] 
                      [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
@@ -41,7 +41,7 @@ storage_parameters ::= storage_parameter [ , ... ]
 storage_parameter ::= param_name [ = param_value ]
 
 index_parameters ::= [ INCLUDE ( column_names ) ] 
-                     [ WITH ( storage_parameters ) ] 
+                     [ WITH ( storage_parameters ) ]  
                      [ USING INDEX TABLESPACE tablespace_name ]
 
 references_clause ::= REFERENCES table_name [ column_name [ , ... ] ] 

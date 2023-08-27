@@ -193,7 +193,7 @@ TEST_F(SharedLockManagerTest, LockConflicts) {
 }
 
 TEST_F(SharedLockManagerTest, DumpKeys) {
-  FLAGS_dump_lock_keys = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_dump_lock_keys) = true;
 
   auto lb1 = TestLockBatch();
   ASSERT_OK(lb1.status());

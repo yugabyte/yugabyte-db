@@ -140,9 +140,13 @@ void CompactionIterator::NextFromInput() {
   at_next_ = false;
   valid_ = false;
 
-  while (!valid_ && input_->Valid()) {
-    key_ = input_->key();
-    value_ = input_->value();
+  while (!valid_) {
+    const auto& entry = input_->Entry();
+    if (!entry) {
+      return;
+    }
+    key_ = entry.key;
+    value_ = entry.value;
     iter_stats_.num_input_records++;
 
     if (!ParseInternalKey(key_, &ikey_)) {

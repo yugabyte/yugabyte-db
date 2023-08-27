@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/gen_flags_metadata.py "$@"
+"$YB_SCRIPT_PATH_GEN_FLAGS_METADATA" "$@"

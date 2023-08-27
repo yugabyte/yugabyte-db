@@ -28,7 +28,8 @@ using namespace yb::size_literals;
 // Hence, we have a limit of 254MB at the consensus layer.
 // The rpc layer adds its own headers, so we limit the rpc message size to 255MB.
 DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
-              "The maximum size of a message of any RPC that the server will accept.");
+    "The maximum size of a message of any RPC that the server will accept. The sum of "
+    "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
 
 using google::protobuf::internal::WireFormatLite;
 using google::protobuf::io::CodedOutputStream;

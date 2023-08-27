@@ -181,7 +181,7 @@ class ConcurrentArena : public Allocator {
     size_t avail = s->allocated_and_unused_.load(std::memory_order_relaxed);
     if (avail < bytes) {
       // reload
-      std::lock_guard<SpinMutex> reload_lock(arena_mutex_);
+      std::lock_guard reload_lock(arena_mutex_);
 
       // If the arena's current block is within a factor of 2 of the right
       // size, we adjust our request to avoid arena waste.

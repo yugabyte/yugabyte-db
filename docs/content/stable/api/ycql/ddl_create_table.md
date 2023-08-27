@@ -76,6 +76,7 @@ Where
 - If primary key is set as a table constraint then:
   - The partition columns are given by the first entry in the primary key list: the nested column list (if given), otherwise the first column.
   - The clustering columns are the rest of the columns in the primary key list (if any).
+- Types `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE` cannot be used in the primary key.
 
 #### PARTITION KEY
 
@@ -148,7 +149,7 @@ ycqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name
 ```
 
 ```sql
-ycqlsh:example> SELECT * FROM devices;
+ycqlsh:example> SELECT * FROM items;
 ```
 
 ```output

@@ -1,7 +1,9 @@
 ---
-title: GIN indexes
+title: GIN indexes in YugabyteDB YSQL
+headerTitle: GIN indexes
 linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
+headContent: Explore GIN indexes using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -81,11 +83,7 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ## Examples
 
-{{< note title="Setup" >}}
-
-Local multi-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
-
-{{< /note >}}
+{{% explore-setup-single-local %}}
 
 1. Set up the tables, indexes, and data.
 

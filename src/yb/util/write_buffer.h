@@ -15,6 +15,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
@@ -26,7 +28,7 @@ constexpr size_t kMinWriteBufferBlocks = 16;
 
 struct WriteBufferPos {
   size_t index;
-  size_t offset;
+  char* address;
 };
 
 class WriteBuffer {
@@ -34,14 +36,30 @@ class WriteBuffer {
   explicit WriteBuffer(size_t block_size, ScopedTrackedConsumption* consumption = nullptr)
       : block_size_(block_size), consumption_(consumption) {}
 
-  void Append(const char* data, const char* end);
+  void PushBack(char value);
 
-  void Append(const char* data, size_t length) {
-    Append(data, data + length);
+  void AppendWithPrefix(char prefix, const char* data, size_t len) {
+    AppendWithPrefix(prefix, Slice(data, len));
   }
 
-  void Append(const Slice& slice) {
-    Append(slice.cdata(), slice.cend());
+  void AppendWithPrefix(char prefix, const char* data, const char* end) {
+    AppendWithPrefix(prefix, data, end - data);
+  }
+
+  void AppendWithPrefix(char prefix, Slice slice) {
+    DoAppend(prefix, slice);
+  }
+
+  void Append(const char* data, size_t length) {
+    Append(Slice(data, length));
+  }
+
+  void Append(const char* data, const char* end) {
+    Append(data, end - data);
+  }
+
+  void Append(Slice slice) {
+    DoAppend(slice);
   }
 
   Status Write(const WriteBufferPos& pos, const char* data, const char* end);
@@ -50,8 +68,8 @@ class WriteBuffer {
     return Write(pos, data, data + length);
   }
 
-  Status Write(const WriteBufferPos& pos, const Slice& slice) {
-    return Write(pos, slice.cdata(), slice.cend());
+  Status Write(const WriteBufferPos& pos, Slice slice) {
+    return Write(pos, slice.cdata(), slice.size());
   }
 
   void AddBlock(const RefCntBuffer& buffer, size_t skip);
@@ -59,7 +77,7 @@ class WriteBuffer {
   void Reset();
   void Flush(boost::container::small_vector_base<RefCntSlice>* output);
 
-  WriteBufferPos Position() const;
+  WriteBufferPos Position();
   size_t BytesAfterPosition(const WriteBufferPos& pos) const;
 
   size_t size() const {
@@ -96,10 +114,53 @@ class WriteBuffer {
   }
 
  private:
-  const char* CopyToLastBlock(const char* data, const char* end);
   void ShrinkLastBlock();
   template <class Out>
   void DoAppendTo(Out* out) const;
+
+  static size_t AppendSize(Slice slice) {
+    return slice.size();
+  }
+
+  static void AppendCopyTo(char* out, Slice slice) {
+    slice.CopyTo(out);
+  }
+
+  static size_t AppendSize(char prefix, Slice slice) {
+    return slice.size() + 1;
+  }
+
+  static void AppendCopyTo(char* out, char prefix, Slice value) {
+    *out++ = prefix;
+    value.CopyTo(out);
+  }
+
+  template <class... Args>
+  void DoAppend(Args&&... value) {
+    auto len = AppendSize(std::forward<Args>(value)...);
+    size_ += len;
+
+    auto out = last_block_free_begin_;
+    auto end = last_block_free_end_;
+    if (make_signed(len) <= end - out) {
+      AppendCopyTo(out, std::forward<Args>(value)...);
+      last_block_free_begin_ = out + len;
+      return;
+    }
+
+    if (out == end) {
+      AppendToNewBlock(std::forward<Args>(value)...);
+      return;
+    }
+
+    DoAppendSplit(out, end - out, std::forward<Args>(value)...);
+  }
+
+  void AppendToNewBlock(Slice slice);
+  void AppendToNewBlock(char prefix, Slice slice);
+
+  void DoAppendSplit(char* out, size_t out_size, Slice slice);
+  void DoAppendSplit(char* out, size_t out_size, char ch, Slice slice);
 
   class Block {
    public:
@@ -112,6 +173,10 @@ class WriteBuffer {
 
     char* data() const {
       return buffer_.data() + skip_;
+    }
+
+    char* end() const {
+      return buffer_.end();
     }
 
     void Shrink(size_t size) {
@@ -137,7 +202,8 @@ class WriteBuffer {
   };
 
   const size_t block_size_;
-  size_t filled_bytes_in_last_block_ = 0;
+  char* last_block_free_begin_ = nullptr;
+  char* last_block_free_end_ = nullptr;
   size_t size_ = 0;
   boost::container::small_vector<Block, kMinWriteBufferBlocks> blocks_;
   ScopedTrackedConsumption* consumption_;

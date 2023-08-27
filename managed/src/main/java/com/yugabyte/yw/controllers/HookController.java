@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Hook;
+import com.yugabyte.yw.models.HookScope;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -166,6 +167,7 @@ public class HookController extends AuthenticatedController {
       UUID universeUUID,
       Boolean isRolling,
       UUID clusterUUID,
+      List<UUID> hookUUIDs,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer, request);
@@ -174,11 +176,24 @@ public class HookController extends AuthenticatedController {
           UNAUTHORIZED,
           "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
     }
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (clusterUUID != null) {
+      if (universe.getCluster(clusterUUID) == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot find cluster: " + clusterUUID);
+      }
+    }
+
+    // Validate the hookUUIDs if any were provided.
+    hookUUIDs.forEach(
+        id ->
+            Hook.getOrBadRequest(customerUUID, id)
+                .getHookScopeOrFail(universeUUID, clusterUUID, HookScope.TriggerType.ApiTriggered));
+
     RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.creatingUser = CommonUtils.getUserFromContext();
     taskParams.isRolling = isRolling.booleanValue();
+    taskParams.hookUUIDs = hookUUIDs;
 
     log.info(
         "Running API Triggered hooks for {} [ {} ] customer {}, cluster {}.",

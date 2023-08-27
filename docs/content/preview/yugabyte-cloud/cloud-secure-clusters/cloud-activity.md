@@ -12,11 +12,9 @@ menu:
 type: docs
 ---
 
-Audit your account activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.
+Audit your account activity using the **Activity** tab on the **Security** page, which lists the source, activity, user, and time of the activity.
 
 Cluster activity is also displayed on the cluster [**Activity** tab](../../cloud-monitor/monitor-activity).
-
-You must be signed in as an Admin user; Developer users cannot view the account activity.
 
 ![Activity tab](/images/yb-cloud/cloud-admin-activity.png)
 

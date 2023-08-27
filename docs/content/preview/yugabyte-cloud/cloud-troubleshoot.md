@@ -69,10 +69,26 @@ org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserve
 
 Your application has reached the limit of available connections for the cluster:
 
-- Sandbox clusters support up to 10 simultaneous connections.
-- Dedicated clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.
+- Sandbox clusters support up to 15 simultaneous connections.
+- Dedicated clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections.
 
 A solution would be to use a connection pooler. Depending on your use case, you may also want to consider scaling your cluster.
+
+### Connection dropped during copy operation
+
+If your application returns the error:
+
+```output
+ssl syscall error eof detected connection to server was lost
+```
+
+If you are using a Sandbox cluster and the [COPY command](../../api/ysql/the-sql-language/statements/cmd_copy/) (or using a tool that uses COPY), you may be exceeding the limited memory available in your Sandbox. The COPY command inserts data in a single transaction up to the [rows_per_transaction](../../api/ysql/the-sql-language/statements/cmd_copy/#rows-per-transaction) setting, which is 20k by default. The combination of a large number of columns and the number of rows being inserted in a single transaction may be too much load for a Sandbox cluster.
+
+Try the following workarounds:
+
+- Lower the value of `rows_per_transaction`. This will depend on the number of columns on the table, their types, and the length of those values. For example, columns with blob types or lengthy strings will be more likely to cause issues. Refer to [Import with skipping rows](../../api/ysql/the-sql-language/statements/cmd_copy/#import-with-skipping-rows).
+- Open the import file and manually split the COPY command into multiple COPY commands.
+- [Request a Free Trial](../managed-freetrial/).
 
 ### Application fails to connect
 

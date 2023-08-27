@@ -12,7 +12,9 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 
@@ -20,12 +22,14 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/master/master_replication.pb.h"
@@ -51,50 +55,10 @@ struct SchemaDetails {
 // the current 'running' schema.
 using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
 
-struct StreamMetadata {
-  NamespaceId ns_id;
-  std::vector<TableId> table_ids;
-  CDCRecordType record_type;
-  CDCRecordFormat record_format;
-  CDCRequestSource source_type;
-  CDCCheckpointType checkpoint_type;
-
-  struct StreamTabletMetadata {
-    std::mutex mutex_;
-    int64_t apply_safe_time_checkpoint_op_id_ GUARDED_BY(mutex_) = 0;
-    HybridTime last_apply_safe_time_ GUARDED_BY(mutex_);
-    MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
-    // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use it to make
-    // UpdateCDCTabletMetrics run asynchronously.
-  };
-
-  StreamMetadata() = default;
-
-  StreamMetadata(NamespaceId ns_id,
-                 std::vector<TableId> table_ids,
-                 CDCRecordType record_type,
-                 CDCRecordFormat record_format,
-                 CDCRequestSource source_type,
-                 CDCCheckpointType checkpoint_type)
-      : ns_id(std::move(ns_id)),
-        table_ids((std::move(table_ids))),
-        record_type(record_type),
-        record_format(record_format),
-        source_type(source_type),
-        checkpoint_type(checkpoint_type) {
-  }
-
-  std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
-      EXCLUDES(tablet_metadata_map_mutex_);
-
- private:
-  std::shared_mutex tablet_metadata_map_mutex_;
-  std::unordered_map<TableId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_
-      GUARDED_BY(tablet_metadata_map_mutex_);
-};
+class StreamMetadata;
 
 Status GetChangesForCDCSDK(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TableId& tablet_id,
     const CDCSDKCheckpointPB& op_id,
     const StreamMetadata& record,
@@ -108,6 +72,8 @@ Status GetChangesForCDCSDK(
     uint64_t* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
+    const int64_t& safe_hybrid_time_req,
+    const int& wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",
     const CoarseTimePoint deadline = CoarseTimePoint::max());
@@ -115,17 +81,16 @@ Status GetChangesForCDCSDK(
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 
 Status GetChangesForXCluster(
-    const std::string& stream_id,
-    const std::string& tablet_id,
+    const xrepl::StreamId& stream_id,
+    const TabletId& tablet_id,
     const OpId& op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    const client::YBSessionPtr& session,
     UpdateOnSplitOpFunc update_on_split_op_func,
     const std::shared_ptr<MemTracker>& mem_tracker,
+    const CoarseTimePoint& deadline,
     StreamMetadata* stream_metadata,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
-    int64_t* last_readable_opid_index = nullptr,
-    const CoarseTimePoint deadline = CoarseTimePoint::max());
+    int64_t* last_readable_opid_index = nullptr);
 }  // namespace cdc
 }  // namespace yb

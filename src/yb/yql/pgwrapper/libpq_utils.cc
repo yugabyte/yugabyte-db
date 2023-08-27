@@ -171,6 +171,9 @@ Result<T> GetValueImpl(PGresult* result, int row, int column) {
         VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint64_t))));
   } else if constexpr (std::is_same_v<T, std::string>) {
     return std::string(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+  } else if constexpr (std::is_same_v<T, Uuid>) {
+    return Uuid::FromSlice(
+        Slice(PQgetvalue(result, row, column), PQgetlength(result, row, column)));
   }
 }
 
@@ -187,7 +190,11 @@ struct FloatTraits<F> {
   using IntType = uint64_t;
 };
 
-}  // anonymous namespace
+std::vector<std::string> PerfArguments(int pid) {
+  return {"perf", "record", "-g", Format("-p$0", pid), Format("-o/tmp/perf.$0.data", pid)};
+}
+
+}  // namespace
 
 template<class T>
 GetValueResult<T> GetValue(PGresult* result, int row, int column) {
@@ -593,6 +600,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
   constexpr Oid CSTRINGOID = 2275;
+  constexpr Oid UUIDOID = 2950;
 
   if (PQgetisnull(result, row, column)) {
     return "NULL";
@@ -620,6 +628,8 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:
       return yb::ToString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
+    case UUIDOID:
+      return yb::ToString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
     default:
       return Format("Type not supported: $0", type);
   }
@@ -675,26 +685,6 @@ std::string PqEscapeIdentifier(const std::string& input) {
   return output;
 }
 
-bool HasTransactionError(const Status& status) {
-  static const auto kExpectedErrors = {
-      "could not serialize access due to concurrent update",
-      "Transaction aborted:",
-      "expired or aborted by a conflict:",
-      "Unknown transaction, could be recently aborted:"
-  };
-  return HasSubstring(status.message(), kExpectedErrors);
-}
-
-bool IsRetryable(const Status& status) {
-  static const auto kExpectedErrors = {
-      "Try again",
-      "Catalog Version Mismatch",
-      "Restart read required at",
-      "schema version mismatch for table"
-  };
-  return HasSubstring(status.message(), kExpectedErrors);
-}
-
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)
     : conn_str_(BuildConnectionString(settings)),
       conn_str_for_log_(BuildConnectionString(settings, true /* mask_password */)),
@@ -720,6 +710,29 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
   return connection;
 }
 
+Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
+  return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
+}
+Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
+  return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
+}
+
+Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
+  return conn->ExecuteFormat("SET ysql_session_max_batch_size = $0", max_batch_size);
+}
+
+PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
+    : process_("perf",
+               PerfArguments(CHECK_RESULT(conn->FetchValue<PGUint32>("SELECT pg_backend_pid()")))) {
+
+  CHECK_OK(process_.Start());
+}
+
+PGConnPerf::~PGConnPerf() {
+  CHECK_OK(process_.Kill(SIGINT));
+  LOG(INFO) << "Perf exec code: " << CHECK_RESULT(process_.Wait());
+}
+
 template GetValueResult<int16_t> GetValue<int16_t>(PGresult*, int, int);
 template GetValueResult<int32_t> GetValue<int32_t>(PGresult*, int, int);
 template GetValueResult<int64_t> GetValue<int64_t>(PGresult*, int, int);
@@ -731,6 +744,7 @@ template GetValueResult<double> GetValue<double>(PGresult*, int, int);
 template GetValueResult<bool> GetValue<bool>(PGresult*, int, int);
 template GetValueResult<std::string> GetValue<std::string>(PGresult*, int, int);
 template GetValueResult<PGOid> GetValue<PGOid>(PGresult*, int, int);
+template GetValueResult<Uuid> GetValue<Uuid>(PGresult*, int, int);
 
 } // namespace pgwrapper
 } // namespace yb

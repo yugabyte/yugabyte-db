@@ -42,6 +42,7 @@ typedef std::shared_ptr<TableInfo> TableInfoPtr;
 
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
+typedef std::weak_ptr<TabletPeer> TabletPeerWeakPtr;
 
 class ChangeMetadataOperation;
 class Operation;
@@ -49,6 +50,7 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
+class TabletMetrics;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusListener;
@@ -71,12 +73,12 @@ struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
-struct TabletMetrics;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
+YB_STRONGLY_TYPED_BOOL(AbortOps);
 YB_STRONGLY_TYPED_BOOL(Destroy);
 YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);

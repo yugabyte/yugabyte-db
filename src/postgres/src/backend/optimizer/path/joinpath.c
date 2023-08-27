@@ -22,6 +22,8 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -89,6 +91,9 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 						 List *merge_pathkeys,
 						 bool is_partial);
 
+static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
+															Path *inner_path,
+															List *rinfos);
 
 /*
  * add_paths_to_joinrel
@@ -443,6 +448,48 @@ try_nestloop_path(PlannerInfo *root,
 			if (!inner_path)
 			{
 				bms_free(required_outer);
+				return;
+			}
+		}
+
+		if (IsYugaByteEnabled() &&
+			 inner_path->param_info &&
+			 inner_path->param_info->yb_ppi_req_outer_batched)
+		{
+			/*
+			 * YB: Check to make sure this is a valid BNL.
+			 */
+			if (yb_has_non_evaluable_bnl_clauses(outer_path,
+															 inner_path,
+															 extra->restrictlist) || 
+				 (yb_has_non_evaluable_bnl_clauses(outer_path,
+															  inner_path,
+															  inner_path->param_info
+															  ->ppi_clauses)))
+			{
+				bms_free(required_outer);
+				return;
+			}
+		}
+
+		if (IsYugaByteEnabled() &&
+			 outer_path->param_info && inner_path->param_info)
+		{
+			/*
+			 * YB: Check to see if there are any conflicting unbatched and batched
+			 * rels.
+			 */
+			Relids unbatched =
+				bms_union(inner_path->param_info->yb_ppi_req_outer_unbatched,
+							 outer_path->param_info->yb_ppi_req_outer_unbatched);
+			Relids batched =
+				bms_union(inner_path->param_info->yb_ppi_req_outer_batched,
+							 outer_path->param_info->yb_ppi_req_outer_batched);
+			if (bms_overlap(unbatched, batched))
+			{
+				bms_free(required_outer);
+				bms_free(unbatched);
+				bms_free(batched);
 				return;
 			}
 		}
@@ -2086,4 +2133,46 @@ select_mergejoin_clauses(PlannerInfo *root,
 	}
 
 	return result_list;
+}
+
+/*
+ * A batched clause can be non_evaluable if it requires input relations
+ * A and B on its outer side but And B are not joined together in the context
+ * of this clause.
+ * Therefore the clause does not directly receive all elements of A x B.
+ * We can detect these bad cases with the following logic. If a certain inner
+ * path, I, satisfies a certain batched restriction clause that needs an
+ * input outer relation set of S. We need to be sure to never join I to outer
+ * path O if O only partially fulfills S. For example, if O has relations {1,2}
+ * and S = {1,3} then we cannot join O to I as I will not receieve a cross
+ * product of relations 1 and 3. On the other hand, if O had relations {1,3,4},
+ * the join would be acceptable.
+ */
+static bool
+yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
+											List *rinfos)
+{
+	ListCell *lc;
+	Relids req_batched_rels = inner_path->param_info->yb_ppi_req_outer_batched;
+	Relids outer_relids = outer_path->parent->relids;
+	Relids inner_relids = inner_path->parent->relids;
+
+	foreach(lc, rinfos)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		RestrictInfo *batched_rinfo =
+			yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+
+		if (!batched_rinfo)
+			continue;
+
+		Relids right_relids = batched_rinfo->right_relids;
+		right_relids = bms_intersect(right_relids, req_batched_rels);
+		if (bms_overlap(right_relids, outer_relids) &&
+			 !bms_is_subset(right_relids, outer_relids))
+		{
+			return true;
+		}
+	}
+	return false;
 }

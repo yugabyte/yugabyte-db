@@ -121,7 +121,8 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
           pg_ts->server()->GetSharedMemoryFd()));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
-  FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
             << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
@@ -136,18 +137,17 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
 
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
-    uint32_t replication_factor,
-    uint32_t num_masters,
-    bool colocated) {
+    uint32_t replication_factor, uint32_t num_masters, bool colocated,
+    bool cdc_populate_safepoint_record) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   CDCSDKTestBase::SetUp();
-  FLAGS_enable_ysql = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_cdc_enable_replicate_intents = true;
-  FLAGS_replication_factor = replication_factor;
-  FLAGS_ysql_enable_pack_full_row_update = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -391,7 +391,7 @@ void CDCSDKTestBase::InitCreateStreamRequest(
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
-Result<std::string> CDCSDKTestBase::CreateDBStream(
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
     CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
@@ -403,7 +403,7 @@ Result<std::string> CDCSDKTestBase::CreateDBStream(
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 
-  return resp.db_stream_id();
+  return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
 } // namespace cdc

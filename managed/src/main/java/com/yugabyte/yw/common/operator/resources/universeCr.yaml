@@ -5,7 +5,7 @@ metadata:
 spec:
   numNodes: 3
   replicationFactor: 3
-  instanceType: dev
+  instanceType: small
   assignPublicIP: true
   useTimeSync: true
   enableYSQL: true
@@ -24,3 +24,34 @@ spec:
   accessKeyCode: ''
   useSystemd: true
   dedicatedNodes: false
+  deviceInfo:
+    volumeSize: 100
+    numVolumes: 1
+    storageClass: "standard"
+  kubernetesOverrides:
+    resource:
+      master:
+        requests:
+          cpu: 2
+          memory: 2Gi
+        limits:
+          cpu: 2
+          memory: 2Gi
+      tserver:
+        requests:
+          cpu: 2
+          memory: 4Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+    tserver:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname

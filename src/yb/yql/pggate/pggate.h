@@ -44,9 +44,11 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
@@ -130,7 +132,9 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name);
+  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
+
+  uint64_t GetSessionID() const;
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
@@ -139,6 +143,10 @@ class PgApiImpl {
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                               PgStatement **handle);
+
+  // Cache function calls in YB Memctx. When Memctx is destroyed, the function is destructed.
+  Status AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle);
+
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   Status AddToCurrentPgMemctx(size_t table_desc_id,
                               const PgTableDescPtr &table_desc);
@@ -255,6 +263,8 @@ class PgApiImpl {
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
+  Status CancelTransaction(const unsigned char* transaction_id);
+
   // Load table.
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
 
@@ -309,7 +319,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -385,6 +396,8 @@ class PgApiImpl {
 
   Status ExecDropTable(PgStatement *handle);
 
+  Status ExecDropIndex(PgStatement *handle);
+
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
@@ -393,9 +406,11 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
+  Result<bool> DmlHasSystemTargets(PgStatement *handle);
+
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
+  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -425,6 +440,7 @@ class PgApiImpl {
                              YBCPgExpr lhs,
                              int n_attr_values,
                              YBCPgExpr *attr_values);
+  Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
@@ -477,7 +493,6 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
-  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -533,7 +548,28 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
+
+  //------------------------------------------------------------------------------------------------
+  // Functions.
+
+  Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
+
+  Status AddFunctionParam(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      uint64_t datum, bool is_null);
+
+  Status AddFunctionTarget(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      const YBCPgTypeAttrs type_attrs);
+
+  Status FinalizeFunctionTargets(PgFunction *handle);
+
+  Status SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+  Status NewGetLockStatusDataSRF(PgFunction **handle);
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
@@ -557,6 +593,7 @@ class PgApiImpl {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
@@ -572,6 +609,8 @@ class PgApiImpl {
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
+  Result<Uuid> GetActiveTransaction() const;
+  Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -621,6 +660,8 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string &table_id, const std::string &transaction_id);
   Result<client::TabletServersInfo> ListTabletServers();
 
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
@@ -629,12 +670,9 @@ class PgApiImpl {
   void StartSysTablePrefetching(const PrefetcherOptions& options);
   void StopSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
-  void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+  void RegisterSysTableForPrefetching(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
   Status PrefetchRegisteredSysTables();
-
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
-                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
@@ -642,9 +680,14 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
+
+  // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
+  int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
  private:
   class Interrupter;

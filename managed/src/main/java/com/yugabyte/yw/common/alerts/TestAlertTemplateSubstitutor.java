@@ -11,7 +11,8 @@ package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.Util.doubleToString;
 
-import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.TestAlertSettings;
 import com.yugabyte.yw.common.templates.PlaceholderSubstitutor;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertConfiguration;
@@ -23,11 +24,12 @@ public class TestAlertTemplateSubstitutor extends PlaceholderSubstitutor {
 
   private static final String VALUE = "$value";
 
-  public TestAlertTemplateSubstitutor(Alert alert, AlertConfiguration configuration) {
+  public TestAlertTemplateSubstitutor(
+      Alert alert, AlertTemplateDescription template, AlertConfiguration configuration) {
     super(
         key -> {
           if (key.contains(VALUE)) {
-            TestAlertSettings settings = configuration.getTemplate().getTestAlertSettings();
+            TestAlertSettings settings = template.getTestAlertSettings();
             double value;
             if (settings.isGenerateValueFromThreshold()) {
               double threshold =

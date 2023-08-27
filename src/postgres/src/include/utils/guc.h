@@ -117,7 +117,8 @@ typedef enum
 	PGC_S_OVERRIDE,				/* special case to forcibly set default */
 	PGC_S_INTERACTIVE,			/* dividing line for error reporting */
 	PGC_S_TEST,					/* test per-database or per-user setting */
-	PGC_S_SESSION				/* SET command */
+	PGC_S_SESSION,				/* SET command */
+	YSQL_CONN_MGR				/* SET SESSION PARAMETER packet */
 } GucSource;
 
 /*
@@ -261,6 +262,8 @@ extern double log_xact_sample_rate;
 
 extern int	yb_bnl_batch_size;
 extern bool  yb_bnl_enable_hashing;
+
+extern bool yb_lock_pk_single_rpc;
 
 extern int	temp_file_limit;
 

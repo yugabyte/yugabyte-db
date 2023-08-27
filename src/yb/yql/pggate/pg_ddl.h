@@ -247,7 +247,8 @@ class PgAlterTable : public PgDdl {
 
   Status AddColumn(const char *name,
                    const YBCPgTypeEntity *attr_type,
-                   int order);
+                   int order,
+                   YBCPgExpr missing_value);
 
   Status RenameColumn(const char *oldname, const char *newname);
 

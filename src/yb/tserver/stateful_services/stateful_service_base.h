@@ -23,6 +23,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/result.h"
+#include "yb/util/sync_point.h"
 
 namespace yb {
 
@@ -44,8 +45,9 @@ namespace stateful_service {
       BOOST_PP_CAT(method_name, ResponsePB) * resp); \
   void method_name( \
       const BOOST_PP_CAT(method_name, RequestPB) * req, \
-      BOOST_PP_CAT(method_name, ResponsePB) * resp, rpc::RpcContext rpc) override { \
-    HandleMessageWithTermCheck( \
+      BOOST_PP_CAT(method_name, ResponsePB) * resp, \
+      rpc::RpcContext rpc) override { \
+    HandleRpcRequestWithTermCheck( \
         resp, &rpc, [req, resp, this]() { return BOOST_PP_CAT(method_name, Impl)(*req, resp); }); \
   }
 
@@ -69,14 +71,16 @@ class StatefulServiceBase {
 
   const client::YBTableName& TableName() const { return table_name_; }
 
-  bool IsActive() const EXCLUDES(service_state_mutex_);
+  bool IsActive() const;
 
   void StartPeriodicTaskIfNeeded() EXCLUDES(service_state_mutex_);
 
  protected:
   // Hosting tablet peer has become a leader. RPC messages will only be processed after this
   // function completes.
-  virtual void Activate(const int64_t leader_term) = 0;
+  virtual void Activate() = 0;
+
+  virtual void DrainForDeactivation() = 0;
 
   // Hosting tablet peer has stepped down to a follower. Release all resources acquired by the
   // stateful services and clear in-mem data.
@@ -91,32 +95,15 @@ class StatefulServiceBase {
   virtual uint32 PeriodicTaskIntervalMs() const;
 
   // Get the term when we last activated and make sure we still have a valid lease.
-  int64_t GetLeaderTerm() EXCLUDES(service_state_mutex_);
+  Result<int64_t> GetLeaderTerm() EXCLUDES(service_state_mutex_);
 
-  template <class ResponsePB>
-  void HandleMessageWithTermCheck(
-      ResponsePB* resp, rpc::RpcContext* rpc, std::function<Status()> method_impl) {
-    // Will return a valid term only if we are active and have a valid lease.
-    const auto term = GetLeaderTerm();
-    Status status;
-    if (term != OpId::kUnknownTerm) {
-      status = method_impl();
-    }
+  Result<std::shared_ptr<client::YBSession>> GetYBSession(MonoDelta delta);
 
-    // Term should still be valid after the method_impl() call.
-    if (term == OpId::kUnknownTerm || term != GetLeaderTerm()) {
-      status = STATUS(ServiceUnavailable, Format(ServiceName() + " is not active on this server"));
-    }
-
-    if (!status.ok()) {
-      resp->Clear();
-      StatusToPB(status, resp->mutable_error());
-    }
-    rpc->RespondSuccess();
-  }
-
-  std::shared_ptr<client::YBSession> GetYBSession() { return GetYBClient()->NewSession(); }
   Result<client::TableHandle*> GetServiceTable() EXCLUDES(table_handle_mutex_);
+
+  std::string GetServiceNotActiveErrorStr() {
+    return Format(ServiceName() + " is not active on this server");
+  }
 
  private:
   void ProcessTaskPeriodically() EXCLUDES(service_state_mutex_);
@@ -128,7 +115,9 @@ class StatefulServiceBase {
   const std::string service_name_;
   const StatefulServiceKind service_kind_;
 
+  std::atomic_bool initialized_ = false;
   std::atomic_bool shutdown_ = false;
+  std::atomic_bool is_active_ = false;
   mutable std::shared_mutex service_state_mutex_;
   int64_t leader_term_ GUARDED_BY(service_state_mutex_) = OpId::kUnknownTerm;
   tablet::TabletPeerPtr tablet_peer_ GUARDED_BY(service_state_mutex_);
@@ -164,6 +153,61 @@ class StatefulRpcServiceBase : public StatefulServiceBase, public RpcServiceIf {
     RpcServiceIf::Shutdown();
     StatefulServiceBase::Shutdown();
   }
+
+ protected:
+  void DrainForDeactivation() override {
+    std::unique_lock lock(rpc_mutex_);
+    while (active_rpcs_.load(std::memory_order_acquire) > 0) {
+      if (no_rpcs_cond_.wait_for(lock, std::chrono::seconds(5)) == std::cv_status::timeout) {
+        LOG(WARNING) << "Waiting for " << active_rpcs_.load(std::memory_order_acquire)
+                     << " active RPC request(s) to finish";
+      }
+    }
+  }
+
+  template <class ResponsePB>
+  void HandleRpcRequestWithTermCheck(
+      ResponsePB* resp, rpc::RpcContext* rpc, std::function<Status()> method_impl) {
+    // Will return a valid term only if we are active and have a valid lease.
+    const auto term_result_begin = GetLeaderTerm();
+    Status status;
+    if (term_result_begin) {
+      active_rpcs_.fetch_add(1, std::memory_order_acq_rel);
+
+      status = method_impl();
+
+      if (active_rpcs_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        no_rpcs_cond_.notify_all();
+      }
+    }
+
+    TEST_SYNC_POINT("StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl1");
+    TEST_SYNC_POINT("StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl2");
+
+    if (!term_result_begin) {
+      status = std::move(term_result_begin.status());
+    } else {
+      // Status returned by method_impl needs to be overridden if the term has
+      // changed even if it was a bad status.
+      const auto term_result_end = GetLeaderTerm();
+      if (!term_result_end) {
+        status = std::move(term_result_end.status());
+      } else if (*term_result_begin != *term_result_end) {
+        status = STATUS(ServiceUnavailable, GetServiceNotActiveErrorStr());
+      }
+    }
+
+    if (!status.ok()) {
+      resp->Clear();
+      StatusToPB(status, resp->mutable_error());
+    }
+    rpc->RespondSuccess();
+  }
+
+ private:
+  std::mutex rpc_mutex_;
+  std::condition_variable no_rpcs_cond_;
+  std::atomic_uint32_t active_rpcs_ = 0;
 };
 
 client::YBTableName GetStatefulServiceTableName(const StatefulServiceKind& service_kind);

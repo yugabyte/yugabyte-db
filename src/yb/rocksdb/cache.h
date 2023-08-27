@@ -73,6 +73,10 @@ constexpr QueryId kDefaultQueryId = 0;
 constexpr QueryId kInMultiTouchId = -1;
 // Query ids to represent values that should not be in any cache.
 constexpr QueryId kNoCacheQueryId = -2;
+// Maximum permissible number of bits to use for sharding the block cache.
+constexpr int kSharedLRUCacheMaxNumShardBits = 19;
+// Default value of number of bits to use for sharding the block cache.
+constexpr int kSharedLRUCacheDefaultNumShardBits = 4;
 
 class Cache {
  public:

@@ -19,7 +19,7 @@
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
     "install-third-party.yml",
-    "yb_os_package_updates.yml"
+    "Dockerfile"
   ],
   "bin": [
     "bin/ansible-playbook.sh",

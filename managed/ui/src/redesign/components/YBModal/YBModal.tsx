@@ -42,6 +42,7 @@ export interface YBModalProps extends DialogProps {
   customTitle?: React.ReactNode;
   hideCloseBtn?: boolean;
   dialogContentProps?: DialogContentProps;
+  titleContentProps?: string;
   isSubmitting?: boolean;
 }
 
@@ -68,9 +69,13 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     width: ({ overrideWidth }) => overrideWidth ?? 480,
     height: ({ overrideHeight }) => overrideHeight ?? 272
   },
-  dialogXl: {
+  dialogLg: {
     width: ({ overrideWidth }) => overrideWidth ?? 800,
     height: ({ overrideHeight }) => overrideHeight ?? 800
+  },
+  dialogXl: {
+    width: ({ overrideWidth }) => overrideWidth ?? 1125,
+    height: ({ overrideHeight }) => overrideHeight ?? 900
   },
   form: {
     display: 'flex',
@@ -146,6 +151,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     cancelButtonTooltip,
     isSubmitting,
     dialogContentProps = {},
+    titleContentProps,
     ...dialogProps
   } = props;
   const classes = useStyles(props);
@@ -178,6 +184,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     case 'xs':
       dialogClasses = classes.dialogXs;
       dialogTitle = classes.dialogTitleXs;
+      break;
+    case 'lg':
+      dialogClasses = classes.dialogLg;
       break;
     case 'xl':
       dialogClasses = classes.dialogXl;
@@ -258,20 +267,20 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     >
       <form className={classes.form}>
         {customTitle ? (
-          <div className={classes.modalTitle}>{customTitle}</div>
+          <div className={clsx(classes.modalTitle, titleContentProps)}>{customTitle}</div>
         ) : (
           title && (
             <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
               <Typography className={classes.title} variant="h4">
                 {titleIcon ? (
-                  <div className={classes.modalTitle}>
+                  <div className={clsx(classes.modalTitle, titleContentProps)}>
                     {titleIcon}
                     <span className={classes.text} data-testid="YBModal-Title">
                       {title}
                     </span>
                   </div>
                 ) : (
-                  <div className={classes.modalTitle}>{title}</div>
+                  <div className={clsx(classes.modalTitle, titleContentProps)}>{title}</div>
                 )}
                 {!hideCloseBtn && (
                   <YBButton

@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -134,6 +135,12 @@ public class UniverseResp {
   @ApiModelProperty(value = "Sample command")
   public final String sampleAppCommandTxt;
 
+  @ApiModelProperty(value = "UUIDs of DR configs where this universe is the source (primary)")
+  public final Set<UUID> drConfigUuidsAsSource;
+
+  @ApiModelProperty(value = "UUIDs of DR configs where this universe is the target (secondary)")
+  public final Set<UUID> drConfigUuidsAsTarget;
+
   public UniverseResp(Universe entity) {
     this(entity, null, null);
   }
@@ -168,6 +175,14 @@ public class UniverseResp {
     this.resources = resources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);
+    this.drConfigUuidsAsSource =
+        DrConfig.getBySourceUniverseUuid(universeUUID).stream()
+            .map(DrConfig::getUuid)
+            .collect(Collectors.toSet());
+    this.drConfigUuidsAsTarget =
+        DrConfig.getByTargetUniverseUuid(universeUUID).stream()
+            .map(DrConfig::getUuid)
+            .collect(Collectors.toSet());
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
@@ -217,10 +232,7 @@ public class UniverseResp {
     // If node to client TLS is enabled.
     if (cluster.userIntent.enableClientToNodeEncrypt) {
       String randomFileName = UUID.randomUUID().toString();
-      UUID certUUID =
-          universe.getUniverseDetails().rootAndClientRootCASame
-              ? universe.getUniverseDetails().rootCA
-              : universe.getUniverseDetails().getClientRootCA();
+      UUID certUUID = universe.getUniverseDetails().getClientRootCA();
       if (certUUID == null) {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
@@ -248,6 +260,7 @@ public class UniverseResp {
         sampleAppCommandTxt = secretCommandTxt + "\n---\n" + sampleAppCommandTxt;
         sampleAppCommand = "echo -n \"" + sampleAppCommandTxt + "\" | kubectl create -f -";
       } else {
+        // should we change this? Given that it can run on any host.
         sampleAppCommand =
             ("export FILE_NAME=/tmp/<file_name>.crt "
                     + "&& echo -n \"<root_cert_content>\" > $FILE_NAME "

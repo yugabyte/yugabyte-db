@@ -30,6 +30,6 @@ You proceed with the account creation as follows:
 - Confirm the user agreement.
 - Click **Register**.
 
-You are now redirected to the login page located at `http://<yugabydbanywhere-host-ip>/login`. This page allows you to login to YugabyteDB Anywhere using your new credentials.
+You are now redirected to the login page located at `http://<yugabydbanywhere-host-ip>/login`. This page allows you to log in to YugabyteDB Anywhere using your new credentials.
 
 Once logged in, you may change the information related to your account by clicking **User > User Profile** at the top right.

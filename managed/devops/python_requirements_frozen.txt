@@ -59,6 +59,7 @@ requests==2.25.1
 requests-oauthlib==1.3.0
 rsa==4.7.2
 s3transfer==0.4.2
+scp==0.14.5
 six==1.10.0
 uritemplate==3.0.1
 urllib3==1.26.6

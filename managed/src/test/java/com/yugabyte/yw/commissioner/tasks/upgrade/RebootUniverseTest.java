@@ -6,9 +6,12 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -23,6 +26,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RebootUniverseTest extends UpgradeTaskTest {
@@ -32,6 +36,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_REBOOT_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -57,6 +62,10 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   private TaskInfo submitTask(UpgradeTaskParams requestParams) {
@@ -110,7 +119,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(62, position);
+    assertEquals(65, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

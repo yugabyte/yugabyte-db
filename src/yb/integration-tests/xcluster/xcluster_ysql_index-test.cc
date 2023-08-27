@@ -14,7 +14,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -22,10 +22,10 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_string(vmodule);
-DECLARE_bool(xcluster_consistent_wal);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
@@ -51,39 +51,36 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   void SetUp() override {
     YB_SKIP_TEST_IN_TSAN();
     XClusterYsqlTestBase::SetUp();
-    FLAGS_xcluster_consistent_wal = true;
-    ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=0,xrepl*=0,xcluster*=0"));
+    ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=4,xrepl*=4,xcluster*=4,add_table*=4,catalog*=4"));
 
-    FLAGS_TEST_user_ddl_operation_timeout_sec = 30 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
-    ASSERT_OK(RunOnBothClusters(
-        [&](Cluster* cluster) { return CreateDatabase(cluster, kNamespaceName); }));
     ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
-      auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
       return conn.ExecuteFormat("CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT);", kTableName);
     }));
 
     producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
 
     auto yb_table_name = ASSERT_RESULT(
-        GetYsqlTable(&producer_cluster_, kNamespaceName, "" /* schema_name */, kTableName));
+        GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kTableName));
 
     client::YBTablePtr producer_table;
     ASSERT_OK(producer_client()->OpenTable(yb_table_name, &producer_table));
     namespace_id_ = producer_table->name().namespace_id();
 
-    ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table},
-              {LeaderOnly::kTrue, Transactional::kTrue}));
+    ASSERT_OK(SetupUniverseReplication(
+        kReplicationGroupId, {producer_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+    ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
     ASSERT_OK(WaitForValidSafeTimeOnAllTServers(namespace_id_));
 
     producer_conn_ = std::make_unique<pgwrapper::PGConn>(
-        ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName)));
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
     for (; row_count_ < 10; row_count_++) {
       ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
     }
@@ -91,7 +88,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
     consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
-        ASSERT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName)));
+        ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
     ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId1CountStmt)));
     ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId2CountStmt)));
 
@@ -153,7 +150,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   // Row count should never move backwards.
   void ValidateRowsDuringCreateIndex(int initial_count, std::atomic_bool* stop) {
     int64_t min_count = initial_count;
-    auto consumer_conn = CHECK_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+    auto consumer_conn = CHECK_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     while (!*stop) {
       int64_t id1_count, id2_count;
       auto get_row_counts = [&]() -> Status {
@@ -267,14 +264,16 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(producer_conn_->Execute(kCreateIndexStmt));
 
   // Create index while replication is paused should fail.
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());
@@ -284,6 +283,44 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());
 }
+
+#ifndef NDEBUG
+TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
+  ASSERT_OK(producer_conn_->Execute(kCreateIndexStmt));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+        "MasterFailoverRetryAddTableToXcluster::BeforeStepDown"}});
+
+  SyncPoint::GetInstance()->SetCallBack(
+      "AddTableToXClusterTask::RunInternal::BeforeBootstrap",
+      [](void* stuck_add_table_to_xcluster) {
+        *(reinterpret_cast<bool*>(stuck_add_table_to_xcluster)) = true;
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto test_thread_holder = TestThreadHolder();
+  Status status;
+  test_thread_holder.AddThread([this, &status]() {
+    // Create index on consumer.
+    status = consumer_conn_->Execute(kCreateIndexStmt);
+  });
+
+  // Wait for the task to start and get stuck.
+  TEST_SYNC_POINT("MasterFailoverRetryAddTableToXcluster::BeforeStepDown");
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+
+  auto master_leader = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+
+  ASSERT_OK(StepDown(
+      master_leader->tablet_peer(), std::string() /* new_leader_uuid */, ForceStepDown::kTrue));
+
+  test_thread_holder.JoinAll();
+  ASSERT_OK(status);
+
+  ASSERT_OK(ValidateRows());
+}
+#endif
 
 // TODO(Hari): #16758 Test collocated table
 

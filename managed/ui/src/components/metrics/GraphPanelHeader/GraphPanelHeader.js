@@ -2,10 +2,10 @@
 
 import React, { Component, Fragment } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
-import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
+import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
 
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 
@@ -23,6 +23,7 @@ import {
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -34,6 +35,7 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -522,18 +524,14 @@ class GraphPanelHeader extends Component {
   updateUrlQueryParams = (filterParams) => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const queryParams = location.query;
-    const isEnabledTopKMetrics = this.props.isTopKMetricsEnabled;
 
-    // TODO: Needs to be removed once Top K metrics is tested and integrated fully
-    if (isEnabledTopKMetrics) {
-      queryParams.currentSelectedRegion = filterParams.currentSelectedRegion;
-      queryParams.currentSelectedNodeType = filterParams.currentSelectedNodeType;
-      queryParams.selectedZoneName = filterParams.selectedZoneName;
-      queryParams.selectedRegionClusterUUID = filterParams.selectedRegionClusterUUID;
-      queryParams.metricMeasure = filterParams.metricMeasure;
-      queryParams.outlierType = filterParams.outlierType;
-      queryParams.outlierNumNodes = filterParams.outlierNumNodes;
-    }
+    queryParams.currentSelectedRegion = filterParams.currentSelectedRegion;
+    queryParams.currentSelectedNodeType = filterParams.currentSelectedNodeType;
+    queryParams.selectedZoneName = filterParams.selectedZoneName;
+    queryParams.selectedRegionClusterUUID = filterParams.selectedRegionClusterUUID;
+    queryParams.metricMeasure = filterParams.metricMeasure;
+    queryParams.outlierType = filterParams.outlierType;
+    queryParams.outlierNumNodes = filterParams.outlierNumNodes;
 
     queryParams.refreshInterval = filterParams.refreshInterval;
     queryParams.refreshIntervalLabel = filterParams.refreshIntervalLabel;
@@ -559,8 +557,7 @@ class GraphPanelHeader extends Component {
       showModal,
       closeModal,
       visibleModal,
-      enableNodeComparisonModal,
-      isTopKMetricsEnabled
+      enableNodeComparisonModal
     } = this.props;
     const {
       filterType,
@@ -623,24 +620,13 @@ class GraphPanelHeader extends Component {
 
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
-      if (isTopKMetricsEnabled) {
-        universePicker = (
-          <UniversePicker
-            {...this.props}
-            universeItemChanged={this.universeItemChanged}
-            selectedUniverse={self.state.currentSelectedUniverse}
-          />
-        );
-      } else {
-        // TODO: Needs to be removed once Top K metrics is tested and integrated fully
-        universePicker = (
-          <UniversePickerOld
-            {...this.props}
-            universeItemChanged={this.universeItemChangedOld}
-            selectedUniverse={self.state.currentSelectedUniverse}
-          />
-        );
-      }
+      universePicker = (
+        <UniversePicker
+          {...this.props}
+          universeItemChanged={this.universeItemChanged}
+          selectedUniverse={self.state.currentSelectedUniverse}
+        />
+      );
     }
 
     const splitType =
@@ -669,7 +655,7 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   <div className="filter-container">
                     {universePicker}
-                    {isTopKMetricsEnabled && this.props.origin !== MetricOrigin.TABLE && (
+                    {this.props.origin !== MetricOrigin.TABLE && (
                       <RegionSelector
                         selectedUniverse={currentSelectedUniverse}
                         onRegionChanged={this.onRegionChanged}
@@ -677,17 +663,15 @@ class GraphPanelHeader extends Component {
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                       />
                     )}
-                    {isTopKMetricsEnabled &&
-                      this.props.origin !== MetricOrigin.TABLE &&
-                      isDedicatedNodes && (
-                        <NodeTypeSelector
-                          selectedUniverse={currentSelectedUniverse}
-                          currentSelectedNodeType={currentSelectedNodeType}
-                          selectedRegionClusterUUID={selectedRegionClusterUUID}
-                          selectedRegionCode={this.state.selectedRegionCode}
-                          onNodeTypeChanged={this.onNodeTypeChanged}
-                        />
-                      )}
+                    {this.props.origin !== MetricOrigin.TABLE && isDedicatedNodes && (
+                      <NodeTypeSelector
+                        selectedUniverse={currentSelectedUniverse}
+                        currentSelectedNodeType={currentSelectedNodeType}
+                        selectedRegionClusterUUID={selectedRegionClusterUUID}
+                        selectedRegionCode={this.state.selectedRegionCode}
+                        onNodeTypeChanged={this.onNodeTypeChanged}
+                      />
+                    )}
                     {this.props.origin !== MetricOrigin.TABLE && (
                       <NodeSelector
                         {...this.props}
@@ -697,18 +681,12 @@ class GraphPanelHeader extends Component {
                         selectedNode={this.state.nodeName}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
-                        isTopKMetricsEnabled={isTopKMetricsEnabled}
                         selectedRegionCode={this.state.selectedRegionCode}
                         currentSelectedNodeType={currentSelectedNodeType}
                         isDedicatedNodes={isDedicatedNodes}
                       />
                     )}
-                    {liveQueriesLink && !universePaused && !isTopKMetricsEnabled && (
-                      <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
-                        <i className="fa fa-search" /> See Queries
-                      </Link>
-                    )}
-                    {liveQueriesLink && !universePaused && isTopKMetricsEnabled && (
+                    {liveQueriesLink && !universePaused && (
                       <span className="live-queries">
                         <Link to={liveQueriesLink}>
                           <span className="live-queries-label">See Queries</span>
@@ -732,10 +710,7 @@ class GraphPanelHeader extends Component {
                   <form name="GraphPanelFilterForm">
                     <div id="reportrange" className="pull-right">
                       <div className="timezone">
-                        Timezone:{' '}
-                        {currentUser.data.timezone
-                          ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
-                          : moment().format('[UTC]ZZ')}
+                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
                       </div>
                       <div className="graph-interval-container">
                         <Dropdown
@@ -817,8 +792,7 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {isTopKMetricsEnabled &&
-                    this.state.currentSelectedUniverse !== MetricConsts.ALL &&
+                  {this.state.currentSelectedUniverse !== MetricConsts.ALL &&
                     this.props.origin !== MetricOrigin.TABLE && (
                       <MetricsMeasureSelector
                         metricMeasureTypes={metricMeasureTypes}
@@ -846,8 +820,7 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
-                  {isTopKMetricsEnabled &&
-                    currentSelectedUniverse !== MetricConsts.ALL &&
+                  {currentSelectedUniverse !== MetricConsts.ALL &&
                     (this.state.metricMeasure === MetricMeasure.OUTLIER ||
                       this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
                       <OutlierSelector
@@ -864,7 +837,6 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               {enableNodeComparisonModal ? (
                 <MetricsComparisonModal
-                  isTopKMetricsEnabled={isTopKMetricsEnabled}
                   visible={showModal && visibleModal === 'metricsComparisonModal'}
                   onHide={closeModal}
                   selectedUniverse={this.state.currentSelectedUniverse}
@@ -957,51 +929,6 @@ class UniversePicker extends Component {
             <span className={'universe-name'}>{universeItems}</span>
           </Dropdown.Menu>
         </Dropdown>
-      </div>
-    );
-  }
-}
-
-// TODO: Needs to be removed once Top K metrics is tested and integrated fully
-class UniversePickerOld extends Component {
-  render() {
-    const {
-      universeItemChanged,
-      universe: { universeList },
-      selectedUniverse
-    } = this.props;
-
-    const universeItems = universeList.data
-      ?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
-      .map(function (item, idx) {
-        return (
-          <option key={idx} value={item.universeUUID} name={item.name}>
-            {item.name}
-          </option>
-        );
-      });
-
-    const universeOptionArray = [
-      <option key={-1} value="all">
-        All
-      </option>
-    ].concat(universeItems);
-    let currentUniverseValue = 'all';
-
-    if (!_.isString(selectedUniverse)) {
-      currentUniverseValue = selectedUniverse.universeUUID;
-    }
-    return (
-      <div className="universe-picker">
-        Universe:
-        <FormControl
-          componentClass="select"
-          placeholder="select"
-          onChange={universeItemChanged}
-          value={currentUniverseValue}
-        >
-          {universeOptionArray}
-        </FormControl>
       </div>
     );
   }

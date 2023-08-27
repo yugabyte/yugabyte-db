@@ -20,7 +20,6 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
-
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
@@ -77,6 +76,9 @@ const mapDispatchToProps = (dispatch) => {
     showGFlagsModal: () => {
       dispatch(openDialog('gFlagsModal'));
     },
+    showGFlagsNewModal: () => {
+      dispatch(openDialog('gFlagsNewModal'));
+    },
     showHelmOverridesModal: () => {
       dispatch(openDialog('helmOverridesModal'));
     },
@@ -115,6 +117,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     showThirdpartyUpgradeModal: () => {
       dispatch(openDialog('thirdpartyUpgradeModal'));
+    },
+    showEnableYSQLModal: () => {
+      dispatch(openDialog('enableYSQLModal'));
+    },
+    showEnableYCQLModal: () => {
+      dispatch(openDialog('enableYCQLModal'));
     },
 
     updateBackupState: (universeUUID, flag) => {

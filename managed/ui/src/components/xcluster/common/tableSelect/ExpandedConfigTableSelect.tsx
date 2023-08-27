@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   BootstrapTable,
   Options,
@@ -89,6 +89,7 @@ export const ExpandedConfigTableSelect = ({
           dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
             <XClusterTableStatusLabel
               status={cell}
+              streamId={row.streamId}
               tableUUID={row.tableUUID}
               nodePrefix={sourceUniverseNodePrefix}
               universeUUID={sourceUniverseUUID}

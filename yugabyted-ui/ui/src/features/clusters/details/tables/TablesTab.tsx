@@ -11,6 +11,7 @@ import { TabletList } from './TabletList';
 import { useTranslation } from 'react-i18next';
 
 export type DatabaseListType = Array<{ name: string, tableCount: number, size: number }>
+export type TableListType = Array<ClusterTable & { isIndexTable?: boolean }>;
 
 const useStyles = makeStyles((theme) => ({
   dropdown: {
@@ -45,7 +46,13 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
   const { t } = useTranslation();
 
   const [selectedDB, setSelectedDB] = React.useState<string>();
-  const [selectedTable, setSelectedTable] = React.useState<string>();
+
+  type SelectedTable = {
+    name: string,
+    uuid: string
+  } | undefined
+
+  const [selectedTable, setSelectedTable] = React.useState<SelectedTable>();
 
   React.useEffect(() => {
     setSelectedDB(undefined);
@@ -97,11 +104,26 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
     refetchHealth();
   };
 
-  const ysqlTableData = useMemo(() => clusterTablesResponseYsql?.data ?? [], [clusterTablesResponseYsql?.data]);
-  const ycqlTableData = useMemo(() => clusterTablesResponseYcql?.data ?? [], [clusterTablesResponseYcql?.data]);
+  const ysqlTableData = useMemo<TableListType>(
+    () =>
+      clusterTablesResponseYsql
+        ? [
+            ...clusterTablesResponseYsql.tables,
+            ...clusterTablesResponseYsql.indexes.map((indexTable) => ({
+              ...indexTable,
+              isIndexTable: true,
+            })),
+          ]
+        : [],
+    [clusterTablesResponseYsql?.tables, clusterTablesResponseYsql?.indexes]
+  );
+  const ycqlTableData = useMemo<TableListType>(
+    () => clusterTablesResponseYcql?.tables ?? [],
+    [clusterTablesResponseYcql?.tables]
+  );
 
   let isFetching = false;
-  let data: ClusterTable[];
+  let data: TableListType;
   switch (dbApi) {
     case GetClusterTablesApiEnum.Ysql:
       isFetching = isFetchingYsql;
@@ -124,7 +146,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         }
       }), [data]);
 
-  const tableList = React.useMemo<ClusterTable[]>(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
+  const tableList = React.useMemo(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
 
   if (isFetching) {
     return (
@@ -178,7 +200,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               <YBDropdown
               origin={
                 <Box display="flex" alignItems="center" className={classes.dropdownContent}>
-                  {selectedTable}
+                  {selectedTable.name}
                   <TriangleDownIcon />
                 </Box>
               }
@@ -187,11 +209,11 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               className={classes.dropdown}
             >
               <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.table')}</Box>
-              {tableList.map(item => (
+              {tableList.filter(table => !table.isIndexTable).map(item => (
                 <MenuItem
                   key={`keyspaces-${item.name.replace(' ', '-')}`}
-                  selected={item.name === selectedTable}
-                  onClick={() => setSelectedTable(item.name)}
+                  selected={item.uuid === selectedTable.uuid}
+                  onClick={() => setSelectedTable({ name: item.name, uuid: item.uuid }) }
                 >
                   {item.name}
                 </MenuItem>
@@ -202,12 +224,16 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         }
       </Box>
       {selectedDB && selectedTable ? 
-        <TabletList selectedTable={selectedTable} onRefetch={refetchData} />
+        <TabletList
+          selectedTableUuid={selectedTable.uuid}
+          onRefetch={refetchData} />
         :
         (selectedDB ? 
           <TableList
             tableList={tableList}
-            onSelect={setSelectedTable}
+            onSelect={(name: string, uuid: string) => {
+                setSelectedTable({ name: name, uuid: uuid })
+            }}
             onRefetch={refetchData}
           />
           :

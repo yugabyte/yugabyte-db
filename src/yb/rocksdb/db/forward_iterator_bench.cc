@@ -111,7 +111,7 @@ struct Reader {
 
       uint64_t shard;
       {
-        std::lock_guard<std::mutex> guard(queue_mutex_);
+        std::lock_guard guard(queue_mutex_);
         assert(!shards_pending_queue_.empty());
         shard = shards_pending_queue_.front();
         shards_pending_queue_.pop();
@@ -179,7 +179,7 @@ struct Reader {
 
   void onWrite(uint64_t shard) {
     {
-      std::lock_guard<std::mutex> guard(queue_mutex_);
+      std::lock_guard guard(queue_mutex_);
       if (!shards_pending_set_.test(shard)) {
         shards_pending_queue_.push(shard);
         shards_pending_set_.set(shard);
@@ -307,7 +307,7 @@ struct StatsThread {
 
   ~StatsThread() {
     {
-      std::lock_guard<std::mutex> guard(cvm_);
+      std::lock_guard guard(cvm_);
       done_.store(true);
     }
     cv_.notify_all();

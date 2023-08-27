@@ -22,6 +22,7 @@
 #include "yb/master/master_client.pb.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -252,7 +253,7 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
     }
     const auto& partitions = *result;
     {
-      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
+      std::lock_guard partitions_lock(mutex_);
       if (partitions->version < partitions_->version) {
         // This might happen if another split happens after we had fetched partition in the current
         // thread from master leader and partition list has been concurrently updated to version
@@ -309,6 +310,13 @@ void YBTable::FetchPartitions(
 
         callback(partitions);
       });
+}
+
+size_t YBTable::DynamicMemoryUsage() const {
+  // Below presumes that every PK size is less than default string size of 22 bytes (i.e.
+  // kStdStringInternalCapacity).
+  return sizeof(*this) + info_->DynamicMemoryUsage() +
+         (GetPartitionCount() * kStdStringInternalCapacity);
 }
 
 //--------------------------------------------------------------------------------------------------

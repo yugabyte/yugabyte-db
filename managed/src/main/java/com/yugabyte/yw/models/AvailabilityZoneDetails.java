@@ -14,8 +14,8 @@ public class AvailabilityZoneDetails {
   @Data
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class AZCloudInfo {
-    @ApiModelProperty public KubernetesRegionInfo kubernetes;
+    @ApiModelProperty private KubernetesRegionInfo kubernetes;
   }
 
-  @ApiModelProperty public AZCloudInfo cloudInfo;
+  @ApiModelProperty private AZCloudInfo cloudInfo = new AZCloudInfo();
 }

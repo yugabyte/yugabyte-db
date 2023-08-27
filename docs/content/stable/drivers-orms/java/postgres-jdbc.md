@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: PostgreSQL JDBC driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: JDBC driver for YSQL
+description: Connect a Java application using PostgreSQL JDBC driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -192,7 +193,8 @@ public class QuickStartApp {
 If you're using SSL, replace the connection string `yburl` with the following code:
 
 ```java
-String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8", "yugabyte", "yugabyte";
+String yburl = "jdbc:postgresql://localhost:5433/yugabyte?ssl=true&sslmode=require&sslcert=src/main/resources/ssl/yugabytedb.crt.der&sslkey=src/main/resources/ssl/yugabytedb.key.pk8";
+Connection conn = DriverManager.getConnection(yburl, "yugabyte", "yugabyte");
 ```
 
 Run the project `QuickStartApp.java` using the following command:

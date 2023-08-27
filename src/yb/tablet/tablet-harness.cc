@@ -76,7 +76,7 @@ Status TabletHarness::Create(bool first_time) {
 Status TabletHarness::Open() {
   RETURN_NOT_OK(tablet_->Open());
   tablet_->MarkFinishedBootstrapping();
-  return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
+  return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
 Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
@@ -84,7 +84,8 @@ Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
   auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
   RETURN_NOT_OK(tablet->Open());
   tablet->MarkFinishedBootstrapping();
-  RETURN_NOT_OK(tablet->EnableCompactions(/* non_abortable_ops_pause */ nullptr));
+  RETURN_NOT_OK(
+      tablet->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr));
   return tablet;
 }
 
@@ -110,7 +111,8 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      .metadata_cache = nullptr,
     };
 }
 

@@ -23,9 +23,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -67,18 +69,20 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -87,6 +91,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -103,18 +108,20 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
           TaskType.UpdatePlacementInfo,
-          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -123,6 +130,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.WaitForTServerHeartBeats,
           TaskType.UniverseUpdateSucceeded);
 
@@ -167,6 +175,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
     } catch (Exception e) {
       fail();
     }
@@ -174,6 +200,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    mockGetMasterRegistrationResponses(
+        ImmutableList.of("10.9.22.1", "10.9.22.2", "10.9.22.3", "10.9.22.4", "10.9.22.5"));
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {
@@ -314,6 +342,19 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testEditUniverseRetries() {
+    Universe universe = defaultUniverse;
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Edit,
+        CustomerTask.TargetType.Universe,
+        taskParams.getUniverseUUID(),
+        TaskType.EditUniverse,
+        taskParams);
   }
 
   private UniverseDefinitionTaskParams performExpand(Universe universe) {

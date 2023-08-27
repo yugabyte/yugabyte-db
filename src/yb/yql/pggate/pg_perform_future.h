@@ -43,7 +43,6 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<Data> Get();
-  Result<Data> Get(MonoDelta* wait_time);
 
  private:
   std::future<PerformResult> future_;

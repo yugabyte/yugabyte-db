@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
 
 public class ProviderConfKeys extends RuntimeConfigKeysModule {
 
@@ -314,7 +315,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use spot instances instead of On-Demand during universe creation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Boolean> enableYbcOnK8s =
       new ConfKeyInfo<>(
           "ybc.k8s.enabled",
@@ -323,4 +323,69 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "To enable ybc on k8s universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> remoteTmpDirectory =
+      new ConfKeyInfo<>(
+          "yb.filepaths.remoteTmpDirectory",
+          ScopeType.PROVIDER,
+          "Remote tmp directory",
+          "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.status_polling_interval",
+          ScopeType.PROVIDER,
+          "Polling interval for GCP Opertion status",
+          "Interval to poll the status of an ongoing GCP resource creation operation.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> operationTimeoutInterval =
+      new ConfKeyInfo<>(
+          "yb.gcp.operations.timeout_interval",
+          ScopeType.PROVIDER,
+          "GCP Operation Timeout interval",
+          "Timeout interval to wait for GCP resource creation operations to complete sucessfully.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcListenOnAllInterfacesK8s =
+      new ConfKeyInfo<>(
+          "yb.ybc_flags.listen_on_all_interfaces_k8s",
+          ScopeType.PROVIDER,
+          "Make YBC listen on 0.0.0.0",
+          "Makes YBC bind on all network interfaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> azureVmCustomParams =
+      new ConfKeyInfo<>(
+          "yb.azure.custom_params.vm",
+          ScopeType.PROVIDER,
+          "Azure Virtual Machine Params blob",
+          "Custom JSON of Azure parameters to apply on top of virtual machine creation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> azureDiskCustomParams =
+      new ConfKeyInfo<>(
+          "yb.azure.custom_params.disk",
+          ScopeType.PROVIDER,
+          "Azure Disk Params blob",
+          "Custom JSON of Azure parameters to apply on top of data disk creation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> azureNetworkCustomParams =
+      new ConfKeyInfo<>(
+          "yb.azure.custom_params.network",
+          ScopeType.PROVIDER,
+          "Azure Network Interface Params blob",
+          "Custom JSON of Azure parameters to apply on top of network interface creation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> monitoredMountRoots =
+      new ConfKeyInfo<>(
+          "yb.provider.monitored_mount_roots",
+          ScopeType.PROVIDER,
+          "Monitored mount roots",
+          "Mount roots, which we show on the merics dashboard and which we're alerting on.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

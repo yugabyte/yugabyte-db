@@ -27,7 +27,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
 
 - **Cluster properties**. View cluster activity, node status, and database properties:
 
-  - Database tables. Use the cluster **Tables** tab to see the tables, databases, and namespaces on the cluster.
+  - Database tables. Use the cluster **Tables** tab to see the cluster tables, and their database or namespace, and size. Note that table size is calculated from the sum of the write ahead logs (WAL) and sorted-string table (SST) files, across all nodes in the cluster. Changes to the database are first recorded to the WAL. Periodically, these logs are written to SST files for longer-term storage. During this process, the data is compressed. When this happens, you may observe a reduction in the total size of tables.
   - Node status. Use the cluster **Nodes** tab to see the nodes in the cluster and their status.
   - [Activity log](monitor-activity/). The cluster **Activity** tab provides a running audit of changes made to the cluster.
 

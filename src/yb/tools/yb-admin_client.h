@@ -347,6 +347,7 @@ class ClusterAdminClient {
       std::optional<MonoDelta> new_retention);
 
   Status DeleteSnapshot(const std::string& snapshot_id);
+  Status AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
                                 const std::string& file_name);
@@ -391,6 +392,11 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
+  Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
+                                  const std::vector<std::string>& producer_addresses,
+                                  const TypedNamespaceName& ns,
+                                  bool transactional);
+
   Status SetupUniverseReplication(const std::string& producer_uuid,
                                   const std::vector<std::string>& producer_addresses,
                                   const std::vector<TableId>& tables,
@@ -412,6 +418,8 @@ class ClusterAdminClient {
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
 
+  Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
+
   Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
   Status ChangeXClusterRole(cdc::XClusterRole role);
@@ -424,8 +432,8 @@ class ClusterAdminClient {
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
-  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const std::string& target_time);
+  Status WaitForReplicationDrain(
+      const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
   Status SetupNSUniverseReplication(const std::string& producer_uuid,
                                     const std::vector<std::string>& producer_addresses,
@@ -538,6 +546,11 @@ class ClusterAdminClient {
   Status DiscoverAllMasters(
     const HostPort& init_master_addr, std::string* all_master_addrs);
 
+  // Parses a placement info string of the form
+  // "cloud1.region1.zone1[:min_num_replicas],cloud2.region2.zone2[:min_num_replicas],..."
+  // and puts the result in placement_info_pb. If no RF is specified for a placement block, a
+  // default of 1 is used. This function does not validate correctness; that is done in
+  // CatalogManagerUtil::IsPlacementInfoValid.
   Status FillPlacementInfo(
       master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
 

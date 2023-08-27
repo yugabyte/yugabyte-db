@@ -1,7 +1,7 @@
 ---
 title: Batch operations in YCQL
 headerTitle: Batch operations
-linkTitle: 6. Batch operations
+linkTitle: Batch operations
 description: Learn how batch operations in YCQL send a set of operations as a single RPC call rather than one by one as individual RPC calls.
 menu:
   preview:

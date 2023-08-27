@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -74,6 +75,24 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
     } catch (Exception e) {
       fail();
     }
@@ -119,6 +138,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
               }
               return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, "true");
             });
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
+        mockClient, ImmutableList.of("10.0.0.1"), Collections.emptyList());
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -152,9 +173,11 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForFollowerLag,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -163,7 +186,9 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
@@ -172,6 +197,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
@@ -181,6 +207,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.WaitForFollowerLag,
           // Start of master address update subtasks from MasterInfoUpdateTask.
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleConfigureServers,
@@ -191,6 +218,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForFollowerLag,
           TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -201,10 +229,12 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of("serverType", "MASTER")),
           Json.toJson(ImmutableMap.of("opType", "AddMaster")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
@@ -212,6 +242,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("serverType", "TSERVER")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Live")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
@@ -375,5 +406,29 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         isMasterStart ? WITH_MASTER_UNDER_REPLICATED.size() : START_NODE_TASK_SEQUENCE.size(),
         subTasksByPosition.size());
     assertStartNodeSequence(subTasksByPosition, isMasterStart);
+  }
+
+  @Test
+  public void testStartNodeInUniverseRetries() {
+    Universe universe = createUniverse("Demo");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithInactiveAndReadReplicaNodes(false, 3));
+    // Set one master atleast for master addresses to be populated.
+    setMasters(universe, "host-n2");
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.clusters.addAll(
+        Universe.getOrBadRequest(taskParams.getUniverseUUID()).getUniverseDetails().clusters);
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeName = "host-n1";
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Start,
+        CustomerTask.TargetType.Universe,
+        universe.getUniverseUUID(),
+        TaskType.StartNodeInUniverse,
+        taskParams);
   }
 }

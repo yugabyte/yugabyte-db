@@ -129,7 +129,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
+#define EXPECT_NOK(s) EXPECT_FALSE((s).ok())
 
 // Like the above, but doesn't record successful
 // tests.
@@ -371,6 +371,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) YB_DISABLE_TEST(test_name)
 #else
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) test_name
+#endif
+
+#ifdef FASTDEBUG
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) test_name
 #endif
 
 #if defined(__APPLE__) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)

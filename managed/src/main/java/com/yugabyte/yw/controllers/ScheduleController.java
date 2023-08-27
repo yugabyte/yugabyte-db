@@ -3,10 +3,11 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -43,11 +44,11 @@ import play.mvc.Result;
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
 
   @Inject
-  public ScheduleController(BackupUtil backupUtil) {
-    this.backupUtil = backupUtil;
+  public ScheduleController(BackupHelper backupHelper) {
+    this.backupHelper = backupHelper;
   }
 
   @ApiOperation(
@@ -86,7 +87,7 @@ public class ScheduleController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     return PlatformResults.withData(schedule);
   }
 
@@ -97,7 +98,7 @@ public class ScheduleController extends AuthenticatedController {
   public Result delete(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
 
     schedule.stopSchedule();
 
@@ -118,7 +119,7 @@ public class ScheduleController extends AuthenticatedController {
         paramType = "body")
   })
   public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     EditBackupScheduleParams params = parseJsonAndValidate(request, EditBackupScheduleParams.class);
     if (params.status.equals(State.Paused)) {
@@ -175,12 +176,14 @@ public class ScheduleController extends AuthenticatedController {
               (StringUtils.isEmpty(params.cronExpression))
                   ? params.frequency
                   : BackupUtil.getCronExpressionTimeInterval(params.cronExpression);
-          backupUtil.validateIncrementalScheduleFrequency(
+          backupHelper.validateIncrementalScheduleFrequency(
               params.incrementalBackupFrequency,
               schedulingFrequency,
-              Universe.getOrBadRequest(schedule.getOwnerUUID()));
+              Universe.getOrBadRequest(schedule.getOwnerUUID(), customer));
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
+          schedule.updateNextIncrementScheduleTaskTime(
+              ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
         } else {
           throw new PlatformServiceException(
               BAD_REQUEST,
@@ -200,7 +203,7 @@ public class ScheduleController extends AuthenticatedController {
       nickname = "deleteScheduleV2")
   public Result deleteYb(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     if (schedule.getStatus().equals(State.Active) && schedule.isRunningState()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete schedule as it is running.");
     }

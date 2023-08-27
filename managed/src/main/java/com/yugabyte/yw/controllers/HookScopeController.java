@@ -76,7 +76,7 @@ public class HookScopeController extends AuthenticatedController {
     form.verify(customerUUID);
     HookScope hookScope;
     if (form.getUniverseUUID() != null) { // Universe Scope
-      Universe universe = Universe.getValidUniverseOrBadRequest(form.getUniverseUUID(), customer);
+      Universe universe = Universe.getOrBadRequest(form.getUniverseUUID(), customer);
 
       // We can create hook_scopes for clusters that do not exist yet.
       // This is an explicit requirement for the CDC / AddOn cluster work where we want to have

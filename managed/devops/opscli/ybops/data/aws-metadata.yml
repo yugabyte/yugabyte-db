@@ -6,127 +6,110 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-region_cidr_format: "{}.0.0/16"
-zone_cidr_format: "{}.{}.0/20"
-
-# For list of AMIs: https://wiki.almalinux.org/cloud/AWS.html#community-amis
-# AMIs labeled with 'image' have x86_64 architecture and release tag = 8.7.20221110.
-# AMIs labeled with 'arm_image' have arm64 architecture and release tag = 8.7.20221110.
-
-# Last Updated: 2022-Nov-15
-
+credential_vars:
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+region_cidr_format: '{}.0.0/16'
 regions:
-  us-west-1:
-    cidr_prefix: "172.150"
-    image: ami-05c8aebecaa8cb8e9
-    arm_image: ami-0b9e10529ea809514
-  us-west-2:
-    cidr_prefix: "172.151"
-    image: ami-0f12219b4df721aa6
-    arm_image: ami-08e61774857a2b931
-  us-east-1:
-    cidr_prefix: "172.152"
-    image: ami-0924610ece26e5e7b
-    arm_image: ami-02c9a8bba92028114
-#  us-south-1:
-#    cidr_prefix: "172.153"
-#    image: N/A
-  ap-northeast-1:
-    cidr_prefix: "172.154"
-    image: ami-05faf1bb6b8ea4b89
-    arm_image: ami-0882fb28b1be4d30c
-# TODO: not currently supported in x-region VPC.
-# TODO: seems like at least we have an AMI...
-  ap-northeast-2:
-    cidr_prefix: "172.155"
-    image: ami-00f106831803f5b5f
-    arm_image: ami-095326290fa0e3573
-  ap-southeast-1:
-    cidr_prefix: "172.156"
-    image: ami-07e2e187d68ce189d
-    arm_image: ami-0d8d98a39e6c659a0
-  ap-southeast-2:
-    cidr_prefix: "172.157"
-    image: ami-0aa29f1c98936e9a9
-    arm_image: ami-01f658764786195d3
-  eu-central-1:
-    cidr_prefix: "172.158"
-    image: ami-027a47e7ce46f36ef
-    arm_image: ami-0c402347868961364
-  eu-west-1:
-    cidr_prefix: "172.159"
-    image: ami-0f8014f7936715ef8
-    arm_image: ami-06a678bf61dc41a72
-  # CIDR prefixes cannot be 172.16x because this is reserved address space.
-  # See https://en.wikipedia.org/wiki/Private_network#Private_use_of_other_reserved_addresses
-  sa-east-1:
-    cidr_prefix: "10.100"
-    image: ami-0d838f4b0dc284975
-    arm_image: ami-0649838557daaf047
-  us-east-2:
-    cidr_prefix: "10.101"
-    image: ami-02f76e15e87d1574f
-    arm_image: ami-0654405a8bd61f31c
-  eu-west-2:
-    cidr_prefix: "10.102"
-    image: ami-0fb5afa2e872eff9f
-    arm_image: ami-0d909593312b9255a
-  eu-west-3:
-    cidr_prefix: "10.103"
-    image: ami-026b68532b942de3a
-    arm_image: ami-0048914b9d9cd367d
-  ca-central-1:
-    cidr_prefix: "10.104"
-    image: ami-0a6182f806c6876d1
-    arm_image: ami-02e9e81a185160da9
-  ap-south-1:
-    cidr_prefix: "10.105"
-    image: ami-06118baa57e191a1d
-    arm_image: ami-03133f245242b05e1
-# TODO: not currently supported in x-region VPC.
-# cn-north-1:
-#    cidr_prefix: "10.106"
-#    image: N/A
-  ap-northeast-3:
-    cidr_prefix: "10.107"
-    image: ami-0ed7db42601cde3bc
-    arm_image: ami-02dc32460f81327cf
   af-south-1:
-    cidr_prefix: "10.108"
-    image: ami-07572a7b4f4804454
     arm_image: ami-0734b92b9b36616aa
-  me-south-1:
-    cidr_prefix: "10.109"
-    image: ami-0377072803c1257ab
-    arm_image: ami-0035d3feab8018f64
+    cidr_prefix: '10.108'
+    image: ami-037cc28874b66f771
   ap-east-1:
-    cidr_prefix: "10.110"
-    image: ami-029a7025125e2e104
     arm_image: ami-076eef897fb8ffc91
-  eu-south-1:
-    cidr_prefix: "10.111"
-    image: ami-03082acb4cbf3fa29
-    arm_image: ami-0eb6074ccc064cc9f
-  eu-north-1:
-    cidr_prefix: "10.112"
-    image: ami-0d8c35ca5db3d075d
-    arm_image: ami-0ca3c60f15c43d0da
+    cidr_prefix: '10.110'
+    image: ami-029a7025125e2e104
+  ap-northeast-1:
+    arm_image: ami-0bb78278a4cca8873
+    cidr_prefix: '172.154'
+    image: ami-0b299c22ffb336d85
+  ap-northeast-2:
+    arm_image: ami-06806221d019b96ec
+    cidr_prefix: '172.155'
+    image: ami-0061e33ead3802fd4
+  ap-northeast-3:
+    arm_image: ami-02dc32460f81327cf
+    cidr_prefix: '10.107'
+    image: ami-04401a491e749e778
+  ap-south-1:
+    arm_image: ami-04923e523b1478090
+    cidr_prefix: '10.105'
+    image: ami-050c0cd5d6aec17a3
+  ap-southeast-1:
+    arm_image: ami-014261218357d19d1
+    cidr_prefix: '172.156'
+    image: ami-06a576b4150a98bc9
+  ap-southeast-2:
+    arm_image: ami-0a81ddafb0dd533c2
+    cidr_prefix: '172.157'
+    image: ami-03f29e9f6d3837911
   ap-southeast-3:
-    cidr_prefix: "10.113"
-    image: ami-0763197ed84a0b1b5
     arm_image: ami-0803d123f92fe63b6
+    cidr_prefix: '10.113'
+    image: ami-0763197ed84a0b1b5
+  ca-central-1:
+    arm_image: ami-0825bf8581c175fce
+    cidr_prefix: '10.104'
+    image: ami-09f420418423651e2
+  eu-central-1:
+    arm_image: ami-0c730166864b8da4a
+    cidr_prefix: '172.158'
+    image: ami-0b3d1809cc222924a
+  eu-north-1:
+    arm_image: ami-099ab885e527ca1c1
+    cidr_prefix: '10.112'
+    image: ami-0f122bc12c5fd6da8
+  eu-south-1:
+    arm_image: ami-0eb6074ccc064cc9f
+    cidr_prefix: '10.111'
+    image: ami-0dcf02eda1983af77
+  eu-west-1:
+    arm_image: ami-0aa77506418705e85
+    cidr_prefix: '172.159'
+    image: ami-0407f1b739bfdf5bd
+  eu-west-2:
+    arm_image: ami-04199e910849091f0
+    cidr_prefix: '10.102'
+    image: ami-06bf7bb8e78cd71f0
+  eu-west-3:
+    arm_image: ami-068cbdec7e5f25a9b
+    cidr_prefix: '10.103'
+    image: ami-0b385035913caf662
+  me-south-1:
+    arm_image: ami-0035d3feab8018f64
+    cidr_prefix: '10.109'
+    image: ami-05f74611bf6a8fce5
+  sa-east-1:
+    arm_image: ami-04d10cb11a757975d
+    cidr_prefix: '10.100'
+    image: ami-0294fdbf741cb1831
+  us-east-1:
+    arm_image: ami-059e01f278d913b49
+    cidr_prefix: '172.152'
+    image: ami-06dc00dc1e3a0b0f6
+  us-east-2:
+    arm_image: ami-0c166578fe062facd
+    cidr_prefix: '10.101'
+    image: ami-09e57b4a97b8f8b10
   us-gov-east-1:
-    cidr_prefix: "10.114"
-    image: ami-00c6b007ba906a530 # Centos7 based AMI as we don't alma 8 with x86 in the region.
+    cidr_prefix: '10.114'
+    image: ami-00c6b007ba906a530
   us-gov-west-1:
-    cidr_prefix: "10.115"
-    image: ami-08b470dba6016d395 # Centos7 based AMI as we don't alma 8 with x86 in the region.
+    cidr_prefix: '10.115'
+    image: ami-08b470dba6016d395
+  us-west-1:
+    arm_image: ami-0815af8b07313333e
+    cidr_prefix: '172.150'
+    image: ami-026525c9748c1bf73
+  us-west-2:
+    arm_image: ami-017b11a65709517fe
+    cidr_prefix: '172.151'
+    image: ami-0a38d2e6fc44a2ac8
 sg_rules:
-  - ip_protocol: tcp
-    from_port: 22
-    to_port: 22
-  - ip_protocol: tcp
-    from_port: 54422
-    to_port: 54422
-
-credential_vars: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+- from_port: 22
+  ip_protocol: tcp
+  to_port: 22
+- from_port: 54422
+  ip_protocol: tcp
+  to_port: 54422
+zone_cidr_format: '{}.{}.0/20'

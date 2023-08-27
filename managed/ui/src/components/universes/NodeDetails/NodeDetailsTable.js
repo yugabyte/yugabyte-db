@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { MenuItem, Dropdown } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
@@ -9,6 +9,7 @@ import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import { setCookiesFromLocalStorage } from '../../../routes';
 import { NodeType } from '../../../redesign/utils/dtos';
+import { CloudType } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   getPrimaryCluster,
@@ -64,8 +65,8 @@ export default class NodeDetailsTable extends Component {
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     let sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
-    const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)
-      ?.config;
+    const universeProvider = providers?.data?.find((provider) => provider.uuid === providerUUID);
+    const providerConfig = universeProvider?.config;
 
     if (isDedicatedNodes && clusterType === 'primary') {
       if (this.state.nodeTypeDropdownValue === NodeType.Master) {
@@ -247,6 +248,8 @@ export default class NodeDetailsTable extends Component {
           ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
           : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
       const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
+      const isOnPrem = universeProvider?.code === CloudType.onprem;
+      const isOnPremManuallyProvisioned = isOnPrem && universeProvider?.details?.skipProvisioning;
 
       return (
         <NodeAction
@@ -260,6 +263,7 @@ export default class NodeDetailsTable extends Component {
           disabled={actions_disabled}
           clusterType={clusterType}
           isKubernetes={isKubernetes}
+          isOnPremManuallyProvisioned={isOnPremManuallyProvisioned}
         />
       );
     };

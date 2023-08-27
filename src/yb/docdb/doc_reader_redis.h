@@ -21,6 +21,8 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
+#include "yb/docdb/read_operation_data.h"
+
 #include "yb/dockv/expiration.h"
 #include "yb/dockv/value.h"
 
@@ -184,8 +186,7 @@ Status GetRedisSubDocument(
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max());
+    const ReadOperationData& read_operation_data = {});
 
 }  // namespace docdb
 }  // namespace yb

@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.util.Collections;
 import junitparams.JUnitParamsRunner;
@@ -72,7 +72,7 @@ public class V230_5__AccessKeyCleanupTest extends FakeDBApplication {
   // this will be needed for keeping the test when the fields are actually deleted from keyInfo
   private static void updateKeyInfo(AccessKey accessKey, KeyInfo info) {
     final SqlUpdate sqlUpdate =
-        Ebean.createSqlUpdate(
+        DB.sqlUpdate(
                 "UPDATE access_key SET key_info = :info"
                     + " where key_code = :code and provider_uuid::text = :id")
             .setParameter("info", Json.stringify(Json.toJson(info)))

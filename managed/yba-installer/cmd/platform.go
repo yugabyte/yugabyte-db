@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,11 +17,11 @@ import (
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 type platformDirectories struct {
@@ -30,6 +31,8 @@ type platformDirectories struct {
 	DataDir             string
 	cronScript          string
 	PgBin               string
+	YsqlDump            string
+	YsqlBin             string
 	PlatformPackages    string
 }
 
@@ -42,15 +45,17 @@ func newPlatDirectories(version string) platformDirectories {
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
 		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
+		YsqlDump:         common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
+		YsqlBin:          common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
 		PlatformPackages: common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
 	}
 }
 
 // Component 3: Platform
 type Platform struct {
-	name    	string
-	version 	string
-	FixPaths	bool
+	name     string
+	version  string
+	FixPaths bool
 	platformDirectories
 }
 
@@ -60,7 +65,7 @@ func NewPlatform(version string) Platform {
 		name:                "yb-platform",
 		version:             version,
 		platformDirectories: newPlatDirectories(version),
-		FixPaths:						 false,
+		FixPaths:            false,
 	}
 }
 
@@ -95,34 +100,68 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+// Version gets the version
+func (plat Platform) Version() string {
+	return plat.version
+}
+
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
-	plat.createNecessaryDirectories()
-	plat.untarDevopsAndYugawarePackages()
-	plat.copyYbcPackages()
-	plat.copyNodeAgentPackages()
-	plat.renameAndCreateSymlinks()
-	err := createPemFormatKeyAndCert()
-	if err != nil {
+
+	if err := plat.createNecessaryDirectories(); err != nil {
+		return err
+	}
+
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
+	if err := plat.renameAndCreateSymlinks(); err != nil {
+		return err
+	}
+	if err := createPemFormatKeyAndCert(); err != nil {
 		return err
 	}
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
-	common.Create(common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log")
+	logFile := common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log"
+	createClosure := func() error {
+		_, err := common.Create(logFile)
+		return err
+	}
+	if err := createClosure(); err != nil {
+		log.Error("Failed to create " + logFile + ": " + err.Error())
+		return err
+	}
 
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
-		plat.CreateCronJob()
+		if err := plat.CreateCronJob(); err != nil {
+			return err
+		}
 	} else {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetBaseInstall(), userName, userName, true)
+		chownClosure := func() error {
+			return common.Chown(common.GetBaseInstall(), userName, userName, true)
+		}
+		if err := chownClosure(); err != nil {
+			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
+			return err
+		}
 	}
 
-	plat.Start()
+	if err := plat.Start(); err != nil {
+		return err
+	}
 	log.Info("Finishing Platform install")
 	return nil
 }
@@ -136,7 +175,7 @@ func (plat Platform) SetDataDirPerms() error {
 	return nil
 }
 
-func (plat Platform) createNecessaryDirectories() {
+func (plat Platform) createNecessaryDirectories() error {
 	dirs := []string{
 		common.GetSoftwareRoot() + "/yb-platform",
 		common.GetBaseInstall() + "/data/yb-platform/releases",
@@ -149,13 +188,22 @@ func (plat Platform) createNecessaryDirectories() {
 	userName := viper.GetString("service_username")
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			common.MkdirAll(dir, os.ModePerm)
-			common.Chown(dir, userName, userName, true)
+			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
+				log.Error("failed to make " + dir + ": " + err.Error())
+				return mkErr
+			}
+			if common.HasSudoAccess() {
+				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
+					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
+					return chErr
+				}
+			}
 		}
 	}
+	return nil
 }
 
-func (plat Platform) untarDevopsAndYugawarePackages() {
+func (plat Platform) untarDevopsAndYugawarePackages() error {
 
 	log.Info("Extracting devops and yugaware packages.")
 
@@ -203,10 +251,11 @@ func (plat Platform) untarDevopsAndYugawarePackages() {
 
 		}
 	}
-
+	return nil
 }
 
-func (plat Platform) copyYbcPackages() {
+func (plat Platform) copyYbcPackages() error {
+	log.Debug("Copying YBC Packages")
 	ybcPattern := plat.PlatformPackages + "/**/ybc/ybc*.tar.gz"
 
 	matches, err := filepath.Glob(ybcPattern)
@@ -221,10 +270,11 @@ func (plat Platform) copyYbcPackages() {
 		// TODO: Check if file does not already exist?
 		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/ybc/release/"+fileName)
 	}
-
+	return nil
 }
 
-func (plat Platform) deleteNodeAgentPackages() {
+func (plat Platform) deleteNodeAgentPackages() error {
+	log.Debug("Deleting old node agent packages")
 	// It deletes existing node-agent packages on upgrade.
 	// Even if it fails, it is ok.
 	releasesFolderPath := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases"
@@ -235,9 +285,11 @@ func (plat Platform) deleteNodeAgentPackages() {
 			os.Remove(f)
 		}
 	}
+	return nil
 }
 
-func (plat Platform) copyNodeAgentPackages() {
+func (plat Platform) copyNodeAgentPackages() error {
+	log.Debug("Copying node agent packages")
 	// Node-agent package is under yugabundle folder.
 	nodeAgentPattern := plat.PlatformPackages + "/node_agent-*.tar.gz"
 
@@ -252,14 +304,21 @@ func (plat Platform) copyNodeAgentPackages() {
 		_, fileName := filepath.Split(f)
 		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/node-agent/releases/"+fileName)
 	}
-
+	return nil
 }
 
-func (plat Platform) renameAndCreateSymlinks() {
+func (plat Platform) renameAndCreateSymlinks() error {
 
-	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "yugaware")
-	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "devops")
-
+	ybPlat := common.GetSoftwareRoot() + "/yb-platform"
+	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "yugaware"); err != nil {
+		log.Error("failed to create soft link for yugaware directory")
+		return err
+	}
+	if err := common.CreateSymlink(plat.PlatformPackages, ybPlat, "devops"); err != nil {
+		log.Error("failed to create soft link for devops directory")
+		return err
+	}
+	return nil
 }
 
 // Start the YBA platform service.
@@ -438,19 +497,26 @@ func (plat Platform) Status() (common.Status, error) {
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
-	plat.createNecessaryDirectories()
+	if err := plat.createNecessaryDirectories(); err != nil {
+		return err
+	}
 	plat.untarDevopsAndYugawarePackages()
 	plat.copyYbcPackages()
 	plat.deleteNodeAgentPackages()
 	plat.copyNodeAgentPackages()
-	plat.renameAndCreateSymlinks()
-	pemErr := createPemFormatKeyAndCert()
-	if pemErr != nil {
-		return pemErr
+	if err := plat.renameAndCreateSymlinks(); err != nil {
+		return err
+	}
+	if err := createPemFormatKeyAndCert(); err != nil {
+		return err
 	}
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
-	common.Create(common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log")
+	logfile := common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log"
+	if _, err := common.Create(logfile); err != nil {
+		log.Error("Failed to create " + logfile + ": " + err.Error())
+		return err
+	}
 
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
@@ -458,6 +524,87 @@ func (plat Platform) Upgrade() error {
 	}
 	err := plat.Start()
 	return err
+}
+
+func (plat Platform) MigrateFromReplicated() error {
+	config.GenerateTemplate(plat)
+
+	if err := plat.createNecessaryDirectories(); err != nil {
+		return err
+	}
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
+
+	if err := plat.symlinkReplicatedData(); err != nil {
+		return fmt.Errorf("failed to migrated releases directory: %w", err)
+	}
+	if err := plat.renameAndCreateSymlinks(); err != nil {
+		return err
+	}
+
+	// TODO: need to pull keys from replicated.
+	if err := createPemFormatKeyAndCert(); err != nil {
+		return err
+	}
+
+	//Create the platform.log file so that we can start platform as
+	//a background process for non-root.
+	logFile := common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log"
+	createClosure := func() error {
+		_, err := common.Create(logFile)
+		return err
+	}
+	if err := createClosure(); err != nil {
+		log.Error("Failed to create " + logFile + ": " + err.Error())
+		return err
+	}
+
+	//Crontab based monitoring for non-root installs.
+	if !common.HasSudoAccess() {
+		if err := plat.CreateCronJob(); err != nil {
+			return err
+		}
+	} else {
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
+		userName := viper.GetString("service_username")
+		chownClosure := func() error {
+			return common.Chown(common.GetBaseInstall(), userName, userName, true)
+		}
+		if err := chownClosure(); err != nil {
+			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
+			return err
+		}
+	}
+
+	log.Info("Finishing Platform migration")
+	return nil
+}
+
+// FinishReplicatedMigrate completest the replicated migration platform specific tasks
+func (plat Platform) FinishReplicatedMigrate() error {
+	files, err := os.ReadDir(filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases"))
+	if err != nil {
+		return fmt.Errorf("could not read releases directory: %w", err)
+	}
+	for _, file := range files {
+		if file.Type() != fs.ModeSymlink {
+			log.DebugLF("skipping directory " + file.Name() + " as it is not a symlink")
+			continue
+		}
+		err = common.ResolveSymlink(filepath.Join(
+			common.GetBaseInstall(), "data/yb-platform/releases", file.Name()))
+		if err != nil {
+			return fmt.Errorf("Could not complete migration of platform: %w", err)
+		}
+	}
+	return nil
 }
 
 func createPemFormatKeyAndCert() error {
@@ -483,7 +630,7 @@ func createPemFormatKeyAndCert() error {
 
 	// Create this new concatenated PEM file to write key and cert in order.
 	serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
-	pemFile, err := os.OpenFile(serverPemPath, os.O_CREATE|os.O_WRONLY, 0644)
+	pemFile, err := common.Create(serverPemPath)
 	if err != nil {
 		log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
 		return err
@@ -512,11 +659,29 @@ func createPemFormatKeyAndCert() error {
 	return nil
 }
 
+func (plat Platform) symlinkReplicatedData() error {
+	// First do the previous releases.
+	releases, err := ioutil.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
+	if err != nil {
+		return fmt.Errorf("could not read replicated releases dir: %w", err)
+	}
+	for _, release := range releases {
+		src := filepath.Join(common.GetReplicatedBaseDir(), "releases", release.Name())
+		dest := filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases", release.Name())
+		err = common.Symlink(src, dest)
+		if err != nil {
+			return fmt.Errorf("failed symlinked release %s: %w", release.Name(), err)
+		}
+	}
+	return nil
+}
+
 // CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.
-func (plat Platform) CreateCronJob() {
+func (plat Platform) CreateCronJob() error {
 	containerExposedPort := config.GetYamlPathData("platform.port")
 	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
 	shell.RunShell("(crontab", "-l", "2>/dev/null;", "echo", "\"@reboot", plat.cronScript,
 		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
 		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
+	return nil
 }

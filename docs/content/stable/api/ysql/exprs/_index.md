@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: api-ysql-exprs
     parent: api-ysql
-    weight: 200
+    weight: 60
 type: indexpage
 ---
 

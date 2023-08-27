@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformUniverseNodeConfig;
 import com.yugabyte.yw.common.ShellResponse;
@@ -23,9 +24,13 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
 
   private NodeUniverseManager nodeUniverseManager;
 
+  private FileHelperService fileHelperService;
+
   @Inject
-  public PerfAdvisorNodeManager(NodeUniverseManager nodeUniverseManager) {
+  public PerfAdvisorNodeManager(
+      NodeUniverseManager nodeUniverseManager, FileHelperService fileHelperService) {
     this.nodeUniverseManager = nodeUniverseManager;
+    this.fileHelperService = fileHelperService;
   }
 
   @Override
@@ -56,7 +61,7 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
                   .getResourceAsStream(fileUpload.getSrcFilePath());
           String pythonText = new Scanner(s).useDelimiter("\\A").next();
           String prefix = String.format("pa_script_%s", UUID.randomUUID());
-          tempPath = Files.createTempFile(prefix, ".py");
+          tempPath = fileHelperService.createTempFile(prefix, ".py");
           Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
           response =
               nodeUniverseManager

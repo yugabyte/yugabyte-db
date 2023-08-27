@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { DescriptionList } from '../../common/descriptors';
 import { ROOT_URL } from '../../../config';
 import './connectStringPanel.css';

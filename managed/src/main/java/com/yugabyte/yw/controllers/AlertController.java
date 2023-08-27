@@ -14,91 +14,44 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor.*;
+
 import com.cronutils.utils.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.AlertManager.SendNotificationResult;
 import com.yugabyte.yw.common.AlertManager.SendNotificationStatus;
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.alerts.AlertChannelService;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertTemplateSettingsService;
-import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
-import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.TestAlertSettings;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertChannelFormData;
-import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
-import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
-import com.yugabyte.yw.forms.AlertDestinationFormData;
-import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
-import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
-import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
-import com.yugabyte.yw.forms.AlertTemplateVariablesList;
-import com.yugabyte.yw.forms.NotificationPreview;
-import com.yugabyte.yw.forms.NotificationPreviewFormData;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertChannelTemplates;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDestination;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.AlertTemplateVariable;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.models.extended.AlertData;
-import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.filters.AlertTemplateFilter;
-import com.yugabyte.yw.models.filters.AlertTemplateSettingsFilter;
+import com.yugabyte.yw.models.filters.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
-import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
-import com.yugabyte.yw.models.paging.AlertDataPagedResponse;
-import com.yugabyte.yw.models.paging.AlertPagedQuery;
-import com.yugabyte.yw.models.paging.AlertPagedResponse;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.Authorization;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import com.yugabyte.yw.models.paging.*;
+import io.swagger.annotations.*;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -112,6 +65,8 @@ import play.mvc.Result;
 public class AlertController extends AuthenticatedController {
 
   @Inject private MetricService metricService;
+
+  @Inject private AlertTemplateService alertTemplateService;
 
   @Inject private AlertConfigurationService alertConfigurationService;
 
@@ -137,7 +92,7 @@ public class AlertController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    Alert alert = alertService.getOrBadRequest(alertUUID);
+    Alert alert = alertService.getOrBadRequest(customerUUID, alertUUID);
     return PlatformResults.withData(convert(alert));
   }
 
@@ -215,7 +170,7 @@ public class AlertController extends AuthenticatedController {
     AlertFilter filter = AlertFilter.builder().uuid(alertUUID).build();
     alertService.acknowledge(filter);
 
-    Alert alert = alertService.getOrBadRequest(alertUUID);
+    Alert alert = alertService.getOrBadRequest(customerUUID, alertUUID);
     auditService()
         .createAuditEntry(
             request, Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
@@ -254,7 +209,8 @@ public class AlertController extends AuthenticatedController {
   public Result getAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    AlertConfiguration configuration =
+        alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     return PlatformResults.withData(configuration);
   }
@@ -277,7 +233,8 @@ public class AlertController extends AuthenticatedController {
 
     List<AlertConfigurationTemplate> templates =
         Arrays.stream(AlertTemplate.values())
-            .filter(filter::matches)
+            .filter(
+                template -> filter.matches(alertTemplateService.getTemplateDescription(template)))
             .map(
                 template ->
                     alertConfigurationService.createConfigurationTemplate(customer, template))
@@ -371,7 +328,7 @@ public class AlertController extends AuthenticatedController {
   public Result updateAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    alertConfigurationService.getOrBadRequest(configurationUUID);
+    alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     AlertConfiguration configuration = parseJson(request, AlertConfiguration.class);
 
@@ -398,7 +355,7 @@ public class AlertController extends AuthenticatedController {
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    alertConfigurationService.getOrBadRequest(configurationUUID);
+    alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
 
     alertConfigurationService.delete(configurationUUID);
 
@@ -412,7 +369,8 @@ public class AlertController extends AuthenticatedController {
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    AlertConfiguration configuration =
+        alertConfigurationService.getOrBadRequest(customerUUID, configurationUUID);
     Alert alert = createTestAlert(customer, configuration, true);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
@@ -682,6 +640,7 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertTemplateSettings(
       UUID customerUUID, UUID settingsUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    alertTemplateSettingsService.getOrBadRequest(customerUUID, settingsUuid);
     alertTemplateSettingsService.delete(settingsUuid);
     auditService()
         .createAuditEntry(
@@ -738,6 +697,7 @@ public class AlertController extends AuthenticatedController {
   public Result deleteAlertTemplateVariables(
       UUID customerUUID, UUID variablesUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
+    alertTemplateVariableService.getOrBadRequest(customerUUID, variablesUuid);
     alertTemplateVariableService.delete(variablesUuid);
     auditService()
         .createAuditEntry(
@@ -764,7 +724,8 @@ public class AlertController extends AuthenticatedController {
         parseJsonAndValidate(request, NotificationPreviewFormData.class);
 
     AlertConfiguration alertConfiguration =
-        alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
+        alertConfigurationService.getOrBadRequest(
+            customerUUID, previewFormData.getAlertConfigUuid());
 
     AlertChannelTemplatesPreview channelTemplates = previewFormData.getAlertChannelTemplates();
     channelTemplates.getChannelTemplates().setCustomerUUID(customerUUID);
@@ -845,7 +806,8 @@ public class AlertController extends AuthenticatedController {
       Alert alert, AlertConfiguration alertConfiguration, AlertDefinition alertDefinition) {
     return new AlertData()
         .setAlert(alert)
-        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition));
+        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition))
+        .setMetricsLinkUseBrowserFqdn(metricUrlProvider.getMetricsLinkUseBrowserFqdn());
   }
 
   private String getAlertExpressionUrl(
@@ -856,9 +818,11 @@ public class AlertController extends AuthenticatedController {
       // Will try to get from configuration and definition.
       // Thresholds and even expression itself may already be changed - but that's best we can do.
       if (alertConfiguration != null && alertDefinition != null) {
+        AlertTemplateDescription description =
+            alertTemplateService.getTemplateDescription(alertConfiguration.getTemplate());
         expression =
-            alertDefinition.getQueryWithThreshold(
-                alertConfiguration.getThresholds().get(alert.getSeverity()));
+            description.getQueryWithThreshold(
+                alertDefinition, alertConfiguration.getThresholds().get(alert.getSeverity()));
       } else {
         return null;
       }
@@ -875,6 +839,8 @@ public class AlertController extends AuthenticatedController {
   @VisibleForTesting
   Alert createTestAlert(
       Customer customer, AlertConfiguration configuration, boolean testAlertPrefix) {
+    AlertTemplateDescription alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -892,10 +858,10 @@ public class AlertController extends AuthenticatedController {
         definition = new AlertDefinition();
         definition.setCustomerUUID(customer.getUuid());
         definition.setConfigurationUUID(configuration.getUuid());
-        definition.setQuery(configuration.getTemplate().buildTemplate(customer, universe));
         definition.generateUUID();
         definition.setLabels(
             MetricLabelsBuilder.create()
+                .appendCustomer(customer)
                 .appendSource(getOrCreateUniverseForTestAlert(customer))
                 .getDefinitionLabels());
       } else {
@@ -912,11 +878,17 @@ public class AlertController extends AuthenticatedController {
         alertTemplateSettingsService.get(
             configuration.getCustomerUUID(), configuration.getTemplate().name());
     List<AlertLabel> labels =
-        definition.getEffectiveLabels(configuration, alertTemplateSettings, severity).stream()
+        definition
+            .getEffectiveLabels(
+                alertTemplateDescription, configuration, alertTemplateSettings, severity)
+            .stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
-    labels.addAll(configuration.getTemplate().getTestAlertSettings().getAdditionalLabels());
+    labels.addAll(
+        alertTemplateDescription.getTestAlertSettings().getAdditionalLabels().stream()
+            .map(label -> new AlertLabel(label.getName(), label.getValue()))
+            .toList());
     Map<String, String> alertLabels =
         labels.stream().collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
     Alert alert =
@@ -935,23 +907,35 @@ public class AlertController extends AuthenticatedController {
     if (StringUtils.isNotEmpty(sourceUuid)) {
       alert.setSourceUUID(UUID.fromString(sourceUuid));
     }
-    alert.setMessage(buildTestAlertMessage(configuration, alert, testAlertPrefix));
+    if (alertTemplateDescription.getLabels().containsKey(AFFECTED_NODE_NAMES)) {
+      alert.setLabel(AFFECTED_NODE_NAMES, "node1 node2 node3");
+      alert.setLabel(AFFECTED_NODE_ADDRESSES, "1.2.3.1 1.2.3.2 1.2.3.3");
+      alert.setLabel(AFFECTED_NODE_IDENTIFIERS, "node1 node2 node3");
+    }
+    if (alertTemplateDescription.getLabels().containsKey(AFFECTED_VOLUMES)) {
+      alert.setLabel(AFFECTED_VOLUMES, "node1:/\nnode2:/\n");
+    }
+    alert.setMessage(
+        buildTestAlertMessage(alertTemplateDescription, configuration, alert, testAlertPrefix));
     return alert;
   }
 
   private String buildTestAlertMessage(
-      AlertConfiguration configuration, Alert alert, boolean testAlertPrefix) {
-    AlertTemplate template = configuration.getTemplate();
-    TestAlertSettings settings = template.getTestAlertSettings();
+      AlertTemplateDescription alertTemplateDescription,
+      AlertConfiguration configuration,
+      Alert alert,
+      boolean testAlertPrefix) {
+
+    TestAlertSettings settings = alertTemplateDescription.getTestAlertSettings();
     if (settings.getCustomMessage() != null) {
       return settings.getCustomMessage();
     }
-    String messageTemplate = template.getSummaryTemplate();
+    String messageTemplate = alertTemplateDescription.getAnnotations().get("summary");
     AlertTemplateSubstitutor<Alert> alertTemplateSubstitutor =
         new AlertTemplateSubstitutor<>(alert);
     String message = alertTemplateSubstitutor.replace(messageTemplate);
     TestAlertTemplateSubstitutor testAlertTemplateSubstitutor =
-        new TestAlertTemplateSubstitutor(alert, configuration);
+        new TestAlertTemplateSubstitutor(alert, alertTemplateDescription, configuration);
     message = testAlertTemplateSubstitutor.replace(message);
     return testAlertPrefix ? "[TEST ALERT!!!] " + message : message;
   }

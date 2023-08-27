@@ -7,14 +7,22 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -39,6 +47,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeConfig;
+import java.time.Instant;
+import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
@@ -54,6 +64,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentManager nodeAgentManager;
   private SettableRuntimeConfigFactory runtimeConfigFactory;
+  private ConfigHelper configHelper;
   private Customer customer;
   private Provider provider;
   private Region region;
@@ -67,6 +78,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     nodeAgentHandler = app.injector().instanceOf(NodeAgentHandler.class);
     nodeAgentManager = app.injector().instanceOf(NodeAgentManager.class);
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    configHelper = app.injector().instanceOf(ConfigHelper.class);
     nodeAgentHandler.enableConnectionValidation(false);
     RuntimeConfig<Provider> providerConfig = runtimeConfigFactory.forProvider(provider);
     String nodeAgentConfig = "yb.node_agent.preflight_checks.";
@@ -95,6 +107,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     ShellResponse response = ShellResponse.create(0, "{}");
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(response);
+    configHelper.loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", "2.16.0.0"));
   }
 
   private Result registerNodeAgent(NodeAgentForm formData) {
@@ -108,6 +121,11 @@ public class NodeAgentControllerTest extends FakeDBApplication {
   private Result getNodeAgent(UUID nodeAgentUuid, String jwt) {
     return doRequestWithJWT(
         "GET", "/api/customers/" + customer.getUuid() + "/node_agents/" + nodeAgentUuid, jwt);
+  }
+
+  private Result listNodeAgents() {
+    return doRequestWithAuthToken(
+        "GET", "/api/customers/" + customer.getUuid() + "/node_agents", user.createAuthToken());
   }
 
   private Result updateNodeState(UUID nodeAgentUuid, NodeAgentForm formData, String jwt) {
@@ -148,8 +166,6 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     String jwt = nodeAgentManager.getClientToken(nodeAgentUuid, user.getUuid());
     result = assertPlatformException(() -> registerNodeAgent(formData));
     assertBadRequest(result, "Node agent is already registered");
-    result = getNodeAgent(nodeAgentUuid, jwt);
-    assertOk(result);
     // Report live to the server.
     formData.state = State.READY.name();
     result = updateNodeState(nodeAgentUuid, formData, jwt);
@@ -183,6 +199,50 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     assertOk(result);
     result = assertPlatformException(() -> getNodeAgent(nodeAgentUuid, jwt));
     assertUnauthorized(result, "Invalid token");
+  }
+
+  // @Test
+  // TODO H2 does not support some JSON operators/functions.
+  public void testListNodeAgents() {
+    NodeAgentForm formData = new NodeAgentForm();
+    formData.name = "test1";
+    formData.ip = "10.20.30.41";
+    // Make this version unmatched.
+    formData.version = "2.12.0.0";
+    formData.osType = OSType.LINUX.name();
+    formData.archType = ArchType.AMD64.name();
+    formData.home = "/home/yugabyte/node-agent";
+    // Register the node agent.
+    Result result = registerNodeAgent(formData);
+    assertOk(result);
+    formData.name = "test2";
+    formData.ip = "10.20.30.42";
+    // Make this version match.
+    formData.version = "2.16.0.0";
+    // Register the node agent.
+    result = registerNodeAgent(formData);
+    assertOk(result);
+    NodeAgent nodeAgent = Json.fromJson(Json.parse(contentAsString(result)), NodeAgent.class);
+    // Make this unreachable.
+    nodeAgent.updateTimestamp(Date.from(Instant.now().minusSeconds(600)));
+    result = listNodeAgents();
+    try {
+      ArrayNode arrayNode = (ArrayNode) Json.parse(contentAsString(result));
+      for (JsonNode node : arrayNode) {
+        if (node.get("name").asText().equals("test1")) {
+          assertTrue("test1 is expected to be reachable", node.get("reachable").asBoolean());
+          assertFalse(
+              "test1 is expected to have mismatched version",
+              node.get("versionMatched").asBoolean());
+        } else {
+          assertFalse("test2 is expected to be unreachable", node.get("reachable").asBoolean());
+          assertTrue(
+              "test2 is expected to have matched version", node.get("versionMatched").asBoolean());
+        }
+      }
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
   }
 
   public Set<NodeConfig> getTestNodeConfigsSet() {

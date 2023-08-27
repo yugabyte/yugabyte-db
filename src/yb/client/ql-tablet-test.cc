@@ -69,6 +69,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/shared_lock.h"
@@ -83,11 +84,11 @@ using std::string;
 
 using namespace std::literals; // NOLINT
 
+DECLARE_string(compression_type);
 DECLARE_uint64(initial_seqno);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
-DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
 DECLARE_bool(rocksdb_disable_compactions);
@@ -96,25 +97,28 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
-DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(transaction_table_num_tablets_per_tserver);
-DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
-DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
 DECLARE_uint64(sst_files_soft_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_int32(TEST_backfill_sabotage_frequency);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
-DECLARE_string(compression_type);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_bool(TEST_allow_stop_writes);
+DECLARE_int32(TEST_backfill_sabotage_frequency);
+DECLARE_int32(TEST_delay_execute_async_ms);
+DECLARE_bool(TEST_log_cache_skip_eviction);
+DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
+DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
+DECLARE_int32(TEST_fetch_next_delay_ms);
+DECLARE_string(TEST_fetch_next_delay_column);
 
 namespace yb {
 namespace client {
@@ -143,15 +147,15 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     QLDmlTestBase::SetUp();
   }
 
   void CreateTables(uint64_t initial_seqno1, uint64_t initial_seqno2) {
     google::FlagSaver saver;
-    FLAGS_initial_seqno = initial_seqno1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = initial_seqno1;
     CreateTable(kTable1Name, &table1_);
-    FLAGS_initial_seqno = initial_seqno2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = initial_seqno2;
     CreateTable(kTable2Name, &table2_);
   }
 
@@ -193,8 +197,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
       const YBTableName& table_name, TableHandle* table, int num_tablets = 0,
       bool transactional = false) {
     YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(INT32);
+    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(DataType::INT32);
 
     if (num_tablets == 0) {
       num_tablets = CalcNumTablets(3);
@@ -208,8 +212,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   YBSessionPtr CreateSession() {
-    auto session = client_->NewSession();
-    session->SetTimeout(15s);
+    auto session = client_->NewSession(15s);
     return session;
   }
 
@@ -506,6 +509,54 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     }, MonoDelta::FromSeconds(30), "Table Creation");
   }
 
+  // Make sure long reads are aborted by operation.
+  void TestLongReadAbort(std::function<Status()> operation) {
+    constexpr auto kNumRows = 100;
+
+    ASSERT_NO_FATALS(
+        CreateTable(kTable1Name, &table1_, /* num_tablets = */ 1, /* transactional = */ true));
+    LOG(INFO) << "Created table";
+
+    ASSERT_NO_FATALS(FillTable(0, kNumRows, table1_));
+    LOG(INFO) << "Inserted " << kNumRows << " rows";
+
+    std::vector<std::shared_ptr<tablet::Tablet>> shared_tablets;
+    {
+      for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+        shared_tablets.push_back(peer->shared_tablet());
+      }
+    }
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_column) = "int_val";
+
+    std::thread counter([this]{
+      auto session = CreateSession();
+
+      const auto start_time = CoarseMonoClock::now();
+
+      // Use high enough timeout to test aborting reads.
+      const auto rows_count_result =
+          CountRows(session, table1_, kNumRows * FLAGS_TEST_fetch_next_delay_ms * 1ms * 10);
+      LOG(INFO) << "Rows count result: " << rows_count_result;
+      // Request should be aborted during tablet shutdown.
+      ASSERT_FALSE(rows_count_result.ok());
+
+      const auto time_elapsed = CoarseMonoClock::now() - start_time;
+      // Abort should be fast.
+      ASSERT_LE(time_elapsed, 1s * kTimeMultiplier);
+    });
+
+    // Wait for test table scan start. It could be delayed, because FLAGS_TEST_fetch_next_delay_ms
+    // impacts master perf as well.
+    RegexWaiterLogSink log_waiter(R"#(.*Delaying read for.*int_val.*)#");
+    ASSERT_OK(log_waiter.WaitFor(30s));
+
+    ASSERT_OK(operation());
+
+    counter.join();
+  }
+
   void TestDeletePartialKey(int num_range_keys_in_delete);
 
   void CreateAndVerifyIndexConsistency(int expected_number_rows_mismatched);
@@ -593,21 +644,21 @@ void QLTabletTest::CreateAndVerifyIndexConsistency(const int expected_number_row
 TEST_F(QLTabletTest, VerifyIndexRange) { CreateAndVerifyIndexConsistency(0); }
 
 TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
-  FLAGS_TEST_backfill_sabotage_frequency = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_backfill_sabotage_frequency) = 10;
   const int kRowsDropped = kTotalKeys / FLAGS_TEST_backfill_sabotage_frequency;
   CreateAndVerifyIndexConsistency(kRowsDropped);
 }
 
 // Test expected number of tablets for transactions table - added for #2293.
 TEST_F(QLTabletTest, TransactionsTableTablets) {
-  FLAGS_yb_num_shards_per_tserver = 1;
-  FLAGS_ysql_num_shards_per_tserver = 2;
-  FLAGS_transaction_table_num_tablets = 0;
-  FLAGS_transaction_table_num_tablets_per_tserver = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 4;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(INT32);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
 
   // Create transactional table.
   TableProperties table_properties;
@@ -643,7 +694,8 @@ void VerifyLogIndicies(MiniCluster* cluster) {
 
     for (const auto& peer : peers) {
       int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
-      ASSERT_EQ(peer->consensus()->GetLastCommittedOpId().index, index);
+      auto consensus = ASSERT_RESULT(peer->GetConsensus());
+      ASSERT_EQ(consensus->GetLastCommittedOpId().index, index);
     }
   }
 }
@@ -725,7 +777,8 @@ TEST_F(QLTabletTest, WaitFlush) {
   google::FlagSaver saver;
 
   constexpr int kNumTablets = 1; // Use single tablet to increase chance of bad scenario.
-  FLAGS_db_write_buffer_size = 10; // Use small memtable to induce background flush on each write.
+  // Use small memtable to induce background flush on each write.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 10;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -827,7 +880,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();
-    auto* db = peer.tablet()->TEST_db();
+    auto* db = peer.tablet()->regular_db();
     int64_t max_index = 0;
     int64_t min_index = std::numeric_limits<int64_t>::max();
     for (const auto& file : db->GetLiveFilesMetaData()) {
@@ -903,8 +956,7 @@ TEST_F(QLTabletTest, LeaderChange) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, kNumTablets);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   // Write kValue1
   SetValue(session, kKey, kValue1, table);
@@ -963,11 +1015,11 @@ TEST_F(QLTabletTest, LeaderChange) {
     for (const auto& peer : peers) {
       if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         LOG(INFO) << "Request step down: " << server->permanent_uuid() << " => " << leader_id;
-        consensus::LeaderStepDownRequestPB req;
-        req.set_tablet_id(peer->tablet_id());
-        req.set_new_leader_uuid(leader_id);
+        consensus::LeaderStepDownRequestPB stepdown_request;
+        stepdown_request.set_tablet_id(peer->tablet_id());
+        stepdown_request.set_new_leader_uuid(leader_id);
         consensus::LeaderStepDownResponsePB resp;
-        ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+        ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&stepdown_request, &resp));
         found = true;
         break;
       }
@@ -985,17 +1037,16 @@ TEST_F(QLTabletTest, LeaderChange) {
 
 void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kRangeKey1Column)->Type(INT32)->PrimaryKey()->NotNull();
-  builder.AddColumn(kRangeKey2Column)->Type(INT32)->PrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(INT32);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kRangeKey1Column)->Type(DataType::INT32)->PrimaryKey()->NotNull();
+  builder.AddColumn(kRangeKey2Column)->Type(DataType::INT32)->PrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
 
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, 1 /* num_tablets */, client_.get(), &builder));
 
   const auto kValue1 = 2;
   const auto kValue2 = 3;
-  const auto kTotalKeys = 200;
 
   auto session1 = CreateSession();
   auto session2 = CreateSession();
@@ -1052,18 +1103,19 @@ TEST_F(QLTabletTest, DeleteByHashAndPartialRangeKey) {
 }
 
 TEST_F(QLTabletTest, ManySstFilesBootstrap) {
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
   int key = 0;
   {
     google::FlagSaver flag_saver;
 
     size_t original_rocksdb_level0_stop_writes_trigger = 48;
-    FLAGS_sst_files_hard_limit = std::numeric_limits<uint64_t>::max() / 4;
-    FLAGS_sst_files_soft_limit = FLAGS_sst_files_hard_limit;
-    FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
-    FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
-    FLAGS_rocksdb_disable_compactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) =
+        std::numeric_limits<uint64_t>::max() / 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = FLAGS_sst_files_hard_limit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
     CreateTable(kTable1Name, &table1_, 1);
 
     auto session = CreateSession();
@@ -1072,7 +1124,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
     LOG(INFO) << "Leader: " << peers[0]->permanent_uuid();
     int stop_key = 0;
     for (;;) {
-      auto meta = peers[0]->tablet()->TEST_db()->GetLiveFilesMetaData();
+      auto meta = peers[0]->tablet()->regular_db()->GetLiveFilesMetaData();
       LOG(INFO) << "Total files: " << meta.size();
 
       ++key;
@@ -1100,8 +1152,8 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
 class QLTabletTestSmallMemstore : public QLTabletTest {
  public:
   void SetUp() override {
-    FLAGS_memstore_size_mb = 1;
-    FLAGS_global_memstore_size_mb_max = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_mb_max) = 1;
     QLTabletTest::SetUp();
   }
 };
@@ -1132,19 +1184,19 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
 }
 
 TEST_F(QLTabletTest, OperationMemTracking) {
-  FLAGS_TEST_log_cache_skip_eviction = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_log_cache_skip_eviction) = true;
 
   constexpr ssize_t kValueSize = 64_KB;
   const auto kWaitInterval = 50ms;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(STRING);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
 
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, CalcNumTablets(3), client_.get(), &builder));
 
-  FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms) = 1000;
 
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
@@ -1269,8 +1321,10 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
         complete = false;
         break;
       }
-      auto peer_history_cutoff =
-          peer->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      auto cutoff = peer->tablet()->RetentionPolicy()->GetRetentionDirective()
+          .history_cutoff;
+      ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+      auto peer_history_cutoff = cutoff.primary_cutoff_ht;
       committed = std::max(peer_history_cutoff, committed);
       auto min_allowed = std::min(peer->clock_ptr()->Now().AddMicroseconds(committed_delta_us),
                                   peer->tablet()->mvcc_manager()->LastReplicatedHybridTime());
@@ -1280,7 +1334,8 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
         complete = false;
         break;
       }
-      if (peer->consensus()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      if (ASSERT_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+          consensus::LeaderStatus::LEADER_AND_READY) {
         complete = true;
       }
     }
@@ -1295,8 +1350,8 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
 
 // Basic check for history cutoff evolution
 TEST_F(QLTabletTest, HistoryCutoff) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
-  FLAGS_history_cutoff_propagation_interval_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 100;
 
   CreateTable(kTable1Name, &table1_, /* num_tablets= */ 1);
   HybridTime committed_history_cutoff = HybridTime::kMin;
@@ -1308,8 +1363,10 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     ASSERT_EQ(peers.size(), 1);
-    peer_committed[i] =
+    auto cutoff =
         peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+    peer_committed[i] = cutoff.primary_cutoff_ht;
     LOG(INFO) << "Peer: " << peers[0]->permanent_uuid() << ", index: " << i
               << ", committed: " << peer_committed[i];
     cluster_->mini_tablet_server(i)->Shutdown();
@@ -1332,8 +1389,10 @@ TEST_F(QLTabletTest, HistoryCutoff) {
         continue;
       }
       SCOPED_TRACE(Format("Peer: $0, index: $1", peers[0]->permanent_uuid(), i));
-      ASSERT_GE(peers[0]->tablet()->RetentionPolicy()->GetRetentionDirective().history_cutoff,
-                peer_committed[i]);
+      auto cutoff = peers[0]->tablet()->RetentionPolicy()->
+          GetRetentionDirective().history_cutoff;
+      ASSERT_EQ(cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
+      ASSERT_GE(cutoff.primary_cutoff_ht, peer_committed[i]);
       break;
     }
     cluster_->mini_tablet_server(i)->Shutdown();
@@ -1375,7 +1434,7 @@ INSTANTIATE_TEST_SUITE_P(, QLTabletRf1TestToggleEnablePackedRow, ::testing::Bool
 // For this test we don't need actually RF3 setup which also makes test flaky because of
 // https://github.com/yugabyte/yugabyte-db/issues/4663.
 TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
-  FLAGS_db_write_buffer_size = 20_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 20_KB;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -1399,7 +1458,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
   // Need to have the largest file to be more than 50% of total size of all SST -- setting to 600KB
   // is enough to achive this condition (should give ~65% of total size when packed rows are on).
-  while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() <
+  while (tablet.regular_db()->GetCurrentVersionDataSstFilesSize() <
          implicit_cast<size_t>(30 * FLAGS_db_write_buffer_size)) {
     std::this_thread::sleep_for(100ms);
   }
@@ -1409,7 +1468,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
 
   LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
-  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -1438,7 +1497,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
 
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
-  std::unique_ptr<rocksdb::Iterator> iter(tablet.TEST_db()->NewIterator(read_opts));
+  std::unique_ptr<rocksdb::Iterator> iter(tablet.regular_db()->NewIterator(read_opts));
 
   for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     Slice key = iter->key();
@@ -1465,7 +1524,7 @@ namespace {
 std::vector<OpId> GetLastAppliedOpIds(const std::vector<tablet::TabletPeerPtr>& peers) {
   std::vector<OpId> last_applied_op_ids;
   for (auto& peer : peers) {
-    const auto last_applied_op_id = peer->consensus()->GetLastAppliedOpId();
+    const auto last_applied_op_id = CHECK_RESULT(peer->GetConsensus())->GetLastAppliedOpId();
     VLOG(1) << "Peer: " << AsString(peer->permanent_uuid())
             << ", last applied op ID: " << AsString(last_applied_op_id);
     last_applied_op_ids.push_back(last_applied_op_id);
@@ -1476,7 +1535,7 @@ std::vector<OpId> GetLastAppliedOpIds(const std::vector<tablet::TabletPeerPtr>& 
 Result<OpId> GetAllAppliedOpId(const std::vector<tablet::TabletPeerPtr>& peers) {
   for (auto& peer : peers) {
     if (peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-      return peer->raft_consensus()->GetAllAppliedOpId();
+      return VERIFY_RESULT(peer->GetRaftConsensus())->GetAllAppliedOpId();
     }
   }
   return STATUS(NotFound, "No leader found");
@@ -1505,8 +1564,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, /* num_tablets =*/1);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   LOG(INFO) << "Writing data...";
   int key = 0;
@@ -1567,12 +1625,11 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 }
 
 TEST_F(QLTabletTest, SlowPrepare) {
-  FLAGS_TEST_preparer_batch_inject_latency_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_preparer_batch_inject_latency_ms) = 100;
 
   const int kNumTablets = 1;
 
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -1617,8 +1674,8 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
     req.set_new_leader_uuid(unsynchronized_follower);
     consensus::LeaderStepDownResponsePB resp;
 
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 10000;
-    ASSERT_OK(peers.front()->raft_consensus()->StepDown(&req, &resp));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 10000;
+    ASSERT_OK(ASSERT_RESULT(peers.front()->GetRaftConsensus())->StepDown(&req, &resp));
     ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   }
 
@@ -1645,7 +1702,8 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
     LOG(INFO) << "Follower: "  << follower->permanent_uuid();
     auto follower_peers = follower->tablet_manager()->GetTabletPeers();
     for (const auto& peer : follower_peers) {
-      peer->raft_consensus()->TEST_DelayUpdate(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
+      ASSERT_RESULT(peer->GetRaftConsensus())
+          ->TEST_DelayUpdate(FLAGS_raft_heartbeat_interval_ms / 2 * 1ms);
     }
 
     SetValue(session, 2, -2, table);
@@ -1735,14 +1793,14 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
 }
 
 TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   constexpr int kKeys = 100;
   const std::string kStringColumn = "str_column";
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
   builder.AddColumn(kValueColumn)->Type(DataType::INT32);
   builder.AddColumn(kStringColumn)->Type(DataType::STRING);
   TableHandle table;
@@ -1777,7 +1835,7 @@ TEST_F_EX(QLTabletTest, CompactDeletedColumn, QLTabletRf1Test) {
 }
 
 TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   ActivateCompactionTimeLogging(cluster_.get());
 
@@ -1786,7 +1844,7 @@ TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
   constexpr int kTabletFlushStep = kKeys / kFiles;
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
   builder.AddColumn(kValueColumn)->Type(DataType::INT32);
   TableHandle table;
   ASSERT_OK(table.Create(kTable1Name, 1, client_.get(), &builder));
@@ -1831,7 +1889,7 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
     if (!peer->tablet()) {
       continue;
     }
-    auto* db = peer->tablet()->TEST_db();
+    auto* db = peer->tablet()->regular_db();
     for (const auto& sst_file : db->GetLiveFilesMetaData()) {
       LOG(INFO) << "Found SST file: " << AsString(sst_file);
       const auto path_to_corrupt = sst_file.DataFilePath();
@@ -1844,6 +1902,22 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
   const auto rows_count_result = CountRows(session, table1_);
   LOG(INFO) << "Rows count result: " << rows_count_result;
   ASSERT_FALSE(rows_count_result.ok());
+}
+
+// Make sure long reads are aborted by table drop.
+TEST_F_EX(QLTabletTest, DeleteTableDuringLongRead, QLTabletRf1Test) {
+  TestLongReadAbort([&]{
+    return client_->DeleteTable(
+        table1_.table()->id(), /* wait = */ true, /* txn = */ nullptr,
+        CoarseMonoClock::now() + 1s * kTimeMultiplier);
+  });
+}
+
+// Make sure long reads are aborted by table truncate.
+TEST_F_EX(QLTabletTest, TruncateTableDuringLongRead, QLTabletRf1Test) {
+  TestLongReadAbort([&]{
+    return client_->TruncateTable(table1_.table()->id(), /* wait = */ true);
+  });
 }
 
 } // namespace client

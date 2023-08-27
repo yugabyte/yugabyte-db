@@ -90,6 +90,8 @@ class MiniTabletServer {
   // having all its tablets bootstrapped.
   Status Start(WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
 
+  std::string ToString() const;
+
   // Waits for the tablet server to be fully initialized, including
   // having all tablets bootstrapped.
   Status WaitStarted();
@@ -149,15 +151,13 @@ class MiniTabletServer {
   Status Reconnect();
 
   FsManager& fs_manager() const;
+  MetricEntity& metric_entity() const;
 
  private:
   bool started_;
   TabletServerOptions opts_;
   int index_;
 
-  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
-  std::unique_ptr<yb::Env> encrypted_env_;
-  std::unique_ptr<rocksdb::Env> rocksdb_encrypted_env_;
   std::unique_ptr<TabletServer> server_;
   std::unique_ptr<Tunnel> tunnel_;
 };

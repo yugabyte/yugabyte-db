@@ -1,16 +1,16 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
 import { YBModalForm } from '../../common/forms';
-import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
+import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
-import { api } from '../../../redesign/helpers/api';
+import { api, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import {
   fetchTaskUntilItCompletes,
@@ -63,7 +63,7 @@ const MODAL_TITLE = 'Restart Replication';
 const INITIAL_VALUES: Partial<RestartXClusterConfigFormValues> = {
   tableUUIDs: [],
   // Bootstrap fields
-  parallelThreads: PARALLEL_THREADS_RANGE.MIN
+  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
 };
 
 export const RestartConfigModal = ({
@@ -126,12 +126,12 @@ export const RestartConfigModal = ({
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the restart config task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },
@@ -216,6 +216,7 @@ export const RestartConfigModal = ({
       render={(formikProps: FormikProps<RestartXClusterConfigFormValues>) => {
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
+
         switch (currentStep) {
           case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
@@ -284,13 +285,10 @@ const validateForm = async (
       }
       const shouldValidateParallelThread =
         values.parallelThreads && isYbcEnabledUniverse(currentUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > PARALLEL_THREADS_RANGE.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
-      } else if (
-        shouldValidateParallelThread &&
-        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
-      ) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
+      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
+        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
+      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
+        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

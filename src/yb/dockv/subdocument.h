@@ -154,7 +154,7 @@ class SubDocument : public PrimitiveValue {
   }
 
   // Creates a JSON-like string representation of this subdocument.
-  std::string ToString() const;
+  std::string ToString(bool render_options = false) const;
 
   // Attempts to delete a child subdocument of an object with the given key. Fatals if this is not
   // an object.
@@ -191,7 +191,8 @@ class SubDocument : public PrimitiveValue {
 
   bool has_valid_array_container() const;
 
-  friend void SubDocumentToStreamInternal(std::ostream& out, const SubDocument& subdoc, int indent);
+  friend void SubDocumentToStreamInternal(
+      std::ostream& out, const SubDocument& subdoc, int indent, bool render_options);
   friend void SubDocCollectionToStreamInternal(std::ostream& out,
                                         const SubDocument& subdoc,
                                         const int indent,

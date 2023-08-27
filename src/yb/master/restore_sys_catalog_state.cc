@@ -49,6 +49,7 @@
 using namespace std::placeholders;
 
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(enable_fast_pitr);
 
 namespace yb {
 namespace master {
@@ -56,13 +57,20 @@ namespace master {
 namespace {
 
 Status ApplyWriteRequest(
-    const Schema& schema, const QLWriteRequestPB& write_request,
-    docdb::DocWriteBatch* write_batch) {
+    const Schema& schema, docdb::SchemaPackingProvider* schema_packing_provider,
+    const QLWriteRequestPB& write_request, docdb::DocWriteBatch* write_batch) {
   const std::string kLogPrefix = "restored tablet: ";
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
-      kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
+      kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema,
+      write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
-      .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
+      .doc_write_batch = write_batch,
+      .read_operation_data = {},
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true,
+      .schema_packing_provider = schema_packing_provider,
+  };
   qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
@@ -74,13 +82,13 @@ Status ApplyWriteRequest(
 
 Status WriteEntry(
     int8_t type, const std::string& item_id, const Slice& data,
-    QLWriteRequestPB::QLStmtType op_type, const Schema& schema, docdb::DocWriteBatch* write_batch) {
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema,
+    docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch) {
   QLWriteRequestPB write_request;
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      type, item_id, data, QLWriteRequestPB::QL_STMT_INSERT, schema,
-      &write_request));
+      type, item_id, data, QLWriteRequestPB::QL_STMT_INSERT, schema, &write_request));
   write_request.set_schema_version(kSysCatalogSchemaVersion);
-  return ApplyWriteRequest(schema, write_request, write_batch);
+  return ApplyWriteRequest(schema, schema_packing_provider, write_request, write_batch);
 }
 
 bool TableDeleted(const SysTablesEntryPB& table) {
@@ -383,7 +391,13 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    restoration_.restoring_system_tables.emplace(id);
+    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      restoration_.restoring_system_tables.emplace(id);
+      return false;
+    }
+    if (VERIFY_RESULT(GetPgsqlTableOid(id)) == kPgYbMigrationTableOid) {
+      restoration_.restoring_system_tables.emplace(id);
+    }
     return false;
   }
 
@@ -739,14 +753,15 @@ std::string RestoreSysCatalogState::Objects::SizesToString() const {
 template <class PB>
 Status RestoreSysCatalogState::IterateSysCatalog(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
-    HybridTime read_time, std::unordered_map<std::string, PB>* map,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
+    std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  dockv::ReaderProjection projection(doc_read_context.schema);
-  docdb::DocRowwiseIterator iter(
+  dockv::ReaderProjection projection(doc_read_context.schema());
+  docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
+      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op, nullptr);
   return EnumerateSysCatalog(
-      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema(), GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -767,25 +782,32 @@ Status RestoreSysCatalogState::IterateSysCatalog(
 }
 
 Status RestoreSysCatalogState::LoadObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db, HybridTime read_time,
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, HybridTime read_time,
     Objects* objects) {
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->namespaces, &objects->sequences_namespace));
+      doc_read_context, doc_db, pending_op, read_time, &objects->namespaces,
+      &objects->sequences_namespace));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tables, &objects->sequences_table));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tables,
+      &objects->sequences_table));
   RETURN_NOT_OK(IterateSysCatalog(
-      doc_read_context, doc_db, read_time, &objects->tablets, &objects->sequences_tablets));
+      doc_read_context, doc_db, pending_op, read_time, &objects->tablets,
+      &objects->sequences_tablets));
   return Status::OK();
 }
 
 Status RestoreSysCatalogState::LoadRestoringObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, restoration_.restore_at, &restoring_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(
+      doc_read_context, doc_db, pending_op, restoration_.restore_at, &restoring_objects_);
 }
 
 Status RestoreSysCatalogState::LoadExistingObjects(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db) {
-  return LoadObjects(doc_read_context, doc_db, HybridTime::kMax, &existing_objects_);
+    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    std::reference_wrapper<const ScopedRWOperation> pending_op) {
+  return LoadObjects(doc_read_context, doc_db, pending_op, HybridTime::kMax, &existing_objects_);
 }
 
 Status RestoreSysCatalogState::CheckExistingEntry(
@@ -806,9 +828,15 @@ Status RestoreSysCatalogState::CheckExistingEntry(
     restoration_.parent_to_child_tables[pb.parent_table_id()].push_back(id);
   }
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
-    restoration_.existing_system_tables.emplace(id, pb.name());
-
+    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+      restoration_.existing_system_tables.emplace(id, pb.name());
+      return Status::OK();
+    }
+    if (VERIFY_RESULT(GetPgsqlTableOid(id)) == kPgYbMigrationTableOid) {
+      LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+      restoration_.existing_system_tables.emplace(id, pb.name());
+    }
     return Status::OK();
   }
   if (restoring_objects_.tables.count(id)) {
@@ -831,20 +859,26 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 }
 
 Status RestoreSysCatalogState::PrepareWriteBatch(
-    const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
+    const Schema& schema, docdb::SchemaPackingProvider* schema_packing_provider,
+    docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   for (const auto& entry : entries_.entries()) {
+    VLOG_WITH_FUNC(4)
+        << "type: " << entry.type() << ", id: " << Slice(entry.id()).ToDebugHexString()
+        << ", data: " << Slice(entry.data()).ToDebugHexString();
     RETURN_NOT_OK(WriteEntry(
         entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
-        write_batch));
+        schema_packing_provider, write_batch));
   }
 
-  for (const auto& tablet_id_and_pb : restoration_.non_system_obsolete_tablets) {
-    RETURN_NOT_OK(PrepareTabletCleanup(
-        tablet_id_and_pb.first, tablet_id_and_pb.second, schema, write_batch));
+  for (const auto& [tablet_id, pb] : restoration_.non_system_obsolete_tablets) {
+    VLOG_WITH_FUNC(4) << "Cleanup tablet: " << tablet_id << ", " << pb.ShortDebugString();
+    RETURN_NOT_OK(PrepareTabletCleanup(tablet_id, pb, schema, schema_packing_provider,
+        write_batch));
   }
-  for (const auto& table_id_and_pb : restoration_.non_system_obsolete_tables) {
-    RETURN_NOT_OK(PrepareTableCleanup(
-        table_id_and_pb.first, table_id_and_pb.second, schema, write_batch, now_ht));
+  for (const auto& [table_id, pb] : restoration_.non_system_obsolete_tables) {
+    VLOG_WITH_FUNC(4) << "Cleanup table: " << table_id << ", " << pb.ShortDebugString();
+    RETURN_NOT_OK(PrepareTableCleanup(table_id, pb, schema, schema_packing_provider, write_batch,
+        now_ht));
   }
 
   return Status::OK();
@@ -852,18 +886,19 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
 
 Status RestoreSysCatalogState::PrepareTabletCleanup(
     const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
-    docdb::DocWriteBatch* write_batch) {
+    docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch) {
   VLOG_WITH_FUNC(4) << id;
 
   FillHideInformation(pb.table_id(), &pb);
 
   return WriteEntry(
       SysRowEntryType::TABLET, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE, schema,
-      write_batch);
+      schema_packing_provider, write_batch);
 }
 
 Status RestoreSysCatalogState::PrepareTableCleanup(
     const TableId& id, SysTablesEntryPB pb, const Schema& schema,
+    docdb::SchemaPackingProvider* schema_packing_provider,
     docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   VLOG_WITH_FUNC(4) << id;
 
@@ -878,7 +913,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
   pb.set_version(pb.version() + 1);
   return WriteEntry(
       SysRowEntryType::TABLE, id, pb.SerializeAsString(), QLWriteRequestPB::QL_STMT_UPDATE, schema,
-      write_batch);
+      schema_packing_provider, write_batch);
 }
 
 Result<bool> RestoreSysCatalogState::TEST_MatchTable(
@@ -894,17 +929,18 @@ void RestoreSysCatalogState::WriteToRocksDB(
 }
 
 Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
-    const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+    const docdb::DocReadContext& doc_read_context,
+    docdb::SchemaPackingProvider* schema_packing_provider, const docdb::DocDB& doc_db,
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  dockv::ReaderProjection projection(doc_read_context.schema);
-  docdb::DocRowwiseIterator iter(
+  dockv::ReaderProjection projection(doc_read_context.schema());
+  auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      CoarseTimePoint::max(), ReadHybridTime::Max(), nullptr);
+      docdb::ReadOperationData(), write_batch->pending_op(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();
@@ -921,7 +957,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   RETURN_NOT_OK(pb_util::SerializeToString(catalog_meta, &buffer));
   RETURN_NOT_OK(WriteEntry(
       SysRowEntryType::SYS_CONFIG, config_type, buffer, QLWriteRequestPB::QL_STMT_UPDATE,
-      doc_read_context.schema, write_batch));
+      doc_read_context.schema(), schema_packing_provider, write_batch));
 
   LOG(INFO) << "PITR: Incrementing legacy catalog version to " << existing_version + 1;
 
@@ -933,6 +969,7 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
     const docdb::DocDB& existing_db,
     docdb::DocWriteBatch* write_batch,
     const docdb::DocReadContext& doc_read_context,
+    docdb::SchemaPackingProvider* schema_packing_provider,
     const tablet::RaftGroupMetadata* metadata) {
   if (restoration_.existing_system_tables.empty()) {
     return Status::OK();
@@ -956,7 +993,8 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
   if (!pg_yb_catalog_meta) {
     LOG(INFO) << "PITR: pg_yb_catalog_version table not found. "
               << "Using the old way of incrementing catalog version.";
-    RETURN_NOT_OK(IncrementLegacyCatalogVersion(doc_read_context, existing_db, write_batch));
+    RETURN_NOT_OK(IncrementLegacyCatalogVersion(
+        doc_read_context, schema_packing_provider, existing_db, write_batch));
   }
 
   FetchState restoring_state(restoring_db, ReadHybridTime::SingleTime(restoration_.restore_at));

@@ -54,9 +54,9 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   Status BuildYQLScanSpec(
@@ -75,8 +75,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
@@ -96,26 +96,27 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       docdb::YQLRowwiseIteratorIf::UniPtr* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  Status GetIterator(
+  Status GetIteratorForYbctid(
       uint64 stmt_id,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       docdb::YQLRowwiseIteratorIf::UniPtr* iter,
-      const docdb::DocDBStatistics* statistics = nullptr) const override {
+      const docdb::DocDBStatistics* statistics = nullptr,
+      docdb::SkipSeek skip_seek = docdb::SkipSeek::kFalse) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

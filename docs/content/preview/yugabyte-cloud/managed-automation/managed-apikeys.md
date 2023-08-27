@@ -14,19 +14,17 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. Admin users can generate API keys for your account.
+YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key.
 
 API keys are not stored in YugabyteDB Managed. Safeguard them by doing the following:
 
 - Store API keys in a secure location with strong encryption, such as a password manager.
 - Revoke keys that are lost or compromised.
-- Don't embed keys in code. Applications that contain keys can be decompiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
+- Don't embed keys in code. Applications that contain keys can be de-compiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
 
-API keys are [role-specific](../../cloud-admin/manage-access/#user-roles); keys assigned a Developer role can only be used to perform developer-level tasks using the API.
+API keys are [role-specific](../../managed-security/managed-roles/); for example, keys assigned a Developer role can only be used to perform developer-level tasks using the API.
 
-You must be signed in as an Admin user to create and revoke API keys.
-
-The **API Keys** tab under **Access Control** on the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
+The **API Keys** tab under **Access Control** on the **Security** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
 
 ![API Keys](/images/yb-cloud/managed-admin-apikeys.png)
 
@@ -40,7 +38,7 @@ To create an API key:
 
 1. Enter a name and description for the key.
 
-1. Choose a role for the API Key. Keys assigned a [Developer](../../cloud-admin/manage-access/#user-roles) role can only be used to perform developer-level tasks using the API.
+1. Choose a [role](../../managed-security/managed-roles/) for the API Key.
 
 1. Set the key expiration or select **Never expire** to create a key without an expiration.
 

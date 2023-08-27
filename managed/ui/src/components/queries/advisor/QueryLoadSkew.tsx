@@ -1,10 +1,10 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
 import { QueryLoadRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
@@ -86,8 +86,10 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
           </span>
         </div>
       </div>
-      <span className="query-text">{t('clusterDetail.performance.chartTitle.Queries')}</span>
-      <div id="querySkewLoadGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">{t('clusterDetail.performance.chartTitle.Queries')}</span>
+        <div id="querySkewLoadGraph"></div>
+      </div>
     </div>
   );
 };

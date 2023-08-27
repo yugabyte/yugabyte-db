@@ -15,7 +15,8 @@
       LimitNOFILE=1048576
       ExecStart={{ .YbdBin }} start --base_dir {{ .BaseDir }} \
       --advertise_address 127.0.0.1 \
-      --tserver_flags=yb_enable_read_committed_isolation=true
+      --tserver_flags=yb_enable_read_committed_isolation=\
+      {{ yamlPath "ybdb.install.read_committed_isolation"}}
 
       ExecStop={{ .YbdBin }} stop --base_dir {{ .BaseDir }}
 

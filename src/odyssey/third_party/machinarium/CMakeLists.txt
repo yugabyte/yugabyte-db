@@ -28,7 +28,7 @@ include_directories("${PROJECT_SOURCE_DIR}/sources")
 include_directories("${PROJECT_BINARY_DIR}/sources")
 
 option(BUILD_SHARED "Enable SHARED" OFF)
-option(BUILD_VALGRIND "Enable VALGRIND" ON)
+option(BUILD_VALGRIND "Enable VALGRIND" OFF)
 
 set(mm_libraries "")
 

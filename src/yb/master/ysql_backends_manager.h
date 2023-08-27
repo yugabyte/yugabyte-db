@@ -276,16 +276,13 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   typedef YsqlBackendsManager::DbVersion DbVersion;
 
   BackendsCatalogVersionJob(
-      Master* master,
-      ThreadPool* callback_pool,
-      PgOid database_oid,
-      Version target_version)
-      : start_timestamp_(MonoTime::Now()),
-        master_(master),
+      Master* master, ThreadPool* callback_pool, PgOid database_oid, Version target_version)
+      : master_(master),
         callback_pool_(callback_pool),
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
         target_version_(target_version),
+        epoch_(LeaderEpoch(1)),
         last_access_(CoarseMonoClock::Now()) {}
 
   std::shared_ptr<BackendsCatalogVersionJob> shared_from_this() {
@@ -297,12 +294,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
     return server::MonitoredTaskType::kBackendsCatalogVersion;
   }
   std::string type_name() const override { return "Backends Catalog Version"; }
-  MonoTime start_timestamp() const override { return start_timestamp_; }
-  MonoTime completion_timestamp() const override { return completion_timestamp_; }
   std::string description() const override;
-  server::MonitoredTaskState state() const override {
-    return state_.load(std::memory_order_acquire);
-  }
   server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override
       EXCLUDES(mutex_);
   bool CompareAndSwapState(server::MonitoredTaskState old_state,
@@ -311,9 +303,10 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.
-  Status Launch(int64_t term) EXCLUDES(mutex_);
+  Status Launch(LeaderEpoch epoch) EXCLUDES(mutex_);
   // Retry TS RPC.
-  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) EXCLUDES(mutex_);
+  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
   // Whether the job hasn't been accessed within expiration time.
   bool IsInactive() const EXCLUDES(mutex_);
   // Whether the current sys catalog leader term matches the term recorded at the start of the job.
@@ -333,7 +326,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   }
 
   void AddFailureStatus(Status s) EXCLUDES(mutex_) {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     failure_statuses_.push_back(s);
   }
 
@@ -348,13 +341,6 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   std::string LogPrefix() const;
 
  private:
-  // task vars
-  const MonoTime start_timestamp_;
-  // No need to guard completion_timestamp_ with mutex because it can only be set once in
-  // CompareAndSwapState.
-  MonoTime completion_timestamp_;
-  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
-
   // dependency vars
   Master* master_;
   ThreadPool* callback_pool_;
@@ -368,8 +354,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
 
   const PgOid database_oid_;
   const Version target_version_;
-  // Master sys catalog consensus term when launching the job.
-  int64_t term_ GUARDED_BY(mutex_);
+  // Master sys catalog consensus epoch when launching the job.
+  LeaderEpoch epoch_ GUARDED_BY(mutex_);
   // Last time this job was accessed.  Used to determine when the job should be cleaned up for lack
   // of activity.  No need to guard with mutex since writes are already guarded by
   // YsqlBackendsManager mutex.
@@ -386,7 +372,8 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   BackendsCatalogVersionTS(
       std::shared_ptr<BackendsCatalogVersionJob> job,
       const std::string& ts_uuid,
-      int prev_num_lagging_backends);
+      int prev_num_lagging_backends,
+      LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackendsCatalogVersionTs;
@@ -413,6 +400,10 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   // master-to-tserver RPC deadline.
   const int prev_num_lagging_backends_;
 
+  // Whether the tserver is considered behind.  This is checked and set true on HandleResponse when
+  // the response error complains about mismatched schema most likely due to not having run
+  // upgrade_ysql.
+  bool found_behind_ = false;
   // Whether the tserver is considered dead (expired).  This is checked and set true on
   // HandleResponse.  It may be the case that this is not set and tserver is found dead through a
   // different way (e.g. rpc failure).

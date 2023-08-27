@@ -81,7 +81,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   }
 
   Status operator()(
-      dockv::IntentStrength intent_strength, dockv::FullDocKey, Slice value_slice,
+      dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey full_doc_key, Slice value_slice,
       dockv::KeyBytes* key, dockv::LastKey last_key);
 
  private:
@@ -107,7 +107,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   rocksdb::DirectWriteHandler* handler_;
   RowMarkType row_mark_;
   SubTransactionId subtransaction_id_;
-  dockv::IntentTypeSet strong_intent_types_;
+  dockv::IntentTypeSet intent_types_;
   std::unordered_map<KeyBuffer, dockv::IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 
@@ -179,7 +179,27 @@ class IntentsWriter : public rocksdb::DirectWriter {
   BoundedRocksDbIterator reverse_index_iter_;
 };
 
-class ApplyIntentsContext : public IntentsWriterContext {
+class FrontierSchemaVersionUpdater {
+ public:
+  explicit FrontierSchemaVersionUpdater(SchemaPackingProvider* schema_packing_provider)
+      : schema_packing_provider_(schema_packing_provider) {}
+
+  void SetFrontiers(ConsensusFrontiers* frontiers) { frontiers_ = frontiers; }
+
+ protected:
+  Status UpdateSchemaVersion(Slice key, Slice value);
+  void FlushSchemaVersion();
+
+ private:
+  SchemaPackingProvider* schema_packing_provider_;
+  Uuid schema_version_table_ = Uuid::Nil();
+  ColocationId schema_version_colocation_id_ = 0;
+  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
+  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
+  ConsensusFrontiers* frontiers_ = nullptr;
+};
+
+class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
       const TransactionId& transaction_id,
@@ -188,6 +208,7 @@ class ApplyIntentsContext : public IntentsWriterContext {
       HybridTime commit_ht,
       HybridTime log_ht,
       const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);
 
   void Start(const boost::optional<Slice>& first_key) override;
@@ -197,10 +218,6 @@ class ApplyIntentsContext : public IntentsWriterContext {
       rocksdb::DirectWriteHandler* handler) override;
 
   void Complete(rocksdb::DirectWriteHandler* handler) override;
-
-  void SetFrontiers(ConsensusFrontiers* frontiers) {
-    frontiers_ = frontiers;
-  }
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler* handler);
@@ -212,9 +229,6 @@ class ApplyIntentsContext : public IntentsWriterContext {
   IntraTxnWriteId write_id_;
   const KeyBounds* key_bounds_;
   BoundedRocksDbIterator intent_iter_;
-  SchemaVersion min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
-  SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
-  ConsensusFrontiers* frontiers_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -228,6 +242,66 @@ class RemoveIntentsContext : public IntentsWriterContext {
   void Complete(rocksdb::DirectWriteHandler* handler) override;
  private:
   uint8_t reason_;
+};
+
+// Usually put_batch contains only records that should be applied to regular DB.
+// So apply_external_transactions will be empty and regular_entry will be true.
+//
+// But in general case on consumer side of CDC put_batch could contain various kinds of records,
+// that should be applied into regular and intents db.
+// They are:
+// apply_external_transactions
+//   The list of external transactions that should be applied.
+//   For each such transaction we should lookup for existing external intents (stored in intents DB)
+//   and convert them to Put command in regular_write_batch plus SingleDelete command in
+//   intents_write_batch.
+// write_pairs
+//   Could contain regular entries, that should be stored into regular DB as is.
+//   Also pair could contain external intents, that should be stored into intents DB.
+//   But if apply_external_transactions contains transaction for those external intents, then
+//   those intents will be applied directly to regular DB, avoiding unnecessary write to intents DB.
+//   This case is very common for short running transactions.
+class ExternalIntentsBatchWriter : public rocksdb::DirectWriter,
+                                   public FrontierSchemaVersionUpdater {
+ public:
+  ExternalIntentsBatchWriter(
+      std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time,
+      rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
+      ExternalTxnIntentsState* external_txns_intents_state,
+      SchemaPackingProvider* schema_packing_provider);
+  bool Empty() const;
+
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  // Reads all stored external intents for provided transactions and prepares batches that will
+  // apply them into regular db and remove from intents db.
+  Status PrepareApplyExternalIntents(
+      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler);
+
+  // Adds external pair to write batch.
+  // Returns true if add was skipped because pair is a regular (non external) record.
+  Result<bool> AddExternalPairToWriteBatch(
+      const yb::docdb::LWKeyValuePairPB& kv_pair,
+      ExternalTxnApplyState* apply_external_transactions,
+      rocksdb::DirectWriteHandler* regular_write_handler);
+
+  // Parse the merged external intent value, and write them to regular writer handler. Also updates
+  // min/max schema version.
+  Status PrepareApplyExternalIntentsBatch(
+      HybridTime commit_ht,
+      const SubtxnSet& aborted_subtransactions,
+      const Slice& original_input_value,
+      rocksdb::DirectWriteHandler* regular_write_handler,
+      IntraTxnWriteId* write_id);
+
+ private:
+  const LWKeyValueWriteBatchPB& put_batch_;
+  HybridTime hybrid_time_;
+  BoundedRocksDbIterator intents_db_iter_;
+  Slice intents_db_iter_upperbound_;
+  rocksdb::WriteBatch* intents_write_batch_;
+  ExternalTxnIntentsState* external_txns_intents_state_;
 };
 
 } // namespace docdb

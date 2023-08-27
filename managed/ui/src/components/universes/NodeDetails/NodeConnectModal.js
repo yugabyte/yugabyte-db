@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal } from '../../common/forms/fields';
@@ -75,8 +75,12 @@ class NodeConnectModal extends Component {
 
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
-      const podNamespace = currentRow.privateIP?.split('.')[2];
-      const podName = currentRow.privateIP?.split('.')[0];
+      const podNamespace = currentRow.cloudInfo.kubernetesNamespace
+	    ? currentRow.cloudInfo.kubernetesNamespace
+	    : currentRow.privateIP?.split('.')[2];
+      const podName = currentRow.cloudInfo.kubernetesPodName
+	    ? currentRow.cloudInfo.kubernetesPodName
+	    : currentRow.privateIP?.split('.')[0];
       let container_name_selector = '';
 
       if (currentRow.isMaster === 'Details') {

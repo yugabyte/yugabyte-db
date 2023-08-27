@@ -121,6 +121,6 @@ class Value {
   ValueControlFields control_fields_;
 };
 
-bool IsFullRowValue(const Slice& value);
+bool IsFullRowValue(Slice value);
 
 }  // namespace yb::dockv

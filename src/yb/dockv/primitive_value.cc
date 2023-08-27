@@ -48,7 +48,7 @@ using std::string;
 using strings::Substitute;
 using yb::QLValuePB;
 using yb::util::CompareUsingLessThan;
-using yb::util::FastDecodeSignedVarIntUnsafe;
+using yb::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
 using yb::util::AppendBigEndianUInt32;
@@ -64,7 +64,8 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV1: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV2: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;  \
@@ -167,7 +168,7 @@ KeyEntryType VirtualValueToKeyEntryType(QLVirtualValuePB value) {
 }
 
 std::string VarIntToString(const std::string& str_val) {
-  util::VarInt varint;
+  VarInt varint;
   auto status = varint.DecodeFromComparable(str_val);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to decode varint: " << status.message().ToString();
@@ -208,7 +209,7 @@ std::string FrozenToString(const FrozenContainer& frozen) {
 // Postgres it indicates this is a collation encoded string and we use kCollString:
 // (1) in Postgres kCollString means a collation encoded string;
 // (2) in both YCQL and Redis kCollString is a synonym for kString so it is also correct;
-inline bool IsCollationEncodedString(const Slice& val) {
+inline bool IsCollationEncodedString(Slice val) {
   return !val.empty() && val[0] == '\0';
 }
 
@@ -220,9 +221,15 @@ const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueEntryType::kO
 const KeyEntryValue KeyEntryValue::kLivenessColumn = KeyEntryValue::SystemColumnId(
     SystemColumnIds::kLivenessColumn);
 
-std::string PrimitiveValue::ToString() const {
+std::string PrimitiveValue::ToString(bool render_options) const {
+  if (!render_options) {
+    return ValueToString();
+  }
+  return Format("$0; ttl: $1; write_time: $2", ValueToString(), ttl_seconds_, write_time_);
+}
+
+std::string PrimitiveValue::ValueToString() const {
   switch (type_) {
-    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow:
       return "null";
     case ValueEntryType::kGinNull:
@@ -277,8 +284,10 @@ std::string PrimitiveValue::ToString() const {
       return "l";
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
-    case ValueEntryType::kPackedRow:
+    case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
+    case ValueEntryType::kPackedRowV2:
+      return "<PACKED ROW V2>";
     case ValueEntryType::kObject:
       return "{}";
     case ValueEntryType::kRedisSet:
@@ -502,52 +511,52 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
-size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(DataType data_type) {
   constexpr size_t key_entry_type_size = 1;
   switch (data_type) {
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case BOOL:
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::BOOL:
       return key_entry_type_size;
-    case INT8: FALLTHROUGH_INTENDED;
-    case INT16: FALLTHROUGH_INTENDED;
-    case INT32: FALLTHROUGH_INTENDED;
-    case FLOAT:
+    case DataType::INT8: FALLTHROUGH_INTENDED;
+    case DataType::INT16: FALLTHROUGH_INTENDED;
+    case DataType::INT32: FALLTHROUGH_INTENDED;
+    case DataType::FLOAT:
       return key_entry_type_size + sizeof(int32_t);
 
-    case UINT32: FALLTHROUGH_INTENDED;
-    case DATE:
+    case DataType::UINT32: FALLTHROUGH_INTENDED;
+    case DataType::DATE:
       return key_entry_type_size + sizeof(uint32_t);
 
-    case INT64: FALLTHROUGH_INTENDED;
-    case DOUBLE: FALLTHROUGH_INTENDED;
-    case TIME:
+    case DataType::INT64: FALLTHROUGH_INTENDED;
+    case DataType::DOUBLE: FALLTHROUGH_INTENDED;
+    case DataType::TIME:
       return key_entry_type_size + sizeof(int64_t);
 
-    case UINT64:
+    case DataType::UINT64:
       return key_entry_type_size + sizeof(uint64_t);
 
-    case TIMESTAMP:
+    case DataType::TIMESTAMP:
       return key_entry_type_size + sizeof(Timestamp);
 
-    case UUID: FALLTHROUGH_INTENDED;
-    case TIMEUUID: FALLTHROUGH_INTENDED;
-    case STRING: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
-    case DECIMAL: FALLTHROUGH_INTENDED;
-    case VARINT: FALLTHROUGH_INTENDED;
-    case INET: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
-    case MAP: FALLTHROUGH_INTENDED;
-    case SET: FALLTHROUGH_INTENDED;
-    case TUPLE: FALLTHROUGH_INTENDED;
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-    case FROZEN: FALLTHROUGH_INTENDED;
-    case JSONB: FALLTHROUGH_INTENDED;
-    case UINT8: FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case GIN_NULL: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA:
+    case DataType::UUID: FALLTHROUGH_INTENDED;
+    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
+    case DataType::STRING: FALLTHROUGH_INTENDED;
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::VARINT: FALLTHROUGH_INTENDED;
+    case DataType::INET: FALLTHROUGH_INTENDED;
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::FROZEN: FALLTHROUGH_INTENDED;
+    case DataType::JSONB: FALLTHROUGH_INTENDED;
+    case DataType::UINT8: FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::GIN_NULL: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA:
       return 0;
   }
 
@@ -582,7 +591,7 @@ class SizeCounter {
     ++value_;
   }
 
-  void append(const std::string& str) {
+  void append(const std::string_view& str) {
     value_ += str.size();
   }
 
@@ -594,8 +603,8 @@ class SizeCounter {
   size_t value_ = 0;
 };
 
-template <class Buffer>
-void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
+template <class Value, class Buffer>
+void DoAppendEncodedValue(const Value& value, Buffer* out) {
   switch (value.value_case()) {
     case QLValuePB::kInt8Value:
       out->push_back(ValueEntryTypeAsChar::kInt32);
@@ -688,16 +697,15 @@ void DoAppendEncodedValue(const QLValuePB& value, Buffer* out) {
       QLValue::timeuuid_value(value).AppendEncodedComparable(out);
       return;
     case QLValuePB::kFrozenValue: {
-      const QLSeqValuePB& frozen = value.frozen_value();
+      const auto& frozen = value.frozen_value();
       out->push_back(ValueEntryTypeAsChar::kFrozen);
       auto null_value_type = KeyEntryType::kNullLow;
       KeyBytes key;
-      for (int i = 0; i < frozen.elems_size(); i++) {
-        if (IsNull(frozen.elems(i))) {
+      for (const auto& elem : frozen.elems()) {
+        if (IsNull(elem)) {
           key.AppendKeyEntryType(null_value_type);
         } else {
-          KeyEntryValue::FromQLValuePB(frozen.elems(i), SortingType::kNotSpecified).AppendToKey(
-              &key);
+          KeyEntryValue::FromQLValuePB(elem, SortingType::kNotSpecified).AppendToKey(&key);
         }
       }
       key.AppendKeyEntryType(KeyEntryType::kGroupEnd);
@@ -737,7 +745,17 @@ void AppendEncodedValue(const QLValuePB& value, std::string* out) {
   DoAppendEncodedValue(value, out);
 }
 
+void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedValue(value, out);
+}
+
 size_t EncodedValueSize(const QLValuePB& value) {
+  SizeCounter counter;
+  DoAppendEncodedValue(value, &counter);
+  return counter.value();
+}
+
+size_t EncodedValueSize(const LWQLValuePB& value) {
   SizeCounter counter;
   DoAppendEncodedValue(value, &counter);
   return counter.value();
@@ -865,7 +883,7 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarInt: {
-      util::VarInt varint;
+      yb::VarInt varint;
       Slice slice_temp(slice->data(), slice->size());
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice_temp, &num_decoded_bytes));
@@ -1087,11 +1105,14 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentType: {
+      if (slice->empty()) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a TypeSet");
+      }
+      uint16_t value = static_cast<uint16_t>(slice->consume_byte());
       if (out) {
-        out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+        out->uint16_val_ = value;
       }
       type_ref = type;
-      slice->consume_byte();
       return Status::OK();
     }
 
@@ -1149,7 +1170,6 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
-    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
@@ -1252,7 +1272,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kVarInt: {
-      util::VarInt varint;
+      yb::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
       type_ = value_type;
@@ -1314,8 +1334,9 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
       return Status::OK();
     }
 
-    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kInvalid: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
+    case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
@@ -1324,14 +1345,13 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 }
 
 Status PrimitiveValue::DecodeToQLValuePB(
-    const Slice& rocksdb_slice, const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) {
+    const Slice& rocksdb_slice, DataType data_type, QLValuePB* ql_value) {
 
   RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
   Slice slice(rocksdb_slice);
 
   const auto value_type = ConsumeValueEntryType(&slice);
   switch (value_type) {
-    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTombstone:
       SetNull(ql_value);
@@ -1339,7 +1359,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue:
-      if (ql_type->main() != DataType::BOOL) {
+      if (data_type != DataType::BOOL) {
         break;
       }
       ql_value->set_bool_value(IsTrue(value_type));
@@ -1353,13 +1373,13 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       int32_t int32_val = BigEndian::Load32(slice.data());
-      if (ql_type->main() == DataType::INT8) {
+      if (data_type == DataType::INT8) {
         ql_value->set_int8_value(static_cast<int8_t>(int32_val));
-      } else if (ql_type->main() == DataType::INT16) {
+      } else if (data_type == DataType::INT16) {
         ql_value->set_int16_value(static_cast<int16_t>(int32_val));
-      } else if (ql_type->main() == DataType::INT32) {
+      } else if (data_type == DataType::INT32) {
         ql_value->set_int32_value(int32_val);
-      } else if (ql_type->main() == DataType::FLOAT) {
+      } else if (data_type == DataType::FLOAT) {
         ql_value->set_float_value(bit_cast<float>(int32_val));
       } else {
         break;
@@ -1375,9 +1395,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       uint32_t uint32_val = BigEndian::Load32(slice.data());
-      if (ql_type->main() == DataType::UINT32) {
+      if (data_type == DataType::UINT32) {
         ql_value->set_uint32_value(uint32_val);
-      } else if (ql_type->main() == DataType::DATE) {
+      } else if (data_type == DataType::DATE) {
         ql_value->set_date_value(uint32_val);
       } else {
         break;
@@ -1393,11 +1413,11 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       int64_t int64_val = BigEndian::Load64(slice.data());
-      if (ql_type->main() == DataType::INT64) {
+      if (data_type == DataType::INT64) {
         ql_value->set_int64_value(int64_val);
-      } else if (ql_type->main() == DataType::TIME) {
+      } else if (data_type == DataType::TIME) {
         ql_value->set_time_value(int64_val);
-      } else if (ql_type->main() == DataType::DOUBLE) {
+      } else if (data_type == DataType::DOUBLE) {
         ql_value->set_double_value(bit_cast<double>(int64_val));
       } else {
         break;
@@ -1410,7 +1430,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
             value_type, slice.size());
       }
-      if (ql_type->main() != DataType::UINT64) {
+      if (data_type != DataType::UINT64) {
         break;
       }
 
@@ -1423,7 +1443,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       util::Decimal decimal;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(decimal.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
-      if (ql_type->main() != DataType::DECIMAL) {
+      if (data_type != DataType::DECIMAL) {
         break;
       }
 
@@ -1434,10 +1454,10 @@ Status PrimitiveValue::DecodeToQLValuePB(
     case ValueEntryType::kVarInt: {
       // TODO(kpopali): check if we can simply put the slice value, instead of decoding and
       // encoding it again.
-      util::VarInt varint;
+      yb::VarInt varint;
       size_t num_decoded_bytes = 0;
       RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
-      if (ql_type->main() != DataType::VARINT) {
+      if (data_type != DataType::VARINT) {
         break;
       }
 
@@ -1451,7 +1471,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
             value_type, slice.size());
       }
       Timestamp timestamp_val = Timestamp(BigEndian::Load64(slice.data()));
-      if (ql_type->main() == DataType::TIMESTAMP) {
+      if (data_type == DataType::TIMESTAMP) {
         ql_value->set_timestamp_value(timestamp_val.ToInt64());
       } else {
         break;
@@ -1461,9 +1481,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
     case ValueEntryType::kString:
-      if (ql_type->main() == DataType::STRING) {
+      if (data_type == DataType::STRING) {
         ql_value->set_string_value(slice.cdata(), slice.size());
-      } else if (ql_type->main() == DataType::BINARY) {
+      } else if (data_type == DataType::BINARY) {
         ql_value->set_binary_value(slice.cdata(), slice.size());
       } else {
         break;
@@ -1480,7 +1500,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       Slice slice_temp(slice.data(), slice.size());
       InetAddress inetaddress_val;
       RETURN_NOT_OK(inetaddress_val.FromSlice(slice_temp));
-      if (ql_type->main() != DataType::INET) {
+      if (data_type != DataType::INET) {
         break;
       }
 
@@ -1496,9 +1516,9 @@ Status PrimitiveValue::DecodeToQLValuePB(
             slice.size(), kUuidSize);
       }
       Uuid uuid = VERIFY_RESULT(Uuid::FromComparable(slice));
-      if (ql_type->main() == DataType::UUID) {
+      if (data_type == DataType::UUID) {
         QLValue::set_uuid_value(uuid, ql_value);
-      } else if (ql_type->main() == DataType::TIMEUUID) {
+      } else if (data_type == DataType::TIMEUUID) {
         QLValue::set_timeuuid_value(uuid, ql_value);
       } else {
         break;
@@ -1515,7 +1535,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       int64_t jsonb_flags = BigEndian::Load64(slice.data());
       slice.remove_prefix(sizeof(jsonb_flags));
 
-      if (ql_type->main() != DataType::JSONB) {
+      if (data_type != DataType::JSONB) {
         break;
       }
 
@@ -1537,16 +1557,17 @@ Status PrimitiveValue::DecodeToQLValuePB(
     case ValueEntryType::kGinNull:
       break;
 
-    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kInvalid: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
+    case ValueEntryType::kPackedRowV2: [[fallthrough]];
+    case ValueEntryType::kRowLock: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
 
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
-      value_type, rocksdb_slice.ToDebugHexString(), ql_type->main());
+      value_type, rocksdb_slice.ToDebugHexString(), data_type);
 }
 
 POD_FACTORY(Double, double);
@@ -1642,7 +1663,6 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
-    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
@@ -1699,7 +1719,6 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
-    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
     case ValueEntryType::kTrue: FALLTHROUGH_INTENDED;
@@ -2095,14 +2114,22 @@ PrimitiveValue PrimitiveValue::DoFromQLValuePB(const PB& value) {
 
 namespace {
 
+bool IsNullType(KeyEntryType type) {
+  return type == KeyEntryType::kNullLow || type == KeyEntryType::kInvalid ||
+         type == KeyEntryType::kNullHigh;
+}
+
+bool IsNullType(ValueEntryType type) {
+  return type == ValueEntryType::kNullLow || type == ValueEntryType::kInvalid;
+}
+
 template <class Value>
 bool SharedToQLValuePB(
     const Value& value, const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
   auto type = value.type();
-  if (type == Value::Type::kNullLow || type == Value::Type::kNullHigh ||
-      type == Value::Type::kInvalid) {
+  if (IsNullType(type)) {
     SetNull(ql_value);
     return true;
   }
@@ -2116,71 +2143,71 @@ bool SharedToQLValuePB(
   }
 
   switch (ql_type->main()) {
-    case INT8:
+    case DataType::INT8:
       ql_value->set_int8_value(static_cast<int8_t>(value.GetInt32()));
       return true;
-    case INT16:
+    case DataType::INT16:
       ql_value->set_int16_value(static_cast<int16_t>(value.GetInt32()));
       return true;
-    case INT32:
+    case DataType::INT32:
       ql_value->set_int32_value(value.GetInt32());
       return true;
-    case INT64:
+    case DataType::INT64:
       ql_value->set_int64_value(value.GetInt64());
       return true;
-    case UINT32:
+    case DataType::UINT32:
       ql_value->set_uint32_value(value.GetUInt32());
       return true;
-    case UINT64:
+    case DataType::UINT64:
       ql_value->set_uint64_value(value.GetUInt64());
       return true;
-    case FLOAT:
+    case DataType::FLOAT:
       ql_value->set_float_value(value.GetFloat());
       return true;
-    case DOUBLE:
+    case DataType::DOUBLE:
       ql_value->set_double_value(value.GetDouble());
       return true;
-    case DECIMAL:
+    case DataType::DECIMAL:
       ql_value->set_decimal_value(value.GetDecimal());
       return true;
-    case VARINT:
+    case DataType::VARINT:
       ql_value->set_varint_value(value.GetVarInt());
       return true;
-    case BOOL:
+    case DataType::BOOL:
       ql_value->set_bool_value(IsTrue(type));
       return true;
-    case TIMESTAMP:
+    case DataType::TIMESTAMP:
       ql_value->set_timestamp_value(value.GetTimestamp().ToInt64());
       return true;
-    case DATE:
+    case DataType::DATE:
       ql_value->set_date_value(value.GetUInt32());
       return true;
-    case TIME:
+    case DataType::TIME:
       ql_value->set_time_value(value.GetInt64());
       return true;
-    case INET: {
+    case DataType::INET: {
       QLValue::set_inetaddress_value(value.GetInetAddress(), ql_value);
       return true;
     }
-    case UUID:
+    case DataType::UUID:
       QLValue::set_uuid_value(value.GetUuid(), ql_value);
       return true;
-    case TIMEUUID:
+    case DataType::TIMEUUID:
       QLValue::set_timeuuid_value(value.GetUuid(), ql_value);
       return true;
-    case STRING:
+    case DataType::STRING:
       ql_value->set_string_value(value.GetString());
       return true;
-    case BINARY:
+    case DataType::BINARY:
       ql_value->set_binary_value(value.GetString());
       return true;
-    case FROZEN: {
+    case DataType::FROZEN: {
       const auto& type = ql_type->param_type(0);
       QLSeqValuePB *frozen_value = ql_value->mutable_frozen_value();
       frozen_value->clear_elems();
       const auto& frozen = value.GetFrozen();
       switch (type->main()) {
-        case MAP: {
+        case DataType::MAP: {
           const std::shared_ptr<QLType>& keys_type = type->param_type(0);
           const std::shared_ptr<QLType>& values_type = type->param_type(1);
           for (size_t i = 0; i < frozen.size(); i++) {
@@ -2192,8 +2219,8 @@ bool SharedToQLValuePB(
           }
           return true;
         }
-        case SET: FALLTHROUGH_INTENDED;
-        case LIST: {
+        case DataType::SET: FALLTHROUGH_INTENDED;
+        case DataType::LIST: {
           const std::shared_ptr<QLType>& elems_type = type->param_type(0);
           for (const auto &pv : frozen) {
             QLValuePB *elem = frozen_value->add_elems();
@@ -2201,7 +2228,7 @@ bool SharedToQLValuePB(
           }
           return true;
         }
-        case USER_DEFINED_TYPE: {
+        case DataType::USER_DEFINED_TYPE: {
           for (size_t i = 0; i < frozen.size(); i++) {
             frozen[i].ToQLValuePB(type->param_type(i), frozen_value->add_elems());
           }
@@ -2214,19 +2241,19 @@ bool SharedToQLValuePB(
       FATAL_INVALID_ENUM_VALUE(DataType, type->main());
     }
 
-    case JSONB: FALLTHROUGH_INTENDED;
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case MAP: FALLTHROUGH_INTENDED;
-    case SET: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
-    case TUPLE: FALLTHROUGH_INTENDED;
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::JSONB: FALLTHROUGH_INTENDED;
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
 
-    case UINT8:  FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
-    case GIN_NULL:
+    case DataType::UINT8:  FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+    case DataType::GIN_NULL:
       break;
 
     // default: fall through

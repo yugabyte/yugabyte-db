@@ -27,14 +27,13 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
-import java.util.List;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Application;
@@ -114,8 +113,7 @@ public class FileDataServiceTest extends FakeDBApplication {
     }
 
     fileDataService.syncFileData(TMP_STORAGE_PATH, true);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 12);
+    assertEquals(12, FileData.getCount());
     Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
     assertEquals(diskFiles.size(), 12);
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
@@ -133,15 +131,13 @@ public class FileDataServiceTest extends FakeDBApplication {
     fileDataService.syncFileData(TMP_STORAGE_PATH, false);
 
     // No Exception should be thrown.
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 0);
+    assertEquals(0, FileData.getCount());
 
     runtimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.fs_stateless.max_file_size_bytes", "10000");
     fileDataService.syncFileData(TMP_STORAGE_PATH, false);
-    fd = FileData.getAll();
-    assertEquals(fd.size(), 3);
+    assertEquals(3, FileData.getCount());
   }
 
   @Test(expected = Exception.class)

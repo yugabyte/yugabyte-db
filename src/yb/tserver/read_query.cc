@@ -72,13 +72,12 @@ namespace {
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const RedisReadRequestPB& redis_read_request,
     RedisResponsePB* response,
     const std::function<void(const Status& s)>& status_cb
 ) {
-  status_cb(tablet->HandleRedisReadRequest(deadline, read_time, redis_read_request, response));
+  status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
 }
 
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
@@ -288,7 +287,8 @@ Status ReadQuery::DoPerform() {
 
   if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
     if (abstract_tablet_) {
-      tablet()->metrics()->consistent_prefix_read_requests->Increment();
+      tablet()->metrics()->Increment(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
     }
   }
 
@@ -332,11 +332,20 @@ Status ReadQuery::DoPerform() {
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();
+
   // Should not pick read time for serializable isolation, since it is picked after read intents
   // are added. Also conflict resolution for serializable isolation should be done without read time
   // specified. So we use max hybrid time for conflict resolution in such case.
   // It was implemented as part of #655.
-  if (!serializable_isolation) {
+  //
+  // Similarly, for explicit row locking, if no read time is specified by the query layer, we can
+  // avoid picking one before conflict resolution. Instead we can pick one while reading i.e., after
+  // writing intents (see PickReadTime() in Run()). This helps in Wait-on-Conflict concurrency
+  // control mode by allowing retrying of conflict resolution on the tserver once the waiting
+  // transaction exits a wait queue, instead of throwing a kConflict error and expecting the query
+  // layer to maybe retry. It also helps retry kReadRestart errors which might occur during the
+  // reading phase in the context of this operation.
+  if (!serializable_isolation && !has_row_mark) {
     RETURN_NOT_OK(PickReadTime(server_.Clock()));
   }
 
@@ -358,15 +367,12 @@ Status ReadQuery::DoPerform() {
   host_port_pb_.set_port(remote_address.port());
 
   if (serializable_isolation || has_row_mark) {
-    auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_peer.leader_term,
-        deadline,
+        context_.GetClientDeadline(),
         leader_peer.peer.get(),
         leader_peer.tablet,
-        nullptr /* rpc_context */,
-        nullptr /* response */,
-        dockv::OperationKind::kRead);
+        nullptr /* rpc_context */);
 
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();
@@ -411,7 +417,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     start_time = MonoTime::Now();
   }
-  if (!read_time_) {
+
+  const auto read_time_was_empty = !read_time_;
+  if (read_time_was_empty) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
@@ -428,7 +436,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   } else {
     HybridTime current_safe_time = HybridTime::kMin;
     if (IsPgsqlFollowerReadAtAFollower()) {
-      auto current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+      current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
           require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
       if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
           current_safe_time < read_time_.read) {
@@ -445,7 +453,12 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   }
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
-    metrics->read_time_wait->Increment(safe_time_wait.ToMicroseconds());
+    metrics->Increment(
+         tablet::TabletEventStats::kReadTimeWait,
+         make_unsigned(safe_time_wait.ToMicroseconds()));
+    if (read_time_was_empty) {
+      metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
   }
   return Status::OK();
 }
@@ -472,7 +485,7 @@ Status ReadQuery::Complete() {
     // (If a read restart was requested, then read_time would be set to the time at which we have
     // to restart.)
     if (!read_time_) {
-      // allow_retry means that that the read time was not set in the request and therefore we can
+      // allow_retry means that the read time was not set in the request and therefore we can
       // retry read restarts on the tablet server.
       if (!allow_retry_) {
         auto local_limit = std::min(safe_ht_to_read_, used_read_time_.global_limit);
@@ -490,7 +503,7 @@ Status ReadQuery::Complete() {
           read_time_.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
-      tablet()->metrics()->restart_read_requests->Increment();
+      tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
       break;
     }
 
@@ -559,16 +572,23 @@ Result<ReadHybridTime> ReadQuery::DoRead() {
 }
 
 Result<ReadHybridTime> ReadQuery::DoReadImpl() {
-  ReadHybridTime read_time;
+  docdb::ReadOperationData read_operation_data = {
+    .deadline = context_.GetClientDeadline(),
+    .read_time = {},
+  };
+
   tablet::ScopedReadOperation read_tx;
   if (IsForBackfill()) {
-    read_time = read_time_;
+    read_operation_data.read_time = read_time_;
   } else {
+    if (!read_time_) {
+      tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
-    read_time = read_tx.read_time();
+    read_operation_data.read_time = read_tx.read_time();
   }
-  used_read_time_ = read_time;
+  used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(abstract_tablet_->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -586,8 +606,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       auto func = Bind(
           &HandleRedisReadRequestAsync,
           Unretained(abstract_tablet_.get()),
-          context_.GetClientDeadline(),
-          read_time,
+          read_operation_data,
           redis_read_req,
           Unretained(resp_->add_redis_batch()),
           cb);
@@ -635,7 +654,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
-          context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result,
+          read_operation_data, ql_read_req, req_->transaction(), &result,
           &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
@@ -655,9 +674,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
-          context_.GetClientDeadline(), read_time,
-          !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req, req_->transaction(),
-          req_->subtransaction(), &result));
+          read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req,
+          req_->transaction(), req_->subtransaction(), &result));
 
       total_num_rows_read += result.num_rows_read;
 
@@ -672,7 +690,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
 
     if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
         total_num_rows_read > 0) {
-      tablet()->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
+      tablet()->metrics()->IncrementBy(
+          tablet::TabletCounters::kPgsqlConsistentPrefixReadRows, total_num_rows_read);
     }
     return ReadHybridTime();
   }

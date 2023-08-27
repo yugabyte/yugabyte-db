@@ -17,6 +17,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/util/flags.h"
+#include "yb/util/memory/memory_usage.h"
 
 #include "yb/common/common_types.pb.h"
 
@@ -163,6 +164,12 @@ class YBTableName {
 
   void SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const;
   void GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id);
+
+  size_t DynamicMemoryUsage() const {
+    return sizeof(*this) +
+           DynamicMemoryUsageOf(
+               namespace_id_, namespace_name_, table_id_, table_name_ + pgschema_name_);
+  }
 
  private:
   void check_db_type();

@@ -12,7 +12,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
@@ -20,7 +20,9 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.hamcrest.CoreMatchers;
@@ -43,9 +46,12 @@ import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.IsNull;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
+@RunWith(MockitoJUnitRunner.class)
 public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
   Customer customer;
@@ -75,6 +81,13 @@ public class RegionControllerTest extends FakeDBApplication {
     return doRequestWithBody("POST", uri, body);
   }
 
+  private Result createRegionV2(UUID providerUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions", customer.getUuid(), providerUUID);
+    return doRequestWithBody("POST", uri, body);
+  }
+
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
         String.format(
@@ -87,6 +100,14 @@ public class RegionControllerTest extends FakeDBApplication {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s",
+            customer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
+  private Result editRegionV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s",
             customer.getUuid(), providerUUID, regionUUID);
     return doRequestWithBody("PUT", uri, body);
   }
@@ -392,6 +413,87 @@ public class RegionControllerTest extends FakeDBApplication {
     r.refresh();
     assertNull(r.getSecurityGroupId());
     assertEquals(updatedYbImage, r.getYbImage());
+  }
+
+  @Test
+  public void testCreateRegionV2Payload() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws, "provider-1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+        Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
+        ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
+
+    JsonNode regionBody = generateRegionRequestBody();
+    Result result = createRegionV2(p.getUuid(), regionBody);
+    Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", region.getUuid());
+
+    p = Provider.getOrBadRequest(customer.getUuid(), p.getUuid());
+    assertEquals(1, p.getRegions().size());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+  }
+
+  @Test
+  public void testAddZoneV2Payload() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws, "provider-1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+        Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
+        ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
+
+    JsonNode regionBody = generateRegionRequestBody();
+    Result result = createRegionV2(p.getUuid(), regionBody);
+    Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", region.getUuid());
+
+    p = Provider.getOrBadRequest(customer.getUuid(), p.getUuid());
+    assertEquals(1, p.getRegions().size());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+
+    List<AvailabilityZone> zones = region.getZones();
+    AvailabilityZone zone = new AvailabilityZone();
+    zone.setName("Zone 2");
+    zone.setCode("zone-2");
+    zones.add(zone);
+    region.setZones(zones);
+    region.getDetails().getCloudInfo().getAws().setSecurityGroupId("Modified group id");
+
+    result = editRegionV2(p.getUuid(), region.getUuid(), Json.toJson(region));
+    region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertEquals(2, region.getZones().size());
+    assertEquals(
+        "Modified group id", region.getDetails().getCloudInfo().getAws().getSecurityGroupId());
+  }
+
+  public JsonNode generateRegionRequestBody() {
+    ObjectNode regionRequestBody = Json.newObject();
+    regionRequestBody.put("code", "us-west-2");
+    regionRequestBody.put("name", "us-west-2");
+
+    ObjectNode details = Json.newObject();
+    ObjectNode cloudInfo = Json.newObject();
+    ObjectNode awsCloudInfo = Json.newObject();
+
+    awsCloudInfo.put("vnet", "vnet");
+    awsCloudInfo.put("securityGroupId", "sg");
+    awsCloudInfo.put("ybImage", "yb_image");
+
+    cloudInfo.set("aws", awsCloudInfo);
+    details.set("cloudInfo", cloudInfo);
+    regionRequestBody.set("details", details);
+
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "Zone 1");
+    zone.put("code", "zone-1");
+    zone.put("subnet", "subnet");
+    zones.add(zone);
+
+    regionRequestBody.set("zones", zones);
+    return regionRequestBody;
   }
 
   public Region getFirstRegion() {

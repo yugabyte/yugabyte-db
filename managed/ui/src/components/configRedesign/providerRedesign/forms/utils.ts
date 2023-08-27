@@ -9,7 +9,7 @@ import { FieldValues, FormState } from 'react-hook-form';
 
 import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
-import { KeyPairManagement, ProviderStatus } from '../constants';
+import { KeyPairManagement, ProviderStatus, TRANSITORY_PROVIDER_STATUSES } from '../constants';
 import { AccessKey, YBProvider } from '../types';
 
 export const readFileAsText = (sshKeyFile: File) => {
@@ -89,16 +89,44 @@ export const generateLowerCaseAlphanumericId = (stringLength = 14) =>
   Array.from(Array(stringLength), () => Math.floor(Math.random() * 36).toString(36)).join('');
 
 /**
- * Constructs the access keys portion of the create/edit provider payload.
+ * Constructs the access keys portion of the create provider payload.
+ */
+export const constructAccessKeysCreatePayload = (
+  sshKeypairManagement: KeyPairManagement,
+  sshKeypairName: string,
+  sshPrivateKeyContent: string,
+  skipKeyValidateAndUpload = false
+) => ({
+  ...(sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
+    allAccessKeys: [
+      {
+        keyInfo: {
+          ...(sshKeypairName && { keyPairName: sshKeypairName }),
+          ...(sshPrivateKeyContent && {
+            sshPrivateKeyContent: sshPrivateKeyContent
+          }),
+          skipKeyValidateAndUpload
+        }
+      }
+    ]
+  })
+});
+
+/**
+ * Constructs the access keys portion of the edit provider payload.
  *
  * If no changes are requested, then return the currentAccessKeys.
  * If user provides a new access key, then send the user provided access key.
  * If user opts to let YBA manage the access keys, then omit `allAccessKeys` from the payload.
  */
-export const constructAccessKeysPayload = (
+export const constructAccessKeysEditPayload = (
   editSSHKeypair: boolean,
   sshKeypairManagement: KeyPairManagement,
-  newAccessKey: { sshKeypairName: string; sshPrivateKeyContent: string },
+  newAccessKey: {
+    sshKeypairName: string;
+    sshPrivateKeyContent: string;
+    skipKeyValidateAndUpload?: boolean;
+  },
   currentAccessKeys?: AccessKey[]
 ) => {
   if (editSSHKeypair && sshKeypairManagement === KeyPairManagement.YBA_MANAGED) {
@@ -113,7 +141,8 @@ export const constructAccessKeysPayload = (
               ...(newAccessKey.sshKeypairName && { keyPairName: newAccessKey.sshKeypairName }),
               ...(newAccessKey.sshPrivateKeyContent && {
                 sshPrivateKeyContent: newAccessKey.sshPrivateKeyContent
-              })
+              }),
+              skipKeyValidateAndUpload: newAccessKey.skipKeyValidateAndUpload ?? false
             }
           }
         ]
@@ -126,6 +155,13 @@ export const getIsFormDisabled = <TFieldValues extends FieldValues>(
   isProviderInUse = false,
   providerConfig?: YBProvider
 ) =>
-  providerConfig?.usabilityState === ProviderStatus.UPDATING ||
-  isProviderInUse ||
+
+(providerConfig?.usabilityState &&
+  (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
+    providerConfig?.usabilityState
+  )) || isProviderInUse ||
   formState.isSubmitting;
+
+export const getIsRegionFormDisabled = <TFieldValues extends FieldValues>(
+  formState: FormState<TFieldValues>
+) => formState.isSubmitting;

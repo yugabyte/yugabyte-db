@@ -54,6 +54,8 @@ namespace yb {
 
 namespace cqlserver {
 
+class CQLServiceImpl;
+
 class CQLServer : public server::RpcAndWebServerBase {
  public:
   static const uint16_t kDefaultPort = 9042;
@@ -71,6 +73,8 @@ class CQLServer : public server::RpcAndWebServerBase {
 
   Status ReloadKeysAndCertificates() override;
 
+  std::shared_ptr<CQLServiceImpl> TEST_cql_service() const { return cql_service_; }
+
  private:
   CQLServerOptions opts_;
   void CQLNodeListRefresh(const boost::system::error_code &e);
@@ -83,6 +87,8 @@ class CQLServer : public server::RpcAndWebServerBase {
   tserver::TabletServerIf* const tserver_;
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
+
+  std::shared_ptr<CQLServiceImpl> cql_service_;
 
   DISALLOW_COPY_AND_ASSIGN(CQLServer);
 };

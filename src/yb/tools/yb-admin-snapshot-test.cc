@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/snapshot.h"
 #include "yb/tools/yb-admin-test-base.h"
 #include "yb/util/flags.h"
 
@@ -42,6 +43,8 @@
 
 DECLARE_string(certs_dir);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_create_table_with_empty_namespace_name);
+DECLARE_bool(TEST_simulate_long_restore);
 
 namespace yb {
 namespace tools {
@@ -63,6 +66,9 @@ using master::MasterBackupProxy;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
 
+const std::string kRestoredState = "RESTORED";
+const std::string kFailedState = "FAILED";
+
 class AdminCliTest : public AdminCliTestBase {
  protected:
   Result<MasterBackupProxy*> BackupServiceProxy() {
@@ -73,9 +79,9 @@ class AdminCliTest : public AdminCliTestBase {
     return backup_service_proxy_.get();
   }
 
-  Status WaitForRestoreSnapshot() {
+  Status WaitForRestorationState(const std::string& state) {
     return WaitFor(
-        [this]() -> Result<bool> {
+        [this, &state]() -> Result<bool> {
           const auto document =
               VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
           auto it = document.FindMember("restorations");
@@ -89,14 +95,16 @@ class AdminCliTest : public AdminCliTestBase {
             if (state_it == restoration.MemberEnd()) {
               return STATUS(NotFound, "'state' not found");
             }
-            if (state_it->value.GetString() != "RESTORED"s) {
+            if (state_it->value.GetString() != state) {
               return false;
             }
           }
           return true;
         },
-        30s, "Waiting for snapshot restore to complete");
+        30s, Format("Waiting for restoration state $0", state));
   }
+
+  Status WaitForRestoreSnapshot() { return WaitForRestorationState(kRestoredState); }
 
   Result<master::ListSnapshotsResponsePB> WaitForAllSnapshots(
       master::MasterBackupProxy* const alternate_proxy = nullptr) {
@@ -387,6 +395,36 @@ TEST_F(AdminCliTest, TestRestoreSnapshotBasic) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> { return SelectRow(CreateSession(), 1).ok(); }, 20s,
       "Waiting for row from restored snapshot."));
+}
+
+TEST_F(AdminCliTest, TestAbortSnapshotRestoreBasic) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_long_restore) = true;
+
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  ASSERT_OK(WriteRow(CreateSession(), 1, 1));
+
+  // Create snapshot.
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+  const auto snapshot_id =
+      ASSERT_RESULT(TxnSnapshotIdFromString(ASSERT_RESULT(GetCompletedSnapshot())));
+  ASSERT_RESULT(WaitForAllSnapshots());
+
+  // Restore snapshot using proxy to get restoration ID.
+  auto proxy = ASSERT_RESULT(BackupServiceProxy());
+  RpcController rpc;
+  master::RestoreSnapshotRequestPB req;
+  master::RestoreSnapshotResponsePB resp;
+  req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+  ASSERT_OK(proxy->RestoreSnapshot(req, &resp, &rpc));
+
+  auto restoration_id = ASSERT_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
+
+  // Abort snapshot restore.
+  ASSERT_OK(RunAdminToolCommand("abort_snapshot_restore", restoration_id));
+  ASSERT_OK(WaitForRestorationState(kFailedState));
 }
 
 TEST_F(AdminCliTest, TestRestoreSnapshotHybridTime) {
@@ -724,6 +762,55 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
   ASSERT_NOK(RunAdminToolCommand(
       "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
       strings::Substitute("$0:3", c2z1)));
+}
+
+TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
+  // Start with a table missing its namespace_name (as if created before 2.3).
+  FLAGS_TEST_create_table_with_empty_namespace_name = true;
+  CreateTable(Transactional::kFalse);
+  FLAGS_TEST_create_table_with_empty_namespace_name = false;
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  // Create snapshot of default table that gets created.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  RpcController rpc;
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  auto snapshot_id = FullyDecodeTxnSnapshotId(resp.snapshots(0).id());
+  auto get_table_entry = [&]() -> Result<master::SysTablesEntryPB> {
+    for (auto& entry : resp.snapshots(0).entry().entries()) {
+      if (entry.type() == master::SysRowEntryType::TABLE) {
+        return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
+      }
+    }
+    return STATUS(NotFound, "Could not find TABLE entry");
+  };
+
+  // Old behaviour, snapshot doesn't have namespace_name.
+  master::SysTablesEntryPB table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_FALSE(table_meta.has_namespace_name());
+
+  // Delete snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("delete_snapshot", snapshot_id));
+
+  // Restart cluster, run namespace_name migration to populate the namespace_name field.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // Create a new snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  rpc.Reset();
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+
+  // Ensure that the namespace_name field is now populated.
+  table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_TRUE(table_meta.has_namespace_name());
+  ASSERT_EQ(table_meta.namespace_name(), keyspace);
 }
 
 }  // namespace tools

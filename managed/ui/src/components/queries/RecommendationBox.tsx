@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
+import { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';
@@ -8,6 +8,7 @@ import { SchemaSuggestion } from './advisor/SchemaSuggestion';
 import { QueryLoadSkew } from './advisor/QueryLoadSkew';
 import { ConnectionSkew } from './advisor/ConnectionSkew';
 import { CpuSkew } from './advisor/CpuSkew';
+import { HotShard } from './advisor/HotShard';
 import { CustomRecommendations } from './advisor/CustomRecommendation';
 import {
   RecommendationType,
@@ -94,12 +95,17 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
     };
     return <CpuSkew data={cpuSkewData} summary={summary} />;
   }
-  if (
-    type === RecommendationType.CPU_USAGE ||
-    type === RecommendationType.HOT_SHARD ||
-    type === RecommendationType.REJECTED_CONNECTIONS
-  ) {
-    return <CustomRecommendations summary={summary} suggestion={data.suggestion} />;
+  if (type === RecommendationType.HOT_SHARD) {
+    const hotShardData = {
+      suggestion: data.suggestion,
+      maxNodeName: data.recommendationInfo.node_with_hot_shard,
+      maxNodeValue: data.recommendationInfo.hot_shard_node_operation_count ?? 0,
+      otherNodesAvgValue: data.recommendationInfo.avg_query_count_of_other_nodes ?? 0
+    };
+    return <HotShard data={hotShardData} summary={summary} />;
+  }
+  if (type === RecommendationType.CPU_USAGE || type === RecommendationType.REJECTED_CONNECTIONS) {
+    return <CustomRecommendations summary={summary} suggestion={data.suggestion} type={type} />;
   }
   return null;
 };
@@ -113,6 +119,23 @@ export const RecommendationBox: FC<RecommendationProps> = ({
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const [open, setOpen] = useState(false);
+
+  const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
+    const isChecked = event.target.checked;
+    onResolve(idKey, isChecked);
+    if (isChecked) {
+      setOpen(false);
+    }
+    event.stopPropagation();
+  };
+
+  const handleOpenBox = () => {
+    if (!resolved) {
+      setOpen((val) => !val);
+    }
+  };
 
   const getTypeTagColor = (recommendationType: RecommendationType) => {
     switch (recommendationType) {
@@ -204,25 +227,6 @@ export const RecommendationBox: FC<RecommendationProps> = ({
     }
   };
 
-  const [open, setOpen] = useState(false);
-  // const [resolved1, setResolved] = useState(false);
-
-  const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
-    const isChecked = event.target.checked;
-    onResolve(idKey, isChecked);
-    // setResolved(isChecked);
-    if (isChecked) {
-      setOpen(false);
-    }
-    event.stopPropagation();
-  };
-
-  const handleOpenBox = () => {
-    if (!resolved) {
-      setOpen((val) => !val);
-    }
-  };
-
   return (
     <div className={classes.recommendation}>
       <Box
@@ -232,7 +236,7 @@ export const RecommendationBox: FC<RecommendationProps> = ({
         className={resolved ? classes.strikeThroughText : classes.itemHeader}
       >
         {getTypeTagColor(type)}
-        <span>{getSummaryContent(type, data)}</span>
+        <span>{!open && getSummaryContent(type, data)}</span>
         <Box ml="auto">
           <YBCheckbox
             label={'Resolved'}
@@ -240,7 +244,15 @@ export const RecommendationBox: FC<RecommendationProps> = ({
             checked={resolved}
           />
         </Box>
-        {open ? <img src={TraingleDownIcon} alt="more" /> : <img src={TraingleUpIcon} alt="more" />}
+        {open ? (
+          <img src={TraingleDownIcon} alt="expand" />
+        ) : (
+          <img
+            src={TraingleUpIcon}
+            alt="shrink"
+            className={clsx(resolved && classes.inactiveRecommendation)}
+          />
+        )}
       </Box>
       {open && getRecommendation(type, getSummaryContent(type, data), data)}
     </div>

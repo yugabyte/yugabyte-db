@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { YBFormToggle, YBFormInput } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'formik';

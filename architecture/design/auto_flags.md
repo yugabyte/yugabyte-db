@@ -1,4 +1,4 @@
-# Auto Flags
+# AutoFlags
 
 AutoFlags are gFlags with two hard-coded values: Initial and Target (instead of the regular gFlag Default). AutoFlags have two states: promoted and not-promoted. An AutoFlag is set to its Initial value in the not-promoted state and to its Target value in the promoted state.
 
@@ -18,7 +18,7 @@ For example, `yb_enable_expression_pushdown` requires all yb-tservers to run a v
 
 New AutoFlags are defined using the following syntax in the primary cpp file where their value is used.
 
-`DEFINE_RUNTIME_AUTO_<value_type>(<flag_name>, <flag_class>, INITIAL_VAL(<initial_value>) , TARGET_VAL(<target_value>), "<usage>");`
+`DEFINE_RUNTIME_AUTO_<value_type>(<flag_name>, <flag_class>, <initial_value> , <target_value>, "<usage>");`
 
 - value_type: [`bool`, `int32`, `int64`, `uint64`, `double`, `string`]
 - flag_name: A friendly descriptive name for the AutoFlag.
@@ -28,7 +28,7 @@ New AutoFlags are defined using the following syntax in the primary cpp file whe
 - usage: Usage information about the AutoFlag.
 
 Ex:  
-`DEFINE_RUNTIME_AUTO_bool(fun_with_flags, kLocalPersisted, INITIAL_VAL(false), TARGET_VAL(true), "Vexillology is the study of flags.");`
+`DEFINE_RUNTIME_AUTO_bool(fun_with_flags, kLocalPersisted, /* initial_value */ false, /* target_value */ true, "Vexillology is the study of flags.");`
 
 
 If you need to use the AutoFlag in additional files then you can declare them  using the following syntax.
@@ -43,7 +43,7 @@ Ex:
 
 Postgres AutoFlags require an AutoFlag and a GUC variable with the same name, value and description. These AutoFlags use a slightly different macro.
 
-`DEFINE_RUNTIME_AUTO_PG_FLAG(<value_type>, <flag_name>, <flag_class>, INITIAL_VAL(<initial_value>) , TARGET_VAL(<target_value>), "<usage>");`
+`DEFINE_RUNTIME_AUTO_PG_FLAG(<value_type>, <flag_name>, <flag_class>, <initial_value> , <target_value>, "<usage>");`
 
 Ex:
 `DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true, "Push supported expressions from ysql down to DocDB for evaluation.");`
@@ -65,7 +65,7 @@ AutoFlag class is picked based on the persistence property of the data, and whic
 | LocalVolatile     | After all the processes in our universe have been upgraded to the new code version.   | Yes, after the AutoFlag is demoted [^1] | yb_enable_expression_pushdown |
 | LocalPersisted    | After all the processes in our universe have been upgraded to the new code version.   | No | TEST_auto_flags_initialized |
 | External          | After all the processes in our universe and other dependent universes and processes have been upgraded to the new code version.   | No | regular_tablets_data_block_key_value_encoding, enable_stream_compression |
-| NewInstallsOnly   | After all the processes have been installed. No promotion for universe upgrades.   | No | TEST_auto_flags_new_install |
+| NewInstallsOnly   | No promotion after upgrades.  | No | TEST_auto_flags_new_install |
 
 [^1]: Not yet implemented.
 

@@ -23,6 +23,8 @@
 
 #include <boost/function/function_fwd.hpp>
 
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -155,7 +157,12 @@ YB_STRONGLY_TYPED_BOOL(IsWithinTransactionRetry);
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
-typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
+typedef std::function<void(const Result<xrepl::StreamId>&)> CreateCDCStreamCallback;
+typedef Result<std::tuple<
+    std::vector<TableId> /* table_ids */, std::vector<std::string> /* bootstrap_ids */,
+    HybridTime /* bootstrap_time */>>
+    BootstrapProducerResult;
+typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
 class AsyncClientInitialiser;
 
 } // namespace client

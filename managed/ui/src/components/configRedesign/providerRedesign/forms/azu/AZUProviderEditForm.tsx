@@ -41,7 +41,7 @@ import {
 import { RegionOperation } from '../configureRegion/constants';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -61,6 +61,7 @@ import {
   AZUProvider,
   AZURegion,
   AZURegionMutation,
+  ImageBundle,
   YBProviderMutation
 } from '../../types';
 
@@ -75,13 +76,16 @@ export interface AZUProviderEditFormFieldValues {
   azuClientSecret: string;
   azuHostedZoneId: string;
   azuRG: string;
+  azuNetworkRG: string;
   azuSubscriptionId: string;
+  azuNetworkSubscriptionId: string;
   azuTenantId: string;
   dbNodePublicInternetAccess: boolean;
   editSSHKeypair: boolean;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
   providerName: string;
+  imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
@@ -155,10 +159,8 @@ export const AZUProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
-    setRegionOperation(
-      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
-    );
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -259,10 +261,28 @@ export const AZUProviderEditForm = ({
                 />
               </FormField>
               <FormField>
+                <FieldLabel>Network Resource Group</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkRG"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
                 <FieldLabel>Subscription ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuSubscriptionId"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>Network Subscription ID</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkSubscriptionId"
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -312,6 +332,7 @@ export const AZUProviderEditForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -443,6 +464,7 @@ export const AZUProviderEditForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={true}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -469,16 +491,20 @@ const constructDefaultFormValues = (
   azuClientSecret: providerConfig.details.cloudInfo.azu.azuClientSecret ?? '',
   azuHostedZoneId: providerConfig.details.cloudInfo.azu.azuHostedZoneId ?? '',
   azuRG: providerConfig.details.cloudInfo.azu.azuRG ?? '',
+  azuNetworkRG: providerConfig.details.cloudInfo.azu.azuNetworkRG ?? '',
   azuSubscriptionId: providerConfig.details.cloudInfo.azu.azuSubscriptionId ?? '',
+  azuNetworkSubscriptionId: providerConfig.details.cloudInfo.azu.azuNetworkSubscriptionId ?? '',
   azuTenantId: providerConfig.details.cloudInfo.azu.azuTenantId ?? '',
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
   providerName: providerConfig.name,
+  imageBundles: providerConfig.imageBundles,
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name,
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
@@ -503,7 +529,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     formValues.sshKeypairManagement,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
@@ -522,7 +548,11 @@ const constructProviderPayload = async (
           azuClientSecret: formValues.azuClientSecret,
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
+          ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
           azuSubscriptionId: formValues.azuSubscriptionId,
+          ...(formValues.azuNetworkSubscriptionId && {
+            azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId
+          }),
           azuTenantId: formValues.azuTenantId
         }
       },
@@ -531,6 +561,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
+    imageBundles: formValues.imageBundles,
     regions: [
       ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<AZUProvider, AZURegion>(

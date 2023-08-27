@@ -35,9 +35,9 @@ struct KeyBounds {
   static const KeyBounds kNoBounds;
 
   KeyBounds() = default;
-  KeyBounds(const Slice& _lower, const Slice& _upper) : lower(_lower), upper(_upper) {}
+  KeyBounds(Slice _lower, Slice _upper) : lower(_lower), upper(_upper) {}
 
-  bool IsWithinBounds(const Slice& key) const {
+  bool IsWithinBounds(Slice key) const {
     return (lower.empty() || key.compare(lower) >= 0) &&
            (upper.empty() || key.compare(upper) < 0);
   }

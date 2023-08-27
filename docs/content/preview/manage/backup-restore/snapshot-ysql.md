@@ -30,7 +30,7 @@ type: docs
 
 </ul>
 
-The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of a data taken across all the nodes in the cluster. For YSQL, snapshots are created on per-database level. Backing up individual tables is currently not supported.
+The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of data taken across all the nodes in the cluster. For YSQL, snapshots are created on per-database level. Backing up individual tables is currently not supported.
 
 When YugabyteDB creates a snapshot, it does not physically copy the data; instead, it creates hard links to all the relevant files. These links reside on the same storage volumes where the data itself is stored, which makes both backup and restore operations nearly instantaneous.
 
@@ -63,8 +63,8 @@ The `create_database_snapshot` command exits immediately, but the snapshot may t
 All the snapshots in the cluster are listed, along with their statuses. You can find the ID of the new snapshot and make sure it has been completed, as shown in the following  sample output:
 
 ```output
-Snapshot UUID                         State
-0d4b4935-2c95-4523-95ab-9ead1e95e794  COMPLETE
+Snapshot UUID                           State       Creation Time
+0d4b4935-2c95-4523-95ab-9ead1e95e794    COMPLETE    2023-04-20 00:20:38.214201
 ```
 
 ## Delete a snapshot

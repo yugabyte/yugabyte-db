@@ -7,7 +7,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
-      "exported_instance": "host-n3"
+      "exported_instance": "host-n3",
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3"
     }
   },
   {
@@ -18,7 +20,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
-      "exported_instance": "host-n3"
+      "exported_instance": "host-n3",
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3"
     }
   },
   {
@@ -29,7 +33,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
-      "exported_instance": "host-n3"
+      "exported_instance": "host-n3",
+      "node_name":"host-n3",
+      "node_address":"10.0.0.3"
     }
   },
   {
@@ -40,7 +46,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
-      "exported_instance": "host-n2"
+      "exported_instance": "host-n2",
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2"
     }
   },
   {
@@ -51,7 +59,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
-      "exported_instance": "host-n2"
+      "exported_instance": "host-n2",
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2"
     }
   },
   {
@@ -62,7 +72,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
-      "exported_instance": "host-n2"
+      "exported_instance": "host-n2",
+      "node_name":"host-n2",
+      "node_address":"10.0.0.2"
     }
   },
   {
@@ -73,7 +85,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "tserver_export",
-      "exported_instance": "host-n1"
+      "exported_instance": "host-n1",
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1"
     }
   },
   {
@@ -84,7 +98,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "redis_export",
-      "exported_instance": "host-n1"
+      "exported_instance": "host-n1",
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1"
     }
   },
   {
@@ -95,7 +111,9 @@
       "universe_uuid": "UNIVERSE_UUID",
       "node_prefix": "host",
       "export_type": "cql_export",
-      "exported_instance": "host-n1"
+      "exported_instance": "host-n1",
+      "node_name":"host-n1",
+      "node_address":"10.0.0.1"
     }
   }
 ]

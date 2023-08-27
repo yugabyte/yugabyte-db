@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.util.Collections;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -119,11 +120,15 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
+      // Make sure clock skew is low enough on the node.
+      createWaitForClockSyncTasks(universe, Collections.singleton(currentNode))
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       // This starts master and if it fails after setting isMaster=true, this task cannot be run as
       // the node state moves to Starting.
       // and this node is already a master.
       // TODO Fix the above issue when there is a better state management of processes.
-      createStartMasterOnNodeTasks(universe, currentNode, null);
+      createStartMasterOnNodeTasks(universe, currentNode, null, false);
 
       // Update node state to running.
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)

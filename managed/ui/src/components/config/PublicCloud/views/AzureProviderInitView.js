@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import * as Yup from 'yup';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Field, Form, Formik } from 'formik';
 import { Row, Col } from 'react-bootstrap';
 import {
@@ -22,6 +22,8 @@ const initialValues = {
   AZURE_TENANT_ID: '',
   AZURE_SUBSCRIPTION_ID: '',
   AZURE_RG: '',
+  AZURE_NETWORK_SUBSCRIPTION_ID: '',
+  AZURE_NETWORK_RG: '',
   ntp_option: NTP_TYPES.PROVIDER,
   ntpServers: [],
   setUpChrony: true,
@@ -37,6 +39,8 @@ const validationSchema = Yup.object().shape({
   AZURE_TENANT_ID: Yup.string().required('Azure Tenant ID is a required field'),
   AZURE_SUBSCRIPTION_ID: Yup.string().required('Azure Subscription ID is a required field'),
   AZURE_RG: Yup.string().required('Azure Resource Group is a required field'),
+  AZURE_NETWORK_SUBSCRIPTION_ID: Yup.string(),
+  AZURE_NETWORK_RG: Yup.string(),
   sshPort: Yup.number(),
   sshUser: Yup.string(),
   ntpServers: Yup.array().when('ntp_option', {
@@ -118,6 +122,8 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                     />
                   </Col>
                 </Row>
+
+
                 <Row className="config-provider-row">
                   <Col lg={3}>
                     <div className="form-item-custom-label">Subscription ID</div>
@@ -150,6 +156,41 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                     />
                   </Col>
                 </Row>
+
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Network Subscription ID</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field
+                      name="AZURE_NETWORK_SUBSCRIPTION_ID"
+                      placeholder="Network Subscription ID"
+                      component={YBFormInput}
+                    />
+                  </Col>
+                  <Col lg={1} className="config-provider-tooltip">
+                    <YBInfoTip
+                      title="Azure Config"
+                      content="The network subscription ID is a unique ID that uniquely identifies your subscription to use Azure network services."
+                    />
+                  </Col>
+                </Row>
+                <Row className="config-provider-row">
+                  <Col lg={3}>
+                    <div className="form-item-custom-label">Network Resource Group</div>
+                  </Col>
+                  <Col lg={7}>
+                    <Field name="AZURE_NETWORK_RG" placeholder="Network Resource Group" component={YBFormInput} />
+                  </Col>
+                  <Col lg={1} className="config-provider-tooltip">
+                    <YBInfoTip
+                      title="Azure Config"
+                      content="Azure netowrk resource group includes those resources that you want to manage as a group."
+                    />
+                  </Col>
+                </Row>
+
+
                 <Row className="config-provider-row">
                   <Col lg={3}>
                     <div className="form-item-custom-label">Tenant ID</div>

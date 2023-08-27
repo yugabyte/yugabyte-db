@@ -13,48 +13,57 @@
 
 #include "yb/util/write_buffer.h"
 
+#include "yb/gutil/strings/fastmem.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 
 namespace yb {
 
-const char* WriteBuffer::CopyToLastBlock(const char* data, const char* end) {
-  if (blocks_.empty()) {
-    return data;
-  }
-  auto& last_block = blocks_.back();
-  auto len = std::min<size_t>(last_block.size() - filled_bytes_in_last_block_, end - data);
-  memcpy(last_block.data() + filled_bytes_in_last_block_, data, len);
-  filled_bytes_in_last_block_ += len;
-
-  return data + len;
-}
-
 Status WriteBuffer::Write(const WriteBufferPos& pos, const char* data, const char* end) {
   SCHECK_LT(pos.index, blocks_.size(), InvalidArgument, "Write to out of bounds buffer");
-  auto len = std::min<size_t>(blocks_[pos.index].size() - pos.offset, end - data);
-  memcpy(blocks_[pos.index].data() + pos.offset, data, len);
+  auto len = std::min<size_t>(blocks_[pos.index].end() - pos.address, end - data);
+  memcpy(pos.address, data, len);
   data += len;
   if (data == end) {
     return Status::OK();
   }
-  return Write(WriteBufferPos {.index = pos.index + 1, .offset = 0}, data, end);
+  return Write(
+      WriteBufferPos {.index = pos.index + 1, .address = blocks_[pos.index + 1].data()}, data, end);
 }
 
-void WriteBuffer::Append(const char* data, const char* end) {
-  size_ += end - data;
-  // Copy start of sidecar to existing buffer if present.
-  data = CopyToLastBlock(data, end);
+void WriteBuffer::AppendToNewBlock(Slice value) {
+  auto block_size = std::max(value.size(), block_size_);
+  AllocateBlock(block_size);
+  auto& block = blocks_.back();
+  auto* block_start = block.data();
+  value.CopyTo(block_start);
+  last_block_free_begin_ = block_start + value.size();
+  last_block_free_end_ = block_start + block_size;
+}
 
-  // If sidecar did not fit into last buffer, then we should allocate a new one.
-  size_t len = end - data;
-  if (len) {
-    DCHECK(blocks_.empty() || filled_bytes_in_last_block_ == blocks_.back().size());
+void WriteBuffer::PushBack(char value) {
+  size_ += 1;
 
-    // Allocate new sidecar buffer and copy remaining part of sidecar to it.
-    AllocateBlock(std::max<size_t>(len, block_size_));
-    memcpy(blocks_.back().data(), data, len);
-    filled_bytes_in_last_block_ = len;
+  if (last_block_free_begin_ != last_block_free_end_) {
+    *last_block_free_begin_++ = value;
+    return;
   }
+
+  AppendToNewBlock(Slice(&value, 1));
+}
+
+// len_with_prefix is the total size, i.e. prefix size (1 byte) + data size.
+void WriteBuffer::AppendToNewBlock(char prefix, Slice slice) {
+  auto len_with_prefix = slice.size() + 1;
+  auto block_size = std::max(len_with_prefix, block_size_);
+  AllocateBlock(block_size);
+  auto& block = blocks_.back();
+  auto* block_start = block.data();
+  *block_start++ = prefix;
+  memcpy(block_start, slice.data(), --len_with_prefix);
+  last_block_free_begin_ = block_start + len_with_prefix;
+  last_block_free_end_ = block_start + block_size - 1;
 }
 
 void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {
@@ -65,15 +74,17 @@ void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {
   if (consumption_ && *consumption_) {
     consumption_->Add(block_size);
   }
-  filled_bytes_in_last_block_ = block_size;
+  last_block_free_begin_ = last_block_free_end_ = buffer.end();
 }
 
 void WriteBuffer::ShrinkLastBlock() {
   if (blocks_.empty()) {
     return;
   }
-  if (filled_bytes_in_last_block_) {
-    blocks_.back().Shrink(filled_bytes_in_last_block_);
+  auto& block = blocks_.back();
+  auto size = last_block_free_begin_ - block.data();
+  if (size) {
+    blocks_.back().Shrink(size);
   } else {
     blocks_.pop_back();
   }
@@ -83,6 +94,7 @@ void WriteBuffer::Take(WriteBuffer* source) {
   source->ShrinkLastBlock();
 
   if (source->blocks_.empty()) {
+    source->last_block_free_begin_ = source->last_block_free_end_ = nullptr;
     return;
   }
 
@@ -96,7 +108,7 @@ void WriteBuffer::Take(WriteBuffer* source) {
   if (consumption_ && *consumption_) {
     consumption_->Add(source->size_);
   }
-  filled_bytes_in_last_block_ = source->filled_bytes_in_last_block_;
+  last_block_free_begin_ = last_block_free_end_ = blocks_.back().end();
 
   source->Reset();
 }
@@ -106,7 +118,7 @@ void WriteBuffer::Reset() {
     consumption_->Add(-size_);
   }
 
-  filled_bytes_in_last_block_ = 0;
+  last_block_free_begin_ = last_block_free_end_ = nullptr;
   size_ = 0;
   blocks_.clear();
 }
@@ -208,12 +220,13 @@ void WriteBuffer::DoAppendTo(Out* out) const {
   for (size_t i = 0; i != last; ++i) {
     blocks_[i].AsSlice().AppendTo(out);
   }
-  out->append(blocks_[last].data(), filled_bytes_in_last_block_);
+  out->append(blocks_[last].data(), last_block_free_begin_ - blocks_[last].data());
 }
 
 void WriteBuffer::AppendTo(std::string* out) const {
   DoAppendTo(out);
 }
+
 void WriteBuffer::AssignTo(std::string* out) const {
   out->clear();
   DoAppendTo(out);
@@ -230,6 +243,7 @@ void WriteBuffer::AssignTo(faststring* out) const {
 std::string WriteBuffer::ToBuffer() const {
   std::string str;
   AssignTo(&str);
+  CHECK_EQ(str.size(), size_);
   return str;
 }
 
@@ -239,32 +253,45 @@ std::string WriteBuffer::ToBuffer(size_t begin, size_t end) const {
   return str;
 }
 
-WriteBufferPos WriteBuffer::Position() const {
+WriteBufferPos WriteBuffer::Position() {
   if (blocks_.empty()) {
-    return WriteBufferPos {
-      .index = 0,
-      .offset = 0,
-    };
+    AllocateBlock(block_size_);
+    last_block_free_begin_ = blocks_.front().data();
+    last_block_free_end_ = blocks_.front().end();
   }
   return WriteBufferPos {
     .index = blocks_.size() - 1,
-    .offset = filled_bytes_in_last_block_,
+    .address = last_block_free_begin_,
   };
 }
 
 size_t WriteBuffer::BytesAfterPosition(const WriteBufferPos& pos) const {
-  size_t result = filled_bytes_in_last_block_;
+  if (pos.address == nullptr) {
+    return size_;
+  }
   size_t last = blocks_.size() - 1;
+  size_t result = last_block_free_begin_ - blocks_[last].data();
   for (size_t index = pos.index; index != last; ++index) {
     result += blocks_[index].size();
   }
-  result -= pos.offset;
+  result -= pos.address - blocks_[pos.index].data();
   return result;
 }
 
 Slice WriteBuffer::FirstBlockSlice() const {
   return blocks_.size() > 1 ? blocks_[0].AsSlice()
-                            : Slice(blocks_[0].data(), filled_bytes_in_last_block_);
+                            : Slice(blocks_[0].data(), last_block_free_begin_);
+}
+
+void WriteBuffer::DoAppendSplit(char* out, size_t out_size, Slice value) {
+  memcpy(out, value.data(), out_size);
+  AppendToNewBlock(value.WithoutPrefix(out_size));
+}
+
+void WriteBuffer::DoAppendSplit(char* out, size_t out_size, char prefix, Slice slice) {
+  *out++ = prefix;
+  memcpy(out, slice.data(), --out_size);
+  AppendToNewBlock(slice.WithoutPrefix(out_size));
 }
 
 }  // namespace yb

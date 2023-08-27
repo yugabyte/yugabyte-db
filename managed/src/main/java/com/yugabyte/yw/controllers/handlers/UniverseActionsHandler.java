@@ -235,6 +235,7 @@ public class UniverseActionsHandler {
             mapper.writeValueAsString(universe.getUniverseDetails()), ResumeUniverse.Params.class);
     // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
+    taskParams.customerUUID = customer.getUuid();
 
     // Submit the task to resume the universe.
     TaskType taskType = TaskType.ResumeUniverse;
@@ -266,6 +267,15 @@ public class UniverseActionsHandler {
 
   public UUID updateLoadBalancerConfig(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+    if (!taskParams.getUniverseUUID().equals(universe.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Invalid Universe UUID in json: "
+              + taskParams.getUniverseUUID().toString()
+              + " Expected UUID: "
+              + universe.getUniverseUUID().toString());
+    }
+
     LOG.info(
         "Update load balancer config, universe: {} [ {} ] ",
         universe.getName(),

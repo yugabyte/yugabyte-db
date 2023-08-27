@@ -20,13 +20,13 @@ Use the `CREATE TYPE` statement to create a user-defined type in a database.  Th
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -34,11 +34,11 @@ Use the `CREATE TYPE` statement to create a user-defined type in a database.  Th
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_composite_type,create_enum_type,create_range_type,create_base_type,create_shell_type,composite_type_elem,range_type_option,base_type_option.grammar.md" %}}
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_type,create_composite_type,create_enum_type,create_range_type,create_shell_type,create_base_type,composite_type_elem,range_type_option,base_type_option.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_composite_type,create_enum_type,create_range_type,create_base_type,create_shell_type,composite_type_elem,range_type_option,base_type_option.diagram.md" %}}
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_type,create_composite_type,create_enum_type,create_range_type,create_shell_type,create_base_type,composite_type_elem,range_type_option,base_type_option.diagram.md" %}}
   </div>
 </div>
 
@@ -93,12 +93,12 @@ The order of options in creating range types and base types does not matter.  Ev
 - `like_type` specifies the type to copy over the `INTERNALLENGTH`, `PASSEDBYVALUE`, `ALIGNMENT`,
   and `STORAGE` values from.
 - `category` specifies the category code for this type.
-- `preferred` specifies whether this type is preferred for implicit casts in the same category.
+- `PREFERRED` specifies whether this type is preferred for implicit casts in the same category.
 - `default` specifies the default value of this type.
-- `element` specifies the elements this type, also making this type an array.
+- `element` Implies that the type being created is an array; this specifies the type of the array elements.
 - `delimiter` specifies the character used to separate array elements in the external textual
   representation of values of this type.
-- `collatable` specifies whether collation information may be passed to operations that use this
+- `COLLATABLE` specifies whether collation information may be passed to operations that use this
   type.
 
 ## Examples

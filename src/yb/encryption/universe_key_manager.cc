@@ -15,6 +15,8 @@
 
 #include "yb/util/status_format.h"
 
+#include "yb/util/debug-util.h"
+
 namespace yb {
 namespace encryption {
 
@@ -32,58 +34,32 @@ Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
   return universe_key_manager;
 }
 
-void UniverseKeyManager::SetUniverseKeys(const UniverseKeysPB& universe_keys) {
-  {
-    std::unique_lock<std::mutex> l(mutex_);
-    auto& keys_map = *universe_key_registry_.mutable_universe_keys();
-    for (const auto& entry : universe_keys.map()) {
-      auto encryption_params_res = EncryptionParams::FromSlice(entry.second);
-      if (!encryption_params_res.ok()) {
-        return;
-      }
-      EncryptionParamsPB params_pb;
-      (*encryption_params_res)->ToEncryptionParamsPB(&params_pb);
-      keys_map[entry.first] = params_pb;
-    }
-  }
-  cond_.notify_all();
-}
-
 void UniverseKeyManager::SetUniverseKeyRegistry(
     const UniverseKeyRegistryPB& universe_key_registry) {
-  {
-    std::unique_lock<std::mutex> l(mutex_);
-    universe_key_registry_ = universe_key_registry;
-    received_universe_keys_ = true;
-  }
-  cond_.notify_all();
+  std::lock_guard l(mutex_);
+  received_universe_key_registry_ = true;
+  universe_key_registry_ = universe_key_registry;
 }
 
 Result<EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
-  std::unique_lock<std::mutex> l(mutex_);
-  auto it = universe_key_registry_.universe_keys().find(version_id);
-  if (it == universe_key_registry_.universe_keys().end()) {
-    if (universe_key_registry_.universe_keys().empty()) {
-      l.unlock();
-      get_universe_keys_callback_();
-      l.lock();
-      it = universe_key_registry_.universe_keys().find(version_id);
-    }
-    if (it == universe_key_registry_.universe_keys().end()) {
-      return STATUS_SUBSTITUTE(
-          InvalidArgument, "Key with version number $0 does not exist", version_id);
-    }
+  std::lock_guard l(mutex_);
+  SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
+  auto universe_keys = universe_key_registry_.universe_keys();
+  auto it = universe_keys.find(version_id);
+  if (it == universe_keys.end()) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument, "Key with version number $0 does not exist", version_id);
   }
   return EncryptionParams::FromEncryptionParamsPB(it->second);
 }
 
 Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
-  std::unique_lock<std::mutex> l(mutex_);
-  cond_.wait(l, [&] { return received_universe_keys_; });
-  const auto it = universe_key_registry_.universe_keys().find(
-      universe_key_registry_.latest_version_id());
-  if (it == universe_key_registry_.universe_keys().end()) {
+  std::lock_guard l(mutex_);
+  SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
+  auto universe_keys = universe_key_registry_.universe_keys();
+  const auto it = universe_keys.find(universe_key_registry_.latest_version_id());
+  if (it == universe_keys.end()) {
     return STATUS(IllegalState, "Could not find a latest universe key.");
   }
 
@@ -93,14 +69,10 @@ Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
   return universe_key_params;
 }
 
-bool UniverseKeyManager::IsEncryptionEnabled() {
-  std::unique_lock<std::mutex> l(mutex_);
+Result<bool> UniverseKeyManager::IsEncryptionEnabled() {
+  std::lock_guard l(mutex_);
+  SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
   return universe_key_registry_.encryption_enabled();
-}
-
-bool UniverseKeyManager::ReceivedUniverseKeys() {
-  std::unique_lock<std::mutex> l(mutex_);
-  return received_universe_keys_;
 }
 
 } // namespace encryption

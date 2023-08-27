@@ -197,16 +197,14 @@ RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
     : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
 
 RedisInboundCall::~RedisInboundCall() {
-  Status status;
+  Status status =
+      STATUS(ServiceUnavailable, "Shutdown connection", "" /* msg2 */, Errno(ESHUTDOWN));
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
-    auto scheduling_status  = reactor->ScheduleReactorTask(
-        MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
-                                         reactor,
-                                         conn.get(),
-                                         status),
-                               conn, SOURCE_LOCATION()));
+    auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+        std::bind(&rpc::Reactor::DestroyConnection, reactor, conn.get(), status), conn,
+        SOURCE_LOCATION()));
     LOG_IF(DFATAL, !scheduling_status.ok()) << "Failed to schedule destroy";
   }
 }
@@ -218,7 +216,6 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 

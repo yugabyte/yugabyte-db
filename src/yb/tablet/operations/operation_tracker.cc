@@ -144,7 +144,7 @@ OperationTracker::OperationTracker(const std::string& log_prefix)
 }
 
 OperationTracker::~OperationTracker() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   CHECK_EQ(pending_operations_.size(), 0);
   if (mem_tracker_) {
     mem_tracker_->UnregisterFromParent();
@@ -181,7 +181,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
   // again, as it may disappear between now and then.
   State st;
   st.memory_footprint = driver_mem_footprint;
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   CHECK(pending_operations_.emplace(driver, st).second);
   return Status::OK();
 }
@@ -217,7 +217,7 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
   {
     // Remove the operation from the map, retaining the state for use
     // below.
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     state = FindOrDie(pending_operations_, driver);
     if (PREDICT_FALSE(pending_operations_.erase(driver) != 1)) {
       LOG_WITH_PREFIX(FATAL) << "Could not remove pending operation from map: "
@@ -243,7 +243,7 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
 }
 
 std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperations() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return GetPendingOperationsUnlocked();
 }
 
@@ -258,7 +258,7 @@ std::vector<scoped_refptr<OperationDriver>> OperationTracker::GetPendingOperatio
 
 
 size_t OperationTracker::TEST_GetNumPending() const {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   return pending_operations_.size();
 }
 

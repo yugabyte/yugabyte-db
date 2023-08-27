@@ -3,12 +3,12 @@ title: Built-in functions and operators [YSQL]
 headerTitle: Built-in functions and operators
 linkTitle: Built-in functions and operators
 description: YSQL supports all PostgreSQL-compatible built-in functions and operators.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: api-ysql-exprs
     parent: api-ysql
-    weight: 200
+    weight: 60
 aliases:
   - /preview/api/ysql/exprs/
 type: indexpage

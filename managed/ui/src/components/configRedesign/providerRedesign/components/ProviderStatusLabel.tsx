@@ -1,4 +1,3 @@
-import React from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import clsx from 'clsx';
 import { Variant } from '@material-ui/core/styles/createTypography';
@@ -29,6 +28,9 @@ const useStyles = makeStyles((theme) => ({
   },
   error: {
     color: '#e8473f'
+  },
+  deleting: {
+    color: '#FF6347'
   }
 }));
 
@@ -42,28 +44,37 @@ export const ProviderStatusLabel = ({
     case ProviderStatus.READY:
       return (
         <Typography variant={variant}>
-          <div className={clsx(classes.label, classes.ready)}>
+          <span className={clsx(classes.label, classes.ready)}>
             <i className="fa fa-check-circle" />
             {ProviderStatusTextLabel[providerStatus]}
-          </div>
+          </span>
         </Typography>
       );
     case ProviderStatus.UPDATING:
       return (
         <Typography variant={variant}>
-          <div className={clsx(classes.label, classes.inProgress)}>
+          <span className={clsx(classes.label, classes.inProgress)}>
             <i className="fa fa-spinner fa-spin" />
             {ProviderStatusTextLabel[providerStatus]}
-          </div>
+          </span>
         </Typography>
       );
     case ProviderStatus.ERROR:
       return (
         <Typography variant={variant}>
-          <div className={clsx(classes.label, classes.error)}>
+          <span className={clsx(classes.label, classes.error)}>
             <i className="fa fa-close" />
             {ProviderStatusTextLabel[providerStatus]}
-          </div>
+          </span>
+        </Typography>
+      );
+      case ProviderStatus.DELETING:
+      return (
+        <Typography variant={variant}>
+          <span className={clsx(classes.label, classes.deleting)}>
+          <i className="fa fa-spinner fa-spin" />
+            {ProviderStatusTextLabel[providerStatus]}
+          </span>
         </Typography>
       );
     default:

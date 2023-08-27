@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Alert } from 'react-bootstrap';
 import _ from 'lodash';
 import {
@@ -43,6 +43,7 @@ const initialState = {
   numZones: 0,
   numNodesConfigured: 0,
   numRegions: 0,
+  numRegionZonesConfigured: 0, // Tracking the number of regions for which zones are configured.
   numInstanceTypes: 0,
   numInstanceTypesConfigured: 0,
   ntpServers: [],
@@ -194,13 +195,15 @@ export default class OnPremConfiguration extends Component {
           Object.keys(response).forEach(
             (zoneCode) => (zonesMap[zoneCode] = response[zoneCode].uuid)
           );
+          const numRegionZonesConfigured = this.state.numRegionZonesConfigured + 1;
+          this.setState({ numRegionZonesConfigured: numRegionZonesConfigured });
           bootstrapSteps[currentStepIndex + 1].status = 'Running';
           // If Edit Case, then jump to success
           if (isEditingProvider) {
             this.resetEdit();
           } else if (isNonEmptyArray(config.nodes)) {
             this.props.createOnPremNodes(zonesMap, config);
-          } else {
+          } else if (numRegionZonesConfigured === this.state.numRegions) {
             this.props.createOnPremAccessKeys(
               this.state.providerUUID,
               this.state.regionsMap,

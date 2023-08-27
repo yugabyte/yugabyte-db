@@ -13,11 +13,32 @@
 
 #pragma once
 
-#include "yb/dockv/schema_packing.h"
-
 #include "yb/rocksdb/sst_dump_tool.h"
 
+#include "yb/tablet/tablet_metadata.h"
+
 namespace yb::tablet {
+
+class SchemaPackingProviderFromSuperblock : public docdb::SchemaPackingProvider {
+ public:
+  explicit SchemaPackingProviderFromSuperblock(RaftGroupReplicaSuperBlockPB superblock);
+
+  // After construction, must successfully call Init() before any other methods.
+  Status Init();
+
+  Result<docdb::CompactionSchemaInfo> CotablePacking(
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
+  Result<docdb::CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
+
+ private:
+  RaftGroupReplicaSuperBlockPB superblock_;
+  std::string primary_table_id_;
+  KvStoreInfo kv_store_;
+
+  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
+  Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
+};
 
 class KVFormatter : public rocksdb::DocDBKVFormatter {
  public:
@@ -27,7 +48,7 @@ class KVFormatter : public rocksdb::DocDBKVFormatter {
   Status ProcessArgument(const std::string& argument) override;
 
  private:
-  dockv::SchemaPackingStorage schema_packing_storage_{TableType::YQL_TABLE_TYPE};
+  std::unique_ptr<SchemaPackingProviderFromSuperblock> schema_packing_provider_;
 };
 
-} // namespace yb::tablet
+}  // namespace yb::tablet

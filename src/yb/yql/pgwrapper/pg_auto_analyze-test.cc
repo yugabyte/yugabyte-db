@@ -36,8 +36,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     PgMiniTestBase::SetUp();
-    FLAGS_ysql_enable_table_mutation_counter = true;
-    FLAGS_ysql_enable_auto_analyze_service = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_service) = true;
     ASSERT_OK(SET_FLAG(vmodule, "pg_auto_analyze*=5"));
   }
 
@@ -70,7 +70,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
 } // namespace
 
-TEST_F(PgAutoAnalyzeTest, YB_DISABLE_TEST_IN_TSAN(CheckTableMutationsCount)) {
+TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   auto conn = ASSERT_RESULT(Connect());
   std::string table1_name = "accounts";
   std::string table2_name = "depts";

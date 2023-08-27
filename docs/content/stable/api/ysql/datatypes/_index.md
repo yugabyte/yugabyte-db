@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes
     parent: api-ysql
-    weight: 400
+    weight: 80
 type: indexpage
 ---
 

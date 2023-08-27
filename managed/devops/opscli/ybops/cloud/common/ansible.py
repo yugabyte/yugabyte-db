@@ -119,6 +119,7 @@ class AnsibleProcess(object):
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
         offload = vars.pop("offload_ansible", False) and not disable_offloading
         ssh_key_type = parse_private_key(ssh_key_file)
+        remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
@@ -167,12 +168,12 @@ class AnsibleProcess(object):
             })
             if offload:
                 if vars_file is not None:
-                    copy_to_tmp(extra_vars, vars_file)
-                    vars_file = os.path.join("/tmp", os.path.basename(vars_file))
+                    copy_to_tmp(extra_vars, vars_file, remote_tmp_dir=remote_tmp_dir)
+                    vars_file = os.path.join(remote_tmp_dir, os.path.basename(vars_file))
                 if vault_password_file is not None:
-                    copy_to_tmp(extra_vars, vault_password_file)
+                    copy_to_tmp(extra_vars, vault_password_file, remote_tmp_dir=remote_tmp_dir)
                     vault_password_file = os.path.join(
-                        "/tmp", os.path.basename(vault_password_file))
+                        remote_tmp_dir, os.path.basename(vault_password_file))
 
                 devops_path = os.path.join(node_agent_home, "pkg", "devops")
                 thirdparty_path = os.path.join(node_agent_home, "pkg", "thirdparty")
@@ -240,9 +241,9 @@ class AnsibleProcess(object):
             playbook_args["yb_sudo_pass_file"] = sudo_pass_file
 
         if skip_tags is not None:
-            process_args.extend(["--skip-tags", skip_tags])
-        elif tags is not None:
-            process_args.extend(["--tags", tags])
+            process_args.extend(["--skip-tags", ','.join(skip_tags)])
+        if tags is not None:
+            process_args.extend(["--tags", ','.join(tags)])
 
         process_args.extend([
           "--user", ssh_user
@@ -286,14 +287,13 @@ class AnsibleProcess(object):
                                  env=env)
             stdout, stderr = p.communicate()
             rc = p.returncode
-            stdout = stdout.decode('utf-8')
         if print_output:
-            print(stdout)
+            print(stdout.decode('utf-8'))
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
                      f"{redacted_process_args} failed with return code {rc} " \
-                     f"and error '{stderr}'"
+                     f"and error '{stderr.decode('utf-8')}'"
 
             if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)

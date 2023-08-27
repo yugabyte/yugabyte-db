@@ -28,6 +28,7 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::vector;
 using std::string;
@@ -399,15 +400,13 @@ TEST_F(DocKeyTest, TestWriteId) {
 }
 
 struct CollectedIntent {
-  IntentStrength strength;
+  AncestorDocKey ancestor_doc_key;
   FullDocKey full_doc_key;
   KeyBytes intent_key;
   Slice value;
 
   std::string ToString() const {
-    return Format("{ strength: $0 full_doc_key: $1 intent_key: $2 value: $3 }",
-                  strength, full_doc_key, SubDocKey::DebugSliceToString(intent_key.AsSlice()),
-                  value.ToDebugHexString());
+    return YB_STRUCT_TO_STRING(ancestor_doc_key, full_doc_key, intent_key, value);
   }
 };
 
@@ -415,10 +414,13 @@ class IntentCollector {
  public:
   explicit IntentCollector(std::vector<CollectedIntent>* out) : out_(out) {}
 
-  Status operator()(
-      IntentStrength strength, FullDocKey full_doc_key, Slice value, KeyBytes* key, LastKey) {
+  Status operator()(AncestorDocKey ancestor_doc_key,
+                    FullDocKey full_doc_key,
+                    Slice value,
+                    KeyBytes* key,
+                    LastKey) {
     out_->push_back(CollectedIntent{
-      .strength = strength,
+      .ancestor_doc_key = ancestor_doc_key,
       .full_doc_key = full_doc_key,
       .intent_key = *key,
       .value = value
@@ -583,7 +585,7 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
 
           VLOG(1) << "Found intent: " << SubDocKey::DebugSliceToString(intent_slice)
                   << ", raw bytes: " << FormatSliceAsStr(intent_slice)
-                  << ", strength: " << intent.strength;
+                  << ", ancestor_doc_key: " << intent.ancestor_doc_key;
         }
       }
 
@@ -676,10 +678,10 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
         ASSERT_EQ(intent.full_doc_key, a.doc_key() == sub_doc_key.doc_key());
         ASSERT_EQ(expected_intents[i], decoded_intent_key);
         if (i < num_intents - 1) {
-          ASSERT_EQ(IntentStrength::kWeak, intent.strength);
+          ASSERT_EQ(AncestorDocKey::kTrue, intent.ancestor_doc_key);
           ASSERT_EQ(0, intent.value.size());
         } else {
-          ASSERT_EQ(IntentStrength::kStrong, intent.strength);
+          ASSERT_EQ(AncestorDocKey::kFalse, intent.ancestor_doc_key);
           ASSERT_GT(intent.value.size(), 0);
         }
       }

@@ -6,8 +6,6 @@ description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 image: /images/section_icons/develop/api-icon.png
 aliases:
-  - /develop/client-drivers/
-  - /preview/develop/client-drivers/
   - /preview/quick-start/build-apps/
 menu:
   preview:

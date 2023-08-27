@@ -29,19 +29,19 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HookInserter {
 
-  private static String HOOK_ROOT_PATH = "/tmp";
   private static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   private static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
 
   public static void addHookTrigger(
       TriggerType trigger,
+      List<UUID> hookUUIDs,
       AbstractTaskBase task,
       UniverseTaskParams universeParams,
       Collection<NodeDetails> nodes) {
     if (!task.confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks)) return;
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
-        getExecutionPlan(trigger, universeParams, task.runtimeConfigFactory, nodes);
+        getExecutionPlan(trigger, hookUUIDs, universeParams, task.runtimeConfigFactory, nodes);
 
     for (Pair<Hook, Collection<NodeDetails>> singleHookPlan : executionPlan) {
       Hook hook = singleHookPlan.getFirst();
@@ -55,7 +55,12 @@ public class HookInserter {
         RunHooks.Params taskParams = new RunHooks.Params();
         taskParams.creatingUser = universeParams.creatingUser;
         taskParams.hook = hook;
-        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.getName();
+        taskParams.hookPath =
+            task.confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath)
+                + "/"
+                + node.nodeUuid
+                + "-"
+                + hook.getName();
         taskParams.trigger = trigger;
         taskParams.nodeName = node.nodeName;
         taskParams.nodeUuid = node.nodeUuid;
@@ -71,9 +76,18 @@ public class HookInserter {
     }
   }
 
+  public static void addHookTrigger(
+      TriggerType trigger,
+      AbstractTaskBase task,
+      UniverseTaskParams universeParams,
+      Collection<NodeDetails> nodes) {
+    addHookTrigger(trigger, Collections.emptyList() /* hookUUIDs */, task, universeParams, nodes);
+  }
+
   // Get all the hooks and their targets, and then order them in natural order.
   private static List<Pair<Hook, Collection<NodeDetails>>> getExecutionPlan(
       TriggerType trigger,
+      List<UUID> hookUUIDs,
       UniverseTaskParams universeParams,
       RuntimeConfigFactory rConfig,
       Collection<NodeDetails> nodes) {
@@ -86,7 +100,7 @@ public class HookInserter {
 
     // Get global hooks
     HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null, null);
-    addHooksToExecutionPlan(executionPlan, globalScope, nodes, isSudoEnabled);
+    addHooksToExecutionPlan(executionPlan, globalScope, hookUUIDs, nodes, isSudoEnabled);
 
     // Get provider hooks
     // How:
@@ -103,13 +117,14 @@ public class HookInserter {
       List<NodeDetails> providerNodes = entry.getValue();
       HookScope providerScope =
           HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID, null);
-      addHooksToExecutionPlan(executionPlan, providerScope, providerNodes, isSudoEnabled);
+      addHooksToExecutionPlan(
+          executionPlan, providerScope, hookUUIDs, providerNodes, isSudoEnabled);
     }
 
     // Get universe hooks
     HookScope universeScope =
         HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, null);
-    addHooksToExecutionPlan(executionPlan, universeScope, nodes, isSudoEnabled);
+    addHooksToExecutionPlan(executionPlan, universeScope, hookUUIDs, nodes, isSudoEnabled);
 
     // Get the cluster hooks
     Map<UUID, List<NodeDetails>> nodeClusterMap = new HashMap<>();
@@ -122,7 +137,7 @@ public class HookInserter {
       List<NodeDetails> clusterNodes = entry.getValue();
       HookScope clusterScope =
           HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, clusterUUID);
-      addHooksToExecutionPlan(executionPlan, clusterScope, clusterNodes, isSudoEnabled);
+      addHooksToExecutionPlan(executionPlan, clusterScope, hookUUIDs, clusterNodes, isSudoEnabled);
     }
 
     // Sort in natural order
@@ -139,6 +154,7 @@ public class HookInserter {
   private static void addHooksToExecutionPlan(
       List<Pair<Hook, Collection<NodeDetails>>> executionPlan,
       HookScope hookScope,
+      List<UUID> hookUUIDs,
       Collection<NodeDetails> nodes,
       boolean isSudoEnabled) {
     if (hookScope == null) return;
@@ -147,7 +163,15 @@ public class HookInserter {
         log.debug("Sudo execution is not enabled, ignoring {}", hook.getName());
         continue;
       }
-      executionPlan.add(new Pair<Hook, Collection<NodeDetails>>(hook, nodes));
+      if (hookUUIDs != null && !hookUUIDs.isEmpty() && !hookUUIDs.contains(hook.getUuid())) {
+        log.debug(
+            "Hooks specified to run {} doesn't contain current hook {}, ignoring {}",
+            hookUUIDs,
+            hook.getUuid(),
+            hook.getName());
+        continue;
+      }
+      executionPlan.add(new Pair<>(hook, nodes));
     }
   }
 }

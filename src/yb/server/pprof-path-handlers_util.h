@@ -12,41 +12,57 @@
 
 #pragma once
 
-#ifdef YB_GOOGLE_TCMALLOC
+#if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
+#elif YB_GPERFTOOLS_TCMALLOC
+#include <gperftools/malloc_extension.h>
 #endif
 
 #include <cstdint>
 #include <string>
 #include <utility>
 
+#include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 
-DECLARE_bool(enable_process_lifetime_heap_profiling);
-
 namespace yb {
-
-#ifdef YB_GOOGLE_TCMALLOC
 
 struct SampleInfo {
   int64_t bytes;
   int64_t count;
 };
 
-typedef std::pair<std::string, SampleInfo> Sample;
+using SampleStack = std::string;
+typedef std::pair<SampleStack, SampleInfo> Sample;
+
+YB_DEFINE_ENUM(SampleOrder, (kCount)(kBytes));
+
+#if YB_GOOGLE_TCMALLOC
 
 tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes);
 
-// If peak_heap is set, gets the snapshot of the heap at peak memory usage.
-tcmalloc::Profile GetHeapSnapshot(bool peak_heap);
+enum HeapSnapshotType {
+  CURRENT_HEAP,
+  PEAK_HEAP
+};
 
-std::vector<Sample> AggregateAndSortProfile(const tcmalloc::Profile& profile, bool only_growth);
+// If peak_heap is set, gets the snapshot of the heap at peak memory usage.
+tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
+
+std::vector<Sample> AggregateAndSortProfile(
+    const tcmalloc::Profile& profile, bool only_growth, SampleOrder order);
+
+#endif // YB_GOOGLE_TCMALLOC
+
+#if YB_GPERFTOOLS_TCMALLOC
+
+std::vector<Sample> GetAggregateAndSortHeapSnapshot(SampleOrder order);
+
+#endif // YB_GPERFTOOLS_TCMALLOC
 
 void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
     const std::string& title, size_t max_call_stacks);
-
-#endif // YB_GOOGLE_TCMALLOC
 
 } // namespace yb

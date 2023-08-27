@@ -13,10 +13,12 @@
 
 #include "yb/tablet/transaction_loader.h"
 
-#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/dockv/intent.h"
+
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
@@ -59,10 +61,11 @@ class TransactionLoader::Executor {
  public:
   explicit Executor(
       TransactionLoader* loader,
-      RWOperationCounter* pending_op_counter)
-      : loader_(*loader), scoped_pending_operation_(pending_op_counter) {
-    metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(
-        loader_.entity_);
+      RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start)
+      : loader_(*loader),
+        scoped_pending_operation_(pending_op_counter_blocking_rocksdb_shutdown_start) {
+    metric_transaction_load_attempts_ =
+        METRIC_transaction_load_attempts.Instantiate(loader_.entity_);
   }
 
   bool Start(const docdb::DocDB& db) {
@@ -92,7 +95,7 @@ class TransactionLoader::Executor {
         return;
       }
 
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
       loader_.load_status_ = status;
       loader_.state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
     });
@@ -158,7 +161,7 @@ class TransactionLoader::Executor {
       // because if we set all_loaded_ to true between lines 1 and 2, the only time we would be able
       // to send a notification at line 2 as wait(...) releases the mutex, but then we would check
       // all_loaded_ and exit the loop at line 1.
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
     }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
@@ -256,7 +259,7 @@ class TransactionLoader::Executor {
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
         pending_apply_it != pending_applies_.end() ? &pending_apply_it->second : nullptr);
     {
-      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
     }
     loader_.load_cond_.notify_all();
@@ -276,7 +279,16 @@ class TransactionLoader::Executor {
       intents_iterator_.SeekToLast();
     }
     current_key_.RemoveLastByte();
-    while (intents_iterator_.Valid() && intents_iterator_.key().starts_with(current_key_)) {
+    // Fetch the last batch of the current transaction having a strong intent by backward scan of
+    // relevant portion in the reverse index section. During the backward scan, we break after
+    // processing the first encountered strong intent.
+    //
+    // Note: We explicitly check if the transaction id is a strict prefix of the intent key so as
+    // not process the transaction meta record and instead terminate the loop. Else, we would error
+    // while processing transactions that executed statements of type 'FOR KEY SHARE' alone, since
+    // such statements don't write strong intents.
+    while (intents_iterator_.Valid() && intents_iterator_.key().size() > current_key_.size() &&
+           intents_iterator_.key().starts_with(current_key_)) {
       auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
           << "Failed to decode intent while loading transaction " << id << ", "
@@ -361,8 +373,10 @@ TransactionLoader::TransactionLoader(
 TransactionLoader::~TransactionLoader() {
 }
 
-void TransactionLoader::Start(RWOperationCounter* pending_op_counter, const docdb::DocDB& db) {
-  executor_ = std::make_unique<Executor>(this, pending_op_counter);
+void TransactionLoader::Start(
+    RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
+    const docdb::DocDB& db) {
+  executor_ = std::make_unique<Executor>(this, pending_op_counter_blocking_rocksdb_shutdown_start);
   if (!executor_->Start(db)) {
     executor_ = nullptr;
   }

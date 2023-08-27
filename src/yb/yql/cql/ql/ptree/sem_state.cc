@@ -166,7 +166,7 @@ const ColumnDesc *SemState::hash_col() const {
 }
 
 const QLTypePtr& SemState::DefaultQLType() {
-  static const auto result = QLType::Create(UNKNOWN_DATA);
+  static const auto result = QLType::Create(DataType::UNKNOWN_DATA);
   return result;
 }
 

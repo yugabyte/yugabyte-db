@@ -24,7 +24,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
   @JsonCreator
   public SoftwareUpgradeParams(
-      @JsonProperty(value = "ybSoftwareVersion", required = true) String ybSoftwareVersion) {
+      @JsonProperty(value = "ybSoftwareVersion", required = false) String ybSoftwareVersion) {
     this.ybSoftwareVersion = ybSoftwareVersion;
   }
 

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PureComponent, Fragment } from 'react';
+import { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import moment from 'moment';
@@ -296,7 +296,7 @@ class HealthInfoPanel extends PureComponent {
             <span className="text-lightgray text-light">
               <i className={'fa fa-clock-o'}></i> Updated{' '}
               <span className={'text-dark text-normal'}>
-                <FormattedRelative value={lastUpdateDate} />
+                <FormattedRelative value={lastUpdateDate} unit="day" />
               </span>
             </span>
           ) : null
@@ -603,7 +603,6 @@ export default class UniverseOverviewNew extends Component {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
     const isKubernetes = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
-    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
     const subTab = isKubernetes ? 'container' : 'server';
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
@@ -627,9 +626,7 @@ export default class UniverseOverviewNew extends Component {
               noMargin
               headerRight={
                 isNonEmptyObject(universeInfo) ? (
-                  <Link
-                    to={`/universes/${universeInfo.universeUUID}/metrics?${metricTabPath}=${subTab}`}
-                  >
+                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?tab=${subTab}`}>
                     Details
                   </Link>
                 ) : null
@@ -655,7 +652,6 @@ export default class UniverseOverviewNew extends Component {
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
-    const metricTabPath = this.props.isTopKMetricsEnabled ? 'tab' : 'subtab';
 
     return (
       <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>
@@ -670,9 +666,7 @@ export default class UniverseOverviewNew extends Component {
                 noMargin
                 headerLeft={'CPU Usage'}
                 headerRight={
-                  <Link
-                    to={`/universes/${universeInfo.universeUUID}/metrics?${metricTabPath}=${subTab}`}
-                  >
+                  <Link to={`/universes/${universeInfo.universeUUID}/metrics?tab=${subTab}`}>
                     Details
                   </Link>
                 }

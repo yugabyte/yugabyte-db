@@ -2,7 +2,8 @@ import axios, { Canceler } from 'axios';
 import {
   YBProviderMutation,
   YBProvider,
-  InstanceTypeMutation
+  InstanceTypeMutation,
+  RegionMetadataResponse
 } from '../../components/configRedesign/providerRedesign/types';
 import {
   HostInfo,
@@ -28,6 +29,10 @@ import {
 } from './dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { UniverseTableFilters } from '../../actions/xClusterReplication';
+import {
+  KubernetesProvider,
+  ProviderCode
+} from '../../components/configRedesign/providerRedesign/constants';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -69,6 +74,14 @@ export const hostInfoQueryKey = {
   ALL: ['hostInfo']
 };
 
+export const regionMetadataQueryKey = {
+  ALL: ['regionMetadata'],
+  detail: (providerCode: ProviderCode, kubernetesProvider?: KubernetesProvider) => [
+    ...regionMetadataQueryKey.ALL,
+    `${providerCode}${kubernetesProvider ? `_${kubernetesProvider}` : ''}`
+  ]
+};
+
 export const universeQueryKey = {
   ALL: ['universe'],
   detail: (universeUUID: string | undefined) => [...universeQueryKey.ALL, universeUUID],
@@ -93,6 +106,16 @@ export const instanceTypeQueryKey = {
 export const suggestedKubernetesConfigQueryKey = {
   ALL: ['suggestedKubernetesConfig']
 };
+
+export const xClusterQueryKey = {
+  ALL: ['xCluster'],
+  detail: (xClusterConfigUUID: string) => [...xClusterQueryKey.ALL, xClusterConfigUUID]
+};
+
+export const ApiTimeout = {
+  FETCH_TABLE_INFO: 20_000,
+  FETCH_XCLUSTER_CONFIG: 120_000
+} as const;
 
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
@@ -216,6 +239,18 @@ class ApiService {
     } else {
       return Promise.reject('Failed to fetch provider regions: No provider UUID provided.');
     }
+  };
+
+  fetchRegionMetadata = (
+    providerCode: ProviderCode,
+    kubernetesProvider?: KubernetesProvider
+  ): Promise<RegionMetadataResponse> => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/region_metadata/${providerCode}`;
+    return axios
+      .get<RegionMetadataResponse>(requestURL, {
+        params: { subType: kubernetesProvider }
+      })
+      .then((response) => response.data);
   };
 
   createInstanceType = (providerUUID: string, instanceType: InstanceTypeMutation) => {
@@ -429,6 +464,11 @@ class ApiService {
   acknowledgeAlert = (uuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
     return axios.post(requestURL, { uuids: [uuid] }).then((res) => res.data);
+  };
+
+  importReleases = (payload: any) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
+    return axios.post(requestURL, payload).then((res) => res.data);
   };
 }
 

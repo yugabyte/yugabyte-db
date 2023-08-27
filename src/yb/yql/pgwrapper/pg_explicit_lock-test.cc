@@ -16,6 +16,9 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
+
 namespace yb {
 namespace pgwrapper {
 
@@ -23,15 +26,13 @@ template<IsolationLevel level>
 class PgExplicitLockTest : public PgMiniTestBase {
  protected:
   void BeforePgProcessStart() override {
-    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
   }
 
   void TestRowLockInJoin() {
-    PGConn join_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(join_conn.Execute("SET yb_transaction_priority_upper_bound=0.4"));
-    PGConn misc_conn = ASSERT_RESULT(Connect());
-    PGConn select_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(select_conn.Execute("SET yb_transaction_priority_lower_bound=0.5"));
+    auto join_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    auto misc_conn = ASSERT_RESULT(Connect());
+    auto select_conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
 
     // Set up tables
     ASSERT_OK(misc_conn.Execute(
@@ -102,6 +103,14 @@ class PgExplicitLockTest : public PgMiniTestBase {
 
 class PgExplicitLockTestSerializable
     : public PgExplicitLockTest<IsolationLevel::SERIALIZABLE_ISOLATION> {
+ protected:
+  void BeforePgProcessStart() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
+    PgExplicitLockTest::BeforePgProcessStart();
+  }
 };
 
 class PgExplicitLockTestSnapshot : public PgExplicitLockTest<IsolationLevel::SNAPSHOT_ISOLATION> {

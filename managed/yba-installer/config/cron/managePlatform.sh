@@ -17,7 +17,7 @@ process_name="yb-platform"
 #Location of pgrep utility
 PGREP="/usr/bin/pgrep"
 
-export JAVA_HOME="$SOFTWARE_ROOT/yba_installer/jdk8u362-b09"
+export JAVA_HOME="$SOFTWARE_ROOT/yba_installer/jdk-17.0.7+7"
 
 #Initially, on startup do create a testfile to indicate that the process
 #need to be monitored. If you dont want the process to be monitored, then

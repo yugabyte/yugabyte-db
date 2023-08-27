@@ -195,10 +195,19 @@ class PartitionSchema {
     std::vector<RangeSplit> splits;
 
     friend bool operator==(const RangeSchema&, const RangeSchema&) = default;
+
+    size_t DynamicMemoryUsage() const {
+      size_t size = sizeof(*this);
+      for (auto& split : splits) {
+        size += split.column_bounds.size();
+      }
+      size += (column_ids.size() * sizeof(ColumnId));
+      return size;
+    }
   };
 
   static constexpr int32_t kPartitionKeySize = 2;
-  static constexpr int32_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
+  static constexpr uint16_t kMaxPartitionKey = std::numeric_limits<uint16_t>::max();
 
   // Deserializes a protobuf message into a partition schema.
   static Status FromPB(const PartitionSchemaPB& pb,
@@ -302,6 +311,9 @@ class PartitionSchema {
   static Result<std::string> GetEncodedKeyPrefix(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
 
+  // Returns inclusive min and max hash code for the partition.
+  static std::pair<uint16_t, uint16_t> GetHashPartitionBounds(const Partition& partition);
+
   // YugaByte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max_partition_key] range into the requested number of intervals.
@@ -373,6 +385,17 @@ class PartitionSchema {
   static boost::optional<std::pair<Partition, Partition>> SplitHashPartitionForStatusTablet(
       const Partition& partition);
 
+  size_t DynamicMemoryUsage() const {
+    size_t size = sizeof(*this) + range_schema_.DynamicMemoryUsage();
+    for (auto& hash_bucket_schema : hash_bucket_schemas_) {
+      size += hash_bucket_schema.DynamicMemoryUsage();
+    }
+    if (hash_schema_) {
+      size += sizeof(hash_schema_);
+    }
+    return size;
+  }
+
  private:
 
   struct HashBucketSchema {
@@ -381,6 +404,10 @@ class PartitionSchema {
     uint32_t seed;
 
     friend bool operator==(const HashBucketSchema&, const HashBucketSchema&) = default;
+
+    size_t DynamicMemoryUsage() const {
+      return sizeof(*this) + (column_ids.size() * sizeof(ColumnId));
+    }
   };
 
   // Convertion between PB and partition schema.
@@ -393,7 +420,7 @@ class PartitionSchema {
   // the [ hash(0), hash(max_partition_key) ] range equally into the requested number of intervals.
   Status CreateHashPartitions(int32_t num_tablets,
                               std::vector<Partition>* partitions,
-                              int32_t max_partition_key = kMaxPartitionKey) const;
+                              uint16_t max_partition_key = kMaxPartitionKey) const;
 
   // Creates the set of table partitions using primary-key range schema. In this schema, we divide
   // the table by given ranges in the partitions vector.

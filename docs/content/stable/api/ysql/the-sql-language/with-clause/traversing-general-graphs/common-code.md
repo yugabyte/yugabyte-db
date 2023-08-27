@@ -513,7 +513,7 @@ $body$;
 
 ## Create a procedure and a function for measuring elapsed wall-clock time
 
-The code that the section [Stress testing different _find_paths()_ implementations on maximally connected graphs](../stress-test/) presents needs to compare the times that alternative implementations take to complete. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. So you need a SQL scheme to start a stopwatch and later to read it.
+The code that the section [Stress testing different _find_paths()_ implementations on maximally connected graphs](../stress-test/) presents needs to compare the times that alternative implementations take to complete. The \\_timing on_ meta-command doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ meta-command doesn't redirect _stderr_ to the spool file. So you need a SQL scheme to start a stopwatch and later to read it.
 
 The section [Case study—implementing a stopwatch with SQL](../../../../datatypes/type_datetime/stopwatch/) within the overall [Date and time data types](../../../../datatypes/type_datetime/) major section shows you how to implement a SQL stopwatch that allows you to start it with the procedure _start_stopwatch()_ before starting what you want to time and to read it with the function _stopwatch_reading()_ when what you want to time finishes. The result of selecting this function goes to the spool file along with all other query results.
 

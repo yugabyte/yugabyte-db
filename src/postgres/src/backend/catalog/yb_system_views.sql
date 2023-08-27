@@ -274,7 +274,37 @@ CREATE VIEW pg_publication_tables AS
     WHERE C.oid IN (SELECT relid FROM pg_get_publication_tables(P.pubname));
 
 CREATE VIEW pg_locks AS
-    SELECT * FROM pg_lock_status() AS L;
+SELECT l.locktype,
+       l.database,
+       l.relation,
+       null::int                  AS page,
+       null::smallint             AS tuple,
+       null::text                 AS virtualxid,
+       null::xid                  AS transactionid,
+       null::oid                  AS classid,
+       null::oid                  AS objid,
+       null::smallint             AS objsubid,
+       null::text                 AS virtualtransaction,
+       l.pid,
+       array_to_string(mode, ',') AS mode,
+       l.granted,
+       l.fastpath,
+       l.waitstart,
+       l.waitend,
+       jsonb_build_object('node', l.node,
+                          'transactionid', l.transaction_id,
+                          'subtransaction_id', l.subtransaction_id,
+                          'is_explicit', l.is_explicit,
+                          'tablet_id', l.tablet_id,
+                          'blocked_by', l.blocked_by,
+                          'keyrangedetails', jsonb_build_object(
+                                  'cols', to_jsonb(l.hash_cols || l.range_cols),
+                                  'attnum', l.attnum,
+                                  'column_id', l.column_id,
+                                  'multiple_rows_locked', l.multiple_rows_locked
+                              )
+           )                      AS ybdetails
+FROM yb_lock_status(null, null) AS l;
 
 CREATE VIEW pg_cursors AS
     SELECT * FROM pg_cursor() AS C;
@@ -721,12 +751,13 @@ CREATE VIEW pg_stat_activity AS
             S.wait_event,
             S.state,
             S.backend_xid,
-            s.backend_xmin,
+            S.backend_xmin,
             S.query,
             S.backend_type,
             yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
             yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
-            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes
+            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
+            S.yb_backend_xid
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)
@@ -1343,3 +1374,4 @@ GRANT pg_stat_scan_tables TO pg_monitor;
 --
 REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;

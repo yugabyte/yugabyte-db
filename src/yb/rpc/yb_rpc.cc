@@ -272,12 +272,10 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
-  Slice source(call_data->data(), call_data->size());
-  RETURN_NOT_OK(ParseYBMessage(source, &header_, &serialized_request_));
+  RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
-  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
 
   // Adopt the service/method info from the header as soon as it's available.
@@ -296,13 +294,14 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
   resp_hdr.set_is_error(!is_success);
   sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
 
-  response_buf_ = VERIFY_RESULT(SerializeRequest(
-      body_size, sidecars_.size(), resp_hdr, response));
+  response_buf_ = VERIFY_RESULT(SerializeRequest(body_size, sidecars_.size(), resp_hdr, response));
+  response_data_memory_usage_ = response_buf_.size();
+
   return Status::OK();
 }
 
 string YBInboundCall::ToString() const {
-  std::lock_guard<simple_spinlock> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!cached_to_string_.empty()) {
     return cached_to_string_;
   }
@@ -440,6 +439,10 @@ void YBInboundCall::Respond(AnyMessageConstPtr response, bool is_success) {
 Slice YBInboundCall::method_name() const {
   auto parsed_remote_method = ParseRemoteMethod(header_.remote_method);
   return parsed_remote_method.ok() ? parsed_remote_method->method : Slice();
+}
+
+Result<RefCntSlice> YBInboundCall::ExtractSidecar(size_t idx) const {
+  return received_sidecars_.Extract(request_data_.buffer(), idx);
 }
 
 Status YBOutboundConnectionContext::HandleCall(

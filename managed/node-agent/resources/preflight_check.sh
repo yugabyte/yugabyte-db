@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 check_type="provision"
+node_agent_mode=false
 airgap=false
 install_node_exporter=true
 skip_ntp_check=false
@@ -36,8 +37,6 @@ ysql_server_rpc_port="5433"
 node_exporter_port="9300"
 
 preflight_provision_check() {
-
-
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
     # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
@@ -191,6 +190,7 @@ check_package_installed() {
 }
 
 check_binaries_installed() {
+  check_binary_installed "chronyc"
   if [[ "$is_aarch64" = false ]]; then
     check_binary_installed "azcopy" # Optional.
   fi
@@ -201,12 +201,8 @@ check_binaries_installed() {
 
 check_binary_installed() {
   binary_name=$1
-  binary_exists=false
-  result="type -P $binary_name | grep $binary_name"
-  if [[ -n "$result" ]]; then
-    binary_exists=true
-  fi
-  update_result_json "$binary_name" "$binary_exists"
+  command -v $binary_name >/dev/null 2>&1;
+  update_result_json_with_rc "$binary_name" "$?"
 }
 
 preflight_configure_check() {
@@ -434,6 +430,9 @@ while [[ $# -gt 0 ]]; do
       check_type="$2"
       shift
     ;;
+    --node_agent_mode)
+      node_agent_mode=true
+    ;;
     --airgap)
       airgap=true
     ;;
@@ -532,4 +531,19 @@ else
   preflight_configure_check >/dev/null 2>&1
 fi
 
-echo "{$result_kvs}"
+if [[ "$node_agent_mode" == "false" ]]; then
+  python - "{$result_kvs}" <<EOF
+import json
+import sys
+dict=json.loads(sys.argv[1])
+keys = list(dict.keys())
+keys.sort()
+idx = 1
+for key in keys:
+  val = dict[key].get("value")
+  print('{}. {} is {}'.format(idx, key, val))
+  idx += 1
+EOF
+else
+  echo "{$result_kvs}"
+fi

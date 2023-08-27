@@ -41,7 +41,7 @@ EncryptionManager::EncryptionManager()
 Status EncryptionManager::AddUniverseKeys(
     const AddUniverseKeysRequestPB* req, AddUniverseKeysResponsePB* resp) {
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     for (const auto& entry : req->universe_keys().map()) {
       (*universe_keys_->mutable_map())[entry.first] = entry.second;
     }
@@ -54,11 +54,30 @@ Status EncryptionManager::AddUniverseKeys(
 Status EncryptionManager::GetUniverseKeyRegistry(const GetUniverseKeyRegistryRequestPB* req,
                                                  GetUniverseKeyRegistryResponsePB* resp) {
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     *resp->mutable_universe_keys() = *universe_keys_;
   }
   LOG(INFO) << "Responding to GetUniverseKeyRegistry request with key ids: "
             << UniverseKeyIdsString();
+
+  return Status::OK();
+}
+
+Status EncryptionManager::GetFullUniverseKeyRegistry(const EncryptionInfoPB& encryption_info,
+                                                     GetFullUniverseKeyRegistryResponsePB* resp) {
+  Slice registry(encryption_info.universe_key_registry_encoded());
+  std::string decrypted_registry;
+  if (encryption_info.encryption_enabled()) {
+    // Decrypt the universe key registry.
+    auto universe_key = VERIFY_RESULT(GetLatestUniverseKey(&encryption_info));
+    decrypted_registry = VERIFY_RESULT(DecryptUniverseKeyRegistry(registry, Slice(universe_key)));
+    registry = Slice(decrypted_registry);
+  } // Otherwise, the registry should already be in decrypted form.
+  auto universe_key_registry =
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(registry));
+
+  *resp->mutable_universe_key_registry() = universe_key_registry;
+
   return Status::OK();
 }
 
@@ -66,7 +85,7 @@ Status EncryptionManager::HasUniverseKeyInMemory(
     const HasUniverseKeyInMemoryRequestPB* req, HasUniverseKeyInMemoryResponsePB* resp) {
   bool has_key;
   {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     has_key = universe_keys_->map().count(req->version_id()) != 0;
   }
   resp->set_has_key(has_key);
@@ -188,7 +207,7 @@ Status EncryptionManager::FillHeartbeatResponseEncryption(
 
 void EncryptionManager::PopulateUniverseKeys(
       const encryption::UniverseKeysPB& universe_key_registry) {
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+  std::lock_guard l(universe_key_mutex_);
   for (const auto& entry : universe_key_registry.map()) {
     (*universe_keys_->mutable_map())[entry.first] = entry.second;
   }
@@ -196,6 +215,8 @@ void EncryptionManager::PopulateUniverseKeys(
 
 Result<std::string> EncryptionManager::GetLatestUniverseKey(
     const EncryptionInfoPB* encryption_info) {
+  RSTATUS_DCHECK(encryption_info->encryption_enabled(), IllegalState,
+      "Attempts to fetch the latest universe key under the EAR have been disabled");
   return GetKeyFromParams(encryption_info->key_in_memory(),
                           encryption_info->key_path(),
                           encryption_info->latest_version_id());
@@ -209,7 +230,7 @@ Result<std::string> EncryptionManager::GetUniverseKeyFromRotateRequest(
 std::string EncryptionManager::UniverseKeyIdsString() {
   std::string key_ids;
   bool first = true;
-  std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+  std::lock_guard l(universe_key_mutex_);
   for (const auto& p : universe_keys_->map()) {
     if (first) {
       first = false;
@@ -224,7 +245,7 @@ std::string EncryptionManager::UniverseKeyIdsString() {
 Result<std::string> EncryptionManager::GetKeyFromParams(
     bool in_memory, const std::string& key_path, const std::string& version_id) {
   if (in_memory) {
-    std::lock_guard<simple_spinlock> l(universe_key_mutex_);
+    std::lock_guard l(universe_key_mutex_);
     const auto& it = universe_keys_->map().find(version_id);
     if (it == universe_keys_->map().end()) {
       return STATUS_SUBSTITUTE(NotFound, "Could not find key with version $0", version_id);

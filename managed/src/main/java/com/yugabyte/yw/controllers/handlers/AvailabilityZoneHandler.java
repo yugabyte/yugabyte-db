@@ -26,6 +26,7 @@ public class AvailabilityZoneHandler {
   @Inject private ProviderValidator providerValidator;
 
   @Transactional
+  @Deprecated
   public List<AvailabilityZone> createZones(Region region, List<AvailabilityZoneData> azDataList) {
     List<AvailabilityZone> result = new ArrayList<>();
     for (AvailabilityZoneData azData : azDataList) {
@@ -36,6 +37,20 @@ public class AvailabilityZoneHandler {
       result.add(az);
     }
     return result;
+  }
+
+  @Transactional
+  public AvailabilityZone createZone(Region region, AvailabilityZone zone) {
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(
+            region,
+            zone.getCode(),
+            zone.getName(),
+            zone.getSubnet(),
+            zone.getSecondarySubnet(),
+            zone.getDetails());
+    providerValidator.validate(az, region.getProvider().getCode());
+    return az;
   }
 
   public AvailabilityZone editZone(

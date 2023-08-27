@@ -12,6 +12,7 @@
 //
 
 #include "yb/client/client_master_rpc.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -34,6 +35,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -47,13 +50,16 @@ using namespace std::literals;
 
 DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
+DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
@@ -77,11 +83,12 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
+  void TestCQLPreparedStmtStats();
 };
 
 TEST_F(CqlTest, ProcessorsLimit) {
   constexpr int kSessions = 10;
-  FLAGS_cql_processors_limit = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_processors_limit) = 1;
 
   std::vector<CassandraSession> sessions;
   bool has_failures = false;
@@ -221,7 +228,7 @@ TEST_F(CqlTest, TestDeleteMapKey) {
 }
 
 TEST_F(CqlTest, Timeout) {
-  FLAGS_client_read_write_timeout_ms = 5000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5000 * kTimeMultiplier;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -229,7 +236,7 @@ TEST_F(CqlTest, Timeout) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_DelayUpdate(100ms);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(100ms);
   }
 
   auto prepared =
@@ -297,7 +304,7 @@ TEST_F(CqlTest, RecreateTableWithInserts) {
 class CqlThreeMastersTest : public CqlTest {
  public:
   void SetUp() override {
-    FLAGS_partitions_vtable_cache_refresh_secs = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_partitions_vtable_cache_refresh_secs) = 0;
     CqlTest::SetUp();
   }
 
@@ -342,7 +349,7 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
 }
 
 TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
-  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
@@ -354,7 +361,7 @@ TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
   auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   ASSERT_OK(StepDown(peer, std::string(), ForceStepDown::kTrue));
   LOG(INFO) << "Insert";
-  FLAGS_client_read_write_timeout_ms = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5000;
   bool has_ok = false;
   for (int i = 0; i != 3; ++i) {
     auto stmt = prepared.Bind();
@@ -388,10 +395,10 @@ TEST_F(CqlTest, TestTruncateTable) {
 }
 
 TEST_F(CqlTest, CompactDeleteMarkers) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
-  FLAGS_TEST_transaction_ignore_applying_probability = 1.0;
-  FLAGS_cleanup_intents_sst_files = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_intents_sst_files) = false;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -402,7 +409,7 @@ TEST_F(CqlTest, CompactDeleteMarkers) {
       "END TRANSACTION;"));
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 42"));
   ASSERT_OK(cluster_->FlushTablets());
-  FLAGS_TEST_transaction_ignore_applying_probability = 0.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
   ASSERT_OK(WaitFor([this] {
     auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : list) {
@@ -462,7 +469,7 @@ TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
   ASSERT_OK(cluster_->CompactTablets());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto* db = peer->tablet()->TEST_db();
+    auto* db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }
@@ -563,26 +570,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
 
   // Find the counters for the tablet leader.
-  scoped_refptr<Counter> total_keys;
-  scoped_refptr<Counter> obsolete_keys;
-  scoped_refptr<Counter> obsolete_past_cutoff;
+  tablet::TabletMetrics* tablet_metrics = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
     auto* metrics = peer->tablet()->metrics();
-    if (!metrics || metrics->docdb_keys_found->value() == 0) {
+    if (!metrics || metrics->Get(tablet::TabletCounters::kDocDBKeysFound) == 0) {
       continue;
     }
-    total_keys = metrics->docdb_keys_found;
-    obsolete_keys = metrics->docdb_obsolete_keys_found;
-    obsolete_past_cutoff = metrics->docdb_obsolete_keys_found_past_cutoff;
+    tablet_metrics = metrics;
   }
   // Ensure we've found the tablet leader, and that we've seen 10 total keys (no obsolete).
-  ASSERT_NE(total_keys, nullptr);
+  ASSERT_NE(tablet_metrics, nullptr);
   auto expected_total_keys = kNumRows;
   auto expected_obsolete_keys = 0;
   auto expected_obsolete_past_cutoff = 0;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Delete one row, then flush.
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 1;"));
@@ -594,9 +602,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   // the history cutoff window.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Wait 1 second for history retention to expire. Then try reading again. Expect 1 obsolete.
   std::this_thread::sleep_for(1s);
@@ -604,9 +617,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 1;
   expected_obsolete_past_cutoff += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Set history retention to 900 for the rest of the test to make sure we don't exceed it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 900;
@@ -618,17 +636,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(cluster_->FlushTablets());
   expected_total_keys += 3;
   expected_obsolete_keys += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Do another full range query. Obsolete keys increases by 3, total keys by 10.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 3;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 }
 
 TEST_F(CqlTest, ManyColumns) {
@@ -734,7 +762,8 @@ TEST_F(CqlTest, AlteredSchemaVersion) {
 }
 
 void CqlTest::TestAlteredPrepare(bool metadata_in_exec_resp) {
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
@@ -780,10 +809,138 @@ TEST_F(CqlTest, AlteredPrepare_MetadataInExecResp) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(CqlTest, TestCQLPreparedStmtStats) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  EasyCurl curl;
+  faststring buf;
+  std::vector<Endpoint> addrs;
+  CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+  LOG(INFO) << "Create Table";
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
+
+  LOG(INFO) << "Prepare";
+  auto sel_prepared = ASSERT_RESULT(session.Prepare("SELECT * FROM t1 WHERE i = ?"));
+  auto ins_prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t1 (i, j) VALUES (?, ?)"));
+
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(session.Execute(ins_prepared.Bind().Bind(0, i).Bind(1, i)));
+  }
+
+  for (int i = 0; i < 9; i += 2) {
+    CassandraResult res =  ASSERT_RESULT(
+        session.ExecuteWithResult(sel_prepared.Bind().Bind(0, i)));
+    ASSERT_EQ(res.RenderToString(), strings::Substitute("$0,$1", i, i));
+  }
+
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+  JsonReader r(buf.ToString());
+  ASSERT_OK(r.Init());
+  std::vector<const rapidjson::Value*> stmt_stats;
+  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
+  ASSERT_EQ(2, stmt_stats.size());
+
+  const rapidjson::Value* insert_stat = stmt_stats[1];
+  string insert_query;
+  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
+
+  int64 insert_num_calls = 0;
+  ASSERT_OK(r.ExtractInt64(insert_stat, "calls", &insert_num_calls));
+  ASSERT_EQ(10, insert_num_calls);
+
+  const rapidjson::Value* select_stat = stmt_stats[0];
+  string select_query;
+  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
+
+  int64 select_num_calls = 0;
+  ASSERT_OK(r.ExtractInt64(select_stat, "calls", &select_num_calls));
+  ASSERT_EQ(5, select_num_calls);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::vector<Endpoint> addrs;
+  CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+
+  FLAGS_cql_unprepared_stmts_entries_limit = 205;
+  const string create_table_stmt = "CREATE TABLE t1 (i INT PRIMARY KEY, j INT)";
+  const string insert_stmt_1 = "INSERT INTO t1 (i, j) VALUES (1,11)";
+  const string insert_stmt_2 = "INSERT INTO t1 (i, j) VALUES (2,22)";
+  const string select_stmt_1 = "SELECT j FROM t1 WHERE i = 1";
+  const string select_stmt_2 = "SELECT j FROM t1 WHERE i = 2";
+
+  LOG(INFO) << "Create table";
+  ASSERT_OK(session.ExecuteQuery(create_table_stmt));
+
+  LOG(INFO) << "Insert statements";
+  ASSERT_OK(session.ExecuteQuery(insert_stmt_1));
+  ASSERT_OK(session.ExecuteQuery(insert_stmt_2));
+
+  LOG(INFO) << "Select statements";
+  const int num_select_queries = 100;
+  for (int i = 0; i < num_select_queries; i++) {
+    // We alternately execute the two select queries.
+    ASSERT_OK(session.ExecuteQuery(i&1 ? select_stmt_1 : select_stmt_2));
+  }
+
+  EasyCurl curl;
+  faststring buf;
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+
+  JsonReader r(buf.ToString());
+  ASSERT_OK(r.Init());
+  std::vector<const rapidjson::Value*> stmt_stats;
+  ASSERT_OK(r.ExtractObjectArray(r.root(), "unprepared_statements", &stmt_stats));
+
+  string query_text;
+  int64 obtained_num_calls = 0;
+  for (auto const& stmt_stat : stmt_stats) {
+    ASSERT_OK(r.ExtractString(stmt_stat, "query", &query_text));
+    if (query_text == create_table_stmt) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == insert_stmt_1) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == insert_stmt_2) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == select_stmt_1) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(num_select_queries/2, obtained_num_calls);
+    } else if (query_text == select_stmt_2) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(num_select_queries/2, obtained_num_calls);
+    }
+  }
+
+  // reset the counters and verify
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
+                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                              ToString(addrs[0])), &buf));
+
+  JsonReader json_post_reset(buf.ToString());
+  ASSERT_OK(json_post_reset.Init());
+  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
+  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
+                                               &stmt_stats_post_reset));
+  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 void CqlTest::TestAlteredPrepareWithPaging(bool check_schema_in_paging,
                                            bool metadata_in_exec_resp) {
-  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) =
+      check_schema_in_paging;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -908,21 +1065,22 @@ void CqlTest::TestPrepareWithDropTableWithPaging() {
 }
 
 TEST_F(CqlTest, PrepareWithDropTableWithPaging) {
-  FLAGS_cql_check_table_schema_in_paging_state = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = true;
   TestPrepareWithDropTableWithPaging();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(CqlTest, PrepareWithDropTableWithPaging_NoSchemaCheck) {
-  FLAGS_cql_check_table_schema_in_paging_state = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = false;
   TestPrepareWithDropTableWithPaging();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 void CqlTest::TestAlteredPrepareForIndexWithPaging(
     bool check_schema_in_paging, bool metadata_in_exec_resp) {
-  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = check_schema_in_paging;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(
@@ -1039,7 +1197,7 @@ TEST_F(CqlTest, PasswordReset) {
   const string change_pwd = "ALTER ROLE cassandra WITH PASSWORD = 'updated_password'";
 
   // Password reset disallowed when ycql_allow_non_authenticated_password_reset = false.
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   {
     ASSERT_FALSE(FLAGS_ycql_allow_non_authenticated_password_reset);
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
@@ -1049,15 +1207,15 @@ TEST_F(CqlTest, PasswordReset) {
   }
 
   // Password reset allowed when ycql_allow_non_authenticated_password_reset = true.
-  FLAGS_ycql_allow_non_authenticated_password_reset = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) = true;
   {
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
     ASSERT_OK(session.ExecuteQuery(change_pwd));
   }
 
   // Login works with the updated password and the user is able to create a superuser.
-  FLAGS_ycql_allow_non_authenticated_password_reset = false;
-  FLAGS_use_cassandra_authentication = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
   driver_->SetCredentials("cassandra", "updated_password");
   {
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
@@ -1294,6 +1452,34 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }, CoarseMonoClock::now() + 30s, "Deleted table cleanup"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, RetainSchemaPacking) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_tablet_export_metadata_ms) = 1000;
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = snapshot_util.InitWithCluster(cluster_.get());
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (key INT PRIMARY KEY, value INT)"));
+  for (int i = 0; i != 1000; ++i) {
+    ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO t (key, value) VALUES ($0, $1)", i, i * 2));
+  }
+
+  ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD extra INT"));
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(
+      client::YBTableName(YQLDatabase::YQL_DATABASE_CQL, "test", "t")));
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(snapshot_util.WaitSnapshotDone(snapshot_id));
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  LOG(INFO) << "Content: " << content;
 }
 
 }  // namespace yb

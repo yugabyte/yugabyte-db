@@ -44,6 +44,9 @@ DEFINE_UNKNOWN_double(estimated_replicate_msg_size_percentage, 0.95,
 DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,
                  "Inject latency before replicating batch.");
 
+DEFINE_test_flag(bool, block_prepare_batch, false,
+                 "pause the prepare task.");
+
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 
@@ -203,6 +206,9 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
 
 void PreparerImpl::Run() {
   VLOG(2) << "Starting prepare task:" << this;
+  while (GetAtomicFlag(&FLAGS_TEST_block_prepare_batch)) {
+      std::this_thread::sleep_for(100ms);
+  }
   for (;;) {
     while (OperationDriver *item = queue_.Pop()) {
       active_tasks_.fetch_sub(1, std::memory_order_release);

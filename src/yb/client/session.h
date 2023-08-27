@@ -24,6 +24,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 
@@ -94,7 +95,10 @@ struct NODISCARD_CLASS FlushStatus {
 // This class is not thread-safe.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
-  explicit YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock = nullptr);
 
   ~YBSession();
 
@@ -104,14 +108,12 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the current time.
   void RestartNonTxnReadPoint(Restart restart);
 
-  void SetReadPoint(const ReadHybridTime& read_time);
+  // Sets read point for this session. When tablet_id is specified, then local limit from read_time
+  // will be used for local limit of this tablet.
+  void SetReadPoint(const ReadHybridTime& read_time, const TabletId& tablet_id = TabletId());
 
   // Returns true if our current read point requires restart.
   bool IsRestartRequired();
-
-  // Defer the read hybrid time to the global limit.  Since the global limit should not change for a
-  // session, this call is idempotent.
-  void DeferReadPoint();
 
   // Changes transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
@@ -234,6 +236,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
 
+  void SetLeaderTerm(int64_t leader_term) { batcher_config_.leader_term = leader_term; }
+
   struct BatcherConfig {
     std::weak_ptr<YBSession> session;
     client::YBClient* client;
@@ -242,6 +246,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     bool allow_local_calls_in_curr_thread = true;
     bool force_consistent_read = false;
     RejectionScoreSourcePtr rejection_score_source;
+    int64_t leader_term = OpId::kUnknownTerm;
 
     ConsistentReadPoint* read_point() const;
   };
@@ -249,6 +254,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
  private:
   friend class YBClient;
   friend class internal::Batcher;
+
+  YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock);
 
   internal::Batcher& Batcher();
 

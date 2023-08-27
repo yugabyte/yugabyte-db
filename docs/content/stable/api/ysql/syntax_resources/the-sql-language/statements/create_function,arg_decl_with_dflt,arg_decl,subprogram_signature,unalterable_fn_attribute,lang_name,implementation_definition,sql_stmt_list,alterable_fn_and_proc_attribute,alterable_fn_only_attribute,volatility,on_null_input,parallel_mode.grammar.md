@@ -26,11 +26,11 @@ implementation_definition ::= ' sql_stmt_list '
 
 sql_stmt_list ::= sql_stmt ; [ sql_stmt ... ]
 
-alterable_fn_and_proc_attribute ::= SET configuration_parameter 
+alterable_fn_and_proc_attribute ::= SET run_time_parameter 
                                     { TO value
                                       | = value
                                       | FROM CURRENT }
-                                    | RESET configuration_parameter
+                                    | RESET run_time_parameter
                                     | RESET ALL
                                     | [ EXTERNAL ] SECURITY 
                                       { INVOKER | DEFINER }

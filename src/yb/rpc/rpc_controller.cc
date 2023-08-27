@@ -37,6 +37,7 @@
 #include <glog/logging.h>
 
 #include "yb/rpc/outbound_call.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/result.h"
 
@@ -75,7 +76,7 @@ void RpcController::Swap(RpcController* other) {
 }
 
 void RpcController::Reset() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (call_) {
     CHECK(finished());
   }
@@ -110,7 +111,7 @@ const ErrorStatusPB* RpcController::error_response() const {
   return nullptr;
 }
 
-Result<RefCntSlice> RpcController::ExtractSidecar(int idx) const {
+Result<RefCntSlice> RpcController::ExtractSidecar(size_t idx) const {
   return call_->ExtractSidecar(idx);
 }
 
@@ -119,7 +120,7 @@ size_t RpcController::TransferSidecars(Sidecars* dest) {
 }
 
 void RpcController::set_timeout(const MonoDelta& timeout) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   DCHECK(!call_ || call_->state() == RpcCallState::READY);
   timeout_ = timeout;
 }
@@ -133,8 +134,20 @@ void RpcController::set_deadline(CoarseTimePoint deadline) {
 }
 
 MonoDelta RpcController::timeout() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return timeout_;
+}
+
+Sidecars& RpcController::outbound_sidecars() {
+  if (outbound_sidecars_) {
+    return *outbound_sidecars_;
+  }
+  outbound_sidecars_ = std::make_unique<Sidecars>();
+  return *outbound_sidecars_;
+}
+
+std::unique_ptr<Sidecars> RpcController::MoveOutboundSidecars() {
+  return std::move(outbound_sidecars_);
 }
 
 int32_t RpcController::call_id() const {
@@ -144,8 +157,30 @@ int32_t RpcController::call_id() const {
   return -1;
 }
 
+std::string RpcController::CallStateDebugString() const {
+  std::lock_guard l(lock_);
+  if (call_) {
+    return call_->DebugString();
+  }
+  return "call not set";
+}
+
+void RpcController::MarkCallAsFailed() {
+  std::lock_guard l(lock_);
+  if (call_) {
+    call_->SetFailed(STATUS(TimedOut, "Forced timed out detected by sender."));
+  }
+}
+
 CallResponsePtr RpcController::response() const {
   return CallResponsePtr(call_, &call_->call_response_);
+}
+
+Result<CallResponsePtr> RpcController::CheckedResponse() const {
+  if (status().ok()) {
+    return response();
+  }
+  return status();
 }
 
 } // namespace rpc

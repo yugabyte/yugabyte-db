@@ -17,12 +17,12 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
+#include "yb/dockv/doc_path.h"
 
 #include "yb/master/master_replication.pb.h"
 
@@ -109,11 +109,17 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   // Writes value fully determined by its index using DefaultWriteBatch.
   Status WriteSimple(int index);
 
+  // Writes value fully determined by its index using DefaultWriteBatch
+  // with a randomly generated cotable prefix.
+  Result<Uuid> WriteSimpleWithCotablePrefix(int index, HybridTime write_time, Uuid cotable_id);
+
   void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
 
   // Produces a string listing the contents of the entire RocksDB database, with every key and value
   // decoded as a DocDB key/value and converted to a human-readable string representation.
   std::string DocDBDebugDumpToStr();
+
+  void DocDBDebugDumpToContainer(std::unordered_set<std::string>* out);
 
   // ----------------------------------------------------------------------------------------------
   // SetPrimitive taking a Value
@@ -141,6 +147,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   Status AddExternalIntents(
       const TransactionId& txn_id,
+      SubTransactionId subtransaction_id,
       const std::vector<ExternalIntent>& intents,
       const Uuid& involved_tablet,
       HybridTime hybrid_time);
@@ -258,6 +265,11 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::atomic<int64_t> monotonic_counter_{0};
   std::optional<DocWriteBatch> doc_write_batch_;
   std::shared_ptr<DocReadContext> doc_read_context_;
+  // Dummy ScopedRWOperation. It doesn't prevent underlying RocksDB from being closed, that is
+  // rather guaranteed by DocDBRocksDBUtil usage patterns.
+  // If we want to support concurrent closing of RocksDB, we can use RWOperationCounter
+  // (see tablet.cc).
+  ScopedRWOperation dummy_scoped_rw_operation_;
 };
 
 }  // namespace docdb

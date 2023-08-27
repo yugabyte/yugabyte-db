@@ -949,6 +949,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
+    LOG(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1005,6 +1006,10 @@ Status CompactionJob::OpenCompactionOutputFile(
     }
   }
   out.finished = false;
+  // Newly created files after compaction should not have any HT filter.
+  if (out.meta.largest.user_frontier) {
+    out.meta.largest.user_frontier->ResetFilter();
+  }
 
   sub_compact->outputs.push_back(out);
 

@@ -255,7 +255,7 @@ class Rpcs {
 
   template <class Factory>
   Handle RegisterConstructed(const Factory& factory) {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     if (shutdown_) {
       return InvalidHandle();
     }
@@ -301,7 +301,7 @@ template<class Iter>
 void Rpcs::Abort(Iter start, Iter end) {
   std::vector<RpcCommandPtr> to_abort;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     for (auto it = start; it != end; ++it) {
       auto& handle = *it;
       if (*handle != calls_.end()) {

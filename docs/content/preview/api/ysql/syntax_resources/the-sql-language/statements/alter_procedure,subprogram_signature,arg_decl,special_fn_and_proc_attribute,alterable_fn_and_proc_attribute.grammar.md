@@ -7,7 +7,7 @@ alter_procedure ::= ALTER PROCEDURE subprogram_name (
 
 subprogram_signature ::= arg_decl [ , ... ]
 
-arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
+arg_decl ::= [ formal_arg ] [ arg_mode ] arg_type
 
 special_fn_and_proc_attribute ::= RENAME TO subprogram_name
                                   | OWNER TO 
@@ -19,11 +19,11 @@ special_fn_and_proc_attribute ::= RENAME TO subprogram_name
                                   | [ NO ] DEPENDS ON EXTENSION 
                                     extension_name
 
-alterable_fn_and_proc_attribute ::= SET configuration_parameter 
+alterable_fn_and_proc_attribute ::= SET run_time_parameter 
                                     { TO value
                                       | = value
                                       | FROM CURRENT }
-                                    | RESET configuration_parameter
+                                    | RESET run_time_parameter
                                     | RESET ALL
                                     | [ EXTERNAL ] SECURITY 
                                       { INVOKER | DEFINER }

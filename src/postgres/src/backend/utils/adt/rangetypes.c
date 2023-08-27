@@ -323,24 +323,12 @@ range_send(PG_FUNCTION_ARGS)
 
 	if (RANGE_HAS_LBOUND(flags))
 	{
-		Datum		bound = PointerGetDatum(SendFunctionCall(&cache->proc,
-															 lower.val));
-		uint32		bound_len = VARSIZE(bound) - VARHDRSZ;
-		char	   *bound_data = VARDATA(bound);
-
-		pq_sendint32(buf, bound_len);
-		pq_sendbytes(buf, bound_data, bound_len);
+		StringInfoSendFunctionCall(buf, &cache->proc, lower.val);
 	}
 
 	if (RANGE_HAS_UBOUND(flags))
 	{
-		Datum		bound = PointerGetDatum(SendFunctionCall(&cache->proc,
-															 upper.val));
-		uint32		bound_len = VARSIZE(bound) - VARHDRSZ;
-		char	   *bound_data = VARDATA(bound);
-
-		pq_sendint32(buf, bound_len);
-		pq_sendbytes(buf, bound_data, bound_len);
+		StringInfoSendFunctionCall(buf, &cache->proc, upper.val);
 	}
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(buf));

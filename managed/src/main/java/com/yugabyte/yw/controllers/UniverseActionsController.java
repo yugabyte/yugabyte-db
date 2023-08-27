@@ -55,7 +55,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result configureAlerts(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universeActionsHandler.configureAlerts(
         universe, formFactory.getFormDataOrBadRequest(request, AlertConfigFormData.class));
     auditService()
@@ -70,7 +70,7 @@ public class UniverseActionsController extends AuthenticatedController {
   @ApiOperation(value = "Pause a universe", nickname = "pauseUniverse", response = YBPTask.class)
   public Result pause(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     // Check if the universe is of type kubernetes, if yes throw an exception
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -106,7 +106,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = YBPTask.class)
   public Result resume(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID;
     try {
@@ -132,7 +132,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = UniverseResp.class)
   public Result setUniverseKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     log.info("Updating universe key {} for {}.", universe.getUniverseUUID(), customer.getUuid());
     // Get the user submitted form data.
@@ -161,7 +161,7 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result updateLoadBalancerConfig(
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     log.info(
         "Updating load balancer config {} for {}.", universe.getUniverseUUID(), customer.getUuid());
@@ -195,7 +195,7 @@ public class UniverseActionsController extends AuthenticatedController {
   public Result setBackupFlag(
       UUID customerUUID, UUID universeUUID, Boolean markActive, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     universeActionsHandler.setBackupFlag(universe, markActive);
     auditService()
@@ -218,7 +218,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universeActionsHandler.setHelm3Compatible(universe);
     auditService()
         .createAuditEntry(
@@ -241,7 +241,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result resetVersion(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     auditService()
         .createAuditEntry(
             request,
@@ -259,7 +259,7 @@ public class UniverseActionsController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result unlockUniverse(UUID customerUUID, UUID universeUUID, Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Util.unlockUniverse(universe);
     auditService()
         .createAuditEntry(

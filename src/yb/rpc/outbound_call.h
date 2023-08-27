@@ -125,9 +125,9 @@ inline bool operator==(const ConnectionId& lhs, const ConnectionId& rhs) {
 struct OutboundCallMetrics {
   explicit OutboundCallMetrics(const scoped_refptr<MetricEntity>& metric_entity);
 
-  scoped_refptr<Histogram> queue_time;
-  scoped_refptr<Histogram> send_time;
-  scoped_refptr<Histogram> time_to_response;
+  scoped_refptr<EventStats> queue_time;
+  scoped_refptr<EventStats> send_time;
+  scoped_refptr<EventStats> time_to_response;
 };
 
 // A response to a call, on the client side.
@@ -178,8 +178,7 @@ class CallResponse {
   size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
-    return DynamicMemoryUsageOf(header_, response_data_) +
-           GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
+    return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
   }
 
  private:
@@ -193,13 +192,11 @@ class CallResponse {
   // This slice refers to memory allocated by transfer_
   Slice serialized_response_;
 
-  // Slices of data for rpc sidecars. They point into memory owned by transfer_.
-  // Number of sidecars chould be obtained from header_.
-  boost::container::small_vector<const uint8_t*, kMinBufferForSidecarSlices> sidecar_bounds_;
-
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
   CallData response_data_;
+
+  ReceivedSidecars sidecars_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
@@ -247,7 +244,7 @@ class OutboundCall : public RpcCall {
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
   virtual Status SetRequestParam(
-      AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker);
+      AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
@@ -339,6 +336,13 @@ class OutboundCall : public RpcCall {
            DynamicMemoryUsageOf(buffer_, call_response_, trace_);
   }
 
+  CoarseTimePoint CallStartTime() const { return start_; }
+
+  std::string DebugString() const;
+
+  // Test only method to reproduce a stuck OutboundCall scenario seen in production.
+  void TEST_ignore_response() { test_ignore_response = true; }
+
  protected:
   friend class RpcController;
 
@@ -352,6 +356,8 @@ class OutboundCall : public RpcCall {
 
   const std::string* hostname_;
   CoarseTimePoint start_;
+  CoarseTimePoint sent_time_;
+  CoarseTimePoint invoke_callback_time_;
   RpcController* controller_;
 
   // Pointer for the protobuf where the response should be written.
@@ -372,7 +378,7 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
   bool SetState(State new_state);
   State state() const;
@@ -408,6 +414,9 @@ class OutboundCall : public RpcCall {
   const std::shared_ptr<RpcMetrics> rpc_metrics_;
   const std::shared_ptr<const OutboundMethodMetrics> method_metrics_;
 
+  // Only set if the OutboundCall was sent.
+  ConnectionPtr connection_;
+
   // ----------------------------------------------------------------------------------------------
   // Fields that may be mutated by the reactor thread while the client thread reads them.
   // ----------------------------------------------------------------------------------------------
@@ -425,6 +434,7 @@ class OutboundCall : public RpcCall {
   // This buffer is written to by the client thread before the call is queued, and read by the
   // reactor thread, so no synchronization is needed.
   RefCntBuffer buffer_;
+  std::unique_ptr<Sidecars> sidecars_;
 
   // Consumption of buffer_. Same synchronization rules as buffer_.
   ScopedTrackedConsumption buffer_consumption_;
@@ -434,6 +444,9 @@ class OutboundCall : public RpcCall {
   // complete, so no synchronization is needed, and the functions extracting data from this object
   // are annotated with NO_THREAD_SAFETY_ANALYSIS.
   CallResponse call_response_ GUARDED_BY_REACTOR_THREAD;
+
+  // TEST only flag to reproduce stuck OutboundCall scenario.
+  bool test_ignore_response = false;
 
   // ----------------------------------------------------------------------------------------------
   // Atomic fields

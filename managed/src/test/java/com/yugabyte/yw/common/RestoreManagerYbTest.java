@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -129,6 +129,11 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
         .thenReturn(false);
   }
 
@@ -281,9 +286,6 @@ public class RestoreManagerYbTest extends FakeDBApplication {
       cmd.add(backupStorageInfo.keyspace);
     }
     cmd.add("--no_auto_name");
-    if (backupStorageInfo.sse) {
-      cmd.add("--sse");
-    }
     if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
@@ -299,6 +301,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
                   testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupStorageInfo.storageLocation);
     cmd.add("--storage_type");

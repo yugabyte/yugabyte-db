@@ -5,12 +5,11 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendLikeClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
-import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.RestoreResp.RestoreRespBuilder;
@@ -30,7 +29,6 @@ import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -110,44 +108,31 @@ public class Restore extends Model {
     }
   }
 
-  @ApiModelProperty(value = "Restore UUID", accessMode = READ_ONLY)
-  @Id
-  private UUID restoreUUID;
+  @Id private UUID restoreUUID;
 
-  @ApiModelProperty(value = "Customer UUID that owns this restore", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID customerUUID;
 
-  @ApiModelProperty(value = "Universe UUID where the restore takes place", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID universeUUID;
 
-  @ApiModelProperty(
-      value = "Source universe UUID that created the backup for the restore",
-      accessMode = READ_ONLY)
-  @Column
-  private UUID sourceUniverseUUID;
+  @Column private UUID sourceUniverseUUID;
 
-  @ApiModelProperty(value = "Storage Config UUID that created the backup", accessMode = READ_ONLY)
-  @Column
-  private UUID storageConfigUUID;
+  @Column private UUID storageConfigUUID;
 
-  @ApiModelProperty(value = "Universe name that created the backup", accessMode = READ_ONLY)
-  @Column
-  private String sourceUniverseName;
+  @Column private String sourceUniverseName;
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  @ApiModelProperty(value = "State of the restore", accessMode = READ_ONLY)
   private State state;
 
-  @ApiModelProperty(value = "Restore task UUID", accessMode = READ_ONLY)
   @Column(unique = true)
   private UUID taskUUID;
 
-  @ApiModelProperty(value = "Restore size in bytes", accessMode = READ_ONLY)
-  @Column
-  private long restoreSizeInBytes = 0L;
+  @Column private long restoreSizeInBytes = 0L;
+
+  @Column(nullable = false)
+  private boolean alterLoadBalancer = true;
 
   @CreatedTimestamp private Date createTime;
 
@@ -190,6 +175,7 @@ public class Restore extends Model {
     restore.setStorageConfigUUID(taskDetails.storageConfigUUID);
     restore.setState(State.InProgress);
     restore.setUpdateTime(restore.getCreateTime());
+    restore.setAlterLoadBalancer(taskDetails.alterLoadBalancer);
     restore.save();
     return restore;
   }

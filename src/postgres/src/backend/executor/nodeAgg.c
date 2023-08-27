@@ -1533,7 +1533,7 @@ lookup_hash_entries(AggState *aggstate)
 static void
 yb_agg_pushdown_supported(AggState *aggstate)
 {
-	ForeignScanState *scan_state;
+	ScanState *ss;
 	ListCell *lc_agg;
 	ListCell *lc_arg;
 	bool check_outer_plan;
@@ -1553,19 +1553,38 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	if (aggstate->phase->numsets != 0)
 		return;
 
-	/* Foreign scan outer plan. */
-	if (!IsA(outerPlanState(aggstate), ForeignScanState))
+	/* Supported outer plan. */
+	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
+		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), IndexScanState) ||
+		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
+	ss = (ScanState *) outerPlanState(aggstate);
 
-	scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
-
-	/* Foreign relation we are scanning is a YB table. */
-	if (!IsYBRelation(scan_state->ss.ss_currentRelation))
+	/* Relation we are scanning is a YB table. */
+	if (!IsYBRelation(ss->ss_currentRelation))
 		return;
 
 	/* No WHERE quals. */
-	if (scan_state->ss.ps.qual)
+	if (ss->ps.qual)
 		return;
+	/* No indexquals that might be rechecked. */
+	if (IsA(ss, IndexScanState))
+	{
+		/* Also check the GUC here. */
+		if (!yb_enable_index_aggregate_pushdown)
+			return;
+
+		IndexScanState *iss = castNode(IndexScanState, ss);
+		if (iss->yb_iss_might_recheck)
+			return;
+	}
+	else if (IsA(ss, IndexOnlyScanState))
+	{
+		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
+		if (ioss->yb_ioss_might_recheck)
+			return;
+	}
 
 	check_outer_plan = false;
 
@@ -1689,16 +1708,17 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 *   select sum(1) from (select random() as r from foo) as res;
 		 *   select sum(1) from (select (null=random())::int as r from foo) as res;
 		 * and pushdown will still be supported.
-		 * For simplicity, we do not try to match Var between aggref->args and outplan
-		 * targetlist and simply reject once we see any item that is not a simple column
-		 * reference.
+		 * TODO(#18122): For simplicity, we do not try to match Var between
+		 * aggref->args and outplan targetlist and simply reject once we see
+		 * any item that is not a simple column reference.  This should be
+		 * improved.
 		 */
 		ListCell   *t;
 		foreach(t, outerPlanState(aggstate)->plan->targetlist)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, t);
 
-			if (!IsA(tle->expr, Var) || IS_SPECIAL_VARNO(castNode(Var, tle->expr)->varno))
+			if (!IsA(tle->expr, Var))
 				return;
 		}
 	}
@@ -1708,16 +1728,18 @@ yb_agg_pushdown_supported(AggState *aggstate)
 }
 
 /*
- * Populates aggregate pushdown information in the YB foreign scan state.
+ * Populates aggregate pushdown information in the scan state.
  */
 static void
 yb_agg_pushdown(AggState *aggstate)
 {
-	ForeignScanState *scan_state = castNode(ForeignScanState, outerPlanState(aggstate));
-	List *pushdown_aggs = NIL;
-	int aggno;
+	PlanState  *ps = outerPlanState(aggstate);
+	List	  **aggrefs = YbPlanStateTryGetAggrefs(ps);
 
-	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
+	/* List of aggrefs should exist uninitialized. */
+	Assert(aggrefs && *aggrefs == NIL);
+
+	for (int aggno = 0; aggno < aggstate->numaggs; ++aggno)
 	{
 		Aggref *aggref = aggstate->peragg[aggno].aggref;
 		const char *func_name = get_func_name(aggref->aggfnoid);
@@ -1739,17 +1761,16 @@ yb_agg_pushdown(AggState *aggstate)
 			sum_aggref->aggstar = aggref->aggstar;
 			sum_aggref->args = aggref->args;
 
-			pushdown_aggs = lappend(pushdown_aggs, sum_aggref);
-			pushdown_aggs = lappend(pushdown_aggs, count_aggref);
+			*aggrefs = lappend(*aggrefs, sum_aggref);
+			*aggrefs = lappend(*aggrefs, count_aggref);
 		}
 		else
 		{
-			pushdown_aggs = lappend(pushdown_aggs, aggref);
+			*aggrefs = lappend(*aggrefs, aggref);
 		}
 	}
-	scan_state->yb_fdw_aggs = pushdown_aggs;
 	/* Disable projection for tuples produced by pushed down aggregate operators. */
-	scan_state->ss.ps.ps_ProjInfo = NULL;
+	ps->ps_ProjInfo = NULL;
 }
 
 /*
@@ -2567,7 +2588,22 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->aggstrategy == AGG_HASHED)
 		eflags &= ~EXEC_FLAG_REWIND;
 	outerPlan = outerPlan(node);
-	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate, eflags);
+
+	/*
+	 * For YB IndexScan/IndexOnlyScan outer plan, we need to collect recheck
+	 * information, so set that eflag.  Ideally, the flag is only set for YB
+	 * relations since, later on, agg pushdown is disabled anyway for non-YB
+	 * relations, but we don't have that information at this point: the
+	 * relation is opened in the IndexScan/IndexOnlyScan node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.
+	 */
+	int yb_eflags = 0;
+	if (IsYugaByteEnabled() &&
+		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan)))
+		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
+
+	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,
+											eflags | yb_eflags);
 
 	/*
 	 * initialize source tuple type.

@@ -195,10 +195,6 @@ extern int	pg_printf(const char *fmt,...) pg_attribute_printf(1, 2);
 #endif
 #endif							/* USE_REPL_SNPRINTF */
 
-/* Portable prompt handling */
-extern void simple_prompt(const char *prompt, char *destination, size_t destlen,
-			  bool echo);
-
 extern int	pclose_check(FILE *stream);
 
 /* Global variable holding time zone information. */

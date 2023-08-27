@@ -48,12 +48,18 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
@@ -100,12 +106,15 @@
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
 using std::string;
 using yb::rpc::ServiceIf;
 
+using namespace std::literals;
 using namespace yb::size_literals;
 using namespace std::placeholders;
 
@@ -159,8 +168,12 @@ DEFINE_UNKNOWN_int32(redis_proxy_webserver_port, 0, "Webserver port for redis pr
 DEFINE_UNKNOWN_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
-DEFINE_UNKNOWN_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
+
+DEFINE_NON_RUNTIME_PREVIEW_bool(enable_ysql_conn_mgr, false,
+    "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
+    "Ysql Connection Manager process as a child process.");
 
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
@@ -197,16 +210,66 @@ TAG_FLAG(xcluster_svc_queue_length, advanced);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
-DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
-    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
-    "this on can cause consistency issues.");
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
+DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
+                        "Whether or not to allow encryption at rest to be enabled. Toggling this "
+                        "flag does not turn on or off encryption at rest, but rather allows or "
+                        "disallows a user from enabling it on in the future.");
+
+DEFINE_UNKNOWN_int32(
+    get_universe_key_registry_backoff_increment_ms, 100,
+    "Number of milliseconds added to the delay between retries of fetching the full universe key "
+    "registry from master leader. This delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(get_universe_key_registry_backoff_increment_ms, stable);
+TAG_FLAG(get_universe_key_registry_backoff_increment_ms, advanced);
+
+DEFINE_UNKNOWN_int32(
+    get_universe_key_registry_max_backoff_sec, 3,
+    "Maximum number of seconds to delay between retries of fetching the full universe key registry "
+    "from master leader. This delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);
+TAG_FLAG(get_universe_key_registry_max_backoff_sec, advanced);
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDefaultPort,
+    "Ysql Connection Manager port to which clients will connect. This must be different from the "
+    "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
 namespace yb {
 namespace tserver {
 
 namespace {
+
+uint16_t GetPostgresPort() {
+  yb::HostPort postgres_address;
+  CHECK_OK(postgres_address.ParseString(
+      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
+  return postgres_address.port();
+}
+
+void PostgresAndYsqlConnMgrPortValidator() {
+  if (!FLAGS_enable_ysql_conn_mgr) {
+    return;
+  }
+  const auto pg_port = GetPostgresPort();
+  if (FLAGS_ysql_conn_mgr_port == pg_port) {
+    if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
+      LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
+                 << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
+                 << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+    } else {
+      // Ignore. t-server will resolve the conflict in SetProxyAddresses.
+    }
+  }
+}
+
+// Normally we would have used DEFINE_validator. But this validation depends on the value of another
+// flag (pgsql_proxy_bind_address). On process startup flag validations are run as each flag
+// gets parsed from the command line parameter. So this would impose a restriction on the user to
+// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
+// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
+// after all the flags have been parsed.
+REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
+    &PostgresAndYsqlConnMgrPortValidator);
+
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
@@ -348,14 +411,6 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
-void TabletServer::SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys) {
-  opts_.universe_key_manager->SetUniverseKeys(universe_keys);
-}
-
-void TabletServer::GetUniverseKeyRegistrySync() {
-  universe_key_client_->GetUniverseKeyRegistrySync();
-}
-
 Status TabletServer::Init() {
   CHECK(!initted_.load(std::memory_order_acquire));
 
@@ -373,6 +428,50 @@ Status TabletServer::Init() {
 
   heartbeater_ = CreateHeartbeater(opts_, this);
 
+  if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
+    // Create the encrypted environment that will allow users to enable encryption.
+    std::vector<std::string> master_addresses;
+    for (const auto& list : *opts_.GetMasterAddresses()) {
+      for (const auto& hp : list) {
+        master_addresses.push_back(hp.ToString());
+      }
+    }
+
+    const auto delay_increment =
+        MonoDelta::FromMilliseconds(FLAGS_get_universe_key_registry_backoff_increment_ms);
+    const auto max_delay_time =
+        MonoDelta::FromSeconds(FLAGS_get_universe_key_registry_max_backoff_sec);
+    auto delay_time = delay_increment;
+
+    uint32_t attempts = 1;
+    auto start_time = CoarseMonoClock::Now();
+    encryption::UniverseKeyRegistryPB universe_key_registry;
+    while (true) {
+      auto res = client::UniverseKeyClient::GetFullUniverseKeyRegistry(
+          options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager());
+      if (res.ok()) {
+        universe_key_registry = *res;
+        break;
+      }
+      auto total_time = std::to_string((CoarseMonoClock::Now() - start_time).count()) + "ms";
+      LOG(WARNING) << "Getting full universe key registry from master Leader failed: '"
+                   << res.status() << "'. Attempts: " << attempts << ", Total Time: " << total_time
+                   << ". Retrying...";
+
+      // Delay before retrying so that we don't accidentally DDoS the mater.
+      // Time increases linearly by delay_increment up to max_delay.
+      SleepFor(delay_time);
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+      attempts++;
+    }
+
+    universe_key_manager_ = std::make_unique<encryption::UniverseKeyManager>();
+    universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
+    rocksdb_env_ = NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()));
+    fs_manager()->SetEncryptedEnv(
+        NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get())));
+  }
+
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
   }
@@ -381,20 +480,6 @@ Status TabletServer::Init() {
     pg_table_mutation_count_sender_.reset(new TableMutationCountSender(this));
   }
 
-  std::vector<HostPort> hps;
-  for (const auto& master_addr_vector : *opts_.GetMasterAddresses()) {
-    for (const auto& master_addr : master_addr_vector) {
-      hps.push_back(master_addr);
-    }
-  }
-
-  universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-      hps, proxy_cache_.get(), [&] (const encryption::UniverseKeysPB& universe_keys) {
-        opts_.universe_key_manager->SetUniverseKeys(universe_keys);
-  });
-  opts_.universe_key_manager->SetGetUniverseKeysCallback([&]() {
-    universe_key_client_->GetUniverseKeyRegistrySync();
-  });
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
@@ -424,7 +509,11 @@ Status TabletServer::InitAutoFlags() {
         options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
@@ -442,7 +531,13 @@ AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
 
 Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly rpc_only) const {
   RETURN_NOT_OK(RpcAndWebServerBase::GetRegistration(reg, rpc_only));
-  reg->set_pg_port(pgsql_proxy_bind_address().port());
+  // This makes the yb_servers() function return the connection manager port instead
+  // of th backend db.
+  if (FLAGS_enable_ysql_conn_mgr) {
+    reg->set_pg_port(FLAGS_ysql_conn_mgr_port);
+  } else {
+    reg->set_pg_port(pgsql_proxy_bind_address().port());
+  }
   return Status::OK();
 }
 
@@ -488,48 +583,44 @@ Status TabletServer::RegisterServices() {
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
-      std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
-  RETURN_NOT_OK(
-      RpcAndWebServerBase::RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
+  RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
   auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
   tablet_server_service_ = tablet_server_service;
   LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(tablet_server_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_tablet_server_svc_queue_length, std::move(tablet_server_service)));
 
-  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  auto admin_service = std::make_shared<TabletServiceAdminImpl>(this);
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
-                                                     std::move(admin_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_admin_svc_queue_length, std::move(admin_service)));
 
-  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                        tablet_manager_.get()));
+  auto consensus_service = std::make_shared<ConsensusServiceImpl>(
+      metric_entity(), tablet_manager_.get());
   LOG(INFO) << "yb::tserver::ConsensusServiceImpl created at " << consensus_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_consensus_svc_queue_length,
+                                std::move(consensus_service),
+                                rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service =
-      std::make_unique<RemoteBootstrapServiceImpl>(
+  auto remote_bootstrap_service = std::make_shared<RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
           &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), metric_entity(),
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
       &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -537,8 +628,7 @@ Status TabletServer::RegisterServices() {
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
-    RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-        FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+    RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
 
   auto pg_auto_analyze_service =
@@ -546,7 +636,7 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();
@@ -610,7 +700,7 @@ void TabletServer::Shutdown() {
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   // We reset the list each time, since we want to keep the tservers that are live from the
   // master's perspective.
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
@@ -622,7 +712,7 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
 
 Status TabletServer::GetLiveTServers(
     std::vector<master::TSInformationPB> *live_tservers) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   *live_tservers = live_tservers_;
   return Status::OK();
 }
@@ -644,12 +734,12 @@ bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) c
 }
 
 void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   cluster_uuid_ = cluster_uuid;
 }
 
 std::string TabletServer::cluster_uuid() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return cluster_uuid_;
 }
 
@@ -675,22 +765,6 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
   RETURN_NOT_OK(GetRegistration(&reg));
   string http_addr_host = reg.http_addresses(0).host();
 
-  // RPCs in Progress.
-  DisplayIconTile(output, "fa-tasks", "TServer Live Ops", "/rpcz");
-  // YCQL RPCs in Progress.
-  string cass_url;
-  RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
-      http_addr_host, &cass_url));
-  DisplayIconTile(output, "fa-tasks", "YCQL Live Ops", cass_url);
-
-  // YEDIS RPCs in Progress.
-  string redis_url;
-  RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port,
-      http_addr_host,  &redis_url));
-  DisplayIconTile(output, "fa-tasks", "YEDIS Live Ops", redis_url);
-
   // YSQL RPCs in Progress.
   string sql_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
@@ -704,15 +778,40 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
       "/statements", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
       http_addr_host, &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
+
+  // YCQL RPCs in Progress.
+  string cass_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cass_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL Live Ops", cass_url);
+
+  // YCQL All Ops
+  string cql_all_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/statements", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cql_all_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL All Ops", cql_all_url);
+
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "TServer Live Ops", "/rpcz");
+
+  // YEDIS RPCs in Progress.
+  string redis_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port,
+      http_addr_host,  &redis_url));
+  DisplayIconTile(output, "fa-tasks", "YEDIS Live Ops", redis_url);
+
   return Status::OK();
 }
 
 Env* TabletServer::GetEnv() {
-  return opts_.env;
+  return fs_manager()->encrypted_env();
 }
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
-  return opts_.rocksdb_env;
+  return rocksdb_env_ ? rocksdb_env_.get() : rocksdb::Env::Default();
 }
 
 uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
@@ -722,7 +821,7 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
 Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     const GetTserverCatalogVersionInfoRequestPB& req,
     GetTserverCatalogVersionInfoResponsePB *resp) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {
@@ -743,7 +842,7 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
 
     if (new_version == ysql_catalog_version_) {
       return;
@@ -765,7 +864,8 @@ void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_brea
 
 void TabletServer::SetYsqlDBCatalogVersions(
   const master::DBCatalogVersionDataPB& db_catalog_version_data) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  DCHECK_GT(db_catalog_version_data.db_catalog_versions_size(), 0);
+  std::lock_guard l(lock_);
 
   bool catalog_changed = false;
   std::unordered_set<uint32_t> db_oid_set;
@@ -813,7 +913,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
                     << "New: " << new_version << ", Old: " << existing_entry.current_version;
       } else {
         // It is not possible to have same current_version but different last_breaking_version.
-        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version);
+        CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
+            << "db_oid: " << db_oid << ", new_version: " << new_version;
       }
     } else {
       auto& inserted_entry = it.first->second;
@@ -827,6 +928,10 @@ void TabletServer::SetYsqlDBCatalogVersions(
           (*ysql_db_catalog_version_index_used_)[shm_index] = true;
           // Adjust search_starting_index_ for next time.
           ++search_starting_index_;
+          if (search_starting_index_ == TServerSharedData::kMaxNumDbCatalogVersions) {
+            // Wrap around.
+            search_starting_index_ = 0;
+          }
           break;
         }
 
@@ -856,6 +961,22 @@ void TabletServer::SetYsqlDBCatalogVersions(
                             << " catalog version: " << new_version
                             << ", breaking version: " << new_breaking_version;
       }
+      // During upgrade, it is possible that the table pg_yb_catalog_version has
+      // just been upgraded to have a row for each database, but there is a race
+      // condition where some PG backends have not yet seen this and continue to
+      // use global catalog version. Here we also set the global catalog version
+      // variables which can be used to check against RPC requests from such lagging
+      // PG backends. Note that it is uncommon for database template1 to have
+      // a connection. But even if there is a template1 connection operating in
+      // per-db-mode, such a connection may receive more catalog version bumps
+      // than needed from unrelated connections that are still operating in
+      // global-mode, this only results in more RPC rejections but no correctness
+      // issue.
+      if (db_oid == kTemplate1Oid) {
+        ysql_catalog_version_ = new_version;
+        shared_object().SetYsqlCatalogVersion(new_version);
+        ysql_last_breaking_catalog_version_ = new_breaking_version;
+      }
     }
   }
 
@@ -868,7 +989,8 @@ void TabletServer::SetYsqlDBCatalogVersions(
       catalog_changed = true;
       auto shm_index = it->second.shm_index;
       CHECK(shm_index >= 0 &&
-            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions)) << shm_index;
+            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+        << "shm_index: " << shm_index << ", db_oid: " << db_oid;
       // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
       (*ysql_db_catalog_version_index_used_)[shm_index] = false;
       it = ysql_db_catalog_version_map_.erase(it);
@@ -880,6 +1002,16 @@ void TabletServer::SetYsqlDBCatalogVersions(
       ++it;
     }
   }
+  if (!catalog_changed) {
+    return;
+  }
+  // After we have updated versions, we compute and update its fingerprint.
+  const auto new_fingerprint =
+      FingerprintCatalogVersions<DbOidToCatalogVersionInfoMap>(ysql_db_catalog_version_map_);
+  catalog_versions_fingerprint_.store(new_fingerprint, std::memory_order_release);
+  VLOG_WITH_FUNC(2) << "databases: " << ysql_db_catalog_version_map_.size()
+                    << ", new fingerprint: " << new_fingerprint;
+
   if (catalog_changed) {
     // TODO(myang): see how to only invalidate per-database tables.
     // https://github.com/yugabyte/yugabyte-db/issues/16114.
@@ -931,18 +1063,6 @@ PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
 
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   xcluster_safe_time_map_.Update(safe_time_map);
-}
-
-Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
-    const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
-    return true;
-  }
-
-  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
-  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
-
-  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
@@ -1023,17 +1143,18 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
 }
 
 XClusterConsumer* TabletServer::GetXClusterConsumer() const {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   return xcluster_consumer_.get();
 }
 
 encryption::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
-  return opts_.universe_key_manager;
+  return universe_key_manager_.get();
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
     const encryption::UniverseKeyRegistryPB& universe_key_registry) {
-  opts_.universe_key_manager->SetUniverseKeyRegistry(universe_key_registry);
+  SCHECK_NOTNULL(universe_key_manager_);
+  universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
   return Status::OK();
 }
 
@@ -1046,14 +1167,22 @@ Status TabletServer::CreateCDCConsumer() {
     return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   };
 
-  xcluster_consumer_ =
-      VERIFY_RESULT(XClusterConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(), this));
+  auto get_leader_term = [this](const TabletId& tablet_id) {
+    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
+    if (!tablet_peer) {
+      return yb::OpId::kUnknownTerm;
+    }
+    return tablet_peer->LeaderTerm();
+  };
+
+  xcluster_consumer_ = VERIFY_RESULT(XClusterConsumer::Create(
+      std::move(is_leader_clbk), std::move(get_leader_term), proxy_cache_.get(), this));
   return Status::OK();
 }
 
 Status TabletServer::SetConfigVersionAndConsumerRegistry(
     int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry) {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
 
   // Only create a cdc consumer if consumer_registry is not null.
   if (!xcluster_consumer_ && consumer_registry) {
@@ -1066,7 +1195,7 @@ Status TabletServer::SetConfigVersionAndConsumerRegistry(
 }
 
 int32_t TabletServer::cluster_config_version() const {
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   // If no CDC consumer, we will return -1, which will force the master to send the consumer
   // registry if one exists. If we receive one, we will create a new CDC consumer in
   // SetConsumerRegistry.
@@ -1103,7 +1232,7 @@ Status TabletServer::ReloadKeysAndCertificates() {
       server::SecureContextType::kInternal,
       options_.HostsString()));
 
-  std::lock_guard<decltype(cdc_consumer_mutex_)> l(cdc_consumer_mutex_);
+  std::lock_guard l(cdc_consumer_mutex_);
   if (xcluster_consumer_) {
     RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
   }

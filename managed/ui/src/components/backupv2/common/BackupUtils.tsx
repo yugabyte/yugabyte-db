@@ -26,7 +26,11 @@ export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
  * @param endtime end time
  * @returns diff between the dates
  */
-export const calculateDuration = (startTime: string, endtime: string): string => {
+export const calculateDuration = (
+  startTime: string,
+  endtime: string,
+  haveSeparator = false
+): string => {
   const start = moment(startTime);
   const end = moment(endtime);
 
@@ -36,10 +40,21 @@ export const calculateDuration = (startTime: string, endtime: string): string =>
   const totalHours = end.diff(start, 'hours');
   const totalMinutes = end.diff(start, 'minutes');
   const totalSeconds = end.diff(start, 'seconds');
-  let duration = totalDays !== 0 ? `${totalDays} d ` : '';
-  duration += totalHours % 24 !== 0 ? `${totalHours % 24} h ` : '';
-  duration += totalMinutes % 60 !== 0 ? `${totalMinutes % 60} m ` : ``;
-  duration += totalSeconds % 60 !== 0 ? `${totalSeconds % 60} s` : '';
+  let duration = totalDays !== 0 ? (haveSeparator ? `${totalDays}d ` : `${totalDays} d `) : '';
+  duration +=
+    totalHours % 24 !== 0 ? (haveSeparator ? `${totalHours % 24}h ` : `${totalHours % 24} h `) : '';
+  duration +=
+    totalMinutes % 60 !== 0
+      ? haveSeparator
+        ? `${totalMinutes % 60}m `
+        : `${totalMinutes % 60} m `
+      : ``;
+  duration +=
+    totalSeconds % 60 !== 0
+      ? haveSeparator
+        ? `${totalSeconds % 60}s`
+        : `${totalSeconds % 60} s`
+      : '';
   return duration;
 };
 
@@ -135,8 +150,9 @@ export const CALDENDAR_ICON = () => ({
 export const convertArrayToMap = (arr: IUniverse[], keyStr: string, valueStr: string) =>
   mapValues(keyBy(arr, keyStr), valueStr);
 
-export const PARALLEL_THREADS_RANGE = {
+export const ParallelThreads = {
   MIN: 1,
+  XCLUSTER_DEFAULT: 8,
   MAX: 100
 };
 
@@ -156,9 +172,10 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
       label: backup.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'
     },
     selected_ycql_tables: [] as any[],
-    parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+    parallel_threads: ParallelThreads.MIN,
     storage_config: null as any,
-    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID
+    baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
+    isTableByTableBackup: backup.commonBackupInfo.tableByTableBackup
   };
   if (backup.isFullBackup) {
     formValues['db_to_backup'] = {
@@ -199,15 +216,17 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
     };
   }
 
-  if(backup.expiryTime) {
-    formValues['retention_interval'] = Math.ceil((backup.hasIncrementalBackups ? 
-      Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime : 
-      Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) / MILLISECONDS_IN[backup.expiryTimeUnit]);
+  if (backup.expiryTime) {
+    formValues['retention_interval'] = Math.ceil(
+      (backup.hasIncrementalBackups
+        ? Date.parse(backup.expiryTime) - backup.lastIncrementalBackupTime
+        : Date.parse(backup.expiryTime) - Date.parse(backup.commonBackupInfo.createTime)) /
+        MILLISECONDS_IN[backup.expiryTimeUnit]
+    );
     const interval_type = capitalize(lowerCase(backup.expiryTimeUnit));
-    formValues['retention_interval_type'] = {value: interval_type, label: interval_type};
+    formValues['retention_interval_type'] = { value: interval_type, label: interval_type };
     formValues['keep_indefinitely'] = false;
-  }
-  else {
+  } else {
     formValues['keep_indefinitely'] = true;
   }
 

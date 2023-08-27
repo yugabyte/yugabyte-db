@@ -101,7 +101,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
       xClusterConfig
           .getTablesById(
               xClusterConfig.getTableIdsWithReplicationSetup(
-                  xClusterConfig.getTableIds(true /* includeTxnTableIfExists */), true /* done */))
+                  xClusterConfig.getTableIds(), true /* done */))
           .forEach(
               tableConfig -> {
                 tableConfig.setStatus(XClusterTableConfig.Status.Validated);

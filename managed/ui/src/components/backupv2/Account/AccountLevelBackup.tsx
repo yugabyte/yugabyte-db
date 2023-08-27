@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { BackupList, Restore } from '..';

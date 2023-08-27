@@ -89,9 +89,8 @@ class RedisReadOperation {
  public:
   explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
                               const DocDB& doc_db,
-                              CoarseTimePoint deadline,
-                              const ReadHybridTime& read_time)
-      : request_(request), doc_db_(doc_db), deadline_(deadline), read_time_(read_time) {}
+                              const ReadOperationData& read_operation_data)
+      : request_(request), doc_db_(doc_db), read_operation_data_(read_operation_data) {}
 
   Status Execute();
 
@@ -133,8 +132,7 @@ class RedisReadOperation {
   const RedisReadRequestPB& request_;
   RedisResponsePB response_;
   const DocDB doc_db_;
-  CoarseTimePoint deadline_;
-  ReadHybridTime read_time_;
+  const ReadOperationData read_operation_data_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation
   // Make these two classes similar in terms of how rocksdb state is passed to them.
   // Currently ReadOperations get the state during construction, but Write operations get them when

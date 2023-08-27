@@ -26,6 +26,7 @@ interface ScheduleTaskParams {
   sse: IBackup['commonBackupInfo']['sse'];
   storageConfigUUID: IBackup['commonBackupInfo']['storageConfigUUID'];
   keyspaceList: IBackup['commonBackupInfo']['responseList'];
+  isTableByTableBackup: IBackup['isTableByTableBackup']
   expiryTimeUnit: string;
 }
 
@@ -49,4 +50,5 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   frequencyTimeUnit: string;
   incrementalBackupFrequency: number;
   incrementalBackupFrequencyTimeUnit: string;
+  tableByTableBackup: boolean;
 }

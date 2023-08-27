@@ -21,7 +21,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -271,6 +271,7 @@ public class BackupTest extends FakeDBApplication {
     assertEquals(taskUUID, b.getTaskUUID());
   }
 
+  @Test
   public void testGetAllCompletedBackupsWithExpiryForDelete() {
     UUID universeUUID = UUID.randomUUID();
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
@@ -283,14 +284,23 @@ public class BackupTest extends FakeDBApplication {
     Backup backup3 =
         ModelFactory.createBackupWithExpiry(
             defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+    Backup backup4 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+    Backup backup5 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
 
     backup1.transitionState(Backup.BackupState.Completed);
     backup2.transitionState(Backup.BackupState.Completed);
     backup3.transitionState(Backup.BackupState.Completed);
+    backup4.transitionState(Backup.BackupState.QueuedForDeletion);
+    backup5.transitionState(Backup.BackupState.FailedToDelete);
 
-    Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
+    Map<UUID, List<Backup>> expiredBackups = Backup.getCompletedExpiredBackups();
     // assert to 3 as we are deleting backups even if the universe does not exist.
-    assertEquals(String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer).size());
+    assertEquals(
+        String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer.getUuid()).size());
   }
 
   @Test
@@ -314,7 +324,7 @@ public class BackupTest extends FakeDBApplication {
     assertNotNull(b);
 
     SqlUpdate sqlUpdate =
-        Ebean.createSqlUpdate(
+        DB.sqlUpdate(
             "update public.backup set backup_info = '"
                 + jsonWithUnknownFields
                 + "'  where backup_uuid::text = '"

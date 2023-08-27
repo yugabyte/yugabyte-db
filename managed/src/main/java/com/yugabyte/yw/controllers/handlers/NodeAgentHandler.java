@@ -2,24 +2,43 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
+import com.yugabyte.yw.forms.NodeAgentResp;
+import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import com.yugabyte.yw.models.filters.NodeAgentFilter;
+import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
+import com.yugabyte.yw.models.paging.NodeAgentPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -27,6 +46,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.threeten.bp.Duration;
 import play.mvc.Http;
 import play.mvc.Http.Status;
 
@@ -34,6 +54,7 @@ import play.mvc.Http.Status;
 @Singleton
 public class NodeAgentHandler {
   private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
+  private static final Duration NODE_AGENT_HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
 
   private final NodeAgentManager nodeAgentManager;
   private final NodeAgentClient nodeAgentClient;
@@ -87,6 +108,42 @@ public class NodeAgentHandler {
     return nodeAgentManager.create(nodeAgent, true);
   }
 
+  private List<NodeAgentResp> transformNodeAgentResponse(
+      List<Map<String, Object>> joinResults, Collection<NodeAgent> nodeAgents) {
+    Date startTime =
+        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
+    String ybaVersion = nodeAgentManager.getSoftwareVersion();
+    Map<UUID, NodeAgent> uuidNodeAgentMap =
+        nodeAgents.stream().collect(Collectors.toMap(NodeAgent::getUuid, Function.identity()));
+    return joinResults.stream()
+        .map(
+            r -> {
+              NodeAgent nodeAgent = uuidNodeAgentMap.get(r.get("uuid"));
+              NodeAgentResp nodeAgentResp = new NodeAgentResp(nodeAgent);
+              nodeAgentResp.setReachable(nodeAgent.getUpdatedAt().after(startTime));
+              nodeAgentResp.setVersionMatched(
+                  Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0);
+              Object obj = r.get("provider_name");
+              if (obj != null) {
+                nodeAgentResp.setProviderName((String) obj);
+              }
+              obj = r.get("provider_uuid");
+              if (obj != null) {
+                nodeAgentResp.setProviderUuid((UUID) obj);
+              }
+              obj = r.get("universe_name");
+              if (obj != null) {
+                nodeAgentResp.setUniverseName((String) obj);
+              }
+              obj = r.get("universe_uuid");
+              if (obj != null) {
+                nodeAgentResp.setUniverseUuid((UUID) obj);
+              }
+              return nodeAgentResp;
+            })
+        .collect(Collectors.toList());
+  }
+
   /**
    * Returns the node agents for the customer with additional node agent IP filter.
    *
@@ -94,8 +151,37 @@ public class NodeAgentHandler {
    * @param nodeAgentIp optional node agent IP.
    * @return the node agent.
    */
-  public Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp) {
-    return NodeAgent.list(customerUuid, nodeAgentIp);
+  public Collection<NodeAgentResp> list(UUID customerUuid, String nodeAgentIp) {
+    NodeAgentFilter.NodeAgentFilterBuilder builder = NodeAgentFilter.builder();
+    if (StringUtils.isNotEmpty(nodeAgentIp)) {
+      builder.nodeIps(ImmutableSet.of(nodeAgentIp)).build();
+    }
+    List<Map<String, Object>> joinResults = NodeAgent.getJoinResults(customerUuid, builder.build());
+    return transformNodeAgentResponse(joinResults, NodeAgent.list(customerUuid, nodeAgentIp));
+  }
+
+  /**
+   * Returns a page of node agents for the customer with additional node agent IP filter.
+   *
+   * @param customerUuid the customer UUID.
+   * @param pagedQuery the page query with filter and page param.
+   * @return a page of node agents.
+   */
+  public NodeAgentPagedApiResponse pagedList(UUID customerUuid, NodeAgentPagedQuery pagedQuery) {
+    List<Map<String, Object>> joinResults =
+        NodeAgent.getJoinResults(customerUuid, pagedQuery.getFilter());
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(NodeAgent.SortBy.ip);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
+    Set<UUID> nodeAgentUuids =
+        joinResults.stream().map(m -> (UUID) m.get("uuid")).collect(Collectors.toSet());
+    Query<NodeAgent> query = NodeAgent.createQuery(customerUuid, nodeAgentUuids).query();
+    NodeAgentPagedResponse response =
+        performPagedQuery(query, pagedQuery, NodeAgentPagedResponse.class);
+    return response.setData(
+        transformNodeAgentResponse(joinResults, response.getEntities()),
+        new NodeAgentPagedApiResponse());
   }
 
   /**
@@ -105,8 +191,13 @@ public class NodeAgentHandler {
    * @param nodeAgentUuid node agent UUID.
    * @return the node agent.
    */
-  public NodeAgent get(UUID customerUuid, UUID nodeAgentUuid) {
-    return NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+  public NodeAgentResp get(UUID customerUuid, UUID nodeAgentUuid) {
+    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+    List<Map<String, Object>> joinResults =
+        NodeAgent.getJoinResults(
+            customerUuid,
+            NodeAgentFilter.builder().nodeIps(ImmutableSet.of(nodeAgent.getIp())).build());
+    return transformNodeAgentResponse(joinResults, Arrays.asList(nodeAgent)).get(0);
   }
 
   /**

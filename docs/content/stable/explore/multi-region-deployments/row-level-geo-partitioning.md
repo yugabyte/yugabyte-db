@@ -12,15 +12,6 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../row-level-geo-partitioning/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
 Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
 
 Geo-partitioning allows you to move data closer to users to:
@@ -310,7 +301,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
+However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
 
 ```sql
 yugabyte=# select * from bank_transactions where yb_is_local_table(tableoid);

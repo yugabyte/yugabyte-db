@@ -18,6 +18,8 @@ import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -34,6 +36,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.RegionMetadata;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -46,6 +49,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -57,7 +61,9 @@ import play.mvc.Result;
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
+  @Inject private CloudProviderHelper cloudProviderHelper;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private ConfigHelper configHelper;
 
   @ApiOperation(
       value = "List cloud providers",
@@ -79,7 +85,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "Delete a cloud provider", response = YBPSuccess.class)
+  @ApiOperation(value = "Delete a cloud provider", response = YBPTask.class)
   public Result delete(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -99,6 +105,7 @@ public class CloudProviderApiController extends AuthenticatedController {
       notes = "Refresh provider pricing info",
       response = YBPSuccess.class)
   public Result refreshPricing(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
     auditService()
@@ -126,21 +133,6 @@ public class CloudProviderApiController extends AuthenticatedController {
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-
-    if (!runtimeConfigFactory
-        .globalRuntimeConf()
-        .getBoolean("yb.provider.allow_used_provider_edit")) {
-      // Relaxing the edit provider call for used provider based on runtime flag
-      // If disabled we will not allow editing of used providers.
-      long universeCount = provider.getUniverseCount();
-      if (universeCount > 0) {
-        throw new PlatformServiceException(
-            FORBIDDEN,
-            String.format(
-                "There %s %d universe%s using this provider, cannot modify",
-                universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
-      }
-    }
     JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), true);
 
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
@@ -171,6 +163,14 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.setCustomerUUID(customerUUID);
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
+    Provider existingProvider =
+        Provider.get(customer.getUuid(), reqProvider.getName(), providerCode);
+    if (existingProvider != null) {
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format("Provider with the name %s already exists", reqProvider.getName()));
+    }
+
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
       /*
@@ -183,7 +183,9 @@ public class CloudProviderApiController extends AuthenticatedController {
        */
       KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
       k8sInfo.setLegacyK8sProvider(false);
-      providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
+      providerEbean =
+          Provider.create(
+              customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
@@ -200,6 +202,9 @@ public class CloudProviderApiController extends AuthenticatedController {
       try {
         CloudBootstrap.Params taskParams =
             CloudBootstrap.Params.fromProvider(providerEbean, reqProvider);
+        if (providerEbean.getCloudCode() == CloudType.kubernetes) {
+          taskParams.reqProviderEbean = reqProvider;
+        }
 
         taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
         auditService()
@@ -236,6 +241,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result accessKeysRotation(UUID customerUUID, UUID providerUUID, Http.Request request) {
     RotateAccessKeyFormData params = parseJsonAndValidate(request, RotateAccessKeyFormData.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     String newKeyCode = params.newKeyCode;
     boolean rotateAllUniverses = params.rotateAllUniverses;
     if (!rotateAllUniverses && params.universeUUIDs.size() == 0) {
@@ -275,6 +281,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   public Result scheduledAccessKeysRotation(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     ScheduledAccessKeyRotateFormData params =
         parseJsonAndValidate(request, ScheduledAccessKeyRotateFormData.class);
     int schedulingFrequencyDays = params.schedulingFrequencyDays;
@@ -349,6 +356,44 @@ public class CloudProviderApiController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Edit);
     return PlatformResults.withData(schedule);
+  }
+
+  @ApiOperation(
+      value = "Retrieves the region metadata for the cloud providers",
+      response = RegionMetadata.class,
+      nickname = "getRegionMetadata")
+  public Result fetchRegionMetadata(UUID customerUUID, String code, String subType) {
+    CloudType cloudType = null;
+    try {
+      cloudType = CloudType.valueOf(code);
+      if (cloudType == CloudType.kubernetes && StringUtils.isEmpty(subType)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Specify a subType (eks, gke, aks, etc) for %s provider.", code));
+      }
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Specify a valid cloud provider code.");
+    }
+    try {
+      Map<String, Object> regionMetadataMap;
+      if (cloudType != CloudType.kubernetes) {
+        regionMetadataMap = configHelper.getRegionMetadata(cloudType);
+      } else {
+        ConfigHelper.ConfigType k8sConfigType =
+            cloudProviderHelper.getKubernetesConfigType(subType);
+        regionMetadataMap = configHelper.getConfig(k8sConfigType);
+      }
+      ObjectMapper mapper = Json.mapper();
+      ObjectNode regionMetadataObj = mapper.createObjectNode();
+      regionMetadataObj.set("regionMetadata", Json.toJson(regionMetadataMap));
+      RegionMetadata regionMetadata =
+          mapper.readValue(Json.toJson(regionMetadataObj).toString(), RegionMetadata.class);
+      return PlatformResults.withData(regionMetadata);
+    } catch (Exception e) {
+      log.debug(
+          String.format("Transaltion to regionMetadata object failed with %s", e.getMessage()));
+    }
+    return PlatformResults.withData(null);
   }
 
   // v2 API version 1 backward compatibility support.

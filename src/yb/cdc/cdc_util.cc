@@ -13,54 +13,43 @@
 
 #include "yb/cdc/cdc_util.h"
 
-#include "yb/client/session.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/yb_op.h"
+#include <boost/functional/hash.hpp>
 
-#include "yb/qlexpr/ql_rowblock.h"
-#include "yb/common/schema.h"
-
-#include "yb/gutil/casts.h"
-
-#include "yb/master/master_defaults.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/format.h"
 
 namespace yb::cdc {
 
-Result<std::optional<qlexpr::QLRow>> FetchOptionalCdcStreamInfo(
-    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
-    const CDCStreamId& stream_id, const std::vector<std::string>& columns) {
-  const auto kCdcStreamIdColumnId = narrow_cast<ColumnIdRep>(
-      Schema::first_column_id() + master::kCdcStreamIdIdx);
-
-  const auto read_op = table->NewReadOp();
-  auto* const req_read = read_op->mutable_request();
-  QLAddStringHashValue(req_read, tablet_id);
-  QLSetStringCondition(req_read->mutable_where_expr()->mutable_condition(),
-                       kCdcStreamIdColumnId, QL_OP_EQUAL, stream_id);
-  req_read->mutable_column_refs()->add_ids(kCdcStreamIdColumnId);
-  table->AddColumns(columns, req_read);
-  RETURN_NOT_OK(session->ReadSync(read_op));
-  auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-  if (row_block->row_count() != 1) {
-    return std::nullopt;
-  }
-  return std::move(row_block->row(0));
+std::string ProducerTabletInfo::ToString() const {
+  return Format(
+      "{ replication_group_id: $0 stream_id: $1 tablet_id: $2 }", replication_group_id, stream_id,
+      tablet_id);
 }
 
-Result<qlexpr::QLRow> FetchCdcStreamInfo(
-    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
-    const CDCStreamId& stream_id, const std::vector<std::string>& columns) {
-  auto result = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-      table, session, tablet_id, stream_id, columns));
-  if (!result) {
-    return STATUS_FORMAT(
-        NotFound,
-        "Did not find a row in the cdc_state table for the tablet $0 and stream $1",
-        tablet_id, stream_id);
-  }
-  return std::move(*result);
+std::string ProducerTabletInfo::MetricsString() const {
+  std::stringstream ss;
+  ss << replication_group_id << ":" << stream_id << ":" << tablet_id;
+  return ss.str();
+}
+std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) const noexcept {
+  std::size_t hash = 0;
+  boost::hash_combine(hash, p.replication_group_id);
+  boost::hash_combine(hash, p.stream_id);
+  boost::hash_combine(hash, p.tablet_id);
+
+  return hash;
 }
 
+bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id) {
+  return GStringPiece(replication_group_id.ToString()).ends_with(kAlterReplicationGroupSuffix);
+}
+
+ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& replication_group_id) {
+  // Remove the .ALTER suffix from universe_uuid if applicable.
+  GStringPiece clean_id(replication_group_id.ToString());
+  if (clean_id.ends_with(kAlterReplicationGroupSuffix)) {
+    clean_id.remove_suffix(sizeof(kAlterReplicationGroupSuffix) - 1 /* exclude \0 ending */);
+  }
+  return ReplicationGroupId(clean_id.ToString());
+}
 }  // namespace yb::cdc

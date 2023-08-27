@@ -54,9 +54,9 @@ Specify the name of the table to be dropped. Objects associated with the table, 
 
 #### RESTRICT / CASCADE
 
-`RESTRICT` is the default and it will not drop the procedure if any objects depend on it.
+`RESTRICT` is the default and it will not drop the table if any objects depend on it.
 
-`CASCADE` will drop any objects that transitively depend on the procedure.
+`CASCADE` will drop any objects that transitively depend on the table.
 
 ## Example
 

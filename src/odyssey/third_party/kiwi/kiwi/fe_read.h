@@ -52,6 +52,25 @@ KIWI_API static inline int kiwi_fe_read_key(char *data, uint32_t size,
 	return 0;
 }
 
+KIWI_API static inline int yb_kiwi_fe_is_authok_packet(char *data, uint32_t size)
+{
+
+	kiwi_header_t *header = (kiwi_header_t *)data;
+	uint32_t len;
+	uint32_t type;
+	int rc = kiwi_read(&len, &data, &size);
+	if (kiwi_unlikely(rc != 0))
+		return -1;
+	if (kiwi_unlikely(header->type != KIWI_BE_AUTHENTICATION))
+		return -1;
+	uint32_t pos_size = len;
+	char *pos = kiwi_header_data(header);
+	rc = kiwi_read32(&type, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	return (type == 0);
+}
+
 KIWI_API static inline int kiwi_fe_read_auth(char *data, uint32_t size,
 					     uint32_t *type, char salt[4],
 					     char **auth_data,
@@ -131,15 +150,16 @@ kiwi_fe_read_parameter(char *data, uint32_t size, char **name,
 	return 0;
 }
 
-KIWI_API static inline int kiwi_fe_read_error(char *data, uint32_t size,
-					      kiwi_fe_error_t *error)
+KIWI_API static inline int
+kiwi_fe_read_error_or_notice(char *data, uint32_t size, kiwi_fe_error_t *error,
+			     kiwi_be_type_t expected_packet_type)
 {
 	kiwi_header_t *header = (kiwi_header_t *)data;
 	uint32_t len;
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	if (kiwi_unlikely(header->type != KIWI_BE_ERROR_RESPONSE))
+	if (kiwi_unlikely(header->type != expected_packet_type))
 		return -1;
 	memset(error, 0, sizeof(*error));
 	uint32_t pos_size = len;
@@ -197,6 +217,20 @@ KIWI_API static inline int kiwi_fe_read_error(char *data, uint32_t size,
 		}
 	}
 	return 0;
+}
+
+KIWI_API static inline int kiwi_fe_read_error(char *data, uint32_t size,
+					      kiwi_fe_error_t *error)
+{
+	return kiwi_fe_read_error_or_notice(data, size, error,
+					    KIWI_BE_ERROR_RESPONSE);
+}
+
+KIWI_API static inline int kiwi_fe_read_notice(char *data, uint32_t size,
+					       kiwi_fe_error_t *error)
+{
+	return kiwi_fe_read_error_or_notice(data, size, error,
+					    KIWI_BE_NOTICE_RESPONSE);
 }
 
 #endif /* KIWI_FE_READ_H */

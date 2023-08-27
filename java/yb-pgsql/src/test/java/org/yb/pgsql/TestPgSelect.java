@@ -1192,7 +1192,101 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(0, metrics.seekCount);
 
         metrics = assertFullDocDBFilter(statement, query, "idx");
-        assertEquals(2, metrics.seekCount);
+        assertEquals(1, metrics.seekCount);
+      }
+    }
+  }
+
+  /**
+   * DISTINCT pushdown must behave correctly even in the presence of non-index predicates
+   * Guard against scenarios where we incorrectly de-duplicate rows that may be filtered out
+   * later on
+   * Here we consider a query where the predicate is pushed down to DocDB
+   */
+  @Test
+  public void testDistinctRemoteFilter() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 1, i, i FROM GENERATE_SERIES(1, 1000) AS i)";
+      statement.execute(query);
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1));
+
+        query = "/*+Set(enable_hashagg false)*/ " +
+                "SELECT DISTINCT r1 FROM t WHERE v = 500 AND r1 <= 10";
+        assertRowSet(statement, query, expectedRows);
+      }
+    }
+  }
+
+  /**
+   * Here we consider a query where the predicate is local to postgres
+   * and not pushed down to DocDB
+   */
+  @Test
+  public void testDistinctLocalFilter() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      query = "INSERT INTO t (SELECT 1, i, i FROM GENERATE_SERIES(1, 1000) AS i)";
+      statement.execute(query);
+
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1));
+
+        // The join clause is not pushed down to DocDB
+        // Manually verified that the condition t1.v + t2.v = 500 is not pushed down
+        // by looking at the request to DocDB
+        query = "/*+Set(enable_hashagg false)*/ " +
+                "SELECT DISTINCT t1.r1 FROM t AS t1, t AS t2 " +
+                "WHERE t1.r1 <= 10 AND t2.r1 <= 10 AND t1.v + t2.v = 500";
+        assertRowSet(statement, query, expectedRows);
+      }
+    }
+  }
+
+  /**
+   * DISTINCT pushdown must behave correctly even in the presence of agg functions
+   * Guard against scenarios where we incorrectly de-duplicate rows even before agg
+   */
+  @Test
+  public void testDistinctAgg() throws Exception {
+    String query = "CREATE TABLE t(r1 INT, r2 INT, PRIMARY KEY(r1 ASC, r2 ASC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      for (int r1 = 0; r1 < 2; r1++) {
+        query = String.format(
+          "INSERT INTO t (SELECT %d, i FROM GENERATE_SERIES(1, 1000) AS i)", r1);
+        statement.execute(query);
+      }
+
+      // We refer to a system column `tableoid` to avoid a postgres optimization that
+      // requests the complete tuple from lower layers. This optimization is not
+      // necessarily accurate in the presence of remote storage layers such as DocDB
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1000));
+
+        query = "/*+Set(enable_hashagg false)*/ " +
+                "SELECT DISTINCT COUNT(tableoid) FROM t WHERE r1 <= 10 GROUP BY r1";
+        assertRowSet(statement, query, expectedRows);
+      }
+
+      // Guard against any future changes to the above mentioned "optimization"
+      {
+        Set<Row> expectedRows = new HashSet<>();
+        expectedRows.add(new Row(1000));
+
+        query = "/*+Set(enable_hashagg false)*/ " +
+                "SELECT DISTINCT COUNT(r1) FROM t WHERE r1 <= 10 GROUP BY r1";
+        assertRowSet(statement, query, expectedRows);
       }
     }
   }
@@ -1390,6 +1484,68 @@ public class TestPgSelect extends BasePgSQLTest {
   }
 
   @Test
+  public void testIsNotNull() throws Exception {
+    String query = "CREATE TABLE sample_table(k INT PRIMARY KEY, v INT, v2 INT)";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v ASC)";
+      statement.execute(query);
+
+      // There are 10 rows with v IS NOT NULL, 100 rows with v IS NULL.
+      query = "INSERT INTO sample_table SELECT i, NULL, i + 1000 FROM generate_series(1, 100) i";
+      statement.execute(query);
+      query = "INSERT INTO sample_table SELECT i, i, i + 1000 FROM generate_series(101, 110) i";
+      statement.execute(query);
+
+      query = "SELECT v2 FROM sample_table WHERE v IS NOT NULL";
+      Set<Row> expectedRows = new HashSet<>();
+      for (int i = 101; i <= 110; ++i) {
+        expectedRows.add(new Row(i + 1000));
+      }
+      assertRowSet(statement, query, expectedRows);
+
+      RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+      // The index on sample_table means that each IS NOT NULL row can be found by key,
+      // but the "SELECT v2" query requires referencing sample_table for each of these
+      // rows. Running an experiment without pushdown code, the number of seeks is 113
+      // (regardless of whether max_nexts_to_avoid_seek is set to 0, though nextCount
+      // does change in that case). With pushdown code, it's 13. Setting the assert to be
+      // below 26 (2*13) to allow for some extra seeks to occur without being flaky, but
+      // still likely to catch the pushdown failing.
+      assertLessThanOrEqualTo(metrics.seekCount, 26);
+
+      // Now do the same thing with a descending index.
+      query = "DROP INDEX sample_table_v_idx";
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v DESC)";
+      statement.execute(query);
+
+      query = "SELECT v2 FROM sample_table WHERE v IS NOT NULL";
+      assertRowSet(statement, query, expectedRows);
+
+      metrics = assertFullDocDBFilter(statement, query, "sample_table");
+      // Same numbers of seeks between code with/without pushdown for a descending index.
+      assertLessThanOrEqualTo(metrics.seekCount, 26);
+
+      // To ensure nothing breaks in the future, force an index scan using a hash index.
+      query = "DROP INDEX sample_table_v_idx";
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v HASH)";
+      statement.execute(query);
+
+      query = "/*+Set(enable_seqscan false)*/ SELECT v FROM sample_table WHERE v IS NOT NULL";
+      expectedRows = new HashSet<>();
+      for (int i = 101; i <= 110; ++i) {
+        expectedRows.add(new Row(i));
+      }
+      assertRowSet(statement, query, expectedRows);
+      // In practice, only sample_table_v_idx is touched. Its seek count is 3, and its
+      // next count is 110. However, this part of the test is only about making sure the
+      // results aren't broken, so there is no assertion on performance.
+    }
+  }
+
+  @Test
   public void testInequalitiesRangePartitioned() throws Exception {
       String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
                      "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";
@@ -1489,6 +1645,56 @@ public class TestPgSelect extends BasePgSQLTest {
         Set<Row> expectedRows = new HashSet<>();
         expectedRows.add(new Row(1, 1));
         assertRowSet(statement, query + "IN (1, 3000000005)", expectedRows);
+    }
+  }
+
+  @Test
+  public void testFilteringUsingIN() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+
+      statement.execute("INSERT INTO test (h,r,v) values (1,1,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,2,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,3,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,1,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,2,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,3,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,1,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,2,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,3,2)");
+
+      // Filter by hash & range columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 2, 3));
+      // Filter by hash & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 3, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(3, 2, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by hash & range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
     }
   }
 

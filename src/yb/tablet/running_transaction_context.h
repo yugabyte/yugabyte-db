@@ -74,7 +74,9 @@ class RunningTransactionContext {
   virtual void EnqueueRemoveUnlocked(
       const TransactionId& id, RemoveReason reason, MinRunningNotifier* min_running_notifier) = 0;
 
-  virtual void NotifyAborted(const TransactionId& id) = 0;
+  virtual void NotifyAbortedTransactionIncrement(const TransactionId& id) = 0;
+
+  virtual void NotifyAbortedTransactionDecrement(const TransactionId& id) = 0;
 
   int64_t NextRequestIdUnlocked() {
     return ++request_serial_;

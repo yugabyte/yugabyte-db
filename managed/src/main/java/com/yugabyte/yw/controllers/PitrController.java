@@ -3,16 +3,17 @@ package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.BackupUtil.ApiType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -77,7 +78,7 @@ public class PitrController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot enable PITR when the universe is in paused state");
@@ -104,6 +105,18 @@ public class PitrController extends AuthenticatedController {
     Optional<PitrConfig> pitrConfig = PitrConfig.maybeGet(universeUUID, type, keyspaceName);
     if (pitrConfig.isPresent()) {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
+    }
+
+    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (type != null) {
+      if (type.equals(TableType.YQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YCQL tables when API is disabled");
+      } else if (type.equals(TableType.PGSQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YSQL tables when API is disabled");
+      }
     }
 
     taskParams.setUniverseUUID(universeUUID);
@@ -140,7 +153,7 @@ public class PitrController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<PitrConfig> pitrConfigList = new LinkedList<>();
     String masterHostPorts = universe.getMasterAddresses();
@@ -203,7 +216,7 @@ public class PitrController extends AuthenticatedController {
           required = true))
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
@@ -272,7 +285,7 @@ public class PitrController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {

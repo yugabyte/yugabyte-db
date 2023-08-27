@@ -22,9 +22,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.BAD_REQUEST;
-import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
+import static play.test.Helpers.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -32,11 +32,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
+import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -103,7 +107,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result =
         Helpers.route(
             app, fakeRequest("GET", String.format(LIST_SCOPES, defaultCustomer.getUuid())));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
     assertEquals("Unable To Authenticate User", contentAsString(result));
   }
 
@@ -193,6 +197,33 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         defaultInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
   }
 
+  // Multiline json should be posted as triple quoted string
+  // UI should wrap before request such multiline content in
+  // triple quotes (and similarly unwrap the response)
+  @Test
+  public void multilineJsonContent() throws ParseException {
+    String metadataKey = "yb.security.oidcProviderMetadata";
+    String defaultValue = "";
+    Result res = getKey(GLOBAL_SCOPE_UUID, metadataKey);
+    assertEquals(OK, res.status());
+    assertEquals(defaultValue, contentAsString(res));
+    String multilineJsonAsString =
+        TestUtils.readResource("com/yugabyte/yw/controllers/test_openid_config.txt");
+    String tripleQuoted = "\"\"\"" + multilineJsonAsString + "\"\"\"";
+    assertEquals(OK, setKey(metadataKey, tripleQuoted, GLOBAL_SCOPE_UUID).status());
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    String m = runtimeConfigFactory.globalRuntimeConf().getString(metadataKey);
+    OIDCProviderMetadata metadata = OIDCProviderMetadata.parse(m);
+    // internally we get it without quotes
+    assertEquals(multilineJsonAsString, m);
+    res = getKey(GLOBAL_SCOPE_UUID, metadataKey);
+    assertEquals(OK, res.status());
+
+    // triple quotes are preserved on HTTP GET response
+    assertEquals(tripleQuoted, contentAsString(res));
+  }
+
   private Result setGCInterval(String interval, UUID scopeUUID) {
     return setKey(GC_CHECK_INTERVAL_KEY, interval, scopeUUID);
   }
@@ -249,9 +280,9 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         OK,
         deleteKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY).status());
 
-    // Expect NullPointerException since default value in reference.conf is null
+    // Expect ConfigException since default value in reference.conf is null
     assertThrows(
-        NullPointerException.class,
+        ConfigException.WrongType.class,
         () -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY));
   }
 

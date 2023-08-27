@@ -50,7 +50,7 @@ public class UniverseCdcStreamController extends AuthenticatedController {
     }
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    return Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    return Universe.getOrBadRequest(universeUUID, customer);
   }
 
   @ApiOperation(value = "List CDC Streams for a cluster", notes = "List CDC Streams for a cluster")

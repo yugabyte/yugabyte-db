@@ -1,8 +1,7 @@
 import type {
   CommonColors,
   PaletteColor,
-  TypeBackground,
-  YBAColors
+  TypeBackground
 } from '@material-ui/core/styles/createPalette';
 
 export const colors = {
@@ -123,19 +122,23 @@ export const colors = {
   ybacolors: {
     ybOrangeFocus: '#EF582480',
     ybGray: '#DEDEE0',
-    ybBackgroundGray: '#FCFCFC',
     ybBorderGray: '#E5E5E9',
     ybDarkGray: '#232329',
     ybDarkGray1: '#9F9EA7',
     ybDarkGray2: '#D9D9DB',
+    backgroundGrayLightest: '#FCFCFC',
+    backgroundGrayLight: '#F7F7F7',
+    backgroundGrayDark: '#E5E5E9',
     inputBackground: '#E6E6E6',
     backgroundDisabled: '#EEE',
     colorDisabled: '#555',
     darkBlue: '#303a78',
-    labelBackground: '#151730',
+    labelBackground: '#151730'
+  },
+  ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'
-  } as YBAColors
-};
+  }
+} as const;
 
 export const themeVariables = {
   screenMinWidth: 1024,

@@ -19,7 +19,7 @@
 namespace yb::dockv {
 
 std::string ProjectedColumn::ToString() const {
-  return YB_STRUCT_TO_STRING(subkey, type);
+  return YB_STRUCT_TO_STRING(id, data_type);
 }
 
 ReaderProjection::ReaderProjection(const Schema& schema) {
@@ -38,7 +38,7 @@ void ReaderProjection::AddColumn(
   columns.push_back({
     .id = column_id,
     .subkey = dockv::KeyEntryValue::MakeColumnId(column_id),
-    .type = schema.column(idx).type(),
+    .data_type = schema.column(idx).type()->main()
   });
 }
 
@@ -59,6 +59,15 @@ void ReaderProjection::CompleteInit(ColumnId first_non_key_column) {
       columns.begin(), columns.end(), [first_non_key_column](const auto& col) {
     return col.id < first_non_key_column;
   });
+}
+
+size_t ReaderProjection::ColumnIdxById(ColumnId column_id) const {
+  auto begin = columns.begin();
+  auto end = columns.end();
+  auto it = std::lower_bound(begin, end, column_id, [](const ProjectedColumn& lhs, ColumnId rhs) {
+    return lhs.id < rhs;
+  });
+  return it != end && it->id == column_id ? it - begin : kNotFoundIndex;
 }
 
 }  // namespace yb::dockv

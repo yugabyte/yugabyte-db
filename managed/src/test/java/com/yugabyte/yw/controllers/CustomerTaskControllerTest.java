@@ -22,8 +22,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -656,7 +656,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         doRequestWithAuthToken(
             "GET", "/api/customers/" + customerUUID + "/tasks/" + taskUUID, authToken);
 
-    assertThat(result.status(), is(FORBIDDEN));
+    assertThat(result.status(), is(UNAUTHORIZED));
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));

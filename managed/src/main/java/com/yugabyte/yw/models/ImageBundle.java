@@ -13,6 +13,7 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -104,17 +105,24 @@ public class ImageBundle extends Model {
   }
 
   @JsonIgnore
+  public boolean isUpdateNeeded(ImageBundle bundle) {
+    return !Objects.equals(this.getUseAsDefault(), bundle.getUseAsDefault())
+        || !Objects.equals(this.getDetails(), bundle.getDetails());
+  }
+
+  @JsonIgnore
   public long getUniverseCount() {
     Provider provider = this.provider;
     if (provider == null) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Image Bundle needs to be associated to a provider!");
     }
+    ImageBundle defaultImageBundle = ImageBundle.getDefaultForProvider(provider.getUuid());
     Set<Universe> universes =
         Customer.get(provider.getCustomerUUID()).getUniversesForProvider(provider.getUuid());
     Set<Universe> universeUsingImageBundle =
         universes.stream()
-            .filter(u -> checkImageBudleInCluster(u, uuid))
+            .filter(u -> checkImageBudleInCluster(u, uuid, defaultImageBundle))
             .collect(Collectors.toSet());
 
     return universeUsingImageBundle.stream().count();
@@ -126,9 +134,14 @@ public class ImageBundle extends Model {
   }
 
   @JsonIgnore
-  private boolean checkImageBudleInCluster(Universe universe, UUID imageBundleUUID) {
+  private boolean checkImageBudleInCluster(
+      Universe universe, UUID imageBundleUUID, ImageBundle defaultBundle) {
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent.imageBundleUUID.equals(imageBundleUUID)) {
+      if (cluster.userIntent.imageBundleUUID == null
+          && imageBundleUUID.equals(defaultBundle.getUuid())) {
+        return true;
+      } else if (cluster.userIntent.imageBundleUUID != null
+          && cluster.userIntent.imageBundleUUID.equals(imageBundleUUID)) {
         return true;
       }
     }

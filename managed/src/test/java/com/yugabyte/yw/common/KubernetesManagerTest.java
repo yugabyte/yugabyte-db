@@ -19,8 +19,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -28,6 +28,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -48,9 +49,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
   Universe universe;
   ReleaseManager releaseManager;
 
-  ArgumentCaptor<ArrayList> command;
-  // ArgumentCaptor<HashMap> config;
-  ArgumentCaptor<ShellProcessContext> context;
+  @Captor ArgumentCaptor<List<String>> command;
+
+  @Captor ArgumentCaptor<ShellProcessContext> context;
   Map<String, String> configProvider = new HashMap<String, String>();
 
   static String TMP_CHART_PATH = "/tmp/yugaware_tests/KubernetesManagerTest/charts";
@@ -63,8 +64,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
     configProvider.put("KUBECONFIG", "test");
     defaultProvider.setConfigMap(configProvider);
     defaultProvider.save();
-    command = ArgumentCaptor.forClass(ArrayList.class);
-    context = ArgumentCaptor.forClass(ShellProcessContext.class);
     new File(TMP_CHART_PATH).mkdirs();
     releaseManager = app.injector().instanceOf(ReleaseManager.class);
     kubernetesManager = new ShellKubernetesManager(shellProcessHandler);

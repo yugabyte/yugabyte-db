@@ -1,8 +1,9 @@
 ---
 title: Prerequisites - Kubernetes
-headerTitle: Prerequisites - Kubernetes
-linkTitle: Prerequisites
+headerTitle: Prerequisites for YBA
+linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere in your Kubernetes environment
+headContent: What you need to install YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites-kubernetes
@@ -11,11 +12,23 @@ menu:
 type: docs
 ---
 
+You can install YugabyteDB Anywhere (YBA) using the following methods:
+
+| Method | Using | Use If |
+| :--- | :--- | :--- |
+| Replicated | Docker containers | You're able to use Docker containers. |
+| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
+
+All installation methods support installing YBA with and without (airgapped) Internet connectivity.
+
+Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -23,13 +36,16 @@ type: docs
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-</ul>
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
 
-YugabyteDB Anywhere first needs to be installed on a Kubernetes cluster, and then you configure YugabyteDB Anywhere to work in your Kubernetes cluster, on-premises private cloud, or in a public cloud environment.
+</ul>
 
 ## Hardware requirements
 
-A Kubernetes node is expected to meet the following requirements: 
+A Kubernetes node is expected to meet the following requirements:
 
 - 5 cores (minimum) or 8 cores (recommended)
 - 15 GB RAM (minimum)
@@ -42,7 +58,6 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 
 - Kubernetes 1.22
 - Helm 3.10
-
 
 Before installing YugabyteDB Anywhere, verify that you have the following:
 
@@ -64,6 +79,6 @@ When you want to create a multi-region YugabyteDB universe or two universes from
 
 - Pod IP address connectivity should be present between the clusters. Each pod and service should have a unique IP address across the clusters (non-overlapping addresses).
 - There should be DNS connectivity between the clusters. ClusterIP and headless service FQDNs (including the individual pod FQDNs) exposed in one Kubernetes cluster should be resolvable in all the other Kubernetes clusters.
-- YugabyteDB Anywhere should have access to the control plane of all the Kubernetes clusters, typically via a kubeconfig file of a service account. It should be installed on one of the connected clusters.
+- YugabyteDB Anywhere should have access to the control plane of all the Kubernetes clusters, typically via a `kubeconfig` file of a service account. It should be installed on one of the connected clusters.
 
 Alternatively, you can set up [Multi-Cluster Services API](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS). For more details on the setup, see [Configure Kubernetes multi-cluster environment](../../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes#configure-kubernetes-multi-cluster-environment). Note that MCS support in YugabyteDB Anywhere is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).

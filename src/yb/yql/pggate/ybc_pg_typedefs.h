@@ -45,11 +45,18 @@ YB_DEFINE_HANDLE_TYPE(PgStatement)
 // Handle to an expression.
 YB_DEFINE_HANDLE_TYPE(PgExpr);
 
+// Handle to a postgres function
+YB_DEFINE_HANDLE_TYPE(PgFunction);
+
 // Handle to a table description
 YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
+
+// Represents STATUS_* definitions from src/postgres/src/include/c.h.
+#define YBC_STATUS_OK     (0)
+#define YBC_STATUS_ERROR  (-1)
 
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
@@ -154,6 +161,9 @@ typedef struct PgTypeEntity {
   //            POINT in-memory size === sizeof(struct Point)
   // - Set to (-1) for types of variable in-memory size - VARSIZE_ANY should be used.
   int64_t datum_fixed_size;
+
+  // Whether we could use cast to convert value to datum.
+  bool direct_datum;
 
   // Converting Postgres datum to YugaByte expression.
   YBCPgDatumToData datum_to_yb;
@@ -284,19 +294,23 @@ typedef struct PgExecParameters {
   //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
   //     to Postgres code layer.
   // For now we only support one rowmark.
+
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
-  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy = 2;
+  int docdb_wait_policy = 2;
   char *bfinstr = NULL;
   uint64_t backfill_read_time = 0;
   uint64_t* stmt_in_txn_limit_ht_for_reads = NULL;
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
-  bool is_select_distinct = false;
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
@@ -305,14 +319,17 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
-  int wait_policy; // Cast to LockWaitPolicy for C use
+  // Cast these *_wait_policy fields to LockWaitPolicy for C use.
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy;
+  int docdb_wait_policy;
   char *bfinstr;
   uint64_t backfill_read_time;
   uint64_t* stmt_in_txn_limit_ht_for_reads;
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
-  bool is_select_distinct;
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
@@ -337,6 +354,12 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  /* yb_type.c */
+  int64_t (*PostgresEpochToUnixEpoch)(int64_t);
+  int64_t (*UnixEpochToPostgresEpoch)(int64_t);
+  void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
+  /* hba.c */
+  int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -353,9 +376,12 @@ typedef struct PgGFlagsAccessor {
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
-  const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
+  const bool*     ysql_disable_global_impact_ddl_statements;
+  const bool*     ysql_minimal_catalog_caches_preload;
+  const bool*     ysql_enable_create_database_oid_collision_retry;
+  const char*     ysql_catalog_preload_additional_table_list;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -403,6 +429,47 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID,
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
+
+typedef struct PgExecReadWriteStats {
+  uint64_t reads;
+  uint64_t writes;
+  uint64_t read_wait;
+} YBCPgExecReadWriteStats;
+
+typedef struct PgExecStats {
+  YBCPgExecReadWriteStats tables;
+  YBCPgExecReadWriteStats indices;
+  YBCPgExecReadWriteStats catalog;
+
+  uint64_t num_flushes;
+  uint64_t flush_wait;
+} YBCPgExecStats;
+
+typedef struct PgExecStatsState {
+  YBCPgExecStats stats;
+  bool is_timing_required;
+} YBCPgExecStatsState;
+
+typedef struct PgUuid {
+  unsigned char data[16];
+} YBCPgUuid;
+
+typedef struct PgSessionTxnInfo {
+  uint64_t session_id;
+  YBCPgUuid txn_id;
+  bool is_not_null;
+} YBCPgSessionTxnInfo;
+
+typedef struct PgJwtAuthOptions {
+  char* jwks;
+  char* matching_claim_key;
+  char** allowed_issuers;
+  size_t allowed_issuers_length;
+  char** allowed_audiences;
+  size_t allowed_audiences_length;
+  char* username;
+  char* usermap;
+} YBCPgJwtAuthOptions;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154

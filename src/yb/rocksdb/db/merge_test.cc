@@ -520,7 +520,7 @@ int main(int argc, char *argv[]) {
   // TODO: Make this test like a general rocksdb unit-test
   // This is set by default in RocksDBTest and YBTest, and can be removed once this test is a
   // general rocksdb unit-test
-  FLAGS_never_fsync = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   rocksdb::port::InstallStackTraceHandler();
   rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
   printf("Passed all tests!\n");

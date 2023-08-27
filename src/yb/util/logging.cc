@@ -485,7 +485,7 @@ bool LogRateThrottler::TooMany() {
   const auto now = CoarseMonoClock::Now();
   const auto drop_limit = now - duration_;
   const auto queue_size = queue_.size();
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   while (count_ > 0 && queue_[head_] < drop_limit) {
     ++head_;
     if (head_ >= queue_size) {

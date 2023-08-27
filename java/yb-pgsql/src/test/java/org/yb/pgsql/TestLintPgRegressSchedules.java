@@ -26,14 +26,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.minicluster.LogPrinter;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * Lint all YB regress schedules under src/test/regress.
  *
  * For details on exit codes, please refer to yb_lint_regress_schedule.sh.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestLintPgRegressSchedules extends BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestLintPgRegressSchedules.class);
 

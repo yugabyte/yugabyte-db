@@ -65,7 +65,8 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     List<Region> regions = provider.getRegions();
 
     List<ImageBundle> imageBundles = taskParams().imageBundles;
-    if (imageBundles == null || imageBundles.size() == 0) {
+    if ((imageBundles == null || imageBundles.size() == 0)
+        && provider.getImageBundles().size() == 0) {
       log.info("No image bundle specified for provider. Creating one...");
       Architecture arch = regions.get(0).getArchitecture();
       if (arch == null) {
@@ -105,7 +106,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       }
       ImageBundle.create(
           provider, String.format("for_provider-%s", provider.getName()), details, true);
-    } else {
+    } else if (imageBundles != null && imageBundles.size() > 0) {
       for (ImageBundle bundle : imageBundles) {
         ImageBundleDetails details = bundle.getDetails();
         Architecture arch = details.getArch();

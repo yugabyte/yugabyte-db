@@ -24,11 +24,12 @@ Status YQLRowwiseIteratorIf::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key)
   return Status::OK();
 }
 
-Result<Slice> YQLRowwiseIteratorIf::GetTupleId() const {
-  return STATUS(NotSupported, "This iterator does not provide tuple id");
+Slice YQLRowwiseIteratorIf::GetTupleId() const {
+  LOG(DFATAL) << "This iterator does not provide tuple id";
+  return Slice();
 }
 
-void YQLRowwiseIteratorIf::SeekTuple(const Slice& tuple_id) {
+void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id) {
   LOG(DFATAL) << "This iterator cannot seek by tuple id";
 }
 
@@ -36,7 +37,7 @@ HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
   return HybridTime::kInvalid;
 }
 
-Result<bool> YQLRowwiseIteratorIf::FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) {
+Result<bool> YQLRowwiseIteratorIf::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {
   return STATUS(NotSupported, "This iterator cannot fetch tuple id");
 }
 

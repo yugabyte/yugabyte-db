@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -106,7 +106,7 @@ export const CreateUniverse: FC = () => {
       clusters: [
         {
           clusterType: ClusterType.PRIMARY,
-          userIntent: getUserIntent({ formData: primaryData }),
+          userIntent: getUserIntent({ formData: primaryData }, ClusterType.PRIMARY, featureFlags),
           placementInfo: {
             cloudList: [
               {
@@ -123,9 +123,14 @@ export const CreateUniverse: FC = () => {
     if (asyncData) {
       configurePayload.clusters?.push({
         clusterType: ClusterType.ASYNC,
-        userIntent: getUserIntent({
-          formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
-        }),
+
+        userIntent: getUserIntent(
+          {
+            formData: { ...asyncData, ...getPrimaryInheritedValues(primaryData) } //copy primary field values (inherited fields) to RR during fresh Universe+RR creation
+          },
+          ClusterType.ASYNC,
+          featureFlags
+        ),
         placementInfo: {
           cloudList: [
             {

@@ -67,6 +67,7 @@ Where
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
 - Updating rows `USING TTL` is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
+- You cannot update the columns in the primary key. As a workaround, you have to delete the row and insert a new row.
 
 ### `WHERE` clause
 

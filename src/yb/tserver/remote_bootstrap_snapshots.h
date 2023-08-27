@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -28,11 +29,22 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
 
   Status CreateDirectories(const std::string& db_dir, FsManager* fs) override;
   Status Download() override;
+  Status Download(const SnapshotId* snapshot_id);
+
+  // snapshot_id must be specified if new_snapshot_id is specified.
+  // If snapshot_id == nullptr, download all snapshot files.
+  // If snapshot_id != nullptr, download all files relevant to the specified snapshot.
+  // If new_snapshot_id != nullptr, download the snapshot files into the specified directory.
+  Status DownloadInto(
+      const SnapshotId* snapshot_id = nullptr, const SnapshotId* new_snapshot_id = nullptr);
 
  private:
-  FsManager& fs_manager() const {
-    return downloader_.fs_manager();
-  }
+  FsManager& fs_manager() const { return downloader_.fs_manager(); }
+
+  // Downloads the snapshot file into the directory of new_snapshot_id.
+  Status DownloadFileInto(
+      const std::string& top_snapshots_dir, const tablet::SnapshotFilePB& snapshot,
+      const SnapshotId& new_snapshot_id, std::unordered_set<SnapshotId>* failed_snapshot_ids);
 
   RemoteBootstrapFileDownloader& downloader_;
   tablet::RaftGroupReplicaSuperBlockPB& new_superblock_;

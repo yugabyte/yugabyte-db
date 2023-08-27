@@ -47,7 +47,7 @@ To create your free [sandbox](../../../cloud-basics/create-clusters/create-clust
 
 ### Determine the database version
 
-YugabyteDB Managed has [two release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
+YugabyteDB Managed has [three release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for Sandbox clusters, and Innovation or Production for dedicated clusters.
 
 To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 
@@ -110,7 +110,7 @@ YBM_SOFTWARE=Preview
 YBM_SOFTWARE_TRACK_ID=250ef2a0-0555-4e3a-9418-00e6bdfe1cb0
 ```
 
-The following defines a name for the cluster and a password for the admin user. Then it calls the cluster creation API with one node in Ireland AWS region eu-west-1; the `num_cores`, `memory_mb`, and `disk_size_gb` settings are those of the free tier on AWS:
+The following defines a name for the cluster and a password for the database admin user. Then it calls the cluster creation API with one node in Ireland AWS region eu-west-1; the `num_cores`, `memory_mb`, and `disk_size_gb` settings are those of the free tier on AWS:
 
 ```sh
 YBM_CLUSTER="my-free-yugabytedb"
@@ -224,7 +224,7 @@ This loop stops when the cluster is ready.
 
 ## Connect to the database
 
-To be able to connect to the default database `yugabyte` using the admin user you created, you need to obtain the public host address of the cluster from the list of endpoints.
+To be able to connect to the default database `yugabyte` using the database admin user you created, you need to obtain the public host address of the cluster from the list of endpoints.
 
 The following commands save the connection parameters you need to connect to a YugabyteDB Managed database to environment variables:
 

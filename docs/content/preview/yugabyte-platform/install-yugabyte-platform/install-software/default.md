@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere
 headerTitle: Install YugabyteDB Anywhere
-linkTitle: Install software
+linkTitle: Install YBA software
 description: Install the YugabyteDB Anywhere software.
+headContent: Install YBA software using Replicated and Docker containers
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
@@ -13,11 +14,20 @@ menu:
 type: docs
 ---
 
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+
+Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
@@ -26,18 +36,18 @@ type: docs
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
-  </li>
-
-  <li>
     <a href="../openshift/" class="nav-link">
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
+  </li>
+
 </ul>
 
-YugabyteDB universes and clusters are created and managed using YugabyteDB Anywhere. The default option is to install YugabyteDB Anywhere on a host machine that is connected to the Internet.
+Install YugabyteDB Anywhere on a host machine that is connected to the Internet using Replicated.
 
 ## Install Replicated
 
@@ -111,3 +121,41 @@ Specify TLS versions via **Application config**, as shown in the following illus
 ![Application Config](/images/replicated/application-config-tls.png)
 
 The recommended TLS version is 1.2.
+
+## Set up HTTP/HTTPS proxy
+
+YugabyteDB Anywhere sometimes initiates HTTP or HTTPS connections to other servers. For example, HTTP or HTTPS connections (depending on your setup) can be used to do the following, or more:
+
+- Contact a public cloud provider to create VMs.
+- Deposit backups on a public cloud provider's object storage service.
+- Contact an external load balancer.
+
+You can set up YBA to use an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
+
+![Enable Proxy](/images/replicated/enable-proxy.png)
+
+When completing the **Enable Proxy** settings, keep in mind the following:
+
+- If your proxy is using the default ports for each protocol, then set the ports for the HTTP and HTTPS proxies to the default, 80 and 443 respectively, instead of 8080 and 8443 as shown in the preceding illustration.
+
+- If you have only one proxy set up (HTTP or HTTPS), then set the same values for both.
+
+- This configuration sets operating system environment variables and Java system properties. The help text for each field shows which Java system property or environment variable gets set by the field. System properties have the "-D" prefix. For example "Specify -Dhttps.proxyPort".
+
+- The **no proxy** fields (HTTP no proxy setting, HTTP no proxy setting for Java) are lists of exception hosts, provided as a comma-delimited list of addresses or hostnames. Include the following addresses:
+  - The Docker gateway address (172.17.0.1 by default).
+  - The address of any previously-specified web proxy.
+  - Any other IP addresses that you deem safe to bypass the proxy.
+
+- These settings comprehensively govern all network connections that YBA initiates. For example, if you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to bypass the proxy server when connecting to database universe nodes, then you must explicitly specify the database universe node IP addresses as exception hosts (also known as "no proxy").
+
+- Because some YBA network connections are driven by YBA's Java process, while others are driven outside of Java (for example, via Python or a Linux shell execution), each (Java and non-Java) has its own separate configurable parameters.
+
+- The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
+
+- YugabyteDB Anywhere follows community standards for setting proxy environment variables, where two environment variables are exported with lowercase and uppercase names. For example, if you enter "http://my.Proxy.host:8080" for **HTTP Proxy setting**, then two environment variables are exported as follows:
+
+    ```sh
+    HTTP_PROXY = http://my.Proxy.host:8080
+    http_proxy = http://my.Proxy.host:8080
+    ```

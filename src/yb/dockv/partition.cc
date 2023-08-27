@@ -396,7 +396,7 @@ Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
@@ -421,7 +421,7 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
     RETURN_NOT_OK(BucketForRow(row, hash_bucket_schema, &bucket));
@@ -574,6 +574,16 @@ bool PartitionSchema::HasOverlap(
          (key_end.empty() || other_key_start < key_end);
 }
 
+std::pair<uint16_t, uint16_t> PartitionSchema::GetHashPartitionBounds(const Partition& partition) {
+  const auto start_hash_code = partition.partition_key_start().empty()
+      ? 0
+      : DecodeMultiColumnHashValue(partition.partition_key_start());
+  const auto end_hash_code = partition.partition_key_end().empty()
+      ? kMaxPartitionKey
+      : DecodeMultiColumnHashValue(partition.partition_key_end()) - 1;
+  return std::make_pair(start_hash_code, end_hash_code);
+}
+
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
   // Create the start range keys.
   // NOTE: When converting FromPB to partition schema, we already error-check, so we don't need
@@ -619,7 +629,7 @@ boost::optional<std::pair<Partition, Partition>> PartitionSchema::SplitHashParti
 
 Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
                                              vector<Partition> *partitions,
-                                             int32_t max_partition_key) const {
+                                             uint16_t max_partition_key) const {
   DCHECK_GT(max_partition_key, 0);
   DCHECK_LE(max_partition_key, kMaxPartitionKey);
 
@@ -641,13 +651,14 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
 
   // Allocate the partitions.
   partitions->resize(num_tablets);
-  const uint16_t partition_interval = max_partition_key / num_tablets;
 
-  uint16_t pstart;
   uint16_t pend = 0;
-  for (int partition_index = 0; partition_index < num_tablets; partition_index++) {
-    pstart = pend;
-    pend = (partition_index + 1) * partition_interval;
+  for (int32_t partition_index = 0; partition_index < num_tablets; partition_index++) {
+    const auto pstart = pend;
+    // We don't cache (max_partition_key + 1) / num_tablets into additional variable, because
+    // we want to avoid uneven distribution due to floating number truncation and still use integer
+    // calculations.
+    pend = (partition_index + 1) * (max_partition_key + 1) / num_tablets;
 
     // For the first tablet, start key is open-ended:
     if (partition_index != 0) {
@@ -702,7 +713,7 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets, vector<Partition> 
 Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
                                          const Schema& schema,
                                          vector<Partition>* partitions) const {
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   // Create a partition per hash bucket combination.
   *partitions = vector<Partition>(1);

@@ -10,10 +10,11 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, ITable, Keyspace_Table } from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
+import { fetchIncrementalBackup } from '.././common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
-import { RevealBadge, calculateDuration } from '../common/BackupUtils';
+import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
   YCQLTableList,
@@ -22,7 +23,7 @@ import {
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { find, isFunction } from 'lodash';
+import { find, findIndex, isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
@@ -31,14 +32,22 @@ import { YBConfirmModal } from '../../modals';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { YBLoadingCircleIcon } from '../../common/indicators';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupDetails.scss';
 
+export type IncrementalBackupProps = {
+  isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
+  incrementalBackupUUID?: string; // if restore to point button is clicked
+  singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
+  kmsConfigUUID?: string;
+};
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
   onHide: () => void;
   storageConfigName: string;
   onDelete: () => void;
-  onRestore: (backup?: IBackup) => void;
+  onRestore: (backup?: IBackup, incrementalProps?: IncrementalBackupProps) => void;
   storageConfigs: {
     data?: any[];
   };
@@ -79,6 +88,15 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
     enabled: backupDetails?.kmsConfigUUID !== undefined
   });
 
+  const { data: incrementalBackups, isLoading } = useQuery(
+    ['incremental_backups', backupDetails?.commonBackupInfo.baseBackupUUID],
+    () => fetchIncrementalBackup(backupDetails!.commonBackupInfo?.baseBackupUUID),
+    {
+      refetchInterval: BACKUP_REFETCH_INTERVAL,
+      enabled: backupDetails !== null && backupDetails.hasIncrementalBackups
+    }
+  );
+
   const doAddIncrementalBackup = useMutation(
     () => {
       let responseList: Keyspace_Table[] = [];
@@ -88,9 +106,39 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+        const atleastOneTableAvailableForBackup = responseList.every((r) => {
+          if (r.allTables) return true;
+          return r.tableUUIDList?.some((tableUUID) => find(tablesInUniverse, { tableUUID }));
+        });
+
+        if (!atleastOneTableAvailableForBackup) {
+          return Promise.reject({
+            response: {
+              data: { error: `None of selected tables to backup found in the keyspace` }
+            }
+          });
+        }
+
+        const allTableAvailableForBackup = responseList.every((r) => {
+          if (r.allTables) return true;
+          return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
+        });
+
+        if (!allTableAvailableForBackup) {
+          toast.warning(
+            `One or more of selected tables to backup do not exist in keyspace. Proceeding backup without non-existent table.`,
+            { autoClose: false }
+          );
+        }
+
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
+            (tableName, index) =>
+              find(tablesInUniverse, {
+                tableName,
+                keySpace: r.keyspace,
+                tableUUID: r.tableUUIDList?.[index]
+              })?.tableName
           );
 
           return {
@@ -99,17 +147,39 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) => find(tablesInUniverse, { tableName,  keySpace: r.keyspace })?.tableUUID
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
                 )
           };
         });
       }
 
+      const uniqueKeyspaceResponseList: any[] = [];
+
+      responseList.forEach((r) => {
+        const indexOfKeyspace = findIndex(uniqueKeyspaceResponseList, { keyspace: r.keyspace });
+        if (indexOfKeyspace !== -1) {
+          uniqueKeyspaceResponseList[indexOfKeyspace] = {
+            ...uniqueKeyspaceResponseList[indexOfKeyspace],
+            tableNameList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableNameList,
+              ...r.tableNameList!
+            ],
+            tableUUIDList: [
+              ...uniqueKeyspaceResponseList[indexOfKeyspace].tableUUIDList,
+              ...r.tableUUIDList!
+            ]
+          };
+        } else {
+          uniqueKeyspaceResponseList.push(r);
+        }
+      });
+
       return addIncrementalBackup({
         ...backupDetails!,
         commonBackupInfo: {
           ...backupDetails!.commonBackupInfo,
-          responseList
+          responseList: uniqueKeyspaceResponseList
         }
       });
     },
@@ -123,7 +193,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         setShowAddIncrementalBackupModal(false);
       },
       onError: (resp: any) => {
-        toast.error(createErrorMessage(resp));
+        !handleCACertErrMsg(resp) && toast.error(createErrorMessage(resp));
       }
     }
   );
@@ -156,6 +226,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
     }
   }
 
+  if (isLoading) return <YBLoadingCircleIcon />;
+
   return (
     <div id="universe-tab-panel-pane-queries" className={'backup-details-panel'}>
       <div className={`side-panel`}>
@@ -186,7 +258,29 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             {!hideRestore && (
               <YBButton
                 btnText="Restore Entire Backup"
-                onClick={() => onRestore()}
+                btnIcon="fa fa-share"
+                onClick={() => {
+                  if (backupDetails.hasIncrementalBackups) {
+                    if (incrementalBackups?.data) {
+                      const recentBackup = incrementalBackups.data.filter(
+                        (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
+                      )[0];
+                      onRestore(
+                        { ...backupDetails, commonBackupInfo: recentBackup },
+                        {
+                          isRestoreEntireBackup: true,
+                          incrementalBackupUUID: recentBackup.backupUUID,
+                          singleKeyspaceRestore: false
+                        }
+                      );
+                    }
+                  } else {
+                    onRestore(undefined, {
+                      isRestoreEntireBackup: true,
+                      singleKeyspaceRestore: false
+                    });
+                  }
+                }}
                 disabled={
                   backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
                   !backupDetails.isStorageConfigPresent
@@ -195,7 +289,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             )}
             {onEdit && (
               <YBButton
-                btnText="Edit Backup"
+                btnText="Change Retention Period"
                 btnIcon="fa fa-pencil"
                 onClick={() => onEdit()}
                 disabled={
@@ -330,14 +424,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[]) => {
-                    onRestore({
-                      ...backupDetails,
-                      commonBackupInfo: {
-                        ...backupDetails.commonBackupInfo,
-                        responseList: tablesList
+                  onRestore={(
+                    tablesList: Keyspace_Table[],
+                    incrementalBackupProps: IncrementalBackupProps
+                  ) => {
+                    const commonBackupInfo = {
+                      ...backupDetails.commonBackupInfo,
+                      responseList: tablesList
+                    };
+                    if (incrementalBackupProps.kmsConfigUUID)
+                      commonBackupInfo.kmsConfigUUID = incrementalBackupProps.kmsConfigUUID;
+                    onRestore(
+                      {
+                        ...backupDetails,
+                        commonBackupInfo
+                      },
+                      {
+                        isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,
+                        incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                        singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
-                    });
+                    );
                   }}
                   hideRestore={hideRestore}
                 />

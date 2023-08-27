@@ -496,6 +496,22 @@ Status HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp) {
   return Status::OK();
 }
 
+namespace {
+
+void TryRunCmd(const string& cmd, vector<string>* log = NULL) {
+  LOG_STRING(INFO, log) << "$ " << cmd;
+  vector<string> argv = { "bash", "-c", cmd };
+  string results;
+  Status s = Subprocess::Call(argv, &results);
+  if (!s.ok()) {
+    LOG_STRING(INFO, log) << s.ToString();
+    return;
+  }
+  LOG_STRING(INFO, log) << results;
+}
+
+} // anonymous namespace
+
 void TryRunLsof(const Endpoint& addr, vector<string>* log) {
 #if defined(__APPLE__)
   string cmd = strings::Substitute(
@@ -527,14 +543,15 @@ void TryRunLsof(const Endpoint& addr, vector<string>* log) {
   LOG_STRING(WARNING, log) << "Failed to bind to " << addr << ". "
                            << "Trying to use lsof to find any processes listening "
                            << "on the same port:";
-  LOG_STRING(INFO, log) << "$ " << cmd;
-  vector<string> argv = { "bash", "-c", cmd };
-  string results;
-  Status s = Subprocess::Call(argv, &results);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_STRING(WARNING, log) << s.ToString();
-  }
-  LOG_STRING(WARNING, log) << results;
+  TryRunCmd(cmd, log);
+}
+
+void TryRunChronycTracking(vector<string>* log) {
+  TryRunCmd("chronyc tracking", log);
+}
+
+void TryRunChronycSourcestats(vector<string>* log) {
+  TryRunCmd("chronyc sourcestats", log);
 }
 
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
@@ -668,7 +685,7 @@ std::string fail_to_fast_resolve_address;
 
 void TEST_SetFailToFastResolveAddress(const std::string& address) {
   {
-    std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+    std::lock_guard lock(fail_to_fast_resolve_address_mutex);
     fail_to_fast_resolve_address = address;
   }
   LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
@@ -684,7 +701,7 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
     {
-      std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+      std::lock_guard lock(fail_to_fast_resolve_address_mutex);
       if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
         return boost::none;
       }

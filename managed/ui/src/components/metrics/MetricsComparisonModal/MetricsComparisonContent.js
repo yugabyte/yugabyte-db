@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef} from 'react';
+import { useContext, useEffect, useRef } from 'react';
 import { FilterContext } from './ComparisonFilterContextProvider';
 import { useQuery } from 'react-query';
 import { getQueryMetrics } from '../../../actions/graph';

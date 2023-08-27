@@ -1,13 +1,13 @@
 ---
 title: Documentation
-headerTitle: Documentation
+headerTitle: Documentation Home
 description: Guides, examples, and reference material you need to evaluate YugabyteDB database, build scalable applications, and learn distributed SQL.
-headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL.
+headcontent: Evaluate YugabyteDB, build scalable applications, and learn distributed SQL
 type: indexpage
 layout: list
 breadcrumbDisable: true
 weight: 1
-resourcesIntro: Explore resources based on your usecase
+resourcesIntro: Explore based on your usecase
 resources:
   - title: Multi-region deployments
     url: /preview/explore/multi-region-deployments/
@@ -16,7 +16,7 @@ resources:
   - title: Enterprise DBaaS
     url: /preview/yugabyte-platform/
   - title: Migrate from other RDBMS
-    url: /preview/migrate/
+    url: /preview/yugabyte-voyager/
 ---
 
 {{< sections/2-boxes >}}

@@ -38,6 +38,7 @@
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -76,12 +77,10 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 class Counter;
 
 namespace docdb {
-
-class DocOperation;
 
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the
@@ -110,11 +109,9 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const scoped_refptr<Counter>& failed_batch_lock,
-    const IsolationLevel isolation_level,
-    const dockv::OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    tablet::TabletMetrics* tablet_metrics,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
@@ -129,9 +126,10 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Outputs: keys_locked, write_batch
 Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
+    SchemaPackingProvider* schema_packing_provider /* null okay */,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
@@ -140,10 +138,11 @@ Status AssembleDocWriteBatch(
 
 struct ExternalTxnApplyStateData {
   HybridTime commit_ht;
+  SubtxnSet aborted_subtransactions;
   IntraTxnWriteId write_id = 0;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
   }
 };
 
@@ -152,33 +151,16 @@ using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>
 class ExternalTxnIntentsState {
  public:
   IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
-  void EraseEntry(const TransactionId& txn_id);
+  // Used by PrepareExternalWriteBatch when applying external transactions.
+  void EraseEntries(const ExternalTxnApplyState& apply_external_transaction);
+  // Used by DocDBCompactionFilterIntents when cleaning up aborted external txns.
+  void EraseEntries(const TransactionIdSet& transactions);
+  size_t EntryCount();
+
  private:
   std::mutex mutex_;
   std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
 };
-// Adds external pair to write batch.
-// Returns true if add was skipped because pair is a regular (non external) record.
-bool AddExternalPairToWriteBatch(
-    const LWKeyValuePairPB& kv_pair,
-    HybridTime hybrid_time,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
-
-// Prepares external part of non transaction write batch.
-// Batch could contain intents for external transactions, in this case those intents
-// will be added to intents_write_batch.
-//
-// Returns true if batch contains regular entries.
-bool PrepareExternalWriteBatch(
-    const LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
 
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
@@ -286,6 +268,7 @@ class ExternalIntentsProvider {
 // Combine external intents into single key value pair.
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
 
 }  // namespace docdb

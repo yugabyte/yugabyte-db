@@ -126,6 +126,7 @@ yb_demo=# SELECT count(*) FROM products;
 
 The following query selects the `id`, `title`, `category`, `price`, and `rating` columns for the first five products.
 
+
 ```sql
 yb_demo=# SELECT id, title, category, price, rating
           FROM products

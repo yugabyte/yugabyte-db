@@ -9,6 +9,8 @@ import {
   XClusterConfigState,
   XClusterConfigType
 } from '../components/xcluster/constants';
+import { ApiTimeout } from '../redesign/helpers/api';
+import { YBPTask } from '../redesign/helpers/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -33,7 +35,8 @@ export function fetchTablesInUniverse(
   if (universeUUID) {
     const customerId = localStorage.getItem('customerId');
     return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, {
-      params: filters
+      params: filters,
+      timeout: ApiTimeout.FETCH_TABLE_INFO
     });
   }
   return Promise.reject('Querying universe tables failed: No universe UUID provided.');
@@ -75,21 +78,21 @@ export function restartXClusterConfig(
 
 export function isBootstrapRequired(
   sourceUniverseUUID: string,
+  targetUniverseUUID: string | null,
   tableUUIDs: string[],
   configType: XClusterConfigType = XClusterConfigType.BASIC
 ) {
   const customerId = localStorage.getItem('customerId');
-  return Promise.all(
-    tableUUIDs.map((tableUUID) => {
-      return axios
-        .post<{ [tableUUID: string]: boolean }>(
-          `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
-          { tables: [tableUUID] },
-          { params: { configType } }
-        )
-        .then((response) => response.data);
-    })
-  );
+  return axios
+    .post<{ [tableUUID: string]: boolean }>(
+      `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
+      {
+        tables: tableUUIDs,
+        targetUniverseUUID
+      },
+      { params: { configType } }
+    )
+    .then((response) => response.data);
 }
 
 export function isCatchUpBootstrapRequired(
@@ -98,31 +101,29 @@ export function isCatchUpBootstrapRequired(
 ) {
   const customerId = localStorage.getItem('customerId');
   if (tableUUIDs && xClusterConfigUUID) {
-    return Promise.all(
-      tableUUIDs.map((tableUUID) => {
-        return axios
-          .post<{ [tableUUID: string]: boolean }>(
-            `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}/need_bootstrap`,
-            { tables: [tableUUID] }
-          )
-          .then((response) => response.data);
-      })
-    );
+    return axios
+      .post<{ [tableUUID: string]: boolean }>(
+        `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}/need_bootstrap`,
+        { tables: tableUUIDs }
+      )
+      .then((response) => response.data);
   }
   const errorMsg = xClusterConfigUUID ? 'No table UUIDs provided' : 'No xCluster UUID provided';
   return Promise.reject(`Querying bootstrap requirement failed: ${errorMsg}.`);
 }
 
-export function fetchXClusterConfig(uuid: string) {
+export function fetchXClusterConfig(xClusterConfigUUID: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
-    .get<XClusterConfig>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
+    .get<XClusterConfig>(
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`
+    )
     .then((response) => response.data);
 }
 
-export function editXClusterState(replication: XClusterConfig, state: XClusterConfigState) {
+export function editXClusterState(xClusterConfigUUID: string, state: XClusterConfigState) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
+  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterConfigUUID}`, {
     status: state
   });
 }
@@ -156,6 +157,24 @@ export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   );
 }
 
+/**
+ * Set the provided xCluster config to whatever is on the database.
+ *
+ * Context:
+ * Users can interact with an xCluster config using the YBA API or yb-admin.
+ * The purpose of the sync API is to reconcile changes to an xCluster config as a
+ * result of yb-admin commands.
+ */
+export function syncXClusterConfigWithDB(replicationGroupName: string, targetUniverseUUID: string) {
+  const customerUUID = localStorage.getItem('customerId');
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerUUID}/xcluster_configs/sync`, {
+      replicationGroupName: replicationGroupName,
+      targetUniverseUUID: targetUniverseUUID
+    })
+    .then((response) => response.data);
+}
+
 export function queryLagMetricsForUniverse(
   nodePrefix: string | undefined,
   replicationUUID: string
@@ -178,6 +197,7 @@ export function queryLagMetricsForUniverse(
 }
 
 export function queryLagMetricsForTable(
+  streamId: string,
   tableId: string,
   nodePrefix: string | undefined,
   start = moment().utc().subtract('1', 'hour').format('X'),
@@ -186,6 +206,7 @@ export function queryLagMetricsForTable(
   const DEFAULT_GRAPH_FILTER = {
     start,
     end,
+    streamId,
     tableId,
     nodePrefix,
     metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]

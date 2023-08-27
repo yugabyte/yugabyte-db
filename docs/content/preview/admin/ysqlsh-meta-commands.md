@@ -116,7 +116,7 @@ Inside the crosstab grid, for each distinct value `x` of *colH* and each distinc
 
 ##### \d[S+] [ [pattern](#patterns) ]
 
-For each relation (table, view, materialized view, index, sequence, or foreign table) or composite type matching the *pattern*, show all columns, their types, and any special attributes such as `NOT NULL` or defaults. Associated indexes, constraints, rules, triggers, and tablegroups are also shown. For foreign tables, the associated foreign server is shown as well. ("Matching the pattern" is defined in [Patterns](#patterns).)
+For each relation (table, view, materialized view, index, sequence, or foreign table) or composite type matching the *pattern*, show all columns, their types, and any special attributes such as `NOT NULL` or defaults. Associated indexes, constraints, rules, and triggers are also shown. For foreign tables, the associated foreign server is shown as well. ("Matching the pattern" is defined in [Patterns](#patterns).)
 
 For some types of relation, `\d` shows additional information for each column: column values for sequences, indexed expressions for indexes, and foreign data wrapper options for foreign tables.
 
@@ -216,6 +216,7 @@ Lists text search templates. If *pattern* is specified, only templates whose nam
 
 Lists database roles. (Because the concepts of "users" and "groups" have been unified into "roles", this command is now equivalent to [\du](#du-s-pattern-patterns).) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If pattern is specified, only those roles whose names match the *pattern* are listed. If the form `\dg+` is used, additional information is shown about each role; currently this adds the comment for each role.
 
+<!--
 ##### \dgr[+] [ [pattern](#patterns) ]
 
 Lists database tablegroups. If the form `\dgr+` is used, additional information is shown about each tablegroup.
@@ -223,6 +224,7 @@ Lists database tablegroups. If the form `\dgr+` is used, additional information 
 ##### \dgrt[+] [ [pattern](#patterns) ]
 
 Lists tables and indexes in database tablegroups matching the *pattern*. If the form `\dgrt+` is used, additional information is shown about each tablegroup and table.
+-->
 
 ##### \dl
 

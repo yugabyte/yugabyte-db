@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonNet;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
@@ -105,20 +106,6 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
               xClusterConfig.getUuid()));
     }
 
-    // If bootstrapping is required for the tables, add txn table to the list too.
-    XClusterTableConfig txnTableConfig = xClusterConfig.getTxnTableDetails();
-    if (Objects.nonNull(txnTableConfig)
-        && Objects.nonNull(tableIdsBootstrapIdsMap.values().iterator().next())
-        && Objects.nonNull(txnTableConfig.getStreamId())) {
-      log.info(
-          "{}.{} table id({}) and stream id({}) added to setupUniverseReplication request",
-          TRANSACTION_STATUS_TABLE_NAMESPACE,
-          TRANSACTION_STATUS_TABLE_NAME,
-          txnTableConfig.getTableId(),
-          txnTableConfig.getStreamId());
-      tableIdsBootstrapIdsMap.put(txnTableConfig.getTableId(), txnTableConfig.getStreamId());
-    }
-
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -129,16 +116,22 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           "Setting up replication for XClusterConfig({}): tableIdsBootstrapIdsMap {}",
           xClusterConfig.getUuid(),
           tableIdsBootstrapIdsMap);
+      // For dual NIC, the universes will be able to communicate over the secondary
+      // addresses.
+      Set<CommonNet.HostPortPB> sourceMasterAddresses =
+          new HashSet<>(
+              NetUtil.parseStringsAsPB(
+                  sourceUniverse.getMasterAddresses(
+                      false /* mastersQueryable */, true /* getSecondary */)));
+
       SetupUniverseReplicationResponse resp =
           client.setupUniverseReplication(
               xClusterConfig.getReplicationGroupName(),
               tableIdsBootstrapIdsMap,
-              // For dual NIC, the universes will be able to communicate over the secondary
-              // addresses.
-              new HashSet<>(
-                  NetUtil.parseStringsAsPB(
-                      sourceUniverse.getMasterAddresses(
-                          false /* mastersQueryable */, true /* getSecondary */))));
+              sourceMasterAddresses,
+              supportsTxnXCluster(targetUniverse)
+                  ? xClusterConfig.getType().equals(ConfigType.Txn)
+                  : null);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
@@ -160,10 +153,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         throw new RuntimeException(errMsg);
       }
       syncXClusterConfigWithReplicationGroup(
-          clusterConfigResp.getConfig(),
-          xClusterConfig,
-          taskParams().tableIds,
-          false /* skipSyncTxnTable */);
+          clusterConfigResp.getConfig(), xClusterConfig, taskParams().tableIds);
 
       // For txn xCluster set the target universe role to standby.
       if (xClusterConfig.getType().equals(ConfigType.Txn) && xClusterConfig.isTargetActive()) {

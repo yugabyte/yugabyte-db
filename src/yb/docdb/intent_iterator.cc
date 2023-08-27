@@ -14,11 +14,13 @@
 #include "yb/docdb/intent_iterator.h"
 
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
@@ -501,7 +503,7 @@ const Slice kEmptyKeyStrongWriteTailSlice =
 
 } // namespace
 
-Slice StrongWriteSuffix(const KeyBytes& key) {
+Slice StrongWriteSuffix(Slice key) {
   return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
 }
 

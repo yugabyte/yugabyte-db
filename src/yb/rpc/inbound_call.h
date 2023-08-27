@@ -69,6 +69,7 @@ class Message;
 
 namespace yb {
 
+class EventStats;
 class Histogram;
 class Trace;
 
@@ -110,7 +111,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
 
   // Return the serialized request parameter protobuf.
-  const Slice &serialized_request() const {
+  Slice serialized_request() const {
     return serialized_request_;
   }
 
@@ -141,7 +142,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Updates the Histogram with time elapsed since the call was received,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time);
+  virtual void RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time);
 
   // When RPC call Handle() completed execution on the server side.
   // Updates the Histogram with time elapsed since the call was started,
@@ -201,7 +202,11 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   template <class T, class ...Args>
   static std::shared_ptr<T> Create(Args&&... args) {
-    auto result = std::make_shared<T>(std::forward<Args>(args)...);
+    // Not using make_shared here to make sure we can deallocate the object while the control block
+    // is still kept allocated due to weak stored by ServicePool::QueuedCheckDeadline.
+    // See #17726 for this bug and #17759 to track the "proper" fix in ServicePoolImpl.
+    auto* call_ptr = new T(std::forward<Args>(args)...);
+    auto result = std::shared_ptr<T>(call_ptr);
     result->RecordCallReceived();
     return result;
   }
@@ -221,7 +226,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
   virtual void Clear();
 
@@ -239,7 +244,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // Data source of this call.
   CallData request_data_;
-  std::atomic<size_t> request_data_memory_usage_{0};
 
   // Timing information related to this RPC call.
   InboundCallTiming timing_;

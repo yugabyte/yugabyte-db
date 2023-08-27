@@ -3,11 +3,12 @@ title: Release versioning
 headerTitle: Release versioning
 linkTitle: Release versioning
 description: Explains the new release versioning convention for preview and stable releases.
-menu:
-  preview_releases:
-    identifier: versioning
-    parent: release-notes
-    weight: 1000
+aliases:
+  - /stable/releases/versioning/
+  - /v2.16/releases/versioning/
+  - /v2.14/releases/versioning/
+  - /v2.12/releases/versioning/
+  - /v2.8/releases/versioning/
 type: docs
 ---
 

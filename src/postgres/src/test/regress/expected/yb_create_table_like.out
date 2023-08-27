@@ -68,14 +68,16 @@ CREATE TABLE testsplitat (
   b TEXT,
   PRIMARY KEY(a ASC, b ASC));
 CREATE TABLE testlikesplitat(LIKE testsplitat INCLUDING INDEXES) SPLIT AT VALUES((-100, 'bar'), (250, 'foo'));
+CREATE INDEX ON testlikesplitat(a ASC) SPLIT AT VALUES ((10), (20));
 \d+ testlikesplitat
                               Table "public.testlikesplitat"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | integer |           | not null |         | plain    |              |
- b      | text    |           | not null |         | extended |              |
+ a      | integer |           | not null |         | plain    |              | 
+ b      | text    |           | not null |         | extended |              | 
 Indexes:
     "testlikesplitat_pkey" PRIMARY KEY, lsm (a ASC, b ASC)
+    "testlikesplitat_a_idx" lsm (a ASC)
 
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
            yb_get_range_split_clause
@@ -83,22 +85,37 @@ SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
  SPLIT AT VALUES ((-100, 'bar'), (250, 'foo'))
 (1 row)
 
+SELECT yb_get_range_split_clause('testlikesplitat_a_idx'::regclass);
+  yb_get_range_split_clause   
+------------------------------
+ SPLIT AT VALUES ((10), (20))
+(1 row)
+
 -- Test adding SPLIT INTO syntax with copied PK.
 CREATE TABLE testsplitinto(a INT, b text, PRIMARY KEY((a, b) HASH));
 CREATE TABLE testlikesplitinto(LIKE testsplitinto INCLUDING INDEXES) SPLIT INTO 2 TABLETS;
+CREATE INDEX ON testlikesplitinto(a) SPLIT INTO 5 TABLETS;
 \d+ testlikesplitinto
                              Table "public.testlikesplitinto"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | integer |           | not null |         | plain    |              |
- b      | text    |           | not null |         | extended |              |
+ a      | integer |           | not null |         | plain    |              | 
+ b      | text    |           | not null |         | extended |              | 
 Indexes:
     "testlikesplitinto_pkey" PRIMARY KEY, lsm ((a, b) HASH)
+    "testlikesplitinto_a_idx" lsm (a HASH)
 
-SELECT * FROM yb_table_properties('testlikesplitinto'::regclass);
- num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
--------------+----------------------+--------------+----------------+---------------
-           2 |                    2 | f            |                |
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           2 |                    2
+(1 row)
+
+SELECT num_tablets, num_hash_key_columns
+    FROM yb_table_properties('testlikesplitinto_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
 (1 row)
 
 -- Split info is not copied.
@@ -109,11 +126,23 @@ SELECT yb_get_range_split_clause('neg_splitat'::regclass);
 
 (1 row)
 
+SELECT yb_get_range_split_clause('neg_splitat_a_idx'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
 CREATE TABLE neg_splitinto (LIKE testlikesplitinto INCLUDING ALL);
-SELECT * FROM yb_table_properties('neg_splitinto'::regclass);
- num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
--------------+----------------------+--------------+----------------+---------------
-           3 |                    2 | f            |                |
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           3 |                    2
+(1 row)
+
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           3 |                    1
 (1 row)
 
 DROP TABLE testsplitat, testlikesplitat, testsplitinto, testlikesplitinto, neg_splitat, neg_splitinto CASCADE;

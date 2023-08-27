@@ -170,9 +170,9 @@ Status RWOperationCounter::WaitForOpsToFinish(
     if (now > deadline) {
       return STATUS_FORMAT(
           TimedOut,
-          "Timed out waiting for all pending operations to complete. "
-              "$0 transactions pending. Waited for $1",
-          num_pending_ops, waited_time);
+          "$0: Timed out waiting for all pending operations to complete. "
+              "$1 transactions pending. Waited for $2",
+          resource_name_, num_pending_ops, waited_time);
     }
     if (waited_time > num_complaints * complain_interval) {
       LOG(WARNING) << Format("Waiting for $0 pending operations to complete now for $1",
@@ -186,8 +186,10 @@ Status RWOperationCounter::WaitForOpsToFinish(
   return Status::OK();
 }
 
-ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline)
-    : data_{counter, counter ? counter->resource_name() : ""
+ScopedRWOperation::ScopedRWOperation(
+    RWOperationCounter* counter, const StatusHolder* abort_status_holder,
+    const CoarseTimePoint& deadline)
+    : data_{counter, abort_status_holder, counter ? counter->resource_name() : ""
 #ifndef NDEBUG
             , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
@@ -199,6 +201,7 @@ ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTi
     VTRACE(1, "$0 $1", __func__, resource_name());
     if (!counter->Increment() && !counter->WaitMutexAndIncrement(deadline)) {
       data_.counter_ = nullptr;
+      data_.abort_status_holder_ = nullptr;
     }
   }
 }
@@ -213,7 +216,12 @@ void ScopedRWOperation::Reset() {
     data_.counter_->Decrement();
     data_.counter_ = nullptr;
   }
+  data_.abort_status_holder_ = nullptr;
   data_.resource_name_ = "";
+}
+
+Status ScopedRWOperation::GetAbortedStatus() const {
+  return data_.abort_status_holder_ ? data_.abort_status_holder_->GetStatus() : Status::OK();
 }
 
 ScopedRWOperationPause::ScopedRWOperationPause(

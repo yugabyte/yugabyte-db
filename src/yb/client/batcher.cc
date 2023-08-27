@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
+#include <boost/range/adaptors.hpp>
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
@@ -117,18 +118,20 @@ const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTSe
 // locks are non-reentrant).
 // ------------------------------------------------------------
 
-Batcher::Batcher(YBClient* client,
-                 const YBSessionPtr& session,
-                 YBTransactionPtr transaction,
-                 ConsistentReadPoint* read_point,
-                 bool force_consistent_read)
-  : client_(client),
-    weak_session_(session),
-    async_rpc_metrics_(session->async_rpc_metrics()),
-    transaction_(std::move(transaction)),
-    read_point_(read_point),
-    force_consistent_read_(force_consistent_read) {
-}
+Batcher::Batcher(
+    YBClient* client,
+    const YBSessionPtr& session,
+    YBTransactionPtr transaction,
+    ConsistentReadPoint* read_point,
+    bool force_consistent_read,
+    int64_t leader_term)
+    : client_(client),
+      weak_session_(session),
+      async_rpc_metrics_(session->async_rpc_metrics()),
+      transaction_(std::move(transaction)),
+      read_point_(read_point),
+      force_consistent_read_(force_consistent_read),
+      leader_term_(leader_term) {}
 
 Batcher::~Batcher() {
   LOG_IF_WITH_PREFIX(DFATAL, outstanding_rpcs_ != 0)
@@ -548,14 +551,15 @@ void Batcher::ExecuteOperations(Initial initial) {
   // Now flush the ops for each group.
   // Consistent read is not required when whole batch fits into one command.
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
   auto self = shared_from_this();
   for (const auto& group : ops_info_.groups) {
     // Allow local calls for last group only.
     const auto allow_local_calls =
         allow_local_calls_in_curr_thread_ && (&group == &ops_info_.groups.back());
-    rpcs.push_back(CreateRpc(
-        self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
+    rpcs.push_back(
+        CreateRpc(self, group.begin->tablet.get(), group, allow_local_calls, need_consistent_read));
   }
 
   outstanding_rpcs_.store(rpcs.size());
@@ -587,14 +591,27 @@ const ClientId& Batcher::client_id() const {
   return client_->id();
 }
 
+server::Clock* Batcher::Clock() const {
+  return client_->Clock();
+}
+
 std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
-  const auto& pair = client_->NextRequestIdAndMinRunningRequestId();
-  RegisterRequest(pair.first);
-  return pair;
+  return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_request_ids_);
+  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+}
+
+void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
+  auto it = other->retryable_requests_.find(id);
+  if (it == other->retryable_requests_.end()) {
+    // The request id has been moved.
+    DCHECK(retryable_requests_.contains(id));
+    return;
+  }
+  retryable_requests_.insert(std::move(*it));
+  other->retryable_requests_.erase(it);
 }
 
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
@@ -615,12 +632,12 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   // levels the read algorithm would differ.
   const auto op_group = (*group.begin).yb_op->group();
   AsyncRpcData data {
-    .batcher = self,
-    .tablet = tablet,
-    .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
-    .need_consistent_read = need_consistent_read,
-    .ops = InFlightOps(group.begin, group.end),
-    .need_metadata = group.need_metadata
+      .batcher = self,
+      .tablet = tablet,
+      .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
+      .need_consistent_read = need_consistent_read,
+      .ops = InFlightOps(group.begin, group.end),
+      .need_metadata = group.need_metadata
   };
 
   switch (op_group) {

@@ -142,7 +142,7 @@ select to_char(
   '9.999') as "stmt #1 time minus txn time";
 ```
 
-You'll see that _"stmt #1 time minus txn time"_ differs from 5.0 seconds by maybe as much as 0.03 seconds. This reflects the inevitable time that it takes for the client-server round trips and for the \\_!_ metacommand to launch a new shell and invoke the operating system sleep utility. (_psql_ and therefore _ysqlsh_ have no intrinsic sleep function. And if you use _pg_sleep()_, then you complicate the discussion because this requires a top-level SQL call of its own.)
+You'll see that _"stmt #1 time minus txn time"_ differs from 5.0 seconds by maybe as much as 0.03 seconds. This reflects the inevitable time that it takes for the client-server round trips and for the \\_!_ meta-command to launch a new shell and invoke the operating system sleep utility. (_psql_ and therefore _ysqlsh_ have no intrinsic sleep function. And if you use _pg_sleep()_, then you complicate the discussion because this requires a top-level SQL call of its own.)
 
 Notice that this observation confirms that it is the _start transaction_ explicit call that determines the moment at which the transaction starts—and not the start moment of the first subsequent database call within that started transaction.
 

@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Vert.x PG Client for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Vert.x PG Client for YSQL
+description: Connect a Java application using Vert.x PG driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:

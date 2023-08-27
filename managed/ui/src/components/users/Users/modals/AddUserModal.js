@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import * as Yup from 'yup';
 import { isSSOEnabled } from '../../../../config';
 import { Row, Col } from 'react-bootstrap';
@@ -12,7 +11,8 @@ const MIN_PASSWORD_LENGTH = 8;
 export const userRoles = [
   { value: 'Admin', label: 'Admin' },
   { value: 'BackupAdmin', label: 'BackupAdmin' },
-  { value: 'ReadOnly', label: 'ReadOnly' }
+  { value: 'ReadOnly', label: 'ReadOnly' },
+  { value: 'ConnectOnly', label: 'ConnectOnly' }
 ];
 
 export const AddUserModal = (props) => {

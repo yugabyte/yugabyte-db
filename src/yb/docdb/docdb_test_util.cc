@@ -129,10 +129,9 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return result;
   }
 
-  Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) override {
-    return IsExternalTransaction::kFalse;
-  }
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override {}
 
  private:
   static void Fail() {
@@ -168,13 +167,14 @@ Status LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
     iter->Next();
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
-  // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(
-      rocksdb, dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+  // in RestoreTo.  It's okay that we have no packing information here because even without packing
+  // information, the debugging dump has all the information: when we are missing packing
+  // information, we still dump out the value in raw form.
+  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, nullptr /*schema_packing_provider*/);
   return Status::OK();
 }
 
-Status LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
+Status LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB* rocksdb) const {
   rocksdb::ReadOptions read_options;
   rocksdb::WriteOptions write_options;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
@@ -188,8 +188,7 @@ Status LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
   }
   RETURN_NOT_OK(FullyCompactDB(rocksdb));
   SCHECK_EQ(
-      docdb_debug_dump_str,
-      DocDBDebugDumpToStr(rocksdb, dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE)),
+      docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, nullptr /*schema_packing_provider*/),
       InternalError, "DocDB dump mismatch");
   return Status::OK();
 }
@@ -279,19 +278,20 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
-    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadHybridTime::Max()));
+    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData()));
     ASSERT_OK(in_mem_docdb_.DeleteSubDoc(doc_path));
   } else {
-    DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
-                    current_iteration, doc_path.ToString(), value.ToString());
+    DOCDB_DEBUG_LOG(
+        "Iteration $0: setting value at doc path $1 to $2", current_iteration, doc_path.ToString(),
+        value.ToString());
     auto pv = value.custom_value_type() != ValueEntryType::kInvalid
-        ? dockv::PrimitiveValue(value.custom_value_type())
-        : dockv::PrimitiveValue::FromQLValuePB(value_holder);
+                  ? dockv::PrimitiveValue(value.custom_value_type())
+                  : dockv::PrimitiveValue::FromQLValuePB(value_holder);
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE),
-          StorageDbType::kRegular);
+      DocDBDebugDump(
+          rocksdb(), std::cerr, fixture_ /*schema_packing_provider*/, StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -317,7 +317,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
     auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
       encoded_sub_doc_key, doc_db(), rocksdb::kDefaultQueryId, txn_op_context,
-      CoarseTimePoint::max() /* deadline */));
+      ReadOperationData()));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.
@@ -505,6 +505,18 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(
 void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
+
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FullyCompactDB(regular_db_.get()));
+}
+
+void DocDBRocksDBFixture::FullyCompactHistoryBefore(
+    HistoryCutoff history_cutoff) {
+  LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
+  retention_policy_->SetHistoryCutoff(history_cutoff);
   auto se = ScopeExit([this] {
     SetHistoryCutoffHybridTime(HybridTime::kMin);
   });

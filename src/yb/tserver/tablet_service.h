@@ -119,6 +119,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                             GetTransactionStatusResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  void GetOldTransactions(const GetOldTransactionsRequestPB* req,
+                          GetOldTransactionsResponsePB* resp,
+                          rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
@@ -177,6 +181,17 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void GetLockStatus(const GetLockStatusRequestPB* req,
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
+
+  // Method to cancel a given transaction. If the passed in request has a status tablet id, a cancel
+  // transaction request is sent to that status tablet alone. Else, the request is broadcast to all
+  // status tablets hosted at this server.
+  void CancelTransaction(const CancelTransactionRequestPB* req,
+                         CancelTransactionResponsePB* resp,
+                         rpc::RpcContext context) override;
+
+  void StartRemoteSnapshotTransfer(
+      const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void Shutdown() override;
 

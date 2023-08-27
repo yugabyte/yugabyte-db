@@ -1,10 +1,9 @@
 ---
-title: Performance Advisor
+title: YBM Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations
 image: /images/section_icons/deploy/enterprise.png
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-advisor
@@ -14,6 +13,8 @@ type: docs
 ---
 
 Use Performance Advisor to scan your cluster for potential optimizations.
+
+{{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Managed clusters with Performance Monitor" >}}
 
 For meaningful results, run your workload for at least an hour before running the advisor.
 
@@ -59,10 +60,10 @@ CREATE TABLE order_details (
 );
 ```
 
-Then create an index on `order_updated` using range sharding:
+Then create an index on `order_updated` using HASH sharding:
 
 ```sql
-CREATE INDEX ON order_details (order_updated asc);
+CREATE INDEX ON order_details (order_updated HASH);
 ```
 
 The following query finds the number of orders in a specific time window:

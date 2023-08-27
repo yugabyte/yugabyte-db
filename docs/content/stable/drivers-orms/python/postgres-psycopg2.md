@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: PostgreSQL Psycopg2 Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Python drivers for YSQL
+description: Connect a Python application using PostgreSQL Psycopg2 Driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:

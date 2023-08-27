@@ -9,23 +9,16 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.AssertHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
@@ -33,11 +26,7 @@ import com.yugabyte.yw.models.MetricConfigDefinition;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.hamcrest.CoreMatchers;
@@ -62,6 +51,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   MetricConfigDefinition validMetric;
 
   @Before
@@ -75,11 +66,18 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
+        .thenReturn(true);
 
-    MetricUrlProvider metricUrlProvider = new MetricUrlProvider(mockAppConfig);
+    MetricUrlProvider metricUrlProvider = new MetricUrlProvider(runtimeConfGetter);
     metricQueryHelper =
         new MetricQueryHelper(
-            mockAppConfig, mockApiHelper, metricUrlProvider, mockPlatformExecutorFactory);
+            mockAppConfig,
+            runtimeConfGetter,
+            mockApiHelper,
+            metricUrlProvider,
+            mockPlatformExecutorFactory);
   }
 
   @Test

@@ -18,6 +18,7 @@
 // under the License.
 //
 
+#include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
 
 #ifndef NDEBUG
@@ -41,6 +42,10 @@ void SyncPoint::LoadDependency(const std::vector<Dependency>& dependencies) {
 }
 
 bool SyncPoint::PredecessorsAllCleared(const std::string& point) {
+  if (!enabled_) {
+    return true;
+  }
+
   for (const auto& pred : predecessors_[point]) {
     if (cleared_points_.count(pred) == 0) {
       return false;
@@ -68,8 +73,11 @@ void SyncPoint::EnableProcessing() {
 }
 
 void SyncPoint::DisableProcessing() {
-  std::unique_lock lock(mutex_);
-  enabled_ = false;
+  {
+    std::unique_lock lock(mutex_);
+    enabled_ = false;
+  }
+  cv_.notify_all();
 }
 
 void SyncPoint::ClearTrace() {
@@ -92,8 +100,10 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
     cv_.notify_all();
   }
 
-  while (!PredecessorsAllCleared(point)) {
-    cv_.wait(lock);
+  if (!PredecessorsAllCleared(point)) {
+    LOG(INFO) << "Entered SyncPoint wait: " << point;
+    cv_.wait(lock, [this, &point]() { return PredecessorsAllCleared(point); });
+    LOG(INFO) << "Leaving SyncPoint wait: " << point;
   }
 
   cleared_points_.insert(point);

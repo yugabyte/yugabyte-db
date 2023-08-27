@@ -105,8 +105,8 @@ public class NodeInstanceController extends AuthenticatedController {
       response = NodeDetailsResp.class,
       nickname = "getNodeDetails")
   public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
@@ -299,6 +299,14 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Detached node action", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
   public Result detachedNodeAction(
       UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     // Validate customer UUID and universe UUID and AWS provider.
@@ -374,7 +382,7 @@ public class NodeInstanceController extends AuthenticatedController {
   public Result nodeAction(
       UUID customerUUID, UUID universeUUID, String nodeName, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universe.getNodeOrBadRequest(nodeName);
     NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
 
@@ -385,6 +393,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    boolean force = nodeActionFormData.isForce();
     NodeTaskParams taskParams = new NodeTaskParams();
 
     if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
@@ -392,6 +401,7 @@ public class NodeInstanceController extends AuthenticatedController {
           UniverseControllerRequestBinder.deepCopy(
               universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
       params.isHardReboot = nodeAction == HARD_REBOOT;
+      params.skipWaitingForMasterLeader = force;
       taskParams = params;
     } else {
       taskParams =
@@ -404,12 +414,12 @@ public class NodeInstanceController extends AuthenticatedController {
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
-    if (nodeAction == NodeActionType.STOP
-        || nodeAction == NodeActionType.REMOVE
-        || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT
-        || nodeAction == NodeActionType.HARD_REBOOT) {
-      // Always check this?? For now leaving it as is since it breaks many tests
+    if ((nodeAction == NodeActionType.STOP
+            || nodeAction == NodeActionType.REMOVE
+            || nodeAction == NodeActionType.DELETE
+            || nodeAction == NodeActionType.REBOOT
+            || nodeAction == NodeActionType.HARD_REBOOT)
+        && !force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }

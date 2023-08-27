@@ -50,10 +50,11 @@ public class TlsToggleParams extends UpgradeTaskParams {
     boolean existingEnableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeDetails.rootCA;
     UUID existingClientRootCA = universeDetails.getClientRootCA();
-    if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
-        && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+
+    // Due to a bug, temporarily disable rolling upgrade for TLS toggle.
+    if (upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
       throw new PlatformServiceException(
-          Status.BAD_REQUEST, "TLS toggle can be performed either rolling or non-rolling way.");
+          Status.BAD_REQUEST, "TLS toggle can only be performed in a non-rolling manner.");
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt

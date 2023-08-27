@@ -4,9 +4,9 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React from 'react';
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
+import { useQueries } from 'react-query';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import awsLogo from '../config/ConfigProvider/images/aws.svg';
@@ -17,10 +17,12 @@ import openshiftLogo from '../config/ConfigProvider/images/redhat.png';
 import tanzuLogo from '../config/ConfigProvider/images/tanzu.png';
 import { InfraProvider } from './providerRedesign/InfraProvider';
 import {
-  ConfigTabKey,
   CONFIG_ROUTE_PREFIX,
+  CloudVendorProviders,
+  ConfigTabKey,
   KubernetesProviderType,
-  ProviderCode
+  ProviderCode,
+  SUPPORTED_KUBERNETES_PROVIDERS
 } from './providerRedesign/constants';
 import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
@@ -30,6 +32,7 @@ import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
+import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -39,10 +42,28 @@ interface ReactRouterProps {
 export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
-
   showOrRedirect(currentCustomer.data.features, 'menu.config');
 
-  // Validate URL param
+  // Start fetching the region metadata to seed the cache once the user navigates to the providers tab.
+  // Although this data isn't required on first load, the intention is to start fetching in the background to avoid
+  // showing loading spinners when the user starts configuring regions.
+  // The region metadata is simply .yml files stored on the server and does not change at runtime so it is safe to load
+  // in advance.
+  // This also makes sure we keep the cached region metadata until the user navigates away from the providers tab.
+  useQueries(
+    CloudVendorProviders.map((providerCode) => ({
+      queryKey: regionMetadataQueryKey.detail(providerCode),
+      queryFn: () => api.fetchRegionMetadata(providerCode)
+    }))
+  );
+  useQueries(
+    SUPPORTED_KUBERNETES_PROVIDERS.map((kubernetesProvider) => ({
+      queryKey: regionMetadataQueryKey.detail(ProviderCode.KUBERNETES, kubernetesProvider),
+      queryFn: () => api.fetchRegionMetadata(ProviderCode.KUBERNETES, kubernetesProvider)
+    }))
+  );
+
+  // Validate the URL params.
   if (
     params.tab !== undefined &&
     !Object.values(ConfigTabKey).includes(params.tab as ConfigTabKey)

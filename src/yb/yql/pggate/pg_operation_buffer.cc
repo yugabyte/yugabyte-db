@@ -38,6 +38,7 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -76,11 +77,6 @@ dockv::KeyEntryValues InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       LOG(FATAL) << "Expression instead of value";
-      qlexpr::QLExprExecutor executor;
-      qlexpr::QLExprResult expr_result;
-      auto s = executor.EvalExpr(column_value.ToGoogleProtobuf(), nullptr, expr_result.Writer());
-
-      result.push_back(dockv::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
     }
     ++column_idx;
   }
@@ -202,10 +198,13 @@ size_t BufferableOperations::size() const {
 
 class PgOperationBuffer::Impl {
  public:
-  Impl(const Flusher& flusher, const BufferingSettings& buffering_settings)
-      : flusher_(flusher),
-        buffering_settings_(buffering_settings) {
-  }
+  Impl(
+    const Flusher& flusher,
+    const BufferingSettings& buffering_settings,
+    PgDocMetrics* metrics)
+    : flusher_(flusher),
+      buffering_settings_(buffering_settings),
+      metrics_(*metrics) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
@@ -240,13 +239,6 @@ class PgOperationBuffer::Impl {
       in_flight_ops.push_back(std::move(i));
     }
     in_flight_ops_.clear();
-  }
-
-  void GetAndResetRpcStats(uint64_t* count, uint64_t* wait_time) {
-    *count = rpc_count_;
-    rpc_count_ = 0;
-    *wait_time = rpc_wait_time_.ToNanoseconds();
-    rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
   }
 
  private:
@@ -324,10 +316,12 @@ class PgOperationBuffer::Impl {
   }
 
   Status EnsureCompleted(size_t count) {
-    for(; count && !in_flight_ops_.empty(); --count) {
-      RETURN_NOT_OK(in_flight_ops_.front().future.Get(&rpc_wait_time_));
+    for (; count && !in_flight_ops_.empty(); --count) {
+      uint64_t duration = 0;
+      auto result = VERIFY_RESULT(metrics_.CallWithDuration(
+          [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration));
+      metrics_.FlushRequest(duration);
       in_flight_ops_.pop_front();
-      ++rpc_count_;
     }
     return Status::OK();
   }
@@ -413,13 +407,13 @@ class PgOperationBuffer::Impl {
   BufferableOperations txn_ops_;
   RowKeys keys_;
   InFlightOps in_flight_ops_;
-  uint64_t rpc_count_ = 0;
-  MonoDelta rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
+  PgDocMetrics& metrics_;
 };
 
 PgOperationBuffer::PgOperationBuffer(const Flusher& flusher,
-                                     const BufferingSettings& buffering_settings)
-    : impl_(new Impl(flusher, buffering_settings)) {
+                                     const BufferingSettings& buffering_settings,
+                                     PgDocMetrics* metrics)
+    : impl_(new Impl(flusher, buffering_settings, metrics)) {
 }
 
 PgOperationBuffer::~PgOperationBuffer() = default;
@@ -443,11 +437,6 @@ size_t PgOperationBuffer::Size() const {
 
 void PgOperationBuffer::Clear() {
     impl_->Clear();
-}
-
-void PgOperationBuffer::GetAndResetRpcStats(uint64_t* count,
-                                            uint64_t* wait_time) {
-  impl_->GetAndResetRpcStats(count, wait_time);
 }
 
 } // namespace pggate

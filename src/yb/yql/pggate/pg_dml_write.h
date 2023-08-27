@@ -63,7 +63,7 @@ class PgDmlWrite : public PgDml {
   void AllocWriteRequest();
 
   // Allocate column expression.
-  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
 
   // Allocate target for selected or returned expressions.
   LWPgsqlExpressionPB *AllocTargetPB() override;

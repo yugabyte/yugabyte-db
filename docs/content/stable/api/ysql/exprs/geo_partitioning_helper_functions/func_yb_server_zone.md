@@ -12,7 +12,7 @@ type: docs
 
 ## Synopsis
 
-`yb_server_zone()` returns the region that user's server is connected to.
+`yb_server_zone()` returns the zone that a user's server is connected to.
 
 ## Examples
 
@@ -32,7 +32,6 @@ yugabyte=# SELECT yb_server_zone();
 ## Usage in Row-level geo-partitioning
 
 Similar to [`yb_server_region()`](../func_yb_server_region), this function is also helpful while implementing [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/), as it can significantly simplify inserting rows from the user server's partition if the partitioning is based on default value of yb_server_zone().
-
 {{< note title="Note" >}}
 
 If you didn't set the placement_region flag at node startup, yb_server_region() returns NULL.
@@ -40,6 +39,7 @@ If you didn't set the placement_region flag at node startup, yb_server_region() 
 {{< /note >}}
 
 ## See also
+
 - [`yb_server_cloud()`](../func_yb_server_cloud)
 - [`yb_server_region()`](../func_yb_server_region)
 - [`yb_is_local_table(oid)`](../func_yb_is_local_table)

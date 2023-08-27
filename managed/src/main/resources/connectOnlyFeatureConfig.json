@@ -1,0 +1,69 @@
+{
+  "universe": {
+    "import": "disabled",
+    "create": "disabled"
+  },
+  "config": {
+    "infra": "disabled",
+    "backup": "disabled"
+  },
+  "menu": {
+    "dashboard": "hidden",
+    "universes": "hidden",
+    "tasks": "hidden",
+    "config": "hidden",
+    "administration": "hidden",
+    "backups": "hidden",
+    "alerts": "hidden"
+  },
+  "health": {
+    "configure": "disabled"
+  },
+  "alert": {
+    "list": {
+      "actions": "disabled"
+    },
+    "configuration": {
+      "actions": "disabled"
+    },
+    "destinations": {
+      "actions": "disabled"
+    },
+    "channels": {
+      "actions": "disabled"
+    }
+  },
+  "universes": {
+    "details": {
+      "overview": {
+        "upgradeSoftware": "hidden",
+        "editGFlags": "hidden",
+        "editUniverse": "hidden",
+        "readReplica": "hidden",
+        "manageEncryption": "hidden",
+        "restartUniverse": "hidden",
+        "pausedUniverse": "disabled",
+        "deleteUniverse": "hidden",
+        "costs": "hidden",
+        "systemdUpgrade": "hidden"
+      }
+    },
+    "tableActions": "disabled",
+    "actions": "disabled",
+    "backup": "disabled"
+  },
+  "administration": {
+    "highAvailability": "hidden"
+  },
+  "main": {
+    "stats": "hidden",
+    "logs": "hidden",
+    "releases": "hidden",
+    "landing_page": "/profile"
+  },
+  "profile": {
+    "banner": "hidden",
+    "apiKeyManagement": "hidden",
+    "profileInfo": "disabled"
+  }
+}

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
@@ -87,9 +87,7 @@ export default class TableDetail extends Component {
     ) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
       const tableName = currentTableDetail.tableDetails.tableName;
-      const isTopKMetricsEnabled = this.props.runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === 'yb.metrics.ui.topk.enable'
-      ).value === 'true';
+
       tableMetricsContent = (
         <CustomerMetricsPanel
           origin={'table'}
@@ -99,7 +97,6 @@ export default class TableDetail extends Component {
           nodePrefixes={nodePrefixes}
           visibleModal={visibleModal}
           featureFlags={featureFlags}
-          isTopKMetricsEnabled={isTopKMetricsEnabled}
         />
       );
     }
@@ -148,7 +145,6 @@ export default class TableDetail extends Component {
       isNonEmptyObject(currentUniverse.data) &&
       isNonEmptyObject(currentTableDetail.tableDetails)
     ) {
-
       universeState = (
         <Col lg={10} sm={8} xs={6}>
           {/* UNIVERSE NAME */}

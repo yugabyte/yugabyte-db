@@ -29,9 +29,58 @@ fi
 
 readonly YB_COMMON_BUILD_ENV_SOURCED=1
 
+yb_script_paths_are_set=false
+
 # -------------------------------------------------------------------------------------------------
 # Functions used during initialization
 # -------------------------------------------------------------------------------------------------
+
+set_script_paths() {
+  if [[ $yb_script_paths_are_set == "true" ]]; then
+    return
+  fi
+  yb_script_paths_are_set=true
+
+  # We check that all of these scripts actually exist in common-build-env-test.sh, that's why it is
+  # useful to invoke them using these constants.
+  export YB_SCRIPT_PATH_AGGREGATE_TEST_REPORTS=\
+$YB_SRC_ROOT/python/yugabyte/aggregate_test_reports.py
+  export YB_SCRIPT_PATH_BUILD_POSTGRES=$YB_SRC_ROOT/python/yugabyte/build_postgres.py
+  export YB_SCRIPT_PATH_CCMD_TOOL=$YB_SRC_ROOT/python/yugabyte/ccmd_tool.py
+  export YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX=$YB_SRC_ROOT/python/yugabyte/check_python_syntax.py
+  export YB_SCRIPT_PATH_DEDUP_THREAD_STACKS=$YB_SRC_ROOT/python/yugabyte/dedup_thread_stacks.py
+  export YB_SCRIPT_PATH_DEPENDENCY_GRAPH=$YB_SRC_ROOT/python/yugabyte/dependency_graph.py
+  export YB_SCRIPT_PATH_DOWNLOAD_AND_EXTRACT_ARCHIVE=\
+$YB_SRC_ROOT/python/yugabyte/download_and_extract_archive.py
+  export YB_SCRIPT_PATH_FIX_PATHS_IN_COMPILE_ERRORS=\
+$YB_SRC_ROOT/python/yugabyte/fix_paths_in_compile_errors.py
+  export YB_SCRIPT_PATH_FOSSA_ANALYSIS=$YB_SRC_ROOT/python/yugabyte/fossa_analysis.py
+  export YB_SCRIPT_PATH_GEN_AUTO_FLAGS_JSON=$YB_SRC_ROOT/python/yugabyte/gen_auto_flags_json.py
+  export YB_SCRIPT_PATH_GEN_FLAGS_METADATA=$YB_SRC_ROOT/python/yugabyte/gen_flags_metadata.py
+  export YB_SCRIPT_PATH_GEN_INITIAL_SYS_CATALOG_SNAPSHOT=\
+$YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
+  export YB_SCRIPT_PATH_GEN_VERSION_INFO=$YB_SRC_ROOT/python/yugabyte/gen_version_info.py
+  export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
+  export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
+$YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
+  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
+  export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
+  export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
+$YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
+  export YB_SCRIPT_PATH_PROCESS_TREE_SUPERVISOR=\
+$YB_SRC_ROOT/python/yugabyte/process_tree_supervisor.py
+  export YB_SCRIPT_PATH_REWRITE_TEST_LOG=$YB_SRC_ROOT/python/yugabyte/rewrite_test_log.py
+  export YB_SCRIPT_PATH_RUN_PVS_STUDIO_ANALYZER=\
+$YB_SRC_ROOT/python/yugabyte/run_pvs_studio_analyzer.py
+  export YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK=$YB_SRC_ROOT/python/yugabyte/run_tests_on_spark.py
+  export YB_SCRIPT_PATH_SPLIT_LONG_COMMAND_LINE=\
+$YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
+  export YB_SCRIPT_PATH_THIRDPARTY_TOOL=$YB_SRC_ROOT/python/yugabyte/thirdparty_tool.py
+  export YB_SCRIPT_PATH_UPDATE_TEST_RESULT_XML=\
+$YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
+  export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
+  export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+}
 
 set_yb_src_root() {
   export YB_SRC_ROOT=$1
@@ -42,6 +91,8 @@ set_yb_src_root() {
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
   yb_java_project_dirs=( "$YB_SRC_ROOT/java" )
+
+  set_script_paths
 }
 
 # Puts the current Git SHA1 in the current directory into the current_sha1 variable.
@@ -394,7 +445,7 @@ set_build_root() {
 
   if [[ -n ${predefined_build_root:-} &&
         $predefined_build_root != "$BUILD_ROOT" ]] &&
-     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$predefined_build_root" "$BUILD_ROOT"; then
+     ! "$YB_SCRIPT_PATH_IS_SAME_PATH" "$predefined_build_root" "$BUILD_ROOT"; then
     fatal "An inconsistency between predefined BUILD_ROOT ('$predefined_build_root') and" \
           "computed BUILD_ROOT ('$BUILD_ROOT')."
   fi
@@ -486,13 +537,19 @@ set_build_type_based_on_jenkins_job_name() {
 }
 
 set_default_compiler_type() {
+  expect_vars_to_be_set build_type
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      YB_COMPILER_TYPE=clang15
+      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
+        YB_COMPILER_TYPE=clang16
+      else
+        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
+        YB_COMPILER_TYPE=clang15
+      fi
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -700,7 +757,7 @@ set_mvn_parameters() {
   fi
   if is_jenkins; then
     local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
-    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+    if [[ $is_run_test_script == "true" && -d $m2_repository_in_build_root ]]; then
       YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
@@ -774,7 +831,12 @@ append_common_mvn_opts() {
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
-  log "Building Java code in $PWD"
+  local msg_prefix="Building Java code in $PWD"
+  if [[ -n ${java_code_build_purpose:-} ]]; then
+    log "$msg_prefix for $java_code_build_purpose"
+  else
+    log "$msg_prefix"
+  fi
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
@@ -1147,7 +1209,7 @@ download_and_extract_archive() {
           log "[Host $(hostname)] $FLOCK_MSG: $lock_path, proceeding with archive installation."
           (
             set -x
-            "$YB_SRC_ROOT/python/yb/download_and_extract_archive.py" \
+            "$YB_SCRIPT_PATH_DOWNLOAD_AND_EXTRACT_ARCHIVE" \
               --url "$url" \
               --dest-dir-parent "$dest_dir_parent" \
               --local-cache-dir "$LOCAL_DOWNLOAD_DIR"
@@ -1200,7 +1262,7 @@ create_llvm_toolchain_symlink() {
 }
 
 download_toolchain() {
-  expect_vars_to_be_set YB_COMPILER_TYPE
+  expect_vars_to_be_set YB_COMPILER_TYPE YB_THIRDPARTY_DIR
   local toolchain_urls=()
   local linuxbrew_url=""
   if [[ -n ${YB_THIRDPARTY_DIR:-} && -f "$YB_THIRDPARTY_DIR/linuxbrew_url.txt" ]]; then
@@ -1220,10 +1282,32 @@ download_toolchain() {
   if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} &&
         -z ${YB_LLVM_TOOLCHAIN_DIR:-} &&
         ${YB_COMPILER_TYPE:-} =~ ^clang[0-9]+$ ]]; then
-    YB_LLVM_TOOLCHAIN_URL=$(
-      activate_virtualenv &>/dev/null
-      python3 -m llvm_installer --print-url "--llvm-major-version=${YB_COMPILER_TYPE#clang}"
-    )
+    local llvm_major_version=${YB_COMPILER_TYPE#clang}
+    if [[ ${build_type} =~ ^(asan|tsan)$ ]]; then
+      # For ASAN and possibly TSAN builds, we need to use the same LLVM toolchain that was used
+      # to build the third-party dependencies, so that the compiler-rt libraries match.
+      local thirdparty_llvm_url_file_path=${YB_THIRDPARTY_DIR}/toolchain_url.txt
+      if [[ -e $thirdparty_llvm_url_file_path ]]; then
+        YB_LLVM_TOOLCHAIN_URL=$(<"$thirdparty_llvm_url_file_path")
+        if [[ ${YB_LLVM_TOOLCHAIN_URL} != */yb-llvm-v${llvm_major_version}.* ]]; then
+          fatal "LLVM toolchain URL ${YB_LLVM_TOOLCHAIN_URL} from the third-party directory" \
+                "${YB_THIRDPARTY_DIR} does not match the compiler type ${YB_COMPILER_TYPE}:" \
+                "${YB_LLVM_TOOLCHAIN_URL}"
+        fi
+      else
+        log "Warning: could not find ${thirdparty_llvm_url_file_path}, will try to use the" \
+            "llvm-installer utility to determine the LLVM toolchain URL to download. Note that a" \
+            "mismatch between LLVM versions used to build yugabyte-db-thirdparty and YugabyteDB" \
+            "can cause ASAN/TSAN tests to fail."
+      fi
+    fi
+
+    if [[ -z ${YB_LLVM_TOOLCHAIN_URL:-} ]]; then
+      YB_LLVM_TOOLCHAIN_URL=$(
+        activate_virtualenv &>/dev/null
+        python3 -m llvm_installer --print-url "--llvm-major-version=$llvm_major_version"
+      )
+    fi
     if [[ ${YB_LLVM_TOOLCHAIN_URL} != https://* ]]; then
       fatal "Failed to determine LLVM toolchain URL using the llvm-installer utility." \
             "YB_LLVM_TOOLCHAIN_URL=${YB_LLVM_TOOLCHAIN_URL}. See" \
@@ -1510,6 +1594,13 @@ add_brew_bin_to_path() {
     if [[ -n ${homebrew_path} ]]; then
       put_path_entry_first "$homebrew_path/bin"
     fi
+  fi
+}
+
+remove_linuxbrew_bin_from_path() {
+  if using_linuxbrew; then
+    ensure_linuxbrew_dir_is_set
+    remove_path_entry "$YB_LINUXBREW_DIR/bin"
   fi
 }
 
@@ -2052,7 +2143,7 @@ handle_predefined_build_root() {
   else
     should_use_ninja=0
   fi
-  if ! "$handle_predefined_build_root_quietly"; then
+  if [[ $handle_predefined_build_root_quietly == "false" ]]; then
     log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
   fi
   if [[ -n ${YB_USE_NINJA:-} && $YB_USE_NINJA != "$should_use_ninja" ]]; then
@@ -2167,24 +2258,26 @@ check_python_script_syntax() {
   git ls-files -t '*.py' \
     | grep -v '^S' \
     | sed 's/^[[:alpha:]] //' \
-    | xargs -P 8 -n 1 "$YB_BUILD_SUPPORT_DIR/check_python_syntax.py"
+    | xargs -P 8 -n 1 "$YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX"
   popd
 }
 
 run_shellcheck() {
   local scripts_to_check=(
+    bin/release_package_docker_test.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
-    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
     build-support/jenkins/build.sh
+    build-support/jenkins/common-lto.sh
     build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
     yb_build.sh
+    yugabyted-ui/build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path
@@ -2216,8 +2309,9 @@ activate_virtualenv() {
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
-  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" && -d $virtualenv_dir ]] && \
-     ! "$yb_readonly_virtualenv"; then
+  if [[ ${YB_RECREATE_VIRTUALENV:-} == "1" &&
+        -d $virtualenv_dir &&
+        ${yb_readonly_virtualenv} == "false" ]]; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
     # We don't want to be re-creating the virtual environment over and over again.
@@ -2288,9 +2382,10 @@ activate_virtualenv() {
   fi
 
   local pip_executable=pip3
-  if ! "$yb_readonly_virtualenv"; then
+  if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    pip3 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2409,12 +2504,14 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
             "YBTestRunnerNonSanOrAArch64Mac, " \
-            "nor YBTestRunnerReleaseOnly are being used in test"
+            "YBTestRunnerReleaseOnly, nor YBTestRunnerYsqlConnMgr are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2674,8 +2771,9 @@ adjust_compiler_type_on_mac() {
   # A workaround for old macOS build workers where the default Clang version is 13 or older.
   if is_mac &&
     ! is_apple_silicon &&
-    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
-    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" &&
+       -f /usr/bin/clang &&
+       $(clang --version) =~ clang\ version\ ([0-9]+) ]]
   then
     clang_major_version=${BASH_REMATCH[1]}
     if [[ ${clang_major_version} -lt 14 ]]; then

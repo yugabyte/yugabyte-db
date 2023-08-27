@@ -34,22 +34,27 @@ class TabletServer;
 namespace client {
 
 #define STATEFUL_SERVICE_RPC(r, service, method_name) \
-  inline Status method_name( \
-      CoarseTimePoint deadline, \
+  template <typename T> \
+  inline Result<stateful_service::BOOST_PP_CAT(method_name, ResponsePB)> method_name( \
       const stateful_service::BOOST_PP_CAT(method_name, RequestPB) & req, \
-      stateful_service::BOOST_PP_CAT(method_name, ResponsePB) * resp) { \
-    return InvokeRpcSync( \
-        deadline, \
+      const T& deadline_or_timeout) { \
+    stateful_service::BOOST_PP_CAT(method_name, ResponsePB) resp; \
+    RETURN_NOT_OK(InvokeRpcSync( \
+        deadline_or_timeout, \
         [](rpc::ProxyCache* cache, const HostPort& hp) { \
           return new stateful_service::BOOST_PP_CAT(service, ServiceProxy)(cache, hp); \
         }, \
-        [&req, &resp, this](rpc::ProxyBase* proxy, rpc::RpcController* controller) { \
+        [&req, resp_ptr = &resp, this](rpc::ProxyBase* proxy, rpc::RpcController* controller) { \
           auto status = static_cast<stateful_service::BOOST_PP_CAT(service, ServiceProxy)*>(proxy) \
-                            ->method_name(req, resp, controller); \
-          return ExtractStatus(status, *resp); \
-        }); \
+                            ->method_name(req, resp_ptr, controller); \
+          return ExtractStatus(status, *resp_ptr); \
+        })); \
+    return resp; \
   }
 
+// Creates functions with these signature:
+// Result<[RpcMethod]ResponsePB> [RpcMethod](const CoarseTimePoint&, const [RpcMethod]RequestPB&);
+// Result<[RpcMethod]ResponsePB> [RpcMethod](const MonoDelta&, const [RpcMethod]RequestPB&);
 #define STATEFUL_SERVICE_RPCS(service, methods) \
   BOOST_PP_SEQ_FOR_EACH(STATEFUL_SERVICE_RPC, service, methods)
 
@@ -68,6 +73,11 @@ class StatefulServiceClientBase {
 
   Status InvokeRpcSync(
       const CoarseTimePoint& deadline,
+      std::function<rpc::ProxyBase*(rpc::ProxyCache*, const HostPort&)> make_proxy,
+      std::function<Status(rpc::ProxyBase*, rpc::RpcController*)> rpc_func);
+
+  Status InvokeRpcSync(
+      const MonoDelta& timeout,
       std::function<rpc::ProxyBase*(rpc::ProxyCache*, const HostPort&)> make_proxy,
       std::function<Status(rpc::ProxyBase*, rpc::RpcController*)> rpc_func);
 

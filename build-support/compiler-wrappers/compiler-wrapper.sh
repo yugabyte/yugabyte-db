@@ -133,7 +133,7 @@ show_compiler_command_line() {
 
   local command_line_filter=cat
   if [[ -n ${YB_SPLIT_LONG_COMPILER_CMD_LINES:-} ]]; then
-    command_line_filter=$YB_SRC_ROOT/build-support/split_long_command_line.py
+    command_line_filter=$YB_SCRIPT_PATH_SPLIT_LONG_COMMAND_LINE
   fi
 
   # Split the failed compilation command over multiple lines for easier reading.
@@ -553,7 +553,7 @@ local_build_exit_handler() {
                 echo "Output file (from -o): $output_file"
               fi
 
-            ) | "$YB_SRC_ROOT/build-support/fix_paths_in_compile_errors.py"
+            ) | "$YB_SCRIPT_PATH_FIX_PATHS_IN_COMPILE_ERRORS"
 
             unset IFS
             echo "\-------------------------------------------------------------------------------"
@@ -710,7 +710,7 @@ if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
 
-if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+if [[ $has_yb_c_files == "true" && $PWD == $BUILD_ROOT/postgres_build/* ]]; then
   # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
   # that we had to disable by default in build_postgres.py.
   cmd+=( "-Werror=unused-function" )
@@ -739,7 +739,7 @@ if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
       case $arg in
         -Wl,-rpath,*)
           new_rpath_arg=$(
-            "$YB_BUILD_SUPPORT_DIR/make_rpath_relative.py" "$output_file" "$arg"
+          "$YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE" "$output_file" "$arg"
           )
           new_cmd+=( "$new_rpath_arg" )
         ;;
@@ -932,7 +932,7 @@ if is_clang &&
     ! is_configure_mode_invocation &&
     [[ $output_file == *.o ]] &&
     is_linux; then
-  if ! "$analyzer_checkers_specified"; then
+  if [[ $analyzer_checkers_specified == "false" ]]; then
     log "No -analyzer-checker=... option found on compiler command line. It is possible that" \
         "cmake was run without the YB_ENABLE_STATIC_ANALYZER environment variable set to 1. " \
         "Command: $compiler_args_str"

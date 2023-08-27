@@ -464,8 +464,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				YbSeqScan    *splan = (YbSeqScan *) plan;
 
 				splan->scan.scanrelid += rtoffset;
-				splan->remote.qual =
-					fix_scan_list(root, splan->remote.qual, rtoffset);
+				splan->yb_pushdown.quals =
+					fix_scan_list(root, splan->yb_pushdown.quals, rtoffset);
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
@@ -496,17 +496,17 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
 				splan->scan.plan.qual =
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
-				splan->rel_remote.qual =
-					fix_scan_list(root, splan->rel_remote.qual, rtoffset);
-				splan->index_remote.qual = (List *)
+				splan->yb_rel_pushdown.quals =
+					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset);
+				splan->yb_idx_pushdown.quals = (List *)
 					fix_upper_expr(root,
-								   (Node *) splan->index_remote.qual,
+								   (Node *) splan->yb_idx_pushdown.quals,
 								   index_itlist,
 								   INDEX_VAR,
 								   rtoffset);
-				splan->index_remote.colrefs = (List *)
+				splan->yb_idx_pushdown.colrefs = (List *)
 					fix_upper_expr(root,
-								   (Node *) splan->index_remote.colrefs,
+								   (Node *) splan->yb_idx_pushdown.colrefs,
 								   index_itlist,
 								   INDEX_VAR,
 								   rtoffset);
@@ -1066,15 +1066,15 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
-	plan->remote.qual = (List *)
+	plan->yb_pushdown.quals = (List *)
 		fix_upper_expr(root,
-					   (Node *) plan->remote.qual,
+					   (Node *) plan->yb_pushdown.quals,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
-	plan->remote.colrefs = (List *)
+	plan->yb_pushdown.colrefs = (List *)
 		fix_upper_expr(root,
-					   (Node *) plan->remote.colrefs,
+					   (Node *) plan->yb_pushdown.colrefs,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
@@ -2562,9 +2562,9 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
-	if (IsA(node, YbExprParamDesc))
+	if (IsA(node, YbExprColrefDesc))
 	{
-		YbExprParamDesc *colref = castNode(YbExprParamDesc, node);
+		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, node);
 		AttrNumber	varattno = colref->attno;
 		tlist_vinfo *vinfo;
 		int			i;
@@ -2576,7 +2576,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			if (vinfo->varattno == varattno)
 			{
 				/* Found a match */
-				YbExprParamDesc *newcolref = makeNode(YbExprParamDesc);
+				YbExprColrefDesc *newcolref = makeNode(YbExprColrefDesc);
 				*newcolref = *colref;
 				newcolref->attno = vinfo->resno;
 				return (Node *) newcolref;

@@ -24,10 +24,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -101,7 +101,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
@@ -179,9 +179,7 @@ public class TablesControllerTest extends FakeDBApplication {
     tablesController.setAuditService(auditService);
 
     mockedFileUtils = Mockito.mockStatic(FileUtils.class);
-    mockedFileUtils
-        .when(() -> FileUtils.readResource(anyString(), anyObject()))
-        .thenReturn("QUERY");
+    mockedFileUtils.when(() -> FileUtils.readResource(anyString(), any())).thenReturn("QUERY");
 
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
@@ -232,7 +230,7 @@ public class TablesControllerTest extends FakeDBApplication {
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), false, false); // modify mock
+            customer.getUuid(), u1.getUniverseUUID(), false, false, false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
     LOG.info("Fetched table list from universe, response: " + contentAsString(r));
     assertEquals(OK, r.status());
@@ -275,7 +273,11 @@ public class TablesControllerTest extends FakeDBApplication {
                 PlatformServiceException.class,
                 () ->
                     tablesController.listTables(
-                        customer.getUuid(), u1.getUniverseUUID(), false, false)) // modify mock
+                        customer.getUuid(),
+                        u1.getUniverseUUID(),
+                        false,
+                        false,
+                        false)) // modify mock
             .buildResult(fakeRequest);
     assertEquals(503, r.status());
     assertEquals(
@@ -298,7 +300,11 @@ public class TablesControllerTest extends FakeDBApplication {
                 PlatformServiceException.class,
                 () ->
                     tablesController.listTables(
-                        customer.getUuid(), u2.getUniverseUUID(), false, false)) // modify mock
+                        customer.getUuid(),
+                        u2.getUniverseUUID(),
+                        false,
+                        false,
+                        false)) // modify mock
             .buildResult(fakeRequest);
     assertEquals(500, r.status());
     assertEquals(
@@ -353,7 +359,8 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testCreateCassandraTableWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(TableDefinitionTaskParams.class)))
+            ArgumentMatchers.any(TaskType.class),
+            ArgumentMatchers.any(TableDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     String authToken = user.createAuthToken();
     Universe universe = createUniverse(customer.getId());
@@ -538,7 +545,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testBulkImportWithValidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
+            ArgumentMatchers.any(TaskType.class), ArgumentMatchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
 
     ModelFactory.awsProvider(customer);
@@ -569,7 +576,7 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testBulkImportWithInvalidParams() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
-            Matchers.any(TaskType.class), Matchers.any(BulkImportParams.class)))
+            ArgumentMatchers.any(TaskType.class), ArgumentMatchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
     ModelFactory.awsProvider(customer);
     String authToken = user.createAuthToken();
@@ -1247,7 +1254,7 @@ public class TablesControllerTest extends FakeDBApplication {
     tableNames.add("Table2");
 
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-    when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
 
     Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getId());
@@ -1258,15 +1265,14 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("$$$Default"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("$$$Default"), any()))
         .thenReturn(shellResponse);
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("system"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
-    Result r = tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), true, false);
+    Result r =
+        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), true, false, false);
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1384,7 +1390,7 @@ public class TablesControllerTest extends FakeDBApplication {
     tableNames.add("Table1");
 
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-    when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
     Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getId());
     u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
@@ -1399,20 +1405,19 @@ public class TablesControllerTest extends FakeDBApplication {
             ShellResponse.ERROR_CODE_SUCCESS,
             TestUtils.readResource(
                 "com/yugabyte/yw/controllers/table_partitions_db2_shell_response.txt"));
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db1"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db1"), any()))
         .thenReturn(shellResponse1);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db2"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db2"), any()))
         .thenReturn(shellResponse2);
-    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), eq("db3"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("db3"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
-    when(mockNodeUniverseManager.runYsqlCommand(
-            anyObject(), anyObject(), eq("system"), anyObject()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), eq("system"), any()))
         .thenReturn(ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, ""));
 
     LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
     Result r =
         tablesController.listTables(
-            customer.getUuid(), u1.getUniverseUUID(), true, false); // modify mock
+            customer.getUuid(), u1.getUniverseUUID(), true, false, false); // modify mock
     JsonNode json = Json.parse(contentAsString(r));
 
     ObjectMapper objectMapper = new ObjectMapper();
@@ -1471,6 +1476,169 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testExcludeColocatedTables() throws Exception {
+    List<TableInfo> tableInfoList = tableInfoListWithColocated();
+
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+
+    LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
+    Result r =
+        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, true, false);
+    JsonNode json = Json.parse(contentAsString(r));
+    LOG.info("Fetched table list from universe, response: " + contentAsString(r));
+    assertEquals(OK, r.status());
+    assertTrue(json.isArray());
+    Iterator<JsonNode> it = json.elements();
+    int numTables = 0;
+    while (it.hasNext()) {
+      JsonNode table = it.next();
+      String tableName = table.get("tableName").asText();
+      String relationType = table.get("relationType").asText();
+      String keySpace = table.get("keySpace").asText();
+      if (tableName.equals("company")) {
+        assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+      } else if (tableName.equals("company_name_idx")) {
+        assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
+      }
+      // No system tables, colocated parent tables, or tables in db where colocation=true should be
+      // displayed.
+      assertEquals("db1", keySpace);
+      assertNotEquals(RelationType.COLOCATED_PARENT_TABLE_RELATION.toString(), relationType);
+      assertNotEquals(RelationType.SYSTEM_TABLE_RELATION.toString(), relationType);
+      numTables++;
+    }
+    LOG.info("Processed " + numTables + " tables");
+    assertEquals(tableInfoList.size() - 5, numTables);
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testIncludeColocatedParentTablesFalse() throws Exception {
+    List<TableInfo> tableInfoList = tableInfoListWithColocated();
+
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+
+    LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
+    Result r =
+        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, false, false);
+    JsonNode json = Json.parse(contentAsString(r));
+    LOG.info("Fetched table list from universe, response: " + contentAsString(r));
+    assertEquals(OK, r.status());
+    assertTrue(json.isArray());
+    Iterator<JsonNode> it = json.elements();
+    int numTables = 0;
+    while (it.hasNext()) {
+      JsonNode table = it.next();
+      String tableName = table.get("tableName").asText();
+      String relationType = table.get("relationType").asText();
+      String keySpace = table.get("keySpace").asText();
+
+      switch (tableName) {
+        case "house":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-old", keySpace);
+          break;
+        case "house_name_idx":
+          assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-old", keySpace);
+          break;
+        case "people":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-new", keySpace);
+          break;
+        case "company":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db1", keySpace);
+          break;
+        case "company_name_idx":
+          assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
+          assertEquals("db1", keySpace);
+          break;
+        default:
+          fail("Unexpected table name " + tableName);
+      }
+
+      // No system tables or colocation parent tables should be displayed.
+      assertNotEquals(RelationType.SYSTEM_TABLE_RELATION.toString(), relationType);
+      assertNotEquals(RelationType.COLOCATED_PARENT_TABLE_RELATION.toString(), relationType);
+      numTables++;
+    }
+    LOG.info("Processed " + numTables + " tables");
+    assertEquals(tableInfoList.size() - 2, numTables);
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testIncludeColocatedParentTablesTrue() throws Exception {
+    List<TableInfo> tableInfoList = tableInfoListWithColocated();
+
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+
+    LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
+    Result r =
+        tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, false, true);
+    JsonNode json = Json.parse(contentAsString(r));
+    LOG.info("Fetched table list from universe, response: " + contentAsString(r));
+    assertEquals(OK, r.status());
+    assertTrue(json.isArray());
+    Iterator<JsonNode> it = json.elements();
+    int numTables = 0;
+    while (it.hasNext()) {
+      JsonNode table = it.next();
+      String tableName = table.get("tableName").asText();
+      String relationType = table.get("relationType").asText();
+      String keySpace = table.get("keySpace").asText();
+
+      switch (tableName) {
+        case "0000401b000030008000000000000000.colocated.parent.tablename":
+          assertEquals(RelationType.COLOCATED_PARENT_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-old", keySpace);
+          break;
+        case "house":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-old", keySpace);
+          break;
+        case "house_name_idx":
+          assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-old", keySpace);
+          break;
+        case "0000203c000030008000000000000000.colocation.parent.tablename":
+          assertEquals(RelationType.COLOCATED_PARENT_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-new", keySpace);
+          break;
+        case "people":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db-col-new", keySpace);
+          break;
+        case "company":
+          assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
+          assertEquals("db1", keySpace);
+          break;
+        case "company_name_idx":
+          assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
+          assertEquals("db1", keySpace);
+          break;
+        default:
+          fail("Unexpected table name " + tableName);
+      }
+      // No system tables should be displayed.
+      assertNotEquals(RelationType.SYSTEM_TABLE_RELATION.toString(), relationType);
+      numTables++;
+    }
+    LOG.info("Processed " + numTables + " tables");
+    assertEquals(tableInfoList.size(), numTables);
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  private List<TableInfo> tableInfoListWithColocated() {
     List<TableInfo> tableInfoList = new ArrayList<>();
     Set<String> tableNames = new HashSet<>();
 
@@ -1487,7 +1655,7 @@ public class TablesControllerTest extends FakeDBApplication {
             .setId(
                 ByteString.copyFromUtf8("0000401b000030008000000000000000.colocated.parent.uuid"))
             .setTableType(TableType.YQL_TABLE_TYPE)
-            .setRelationType(RelationType.SYSTEM_TABLE_RELATION)
+            .setRelationType(RelationType.COLOCATED_PARENT_TABLE_RELATION)
             .build();
     TableInfo ti2 =
         TableInfo.newBuilder()
@@ -1573,39 +1741,6 @@ public class TablesControllerTest extends FakeDBApplication {
     tableInfoList.add(ti5);
     tableInfoList.add(ti6);
     tableInfoList.add(ti7);
-
-    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-    when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);
-    Universe u1 = createUniverse(customer.getId());
-    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
-
-    LOG.info("Created customer " + customer.getUuid() + " with universe " + u1.getUniverseUUID());
-    Result r = tablesController.listTables(customer.getUuid(), u1.getUniverseUUID(), false, true);
-    JsonNode json = Json.parse(contentAsString(r));
-    LOG.info("Fetched table list from universe, response: " + contentAsString(r));
-    assertEquals(OK, r.status());
-    assertTrue(json.isArray());
-    Iterator<JsonNode> it = json.elements();
-    int numTables = 0;
-    while (it.hasNext()) {
-      JsonNode table = it.next();
-      String tableName = table.get("tableName").asText();
-      String relationType = table.get("relationType").asText();
-      String keySpace = table.get("keySpace").asText();
-      if (tableName.equals("company")) {
-        assertEquals(RelationType.USER_TABLE_RELATION.toString(), relationType);
-      } else if (tableName.equals("company_name_idx")) {
-        assertEquals(RelationType.INDEX_TABLE_RELATION.toString(), relationType);
-      }
-      // No system tables, colocated parent tables, or tables in db where colocation=true should be
-      // displayed.
-      assertEquals(keyspaceNonColocatedName, keySpace);
-      assertNotEquals(RelationType.COLOCATED_PARENT_TABLE_RELATION.toString(), relationType);
-      assertNotEquals(RelationType.SYSTEM_TABLE_RELATION.toString(), relationType);
-      numTables++;
-    }
-    LOG.info("Processed " + numTables + " tables");
-    assertEquals(tableInfoList.size() - 5, numTables);
-    assertAuditEntry(0, customer.getUuid());
+    return tableInfoList;
   }
 }

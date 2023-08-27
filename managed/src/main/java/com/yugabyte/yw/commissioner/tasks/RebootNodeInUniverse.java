@@ -2,17 +2,21 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,6 +27,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   @JsonDeserialize(converter = RebootNodeInUniverse.Converter.class)
   public static class Params extends NodeTaskParams {
     public boolean isHardReboot = false;
+    public boolean skipWaitingForMasterLeader = false;
   }
 
   public static class Converter
@@ -42,6 +47,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     NodeDetails currentNode;
     boolean isHardReboot = taskParams().isHardReboot;
+    boolean skipWaitingForMasterLeader = taskParams().skipWaitingForMasterLeader;
 
     try {
       checkUniverseVersion();
@@ -59,6 +65,14 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
+
+      UUID providerUuid =
+          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+      Provider provider = Provider.getOrBadRequest(providerUuid);
+      ProviderDetails providerDetails = provider.getDetails();
+      if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
+        throw new RuntimeException("Cannot reboot manually provisioned nodes through YBA");
+      }
 
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
@@ -96,8 +110,10 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         if (masterAlive) {
           createStopMasterTasks(Collections.singleton(currentNode))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (!skipWaitingForMasterLeader) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
       }
 

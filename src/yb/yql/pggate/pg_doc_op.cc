@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/gutil/casts.h"
@@ -118,6 +119,31 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   return orders;
 }
 
+// Helper function to determine the type of relation that the given Pgsql operation is being
+// performed on. This function classifies the operation into one of three buckets: system catalog,
+// secondary index or user table requests.
+TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
+  if (table->schema().table_properties().is_ysql_catalog_table()) {
+    // We don't distinguish between table reads and index reads for a catalog table.
+    return TableType::SYSTEM;
+  }
+
+  // Check if we're making an index request.
+  // Any request that lands on a secondary index table is treated as an index request, while
+  // primary key lookups on the main table are treated as user table requests. No such distinction
+  // is made for system catalog tables.
+  // We make use of the following info to make this decision:
+  // read_request().has_index_request() : is true for colocated secondary index requests.
+  // table->isIndex() : is true for all secondary index writes and non-colocated secondary index
+  //                    reads.
+  if ((op.is_read() && down_cast<const PgsqlReadOp &>(op).read_request().has_index_request()) ||
+      table->IsIndex()) {
+    return TableType::INDEX;
+  }
+
+  return TableType::USER;
+}
+
 } // namespace
 
 PgDocResult::PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders)
@@ -131,22 +157,14 @@ int64_t PgDocResult::NextRowOrder() {
   return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple,
                                  int64_t *row_order) {
-  int attr_num = 0;
-  for (const PgExpr *target : targets) {
-    if (!target->is_colref() && !target->is_aggregate()) {
-      return STATUS(InternalError,
-                    "Unexpected expression, only column refs or aggregates supported here");
-    }
-    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
+  for (auto* target : targets) {
+    if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
+      target->SetNull(pg_tuple);
     } else {
-      attr_num++;
+      target->SetValue(&row_iterator_, pg_tuple);
     }
-
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    target->TranslateData(&row_iterator_, header, attr_num - 1, pg_tuple);
   }
 
   *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
@@ -160,12 +178,10 @@ Status PgDocResult::ProcessSystemColumns() {
   syscol_processed_ = true;
 
   for (int i = 0; i < row_count_; i++) {
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
 
-    int64_t data_size;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     ybctids_.emplace_back(row_iterator_.data(), data_size);
     row_iterator_.remove_prefix(data_size);
@@ -181,17 +197,13 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
   // ybctids.
   for (int i = 0; i < row_count_; i++) {
     // Read index column
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "Reservoir index cannot be NULL");
-    int32_t index;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &index);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "Reservoir index cannot be NULL");
+    auto index = PgDocData::ReadNumber<int32_t>(&row_iterator_);
     // Read ybctid column
-    header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
-    int64_t data_size;
-    read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     // Copy ybctid data to the reservoir
     reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);
@@ -214,10 +226,11 @@ bool PgDocResponse::Valid() const {
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<PgDocResponse::Data> PgDocResponse::Get(MonoDelta* wait_time) {
+Result<PgDocResponse::Data> PgDocResponse::Get() {
   if (std::holds_alternative<PerformFuture>(holder_)) {
-    return std::get<PerformFuture>(holder_).Get(wait_time);
+    return std::get<PerformFuture>(holder_).Get();
   }
+
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
   std::get<ProviderPtr>(holder_).swap(provider);
@@ -257,14 +270,28 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
   std::list<PgDocResult> result;
+
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
       RETURN_NOT_OK(SendRequest());
     }
 
-    DCHECK(response_.Valid());
-    result = VERIFY_RESULT(ProcessResponse(response_.Get(&read_rpc_wait_time_)));
+    uint64_t wait_time = 0;
+    auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
+        [&response = response_] { return response.Get(); }, &wait_time));
+
+    // Update session stats instrumentation only for read requests. Reads are executed
+    // synchronously with respect to Postgres query execution, and thus it is possible to
+    // correlate wait/execution times directly with the request. We update instrumentation for
+    // reads exactly once, upon receiving a success response from the underlying storage layer.
+    if (!IsWrite()) {
+      pg_session_->metrics().ReadRequest(
+          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
+    }
+
+    result = VERIFY_RESULT(ProcessResponse(result_data));
+
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!result.empty() || end_of_data_);
@@ -294,7 +321,6 @@ Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
-  ++read_rpc_count_;
   return exec_status_;
 }
 
@@ -315,11 +341,19 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
       HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable));
+
+  // Update session stats instrumentation for write requests only. Writes are buffered and flushed
+  // asynchronously, and thus it is not possible to correlate wait/execution times directly with
+  // the request. We update instrumentation for writes sexactly once, after successfully sending an
+  // RPC request to the underlying storage layer.
+  if (IsWrite()) {
+    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
+  }
   return Status::OK();
 }
 
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-    const Result<PgDocResponse::Data>& response) {
+  const Result<PgDocResponse::Data>& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
@@ -455,7 +489,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   read_op_->read_request().set_return_paging_state(true);
-  SetRequestPrefetchLimit();
+  RETURN_NOT_OK(SetRequestPrefetchLimit());
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
@@ -490,11 +524,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // table. Such scan is able to return rows ordered, and that order may be relied upon by upper
   // plan nodes, but parallel execution messes the order up. Here where we are preparing the
   // requests, we do not know if the query relies on the row order, we even may not be able to tell,
-  // if we are doing sequential or primary key scan, hence we should not parallelize scans on range
-  // partitioned tables. In the past neither aggregates nor where clause pushdown was supported by
-  // the index scan, so the same criteria worked and only sequential scans over range tables were
-  // parallelized. As of today, IndexScan still does not support aggregate pushdown, so we allow
-  // parallel execution of requests with aggregates, but this implicit criteria is not reliable.
+  // if we are doing sequential or primary key scan, hence we should not parallelize non-aggregate
+  // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
   } else if (req.is_aggregate() ||
@@ -566,6 +597,15 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
 
     // Remember the order number for each request.
     batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
+
+    // We must set "ybctid_column_value" in the request for the sake of rolling upgrades.
+    // Servers before 2.15 will read only "ybctid_column_value" as they are not aware
+    // of ybctid-batching.
+    if (!read_req.has_ybctid_column_value() ||
+        arg_value->binary_value() < read_req.ybctid_column_value().value().binary_value()) {
+      read_req.mutable_ybctid_column_value()->mutable_value()
+          ->ref_binary_value(arg_value->binary_value());
+    }
 
     // For every read operation set partition boundary. In case a tablet is split between
     // preparing requests and executing them, DocDB will return a paging state for pggate to
@@ -683,7 +723,7 @@ void PgDocReadOp::BindExprsToBatch(
   new_elem->set_int32_value(table_->partition_schema().DecodeMultiColumnHashValue(*partition_key));
   for (auto elem : hashed_values) {
     auto new_elem = tup_elements->add_elems();
-    if(elem->has_value()) {
+    if (elem->has_value()) {
         DCHECK(elem->has_value());
         *new_elem = elem->value();
     }
@@ -692,7 +732,7 @@ void PgDocReadOp::BindExprsToBatch(
   for (auto range_idx : permutation_range_column_indexes_) {
     auto* elem = range_values[range_idx - table_->num_hash_key_columns()];
     DCHECK(elem != nullptr);
-    if(elem->has_value()) {
+    if (elem->has_value()) {
       auto* new_elem = tup_elements->add_elems();
       *new_elem = elem->value();
     }
@@ -980,6 +1020,11 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   auto max_op_count =
       std::min(total_permutation_count_,
                implicit_cast<size_t>(FLAGS_ysql_request_limit));
+
+  if (IsHashBatchingEnabled()) {
+    max_op_count = std::min(max_op_count, table_->GetPartitionListSize());
+  }
+
   ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
@@ -1204,7 +1249,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
   return Status::OK();
 }
 
-void PgDocReadOp::SetRequestPrefetchLimit() {
+Status PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
 
@@ -1216,10 +1261,49 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
   auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
   suppress_next_result_prefetching_ = true;
 
-  if (exec_params_.limit_use_default ||
-      (predicted_row_limit > 0 && predicted_row_limit < row_limit)) {
+  // If in any of these cases we determine that the default row/size based batch size is lower
+  // than the actual requested LIMIT, we enable prefetching. If else, we try
+  // to only get the required data in one RPC without prefetching.
+  if (exec_params_.limit_use_default) {
     row_limit = predicted_row_limit;
     suppress_next_result_prefetching_ = false;
+  } else if (predicted_row_limit > 0 && predicted_row_limit < row_limit) {
+    row_limit = predicted_row_limit;
+    suppress_next_result_prefetching_ = false;
+  } else if (predicted_size_limit > 0) {
+    // Try to estimate the total data size of a LIMIT'd query
+    // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
+    size_t row_width = 0;
+    for (const LWPgsqlExpressionPB& target : req.targets()) {
+      // If target is a system column, we it's probably variable size
+      // and we don't have the means to estimate its length.
+      if (target.has_column_id()) {
+        auto column_id = target.column_id();
+        if (column_id < 0) {
+            if (column_id == static_cast<int>(PgSystemAttrNum::kObjectId)) {
+              row_width += GetTypeInfo(DataType::UINT32)->size;
+            } else {
+              // System columns are usually variable length which we are
+              // estimating with the size of a Binary DataType for now.
+              row_width += GetTypeInfo(DataType::BINARY)->size;
+            }
+            continue;
+        }
+        const ColumnSchema &col_schema =
+          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(column_id)));
+
+        // This size is usually the computed sizeof() of the serialized datatype.
+        // Its computation can be found in yb/common/types.h
+        auto size = col_schema.type_info()->size;
+        row_width += size;
+      }
+    }
+
+    // Prefetch if we expect size limit to occur first, so there will
+    // be multiple RPCs until row_limit is reached
+    if (row_width > 0 && (predicted_size_limit / row_width) < row_limit) {
+      suppress_next_result_prefetching_ = false;
+    }
   }
 
   req.set_limit(row_limit);
@@ -1234,6 +1318,7 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
           << (row_limit == 0 ? " (Unlimited)" : "")
           << " size_limit=" << predicted_size_limit
           << (predicted_size_limit == 0 ? " (Unlimited)" : "");
+  return Status::OK();
 }
 
 void PgDocReadOp::SetRowMark() {
@@ -1241,7 +1326,7 @@ void PgDocReadOp::SetRowMark() {
   const auto row_mark_type = GetRowMarkType(&exec_params_);
   if (IsValidRowMarkType(row_mark_type)) {
     req.set_row_mark_type(row_mark_type);
-    req.set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.wait_policy));
+    req.set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.docdb_wait_policy));
   } else {
     req.clear_row_mark_type();
   }

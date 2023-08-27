@@ -9,7 +9,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -19,7 +21,8 @@ class OutputFilesComponent implements SupportBundleComponent {
   private final UniverseInfoHandler universeInfoHandler;
   private final NodeUniverseManager nodeUniverseManager;
   private final SupportBundleUtil supportBundleUtil;
-  public static final String sourceNodeFiles = "master/master.out;tserver/tserver.out";
+  public static final List<String> sourceNodeFiles =
+      Arrays.asList("master/master.out", "tserver/tserver.out");
 
   @Inject
   OutputFilesComponent(

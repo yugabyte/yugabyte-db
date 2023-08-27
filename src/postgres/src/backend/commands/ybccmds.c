@@ -59,10 +59,13 @@
 #include "pg_yb_utils.h"
 
 #include "access/nbtree.h"
+#include "catalog/heap.h"
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/planner.h"
 #include "parser/parser.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
@@ -95,7 +98,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -120,7 +124,24 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	HandleYBStatus(YBCPgExecCreateDatabase(handle));
+
+	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
+	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
+	if (retry_on_oid_collision)
+	{
+		*retry_on_oid_collision = createdb_status &&
+				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
+				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
+
+		if (*retry_on_oid_collision)
+		{
+			YBCFreeStatus(createdb_status);
+			return;
+		}
+	}
+
+	HandleYBStatus(createdb_status);
+
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }
@@ -170,6 +191,20 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
+	if (ddl_rollback_enabled)
+	{
+		/*
+		 * The following function marks the tablegroup for deletion. YB-Master
+		 * will delete the tablegroup after the transaction is successfully
+		 * committed.
+		 */
+		HandleYBStatus(YBCPgExecDropTablegroup(handle));
+		return;
+	}
+	/*
+	 * YSQL DDL Rollback is disabled. Fall back to performing the YB-Master
+	 * side deletion after the transaction commits.
+	 */
 	YBSaveDdlHandle(handle);
 }
 
@@ -762,11 +797,8 @@ YBCDropTable(Relation relation)
 		{
 			return;
 		}
-		/*
-		 * YSQL DDL Rollback is not yet supported for colocated tables.
-		 */
-		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
-			!yb_props->is_colocated)
+
+		if (ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -890,7 +922,8 @@ static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
                               TupleDesc desc,
                               OptSplit *split_options,
-                              int16 * coloptions)
+                              int16 * coloptions,
+                              int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -910,7 +943,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 			/* Construct array to SPLIT column datatypes */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
 			int attr_count;
-			for (attr_count = 0; attr_count < desc->natts; ++attr_count)
+			for (attr_count = 0; attr_count < numIndexKeyAttrs; ++attr_count)
 			{
 				attrs[attr_count] = TupleDescAttr(desc, attr_count);
 			}
@@ -1003,7 +1036,8 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
+		                              indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
@@ -1069,10 +1103,37 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			Assert(list_length(handles) == 1);
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
+
+			YBCPgExpr res = NULL;
+			if (colDef->raw_default && yb_enable_add_column_missing_default)
+			{
+				ParseState *pstate = make_parsestate(NULL);
+				pstate->p_sourcetext = NULL;
+				RangeTblEntry *rte = addRangeTableEntryForRelation(pstate,
+																   rel,
+																   NULL,
+																   false,
+																   true);
+				addRTEtoQuery(pstate, rte, true, true, true);
+				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
+												  typeOid, typmod,
+												  colDef->colname);
+				expr = expression_planner(expr);
+				EState *estate = CreateExecutorState();
+				ExprState *exprState = ExecPrepareExpr(expr, estate);
+				ExprContext *econtext = GetPerTupleExprContext(estate);
+				bool missingIsNull;
+				Datum missingval = ExecEvalExpr(exprState, econtext,
+												&missingIsNull);
+				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
+									 missingval, missingIsNull);
+				FreeExecutorState(estate);
+			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
-													col_type));
+													col_type,
+													res));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -1261,7 +1322,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				{
 					Oid constraint_oid = get_relation_constraint_oid(relationId,
 																	 cmd->name,
-																	 false);
+																	 cmd->missing_ok);
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
+					{
+						return handles;
+					}
 					HeapTuple tuple = SearchSysCache1(
 						CONSTROID, ObjectIdGetDatum(constraint_oid));
 					if (!HeapTupleIsValid(tuple))
@@ -1495,15 +1564,26 @@ YBCDropIndex(Relation index)
 													   false, /* if_exists */
 													   &handle),
 									 &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+			return;
+
+		if (ddl_rollback_enabled)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * index once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropIndex(handle),
+										 &not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled. This means DocDB will not rollback
+		 * the drop if the transaction ends up failing. We cannot abort drop
+		 * in DocDB so postpone the execution until the rest of the statement/
+		 * txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
 }
 

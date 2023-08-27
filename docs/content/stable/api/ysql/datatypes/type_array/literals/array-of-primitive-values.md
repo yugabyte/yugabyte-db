@@ -79,9 +79,9 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
+The `\gset` meta-command was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
-Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
+Notice that, in this example, the `SELECT` statement is terminated by the `\gset` meta-command on the next line rather than by the usual semicolon. The `\gset` meta-command is silent. The `\echo` meta-command shows this:
 
 ```
 {1,2,3}
@@ -94,13 +94,13 @@ You can see the general form already:
 
 [One-dimensional array of `text` values](./#one-dimensional-array-of-text-values) shows that more needs to be said. But the two rules that you've already noticed always hold.
 
-To use the literal that you produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the literal that you produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::int[]'
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '{1,2,3}'::int[]
 ```
@@ -175,7 +175,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-For ordinary reasons, something special is needed to establish the single quote within the surrounding array literal which itself must be enquoted for using in SQL. Dollar quotes are a convenient choice. The `\echo` metacommand shows this:
+For ordinary reasons, something special is needed to establish the single quote within the surrounding array literal which itself must be enquoted for using in SQL. Dollar quotes are a convenient choice. The `\echo` meta-command shows this:
 
 ```
 {a,"a b",(),",","{}",',"\"","\\"}
@@ -196,13 +196,13 @@ In addition to the first two rules, notice the following.
 
 There's another rule that the present example does not show. Though not every comma-separated value was surrounded by double quotes, it's _never harmful_ to do this. You can confirm this with your own test, Yugabyte recommends that, for consistency, you always surround every `text` value within the curly braces for a `text[]` array literal with double quotes.
 
-To use the text of the literal that was produced above to recreate the value, you must enquote it and typecast it. Do this, as you did for the `int[]` example above, with the `\set` metacommand. But you must use dollar quotes because the literal itself has an interior single quote.
+To use the text of the literal that was produced above to recreate the value, you must enquote it and typecast it. Do this, as you did for the `int[]` example above, with the `\set` meta-command. But you must use dollar quotes because the literal itself has an interior single quote.
 
 ```plpgsql
 \set canonical_literal '$$':result_text_typecast'$$'::text[]
 \echo :canonical_literal
 ```
-The `\echo` metacommand now shows this:
+The `\echo` meta-command now shows this:
 ```
 $${a,"a b",(),",",',"\"","\\"}$$::text[]
 ```
@@ -233,7 +233,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\echo` metacommand shows this:
+The `\echo` meta-command shows this:
 
 ```
 {"2019-01-27 11:48:33","2020-03-30 14:19:21"}
@@ -242,13 +242,13 @@ You learn one further rule from this:
 
 - The `::timestamp` typecastable strings within the curly braces are tightly surrounded with double quotes.
 
-To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the text of the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::timestamp[]'
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '{"2019-01-27 11:48:33","2020-03-30 14:19:21"}'::timestamp[]
 ```
@@ -280,7 +280,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\echo` metacommand shows this:
+The `\echo` meta-command shows this:
 
 ```
 {t,f,NULL}
@@ -294,13 +294,13 @@ Though the example doesn't show this, `NULL` is not case-sensitive. But to compo
 
 **Note:** If you surrounded `NULL` within a literal for a `text[]` array, then it would be silently interpreted as an ordinary `text` value that just happens to be spelled that way.
 
-To use the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` meta-command:
 
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::boolean[]'
 \echo :canonical_literal
 ```
-. The `\echo` metacommand now shows this:
+. The `\echo` meta-command now shows this:
 ```
 '{t,f,NULL}'::boolean[]
 ```

@@ -1,5 +1,5 @@
 ---
-title: Configure YugabyteDB Overview
+title: Configure YugabyteDB Anywhere on AWS
 headerTitle: Overview
 linkTitle: Overview
 description: Configure YugabyteDB Anywhere on AWS

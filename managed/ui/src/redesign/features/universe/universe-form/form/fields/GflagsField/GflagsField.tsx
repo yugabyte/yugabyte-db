@@ -1,10 +1,11 @@
-import React, { useState, ReactElement } from 'react';
+import { useState, ReactElement } from 'react';
 import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';
+import { useSelector } from 'react-redux';
 import { Box } from '@material-ui/core';
-import { Control, useFieldArray } from 'react-hook-form';
-import { useUpdateEffect } from 'react-use';
+import { useFieldArray } from 'react-hook-form';
+import { useEffectOnce, useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -19,9 +20,11 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBModalForm } from '../../../../../../../components/common/forms';
 import AddGFlag from '../../../../../../../components/universes/UniverseForm/AddGFlag';
 import EditorGFlag from '../../../../../../../components/universes/UniverseForm/EditorGFlag';
+import { GFlagRowProps } from '../../../../../../../components/universes/UniverseForm/EditGFlagsConf';
 import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
-import { UniverseFormData, Gflag } from '../../../utils/dto';
+import { Gflag } from '../../../utils/dto';
+import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
 //Icons
 import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
@@ -35,12 +38,16 @@ import MoreIcon from '../../../../../../assets/ellipsis.svg';
 4. Rewrite with using material ui components
 */
 
+const MULTILINE_GFLAGS = ['ysql_hba_conf_csv'];
+
 interface GflagsFieldProps {
   dbVersion: string;
   fieldPath: string;
-  control: Control<Partial<UniverseFormData>>;
+  control: any;
   editMode: boolean;
   isReadOnly: boolean;
+  isReadReplica: boolean;
+  tableMaxHeight?: string;
 }
 
 interface SelectedOption {
@@ -48,9 +55,14 @@ interface SelectedOption {
   server: string;
   mode?: string;
   label?: string;
+  tserverFlagDetails?: FlagDetails;
+  masterFlagDetails?: FlagDetails;
   flagname?: string;
   flagvalue?: any;
-  flagvalueobject?: any;
+}
+
+interface FlagDetails {
+  flagvalueobject?: GFlagRowProps[];
   previewFlagValue?: string;
 }
 
@@ -68,8 +80,8 @@ interface GflagValidationResponse {
 export type SERVER = 'MASTER' | 'TSERVER';
 
 //server
-const MASTER = 'MASTER';
-const TSERVER = 'TSERVER';
+export const MASTER = 'MASTER';
+export const TSERVER = 'TSERVER';
 //options
 const FREE_TEXT = 'FREE_TEXT';
 const ADD_GFLAG = 'ADD_GFLAG';
@@ -77,15 +89,26 @@ const ADD_GFLAG = 'ADD_GFLAG';
 const CREATE = 'CREATE';
 const EDIT = 'EDIT';
 
-export type GFlagConf = { ConfValue: any; PreviewConfValue: string };
+export type AddGFlagObject = { [SERVER: string]: any; Name: string };
+export type GFlagConfServerProps = {
+  ConfValue: GFlagRowProps[];
+  PreviewConfValue: string;
+};
+export type GFlagConf = {
+  tserverFlagDetails?: GFlagConfServerProps;
+  masterFlagDetails?: GFlagConfServerProps;
+};
 export type GFlagWithId = Gflag & { id: string } & GFlagConf;
+export type AddGFlagConfObject = AddGFlagObject & GFlagConf;
 
 export const GFlagsField = ({
   dbVersion,
   fieldPath,
   control,
   editMode = false,
-  isReadOnly = false
+  isReadOnly = false,
+  isReadReplica = false,
+  tableMaxHeight
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -93,11 +116,14 @@ export const GFlagsField = ({
   });
   const [selectedProps, setSelectedProps] = useState<SelectedOption | null>(null);
   const [toggleModal, setToggleModal] = useState(false);
+  const [isJWKSKeyDialogOpen, setIsJWKSKeyDialogOpen] = useState<boolean>(false);
   const [validationError, setValidationError] = useState([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
   const whenMounted = useWhenMounted();
   const { t } = useTranslation();
+  const featureFlags = useSelector((state: any) => state.featureFlags);
+  const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
 
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
@@ -127,11 +153,13 @@ export const GFlagsField = ({
   const SERVER_LIST = [
     {
       serverName: TSERVER,
-      label: t('universeForm.gFlags.addToTServer')
+      label: t('universeForm.gFlags.addToTServer'),
+      visible: true
     },
     {
       serverName: MASTER,
-      label: t('universeForm.gFlags.addToMaster')
+      label: t('universeForm.gFlags.addToMaster'),
+      visible: !isReadReplica
     }
   ];
 
@@ -197,12 +225,26 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG: {
-        const obj = {
+        const obj: AddGFlagConfObject = {
           Name: values?.flagname,
-          [values?.server]: values?.flagvalue,
-          ConfValue: values?.flagvalueobject,
-          PreviewConfValue: values?.previewFlagValue
+          [values?.server]: values?.flagvalue
         };
+        if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
+          // In case of any multi-line csv flags, the below variables
+          // will have concatenated string and preview flag value to be displayed
+          if (values?.server === TSERVER) {
+            obj.tserverFlagDetails = {
+              ConfValue: values?.tserverFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
+            };
+          } else {
+            obj.masterFlagDetails = {
+              ConfValue: values?.masterFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
+            };
+          }
+        }
+
         checkExistsAndPush(obj);
         callValidation([obj]);
         setToggleModal(false);
@@ -229,7 +271,9 @@ export const GFlagsField = ({
     });
   };
 
-  useUpdateEffect(onVersionChange, [dbVersion]);
+  useUpdateEffect(onVersionChange, [dbVersion, isReadReplica]);
+
+  useEffectOnce(onVersionChange);
 
   const errorPopover = (title: string, msg: string) => (
     <OverlayTrigger
@@ -313,8 +357,14 @@ export const GFlagsField = ({
         ...modalProps,
         flagname: row?.Name,
         flagvalue: row[server],
-        flagvalueobject: row?.ConfValue,
-        previewFlagValue: row?.PreviewConfValue
+        tserverFlagDetails: {
+          flagvalueobject: row?.tserverFlagDetails?.ConfValue,
+          previewFlagValue: row?.tserverFlagDetails?.PreviewConfValue
+        },
+        masterFlagDetails: {
+          flagvalueobject: row?.masterFlagDetails?.ConfValue,
+          previewFlagValue: row?.masterFlagDetails?.PreviewConfValue
+        }
       };
       if (isError) modalProps['errorMsg'] = eInfo[server]?.error;
 
@@ -417,27 +467,34 @@ export const GFlagsField = ({
       <div className={isReadOnly ? 'gflag-read-table' : 'gflag-edit-table'}>
         <BootstrapTable
           data={fields}
-          height={editMode ? '420px' : 'auto'}
-          maxHeight="420px"
+          height={tableMaxHeight ?? 'auto'}
+          maxHeight={tableMaxHeight ?? '420px'}
           tableStyle={{ overflow: 'scroll' }}
         >
-          <TableHeaderColumn width="40%" dataField="Name" dataFormat={nameFormatter} isKey>
+          <TableHeaderColumn
+            width={isReadReplica ? '60%' : '40%'}
+            dataField="Name"
+            dataFormat={nameFormatter}
+            isKey
+          >
             <span className="header-title">{t('universeForm.gFlags.flagName')}</span>
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="TSERVER"
-            width="30%"
+            width={isReadReplica ? '40%' : '30%'}
             dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, TSERVER)}
           >
             <span className="header-title">{t('universeForm.gFlags.tServerValue')}</span>
           </TableHeaderColumn>
-          <TableHeaderColumn
-            dataField="MASTER"
-            width="30%"
-            dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
-          >
-            <span className="header-title">{t('universeForm.gFlags.masterValue')}</span>
-          </TableHeaderColumn>
+          {!isReadReplica && (
+            <TableHeaderColumn
+              dataField="MASTER"
+              width="30%"
+              dataFormat={(cell, row, e, index) => valueFormatter(cell, row, index, MASTER)}
+            >
+              <span className="header-title">{t('universeForm.gFlags.masterValue')}</span>
+            </TableHeaderColumn>
+          )}
         </BootstrapTable>
       </div>
     );
@@ -450,23 +507,49 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
+        return (
+          <AddGFlag
+            formProps={formProps}
+            updateJWKSDialogStatus={updateJWKSDialogStatus}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
+          />
+        );
 
       default:
         return null;
     }
   };
 
+  const updateJWKSDialogStatus = (status: boolean) => {
+    setIsJWKSKeyDialogOpen(status);
+  };
+
   const renderModal = () => {
     const gflagSchema = Yup.object().shape({
       flagvalue: Yup.mixed().required(t('universeForm.validation.fieldRequired'))
     });
-    const modalTitle =
+    let modalTitle =
       selectedProps?.mode === CREATE
         ? selectedProps?.label
         : t('universeForm.gFlags.editFlagValue');
     const modalLabel =
       selectedProps?.mode === CREATE ? t('universeForm.gFlags.addFlag') : t('common.confirm');
+    if (enableRRGflags) {
+      if (isReadReplica)
+        modalTitle =
+          t('universeForm.gFlags.rrTab') +
+          ' / ' +
+          selectedProps?.server +
+          ' / ' +
+          t('universeForm.gFlags.addFlag');
+      else
+        modalTitle =
+          t('universeForm.gFlags.primaryTab') +
+          ' / ' +
+          selectedProps?.server +
+          ' / ' +
+          t('universeForm.gFlags.addFlag');
+    }
     return (
       <YBModalForm
         title={modalTitle}
@@ -480,7 +563,13 @@ export const GFlagsField = ({
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties: any) => renderOption(properties)}
-        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        dialogClassName={
+          toggleModal
+            ? isJWKSKeyDialogOpen
+              ? 'gflag-modal modal-fade partial'
+              : 'gflag-modal modal-fade in'
+            : 'modal-fade'
+        }
         headerClassName="add-flag-header"
         showBackButton={true}
       />
@@ -489,14 +578,14 @@ export const GFlagsField = ({
 
   const renderBanner = () => {
     return (
-      <div className="gflag-empty-banner">
+      <div className="gflag-empty-banner-new ">
         <span className="empty-text">{t('universeForm.gFlags.noFlags')}</span>
       </div>
     );
   };
 
   return (
-    <Box display="flex" width="100%" flexDirection="column">
+    <Box display="flex" width="100%" height="100%" flexDirection="column">
       {versionError && (
         <Alert bsStyle="danger">
           {versionError} ({t('universeForm.gFlags.selectedDBVersion')}
@@ -509,7 +598,7 @@ export const GFlagsField = ({
             const { optionName, ...rest } = option;
             return (
               <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
-                {SERVER_LIST.map((server) => {
+                {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;
                   const serverProps = {
                     option: optionName,

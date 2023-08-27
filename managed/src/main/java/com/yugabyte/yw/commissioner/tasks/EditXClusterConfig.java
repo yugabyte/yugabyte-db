@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -19,7 +20,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
@@ -86,14 +86,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                       xClusterConfig,
                       oldReplicationGroupName,
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
-                      false /* ignoreErrors */,
-                      true /* skipRemoveTransactionalCert */));
+                      false /* ignoreErrors */));
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.sourceRole != null || editFormData.targetRole != null) {
           createChangeXClusterRoleTask(
-              taskParams().getXClusterConfig(), editFormData.sourceRole, editFormData.targetRole);
+                  taskParams().getXClusterConfig(),
+                  editFormData.sourceRole,
+                  editFormData.targetRole)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.tables != null) {
           if (!CollectionUtils.isEmpty(taskParams().getTableInfoList())) {
             createXClusterConfigSetStatusForTablesTask(
@@ -103,8 +105,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 targetUniverse,
                 taskParams().getTableInfoList(),
                 taskParams().getMainTableIndexTablesMap(),
-                Collections.emptySet() /* tableIdsScheduledForBeingRemoved */,
-                taskParams().getTxnTableInfo());
+                Collections.emptySet() /* tableIdsScheduledForBeingRemoved */);
           }
 
           if (!CollectionUtils.isEmpty(taskParams().getTableIdsToRemove())) {
@@ -148,6 +149,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         xClusterConfig.updateStatusForTables(
             tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       }
+      // Set backup and restore status to failed and alter load balanced.
+      boolean isLoadBalancerAltered = false;
+      for (Restore restore : restoreList) {
+        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
+      }
+      handleFailedBackupAndRestore(
+          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
@@ -162,15 +170,14 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       Universe targetUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
-      Set<String> tableIdsScheduledForBeingRemoved,
-      @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
+      Set<String> tableIdsScheduledForBeingRemoved) {
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
             getDbToTablesInfoMapNeedBootstrap(
                 taskParams().getTableIdsToAdd(),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
-                null /* txnTableInfo */);
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
 
     // Replication for tables that do NOT need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
@@ -214,7 +221,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         isRestartWholeConfig);
     if (isRestartWholeConfig) {
       createXClusterConfigSetStatusForTablesTask(
-          getTableIds(requestedTableInfoList, txnTableInfo), XClusterTableConfig.Status.Updating);
+          getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
 
       // Delete the xCluster config.
       createDeleteXClusterConfigSubtasks(
@@ -223,15 +230,11 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
 
       createXClusterConfigSetStatusForTablesTask(
-          getTableIds(requestedTableInfoList, txnTableInfo), XClusterTableConfig.Status.Updating);
+          getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
 
       // Recreate the config including the new tables.
       addSubtasksToCreateXClusterConfig(
-          sourceUniverse,
-          targetUniverse,
-          requestedTableInfoList,
-          mainTableIndexTablesMap,
-          txnTableInfo);
+          sourceUniverse, targetUniverse, requestedTableInfoList, mainTableIndexTablesMap);
     } else {
       createXClusterConfigModifyTablesTask(
           tableIdsDeleteReplication,

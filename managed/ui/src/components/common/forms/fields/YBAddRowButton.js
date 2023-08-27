@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import { YBButton } from './';
 
 const YBAddRowButton = ({ onClick, btnText, ...props }) => (

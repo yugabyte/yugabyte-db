@@ -224,11 +224,13 @@ set(TSERVER_SRCS
   pg_table_mutation_count_sender.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
+  remote_client_base.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
   remote_bootstrap_session.cc
   remote_bootstrap_snapshots.cc
+  remote_snapshot_transfer_client.cc
   service_util.cc
   tablet_memory_manager.cc
   tablet_server.cc
@@ -241,6 +243,7 @@ set(TSERVER_SRCS
   stateful_services/pg_auto_analyze_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
+  xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
   xcluster_poller.cc
@@ -296,7 +299,9 @@ set(TSERVER_MAIN_DEPS
     yb-tserver_util
     yb-cql
     yb-redis
+    yb_process_wrapper
     yb_pgwrapper
+    ysql_conn_mgr_wrapper
     ${YB_BASE_LIBS})
 
 ADD_YB_LIBRARY(tserver_main_impl

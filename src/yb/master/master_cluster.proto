@@ -27,6 +27,14 @@ import "yb/rpc/service.proto";
 message ListTabletServersRequestPB {
   // If set to true, return only the tservers which are in the primary/sync cluster.
   optional bool primary_only = 1 [default = false];
+  // If replication_info is not provided, tablespace ID will be
+  // used to fetch the replication config on user tables that
+  // are geo-partitioned within a tablespace.
+  optional bytes tablespace_id = 2;
+  // Replication config will be used on user tables that are located
+  // in geo-partitioned tablepsace to filter TServers based
+  // on their placement ID and cloud config.
+  optional ReplicationInfoPB replication_info = 3;
 }
 
 message ListTabletServersResponsePB {

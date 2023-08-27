@@ -36,6 +36,8 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
       qlexpr::QLTableRow* static_row,
       const dockv::ReaderProjection* static_projection) override;
 
+  Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
+
   std::string ToString() const override;
 
   Result<HybridTime> RestartReadHt() override;

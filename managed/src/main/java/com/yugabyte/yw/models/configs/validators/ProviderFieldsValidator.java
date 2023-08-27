@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.configs.validators;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.SetMultimap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -13,13 +14,17 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public abstract class ProviderFieldsValidator extends BaseBeanValidator {
 
   private static final long PROCESS_WAIT_TIMEOUT_MILLIS = 1000L;
 
   private final RuntimeConfGetter runtimeConfGetter;
+
+  private final String VALIDATION_ERROR_SOURCE = "providerValidation";
 
   @Inject
   public ProviderFieldsValidator(BeanValidator beanValidator, RuntimeConfGetter runtimeConfGetter) {
@@ -28,7 +33,11 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   }
 
   protected void throwBeanProviderValidatorError(String fieldName, String exceptionMsg) {
-    throwBeanValidatorError(fieldName, exceptionMsg, "providerValidation");
+    throwBeanValidatorError(fieldName, exceptionMsg, VALIDATION_ERROR_SOURCE);
+  }
+
+  protected void throwMultipleProviderValidatorError(SetMultimap<String, String> errorsMap) {
+    throwMultipleBeanValidatorError(errorsMap, VALIDATION_ERROR_SOURCE);
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {
@@ -47,7 +56,8 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
         }
       }
     } catch (Exception e) {
-      throwBeanProviderValidatorError("NTP_SERVERS", e.getMessage());
+      log.error("Error: ", e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     return true;
   }

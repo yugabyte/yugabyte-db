@@ -18,7 +18,7 @@ These attributes include the following:
 
 | Attribute | Description |
 | :--- | :--- |
-| `total_count/count` | The number of times the value of a metric has been measured.
+| `total_count` | The number of times the value of a metric has been measured.
 | `min` | The minimum value of a metric across all measurements.
 | `mean` | The average value of the metric across all measurements.
 | `Percentile_75` | The 75th percentile value of the metric across all measurements.
@@ -27,7 +27,7 @@ These attributes include the following:
 | `Percentile_99_9` | The 99.9th percentile of the metric across all metrics measurements.
 | `Percentile_99_99` | The 99.99th percentile of the metric across all metrics measurements.
 | `max` | The maximum value of the metric across all measurements.
-| `total_sum/sum` | The aggregate of all the metric values across the measurements reflected in total_count/count.
+| `total_sum` | The aggregate of all the metric values across the measurements reflected in total_count/count.
 
 For example, if `SELECT * FROM table` is executed once and returns 8 rows in 10 microseconds, the `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` metric would have the following attribute values: `total_count=1`, `total_sum=10`, `min=10`, `max=10`, and `mean=10`. If the same query is run again and returns in 6 microseconds, then the attributes would be as follows: `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
 

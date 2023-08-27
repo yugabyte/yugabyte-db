@@ -8,6 +8,7 @@
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
+#include <time.h>
 
 void od_router_init(od_router_t *router, od_global_t *global)
 {
@@ -530,17 +531,38 @@ bool od_should_not_spun_connection_yet(int connections_in_pool, int pool_size,
 
 #define MAX_BUZYLOOP_RETRY 10
 
-od_router_status_t od_router_attach(od_router_t *router, od_client_t *client,
-				    bool wait_for_idle)
+/*
+ * od_router_attach is a function used to attach a client object to a server object.
+ * client_for_router represents the internal client used for
+ * route matching and server attachment. On the other hand,
+ * external_client represents the actual client connection
+ * currently being processed by the worker thread.
+ * Since it may take some time for the server (limited by pool size)
+ * to become available, read events from external_client are unsubscribed
+ * to prevent potential hangs. It's important to note that
+ * during control connection creation, external_client and client_for_router
+ * will be different, while in all other scenarios, they will be the same.
+ */
+od_router_status_t od_router_attach(od_router_t *router,
+				    od_client_t *client_for_router,
+				    bool wait_for_idle,
+				    od_client_t *external_client)
 {
 	(void)router;
-	od_route_t *route = client->route;
+	od_route_t *route = client_for_router->route;
 	assert(route != NULL);
+	od_instance_t *instance = router->global->instance;
+
+	struct timespec start_time, end_time;
+	long long time_taken_to_attach_server_ns;
+
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
 
 	od_route_lock(route);
 
 	/* enqueue client (pending -> queue) */
-	od_client_pool_set(&route->client_pool, client, OD_CLIENT_QUEUE);
+	od_client_pool_set(&route->client_pool, client_for_router,
+			   OD_CLIENT_QUEUE);
 
 	/* get client server from route server pool */
 	bool restart_read = false;
@@ -595,11 +617,11 @@ od_router_status_t od_router_attach(od_router_t *router, od_client_t *client,
 		 * unsubscribe from pending client read events during the time we wait
 		 * for an available server
 		 */
-		restart_read =
-			restart_read || (bool)od_io_read_active(&client->io);
+		restart_read = restart_read ||
+			       (bool)od_io_read_active(&external_client->io);
 		od_route_unlock(route);
 
-		int rc = od_io_read_stop(&client->io);
+		int rc = od_io_read_stop(&external_client->io);
 		if (rc == -1)
 			return OD_ROUTER_ERROR;
 
@@ -627,19 +649,20 @@ od_router_status_t od_router_attach(od_router_t *router, od_client_t *client,
 	if (server == NULL)
 		return OD_ROUTER_ERROR;
 	od_id_generate(&server->id, "s");
-	server->global = client->global;
+	server->global = client_for_router->global;
 	server->route = route;
 
 	od_route_lock(route);
 
 attach:
 	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_ACTIVE);
-	od_client_pool_set(&route->client_pool, client, OD_CLIENT_ACTIVE);
+	od_client_pool_set(&route->client_pool, client_for_router,
+			   OD_CLIENT_ACTIVE);
 
-	client->server = server;
-	server->client = client;
+	client_for_router->server = server;
+	server->client = client_for_router;
 	server->idle_time = 0;
-	server->key_client = client->key;
+	server->key_client = client_for_router->key;
 
 	od_route_unlock(route);
 
@@ -650,7 +673,17 @@ attach:
 
 	/* maybe restore read events subscription */
 	if (restart_read)
-		od_io_read_start(&client->io);
+		od_io_read_start(&external_client->io);
+
+    // Record the end time
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+    // Calculate the time taken in nanoseconds
+    time_taken_to_attach_server_ns =
+	    (end_time.tv_sec - start_time.tv_sec) * 1000000000LL +
+	    (end_time.tv_nsec - start_time.tv_nsec);
+    od_stat_t *stats = &route->stats;
+    od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
 	return OD_ROUTER_OK;
 }
@@ -669,9 +702,16 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	client->server = NULL;
 	server->client = NULL;
-	if (od_likely(!server->offline)) {
-		od_pg_server_pool_set(&route->server_pool, server,
-				      OD_SERVER_IDLE);
+	/*
+	 * Drop the server connection if:
+	 * 	a. Server gets OFFLINE.
+	 * 	b. Client connection had used a query which required the connection to be STICKY.
+	 * 	   As of D26669, these queries are:
+	 * 			a. Creating TEMP TABLES.
+	 * 			b. Use of WITH HOLD CURSORS.
+	 */
+	if (od_likely(!server->offline) && server->yb_sticky_connection == false) {
+		od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_IDLE);
 	} else {
 		od_instance_t *instance = server->global->instance;
 		od_debug(&instance->logger, "expire", NULL, server,

@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import JsYaml from 'js-yaml';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -15,7 +15,12 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { KubernetesProviderLabel, KubernetesProviderType, ProviderCode } from '../../constants';
+import {
+  KubernetesProvider,
+  KubernetesProviderLabel,
+  KubernetesProviderType,
+  ProviderCode
+} from '../../constants';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
 import { FieldLabel } from '../components/FieldLabel';
@@ -45,7 +50,6 @@ import {
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
-import { getRegionlabel } from '../configureRegion/utils';
 import {
   findExistingRegion,
   findExistingZone,
@@ -58,7 +62,6 @@ import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { YBLoading } from '../../../../common/indicators';
 import { adaptSuggestedKubernetesConfig } from './utils';
-import { KUBERNETES_REGIONS } from '../../providerRegionsData';
 
 import {
   K8sAvailabilityZone,
@@ -82,7 +85,7 @@ export interface K8sProviderEditFormFieldValues {
   editPullSecretContent: boolean;
   kubeConfigName: string;
   kubernetesImageRegistry: string;
-  kubernetesProvider: { value: string; label: string };
+  kubernetesProvider: { value: KubernetesProvider; label: string };
   providerName: string;
   regions: K8sRegionField[];
   version: number;
@@ -144,7 +147,10 @@ export const K8sProviderEditForm = ({
     }
   );
 
-  if (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle) {
+  if (
+    enableSuggestedConfigFeature &&
+    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+  ) {
     return <YBLoading />;
   }
 
@@ -189,10 +195,8 @@ export const K8sProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
-    setRegionOperation(
-      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
-    );
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -224,6 +228,10 @@ export const K8sProviderEditForm = ({
   const editPullSecretContent = formMethods.watch(
     'editPullSecretContent',
     defaultValues.editPullSecretContent
+  );
+  const kubernetesProvider = formMethods.watch(
+    'kubernetesProvider',
+    defaultValues.kubernetesProvider
   );
   const kubernetesProviderTypeOptions = [
     ...(KUBERNETES_PROVIDER_OPTIONS[kubernetesProviderType] ?? []),
@@ -291,7 +299,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Pull Secret Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -325,7 +333,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Kube Config Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -378,6 +386,7 @@ export const K8sProviderEditForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -412,6 +421,8 @@ export const K8sProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
+          kubernetesProvider={kubernetesProvider.value}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -446,9 +457,10 @@ const constructDefaultFormValues = (
     regions: providerConfig.regions.map((region) => ({
       fieldId: generateLowerCaseAlphanumericId(),
       code: region.code,
+      name: region.name,
       regionData: {
         value: { code: region.code, zoneOptions: [] },
-        label: getRegionlabel(ProviderCode.KUBERNETES, region.code)
+        label: region.name
       },
       zones: region.zones.map((zone) => ({
         code: zone.code,
@@ -579,8 +591,6 @@ const constructProviderPayload = async (
           }),
           code: regionFormValues.regionData.value.code,
           name: regionFormValues.regionData.label,
-          longitude: KUBERNETES_REGIONS[regionFormValues.regionData.value.code]?.longitude,
-          latitude: KUBERNETES_REGIONS[regionFormValues.regionData.value.code]?.latitude,
           zones: [
             ...preprocessedZones,
             ...getDeletedZones(existingRegion?.zones, regionFormValues.zones)
@@ -595,6 +605,11 @@ const constructProviderPayload = async (
     );
   }
 
+  const {
+    kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
+    kubernetesPullSecret: existingKubernetesPullSecret,
+    kubernetesPullSecretName: existingKubernetesPullSecretName
+  } = providerConfig?.details.cloudInfo.kubernetes;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
@@ -616,16 +631,27 @@ const constructProviderPayload = async (
               }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
-          ...(formValues.editPullSecretContent &&
-            formValues.kubernetesPullSecretContent && {
-              kubernetesPullSecretContent: kubernetesPullSecretContent,
-              ...(formValues.kubernetesPullSecretContent.name && {
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
-              }),
-              ...(kubernetesImagePullSecretName && {
-                kubernetesImagePullSecretName: kubernetesImagePullSecretName
+          ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
+            ? {
+                kubernetesPullSecretContent: kubernetesPullSecretContent,
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: kubernetesImagePullSecretName
+                })
+              }
+            : {
+                ...(existingKubernetesPullSecret && {
+                  kubernetesPullSecret: existingKubernetesPullSecret
+                }),
+                ...(existingKubernetesPullSecretName && {
+                  kubernetesPullSecretName: existingKubernetesPullSecretName
+                }),
+                ...(existingKubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+                })
               })
-            })
         }
       }
     },

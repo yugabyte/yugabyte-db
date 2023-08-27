@@ -1,9 +1,9 @@
-import React from 'react';
 import { useQuery } from 'react-query';
 import moment from 'moment';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import {
+  isBootstrapRequired,
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
@@ -14,11 +14,12 @@ import {
   XClusterConfigAction,
   XClusterConfigStatus,
   REPLICATION_LAG_ALERT_NAME,
-  BROKEN_XCLUSTER_CONFIG_STATUSES
+  BROKEN_XCLUSTER_CONFIG_STATUSES,
+  XClusterConfigType
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import {UnavailableUniverseStates, YBTableRelationType} from '../../redesign/helpers/constants';
+import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 
@@ -29,11 +30,9 @@ import {
   XClusterTable,
   XClusterTableDetails
 } from './XClusterTypes';
-import {TableType, Universe, YBTable} from '../../redesign/helpers/dtos';
+import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
-
-export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
 // TODO: Rename, refactor and pull into separate file
 export const MaxAcceptableLag = ({
@@ -132,6 +131,10 @@ export const CurrentReplicationLag = ({
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
+
   return (
     <span
       className={`replication-lag-value ${
@@ -147,20 +150,22 @@ export const CurrentReplicationLag = ({
 // TODO: Rename, refactor and pull into separate file
 export const CurrentTableReplicationLag = ({
   tableUUID,
+  streamId,
   queryEnabled,
   nodePrefix,
   sourceUniverseUUID,
   xClusterConfigStatus
 }: {
   tableUUID: string;
+  streamId: string;
   queryEnabled: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
   const tableLagQuery = useQuery(
-    ['xcluster-metric', nodePrefix, tableUUID, 'metric'],
-    () => queryLagMetricsForTable(tableUUID, nodePrefix),
+    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
+    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix),
     {
       enabled: queryEnabled
     }
@@ -204,6 +209,10 @@ export const CurrentTableReplicationLag = ({
   const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
   const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+
+  if (maxNodeLag === undefined) {
+    return <span className="replication-lag-value warning">{formattedLag}</span>;
+  }
 
   return (
     <span
@@ -332,9 +341,10 @@ export const getEnabledConfigActions = (
     case XClusterConfigStatus.RUNNING:
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+        XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
         XClusterConfigAction.EDIT,
-        XClusterConfigAction.ADD_TABLE,
         XClusterConfigAction.RESTART
       ];
     case XClusterConfigStatus.FAILED:
@@ -348,7 +358,15 @@ export const getEnabledConfigActions = (
 };
 
 /**
- * Returns the UUID for all xCluster configs with the provided source and target universe.
+ * Returns the UUIDs for all xCluster configs associated with the provided universe.
+ */
+export const getAllXClusterConfigs = (universe: Universe) => [
+  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
+  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
+];
+
+/**
+ * Returns the UUIDs for all xCluster configs with the provided source and target universe.
  */
 export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUniverse: Universe) => {
   const sourceXClusterConfigs = sourceUniverse.universeDetails?.xclusterInfo?.sourceXClusterConfigs;
@@ -432,16 +450,80 @@ export const augmentTablesWithXClusterDetails = (
   if (txnTableDetails) {
     const { tableId: txnTableId, ...txnTable } = txnTableDetails;
     tables.push({
-      isIndexTable:false,
-      keySpace: "system",
-      pgSchemaName: "",
+      isIndexTable: false,
+      keySpace: 'system',
+      pgSchemaName: '',
       relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
       sizeBytes: -1,
-      tableName: "transactions",
+      tableName: 'transactions',
       tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
       tableUUID: txnTableId,
       ...txnTable
     });
   }
   return tables;
+};
+
+/**
+ * Return the UUIDs for tables which require bootstrapping.
+ * May throw an error.
+ */
+export const getTablesForBootstrapping = async (
+  selectedTableUUIDs: string[],
+  sourceUniverseUUID: string,
+  targetUniverseUUID: string | null,
+  sourceUniverseTables: YBTable[],
+  xClusterConfigType: XClusterConfigType
+) => {
+  // Check if bootstrap is required, for each selected table
+  let bootstrapTest: { [tableUUID: string]: boolean } = {};
+
+  bootstrapTest = await isBootstrapRequired(
+    sourceUniverseUUID,
+    targetUniverseUUID,
+    selectedTableUUIDs.map(adaptTableUUID),
+    xClusterConfigType
+  );
+
+  const bootstrapRequiredTableUUIDs = new Set<string>();
+  if (bootstrapTest) {
+    const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
+    const ysqlTableUUIDToKeyspace = new Map<string, string>();
+    sourceUniverseTables.forEach((table) => {
+      if (
+        table.tableType !== TableType.PGSQL_TABLE_TYPE ||
+        table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
+      ) {
+        // Ignore all index tables and non-YSQL tables.
+        return;
+      }
+      const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
+      if (tableUUIDs !== undefined) {
+        tableUUIDs.add(adaptTableUUID(table.tableUUID));
+      } else {
+        ysqlKeyspaceToTableUUIDs.set(
+          table.keySpace,
+          new Set<string>([adaptTableUUID(table.tableUUID)])
+        );
+      }
+      ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
+    });
+
+    Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {
+      if (bootstrapRequired) {
+        bootstrapRequiredTableUUIDs.add(tableUUID);
+        // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
+        //            for bootstrapping.
+        const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
+        if (keyspace !== undefined) {
+          const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
+          if (tableUUIDs !== undefined) {
+            tableUUIDs.forEach((tableUUID) => bootstrapRequiredTableUUIDs.add(tableUUID));
+          }
+        }
+      }
+    });
+  }
+
+  return Array.from(bootstrapRequiredTableUUIDs);
 };

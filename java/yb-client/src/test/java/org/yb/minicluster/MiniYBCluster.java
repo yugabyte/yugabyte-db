@@ -112,6 +112,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> ysqlConnMgrContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private YBClient syncClient;
@@ -560,6 +561,7 @@ public class MiniYBCluster implements AutoCloseable {
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int postgresPort = TestUtils.findFreePort(tserverBindAddress);
     final int pgsqlWebPort = TestUtils.findFreePort(tserverBindAddress);
+    final int ysqlConnMgrPort = TestUtils.findFreePort(tserverBindAddress);
 
     // TODO: use a random port here as well.
     final int redisPort = REDIS_PORT;
@@ -598,6 +600,12 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
+    if (clusterParameters.startYsqlConnMgr) {
+      tsCmdLine.add("--ysql_conn_mgr_port=" + Integer.toString(ysqlConnMgrPort));
+      tsCmdLine.add("--enable_ysql_conn_mgr=true");
+      tsCmdLine.add("--allowed_preview_flags_csv=enable_ysql_conn_mgr");
+    }
+
     if (tserverFlags != null) {
       tsCmdLine.addAll(CommandUtil.flagsToArgs(tserverFlags));
     }
@@ -610,6 +618,7 @@ public class MiniYBCluster implements AutoCloseable {
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
     pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, postgresPort));
+    ysqlConnMgrContactPoints.add(new InetSocketAddress(tserverBindAddress, ysqlConnMgrPort));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -1208,6 +1217,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getPostgresContactPoints() {
     return pgsqlContactPoints;
+  }
+
+  /**
+   * Returns a list of Ysql Connection Manager contact points.
+   * @return Ysql Connection Manager contact points
+   */
+  public List<InetSocketAddress> getYsqlConnMgrContactPoints() {
+    return ysqlConnMgrContactPoints;
   }
 
   /**

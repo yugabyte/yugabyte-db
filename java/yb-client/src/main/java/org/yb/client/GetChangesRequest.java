@@ -38,6 +38,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final CdcSdkCheckpoint explicitCheckpoint;
   private final String tableId;
   private final long safeHybridTime;
+  private final int walSegmentIndex;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
@@ -45,9 +46,17 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
          null, new String(""), -1);
   }
 
-  public GetChangesRequest(YBTable table, String streamId, String tabletId,
-   long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo,
-   CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime) {
+  public GetChangesRequest(YBTable table, String streamId, String tabletId, long term, long index,
+      byte[] key, int write_id, long time, boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime) {
+    this(table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, tableId, safeHybridTime, 0);
+  }
+
+  public GetChangesRequest(YBTable table, String streamId, String tabletId, long term, long index,
+      byte[] key, int write_id, long time, boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime,
+      int walSegmentIndex) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -60,6 +69,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.explicitCheckpoint = explicitCheckpoint;
     this.tableId = tableId;
     this.safeHybridTime = safeHybridTime;
+    this.walSegmentIndex = walSegmentIndex;
   }
 
   @Override
@@ -96,6 +106,8 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     if (safeHybridTime != -1) {
       builder.setSafeHybridTime(safeHybridTime);
     }
+
+    builder.setWalSegmentIndex(walSegmentIndex);
 
     return toChannelBuffer(header, builder.build());
   }

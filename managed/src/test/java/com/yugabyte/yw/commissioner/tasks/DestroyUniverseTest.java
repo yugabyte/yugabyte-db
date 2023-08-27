@@ -168,7 +168,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
-    doNothing().when(mockBackupUtil).validateBackupStorageConfig(any());
+    doNothing().when(mockBackupHelper).validateStorageConfigOnBackup(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -244,7 +244,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
-    doNothing().when(mockBackupUtil).validateBackupStorageConfig(any());
+    doNothing().when(mockBackupHelper).validateStorageConfigOnBackup(any());
     TaskInfo taskInfo = submitTask(taskParams, 4);
     assertEquals(Success, taskInfo.getTaskState());
     b.setTaskUUID(taskInfo.getTaskUUID());

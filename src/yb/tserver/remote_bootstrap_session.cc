@@ -51,6 +51,7 @@
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
@@ -60,6 +61,13 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_bool(enable_flush_retryable_requests);
+
+DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
+                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
+                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
+                 "server it is remote bootstrapping, but before it sends a success response.");
+
 
 namespace yb {
 namespace tserver {
@@ -72,6 +80,8 @@ using consensus::MinimumOpId;
 using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
+
+const std::string kRetryableRequestsFileName = "retryable_requests";
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
@@ -112,23 +122,21 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 
 Status RemoteBootstrapSession::ChangeRole() {
   CHECK(Succeeded());
+  CHECK(ShouldChangeRole());
 
   LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
             << session_id_;
-  return rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
-                            : tablet_peer_->ChangeRole(requestor_uuid_);
+  auto status = rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
+                                   : tablet_peer_->ChangeRole(requestor_uuid_);
+  if (status.ok()) {
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
+  }
+  return status;
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
-  shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
-  if (!consensus) {
-    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState,
-                  Substitute("Unable to initialize remote bootstrap session "
-                             "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                             tablet_peer_->tablet_id(), tablet::RaftGroupStatePB_Name(tablet_state),
-                             tablet_state));
-  }
+  auto consensus = VERIFY_RESULT_PREPEND(
+      tablet_peer_->GetConsensus(), "Unable to initialize remote bootstrap session");
   initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   return Status::OK();
 }
@@ -165,12 +173,24 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
 
 const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
 
-Status RemoteBootstrapSession::Init() {
+Status RemoteBootstrapSession::InitSnapshotTransferSession() {
   // Take locks to support re-initialization of the same session.
-  std::lock_guard<std::mutex> lock(mutex_);
-  RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
+  std::lock_guard lock(mutex_);
 
-  const string& tablet_id = tablet_peer_->tablet_id();
+  RETURN_NOT_OK(ReadSuperblockFromDisk());
+  RETURN_NOT_OK(GetRunningTablet());
+  RETURN_NOT_OK(InitSources());
+
+  start_time_ = MonoTime::Now();
+  should_try_change_role_ = false;
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::InitBootstrapSession() {
+  // Take locks to support re-initialization of the same session.
+  std::lock_guard lock(mutex_);
+  RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
   // Prevent log GC while we grab log segments and Tablet metadata.
   string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
@@ -178,11 +198,7 @@ Status RemoteBootstrapSession::Init() {
       MinimumOpId().index(), anchor_owner_token, &log_anchor_);
 
   // Read the SuperBlock from disk.
-  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
-  RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
-  RETURN_NOT_OK_PREPEND(metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
-                        Substitute("Unable to access superblock for tablet $0",
-                                   tablet_id));
+  RETURN_NOT_OK(ReadSuperblockFromDisk());
 
   if (!tablet_peer_->log_available()) {
     return STATUS(IllegalState, "Tablet is not running (log is uninitialized)");
@@ -190,10 +206,7 @@ Status RemoteBootstrapSession::Init() {
   // Get the latest opid in the log at this point in time so we can re-anchor.
   auto last_logged_opid = tablet_peer_->GetLatestLogEntryOpId();
 
-  auto tablet = tablet_peer_->shared_tablet();
-  if (PREDICT_FALSE(!tablet)) {
-    return STATUS(IllegalState, "Tablet is not running");
-  }
+  auto tablet = VERIFY_RESULT(GetRunningTablet());
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
@@ -212,9 +225,36 @@ Status RemoteBootstrapSession::Init() {
     RETURN_NOT_OK(status);
   }
 
-  for (const auto& source : sources_) {
-    if (source) {
-      RETURN_NOT_OK(source->Init());
+  std::optional<OpId> min_synced_op_id;
+  // Copy the retryable requests if it exists.
+  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    Status s = tablet_peer_->FlushRetryableRequests();
+    if (s.ok() || s.IsAlreadyPresent()) {
+      retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
+      auto copy_result = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      if (!copy_result.ok()) {
+        LOG(WARNING) << "Copy retryable requests failed: " << s;
+        retryable_requests_filepath_.reset();
+      } else {
+        min_synced_op_id = *copy_result;
+      }
+    } else {
+      LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
+    }
+  }
+
+  RETURN_NOT_OK(InitSources());
+
+  // It's possible that the wal segment is not synced and the retryable requests file
+  // is newer than the data of wal file downloaded by remote peer. The remote peer will
+  // reject newer ops that covered by retryable requests but not in the wal segment by
+  // incorrectly detect them as duplicate.
+  if (min_synced_op_id) {
+    auto log_msg = Format("wait for OP($0) to be synced", *min_synced_op_id);
+    LOG(INFO) << "Start to " << log_msg;
+    auto wait_result = tablet_peer_->log()->WaitForSafeOpIdToApply(*min_synced_op_id);
+    if (wait_result.empty()) {
+      return STATUS_FORMAT(TimedOut, "Failed to $0", log_msg);
     }
   }
 
@@ -232,7 +272,7 @@ Status RemoteBootstrapSession::Init() {
 
   if (rbs_anchor_client_) {
     RETURN_NOT_OK(rbs_anchor_client_->RegisterLogAnchor(
-        tablet_peer_->tablet_id(), last_logged_opid));
+        tablet_peer_->tablet_id(), log_anchor_index_));
     rbs_anchor_session_created_ = true;
   }
   // Re-anchor on the highest OpId that was in the log right before we
@@ -369,6 +409,8 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
             data_id.ShortDebugString());
       }
       return Status::OK();
+    case DataIdPB::RETRYABLE_REQUESTS:
+      return Status::OK();
     case DataIdPB::SNAPSHOT_FILE: FALLTHROUGH_INTENDED;
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
@@ -402,6 +444,12 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
                             "Unable to get piece of RocksDB file");
       break;
     }
+    case DataIdPB::RETRYABLE_REQUESTS: {
+      // Fetching the retryable requests file (may be abscent).
+      RETURN_NOT_OK_PREPEND(GetRetryableRequestsFilePiece(info),
+                            "Unable to get piece of retryable requests file");
+      break;
+    }
     default:
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
@@ -416,7 +464,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
 Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info) {
   std::shared_ptr<RandomAccessFile> file;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (opened_log_segment_seqno_ != segment_seqno) {
       RETURN_NOT_OK(OpenLogSegment(segment_seqno, &info->error_code));
     }
@@ -434,6 +482,13 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
 Status RemoteBootstrapSession::GetRocksDBFilePiece(
     const std::string& file_name, GetDataPieceInfo* info) {
   return GetFilePiece(checkpoint_dir_, file_name, env(), info);
+}
+
+Status RemoteBootstrapSession::GetRetryableRequestsFilePiece(GetDataPieceInfo* info) {
+  if (!retryable_requests_filepath_.has_value()) {
+    return Status::OK();
+  }
+  return GetFilePiece(checkpoint_dir_, kRetryableRequestsFileName, env(), info);
 }
 
 Status RemoteBootstrapSession::GetFilePiece(
@@ -480,6 +535,36 @@ static Status AddImmutableFileToMap(Collection* const cache,
   return Status::OK();
 }
 
+Status RemoteBootstrapSession::ReadSuperblockFromDisk() {
+  const string& tablet_id = tablet_peer_->tablet_id();
+
+  // Read the SuperBlock from disk.
+  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
+  RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
+  RETURN_NOT_OK_PREPEND(
+      metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
+      Substitute("Unable to access superblock for tablet $0", tablet_id));
+
+  return Status::OK();
+}
+
+Result<tablet::TabletPtr> RemoteBootstrapSession::GetRunningTablet() {
+  auto tablet = tablet_peer_->shared_tablet();
+  if (PREDICT_FALSE(!tablet)) {
+    return STATUS(IllegalState, "Tablet is not running");
+  }
+  return tablet;
+}
+
+Status RemoteBootstrapSession::InitSources() {
+  for (const auto& source : sources_) {
+    if (source) {
+      RETURN_NOT_OK(source->Init());
+    }
+  }
+  return Status::OK();
+}
+
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
@@ -506,11 +591,9 @@ Status RemoteBootstrapSession::OpenLogSegment(
       log_segment->footer().min_replicate_index() > log_anchor_index_) {
     log_anchor_index_ = log_segment->footer().min_replicate_index();
 
-    // Update log anchor on the tablet leader side
+    // Update log anchor on the tablet leader.
     if (rbs_anchor_client_) {
-      // return if the tablet leader is not able to anchor on the opid
-      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(
-          OpId(tablet_peer_->LeaderTerm(), log_anchor_index_)));
+      RETURN_NOT_OK(rbs_anchor_client_->UpdateLogAnchorAsync(log_anchor_index_));
     }
 
     // Update log anchor, since we don't need older logs anymore.
@@ -530,13 +613,18 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 }
 
 void RemoteBootstrapSession::SetSuccess() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   succeeded_ = true;
 }
 
 bool RemoteBootstrapSession::Succeeded() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return succeeded_;
+}
+
+bool RemoteBootstrapSession::ShouldChangeRole() {
+  std::lock_guard lock(mutex_);
+  return should_try_change_role_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {

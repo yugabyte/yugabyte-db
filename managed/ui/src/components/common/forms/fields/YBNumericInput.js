@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import NumericInput from 'react-numeric-input';
 import { isFunction } from 'lodash';
 import { YBLabel } from '../../../../components/common/descriptors';

@@ -1,20 +1,16 @@
-import React from 'react';
 import { useQuery } from 'react-query';
 import { Link } from 'react-router';
 import _ from 'lodash';
 import clsx from 'clsx';
 
-import { fetchUniversesList } from '../../actions/xClusterReplication';
-import {
-  findUniverseName,
-  MaxAcceptableLag,
-  CurrentReplicationLag
-} from './ReplicationUtils';
-import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
-import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
-import { XClusterConfigStatus } from './constants';
+import { XClusterConfig } from './XClusterTypes';
+import { XClusterConfigStatus, XClusterConfigTypeLabel } from './constants';
+import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
+import { fetchUniversesList } from '../../actions/xClusterReplication';
+import { findUniverseName, MaxAcceptableLag, CurrentReplicationLag } from './ReplicationUtils';
+import { usePillStyles } from '../configRedesign/providerRedesign/utils';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 
 import styles from './XClusterConfigCard.module.scss';
@@ -22,14 +18,13 @@ import styles from './XClusterConfigCard.module.scss';
 interface XClusterConfigCardProps {
   xClusterConfig: XClusterConfig;
   currentUniverseUUID: string;
-  currentUserTimezone: string | undefined;
 }
 
 export const XClusterConfigCard = ({
   xClusterConfig,
-  currentUniverseUUID,
-  currentUserTimezone
+  currentUniverseUUID
 }: XClusterConfigCardProps) => {
+  const pillClasses = usePillStyles();
   const universeListQuery = useQuery(['universeList'], () =>
     fetchUniversesList().then((res) => res.data)
   );
@@ -47,7 +42,10 @@ export const XClusterConfigCard = ({
     <div className={styles.configCard}>
       <Link to={`/universes/${currentUniverseUUID}/replication/${xClusterConfig.uuid}`}>
         <div className={styles.headerSection}>
-          <div className={styles.configName}>{xClusterConfig.name}</div>
+          <div className={styles.configNameContainer}>
+            <div className={styles.configName}>{xClusterConfig.name}</div>
+            <div className={pillClasses.pill}>{XClusterConfigTypeLabel[xClusterConfig.type]}</div>
+          </div>
           <div className={styles.metaInfoContainer}>
             <div className={styles.metaInfo}>
               <div className={styles.label}>Started</div>
@@ -70,6 +68,8 @@ export const XClusterConfigCard = ({
             clusterName={sourceUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.sourceUniverseUUID}
             isLoading={universeListQuery.isLoading}
+            isActive={xClusterConfig.sourceActive}
+            xClusterConfigType={xClusterConfig.type}
           />
           <div className={styles.arrowIcon}>
             <RightArrow />
@@ -79,6 +79,8 @@ export const XClusterConfigCard = ({
             clusterName={targetUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.targetUniverseUUID}
             isLoading={universeListQuery.isLoading}
+            isActive={xClusterConfig.targetActive}
+            xClusterConfigType={xClusterConfig.type}
           />
         </div>
         {_.includes(

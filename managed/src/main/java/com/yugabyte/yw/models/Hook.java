@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
@@ -74,6 +75,45 @@ public class Hook extends Model {
   @JoinColumn(name = "hook_scope_uuid", nullable = true)
   @ApiModelProperty(value = "Hook scope", accessMode = READ_ONLY)
   private HookScope hookScope;
+
+  public HookScope getHookScopeOrFail(
+      UUID universeUUID, UUID clusterUUID, HookScope.TriggerType triggerType) {
+    HookScope hookScope = getHookScope();
+    if (hookScope == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Hook: " + uuid + " is not associated to any scope");
+    } else if (!hookScope.getTriggerType().equals(triggerType)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Hook: "
+              + uuid
+              + " is not associated to an "
+              + HookScope.TriggerType.ApiTriggered.name()
+              + " hook scope");
+    } else if (!hookScope.getCustomerUUID().equals(customerUUID)) {
+      // Don't want to leak that the hook exists if it isn't associated to this customer somehow.
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Cannot find hook: " + uuid);
+    } else if (hookScope.getUniverseUUID() != null
+        && !hookScope.getUniverseUUID().equals(universeUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Hook: "
+              + uuid
+              + " is associated to a hook scope for a different universe: "
+              + hookScope.getUniverseUUID());
+    } else if (clusterUUID != null
+        && hookScope.getClusterUUID() != null
+        && !hookScope.getClusterUUID().equals(clusterUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Hook: "
+              + uuid
+              + " is associated to a hook scope for a different cluster: "
+              + hookScope.getClusterUUID());
+    }
+
+    return hookScope;
+  }
 
   public static Hook create(
       UUID customerUUID,

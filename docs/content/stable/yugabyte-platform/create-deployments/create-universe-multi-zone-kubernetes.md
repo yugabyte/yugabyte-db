@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
-    weight: 30
+    weight: 20
 type: docs
 ---
 
@@ -52,11 +52,13 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 - Use the **Regions** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
-- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (aslo known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
+- Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods (also known as nodes) are automatically placed across all the availability zones to guarantee the maximum availability.
 
 - In the **Replication Factor** field, define the replication factor, as per the following illustration:<br>
 
   ![img](/images/yb-platform/kubernetes-config55.png)
+
+### Configure instance
 
 Complete the **Instance Configuration** section as follows:
 
@@ -72,11 +74,15 @@ Complete the **Instance Configuration** section as follows:
 - Use the **Enable Client-to-Node TLS** field to specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
 - Use the **Enable Encryption at Rest** field to specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 
+### Perform advanced configurations
+
 Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere.
 - Use the **Enable IPV6** field to specify whether or not you want to use IPV6 networking for connections between database servers. This setting is disabled by default.
 - Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the internet. This setting is disabled by default.
+
+### Configure G-Flags
 
 Optionally, complete the **G-Flags** section as follows:
 
@@ -86,13 +92,15 @@ Optionally, complete the **G-Flags** section as follows:
 
   For details, see the following:
 
-  - [Edit configuration flags](/preview/yugabyte-platform/manage-deployments/edit-config-flags)
+  - [Edit configuration flags](../../manage-deployments/edit-config-flags)
 
-  - [YB Master Configuration Flags](/preview/reference/configuration/yb-master/#configuration-flags)
+  - [YB-Master configuration flags](../../../reference/configuration/yb-master/#configuration-flags)
 
-  - [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags)
+  - [YB-TServer configuration flags](../../../reference/configuration/yb-tserver/#configuration-flags)
 
-Optionally, use the **Helm Overrides** section as follows:
+### Configure Helm overrides
+
+Optionally, use the **Helm Overrides** section, as follows:
 
 - Click **Add Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
 
@@ -151,4 +159,5 @@ You can create a connection to a node as follows:
 
 ## Connect to the universe
 
-For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connecting YugabyteDB clusters](/preview/deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+

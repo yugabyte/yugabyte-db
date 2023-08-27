@@ -663,7 +663,25 @@ class GoogleCloudAdmin():
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        return self.waiter.wait(operation, zone=zone)
+        output = self.waiter.wait(operation, zone=zone)
+        response = self.compute.instances().get(project=self.project,
+                                                zone=zone,
+                                                instance=instance).execute()
+        for disk in response.get("disks"):
+            if disk.get("source") != body.get("source"):
+                continue
+            device_name = disk.get("deviceName")
+            logging.info("Setting disk auto delete for {} attached to {}"
+                         .format(device_name, instance))
+            # Even if this fails, volumes are already tagged for cleanup.
+            operation = self.compute.instances().setDiskAutoDelete(project=self.project,
+                                                                   zone=zone,
+                                                                   instance=instance,
+                                                                   deviceName=device_name,
+                                                                   autoDelete=True).execute()
+            self.waiter.wait(operation, zone=zone)
+            break
+        return output
 
     def unmount_disk(self, zone, instance, name):
         logging.info("Detaching disk {} from instance {}".format(name, instance))
@@ -875,12 +893,22 @@ class GoogleCloudAdmin():
                 root_volume=root_vol.get("source") if root_vol else None,
                 root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
-                is_running=True if instance_state == "RUNNING" else False
+                is_running=True if instance_state == "RUNNING" else False,
+                metadata=data.get("metadata")
             )
             if not get_all:
                 return result
             results.append(result)
         return results
+
+    def get_image_disk_size(self, machine_image):
+        tokens = machine_image.split("/")
+        image_project = self.project
+        image_project_idx = tokens.index("projects")
+        if image_project_idx >= 0:
+            image_project = tokens[image_project_idx + 1]
+        image = self.get_image(tokens[-1], image_project)
+        return image["diskSizeGb"]
 
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
@@ -900,7 +928,11 @@ class GoogleCloudAdmin():
         boot_disk_init_params["sourceImage"] = machine_image
         if boot_disk_size_gb is not None:
             # Default: 10GB
-            boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+            min_disk_size = self.get_image_disk_size(machine_image)
+            disk_size = min_disk_size if min_disk_size \
+                and int(min_disk_size) > int(boot_disk_size_gb) \
+                else boot_disk_size_gb
+            boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
         boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
@@ -915,10 +947,16 @@ class GoogleCloudAdmin():
                 static_ip_name, instance_name, region)
             static_ip_body = {"name": static_ip_name, "description": static_ip_description}
             logging.info("[app] Creating " + static_ip_description)
-            self.waiter.wait(self.compute.addresses().insert(
-                project=self.project,
-                region=region,
-                body=static_ip_body).execute(), region=region)
+
+            try:
+                self.waiter.wait(self.compute.addresses().insert(
+                    project=self.project,
+                    region=region,
+                    body=static_ip_body).execute(), region=region)
+            except HttpError as e:
+                if e.resp.status == 409 and 'already exists' in str(e):
+                    logging.warning(f"{static_ip_name} already exists")
+
             static_ip = self.compute.addresses().get(
                 project=self.project,
                 region=region,
@@ -1033,6 +1071,30 @@ class GoogleCloudAdmin():
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''
+
+    def update_boot_script(self, args, instance, boot_script):
+        metadata = instance['metadata']
+        # Get the current metadata 'items' list or initialize it if not present
+        current_items = metadata.get('items', [])
+
+        # Find the index of the 'startup-script' metadata item, or -1 if not found
+        startup_script_index = next((index for index, item in enumerate(current_items)
+                                     if item['key'] == 'startup-script'), -1)
+
+        # If the 'startup-script' metadata item exists, update the value;
+        # otherwise, append a new item
+        if startup_script_index != -1:
+            current_items[startup_script_index]['value'] = boot_script
+        else:
+            current_items.append({'key': 'startup-script', 'value': boot_script})
+
+        # Update the instance metadata with the new items list
+        self.compute.instances().setMetadata(
+            project=self.project,
+            zone=args.zone,
+            instance=instance['name'],
+            body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
+        ).execute()
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

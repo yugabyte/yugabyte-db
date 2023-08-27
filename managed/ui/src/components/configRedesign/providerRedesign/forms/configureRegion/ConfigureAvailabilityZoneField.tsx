@@ -4,7 +4,6 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React from 'react';
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core';
 import { useFieldArray, useFormContext } from 'react-hook-form';
@@ -17,7 +16,7 @@ import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelect
 import { CloudVendorAvailabilityZoneMutation } from '../../types';
 
 interface ConfigureAvailabilityZoneFieldProps {
-  isSubmitting: boolean;
+  isFormDisabled: boolean;
   zoneCodeOptions: string[] | undefined;
   className?: string;
 }
@@ -48,7 +47,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureAvailabilityZoneField = ({
-  isSubmitting,
+  isFormDisabled,
   zoneCodeOptions,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
@@ -74,7 +73,7 @@ export const ConfigureAvailabilityZoneField = ({
         btnType="button"
         onClick={addZoneField}
         disabled={
-          isSubmitting || zoneCodeOptions === undefined || fields.length >= zoneCodeOptions.length
+          isFormDisabled || zoneCodeOptions === undefined || fields.length >= zoneCodeOptions.length
         }
         data-testid="ConfigureAvailabilityZonField-AddZoneButton"
       />
@@ -86,11 +85,13 @@ export const ConfigureAvailabilityZoneField = ({
               name={`zones.${index}.code`}
               options={selectZoneCodeOptions}
               placeholder="Zone"
+              isDisabled={isFormDisabled}
             />
             <YBInputField
               control={control}
               name={`zones.${index}.subnet`}
               placeholder="Subnet"
+              disabled={isFormDisabled}
               fullWidth
             />
             <YBButton
@@ -98,6 +99,7 @@ export const ConfigureAvailabilityZoneField = ({
               btnIcon="fa fa-trash-o"
               btnType="button"
               onClick={() => remove(index)}
+              disabled={isFormDisabled}
             />
           </div>
         ))}

@@ -60,6 +60,14 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             defaultProvider, "default-region", "Default PlacementRegion", "default-image");
   }
 
+  private Result createZoneV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s/region_zones",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("POST", uri, body);
+  }
+
   @Test
   public void testListAvailabilityZonesWithInvalidProviderRegionUUID() {
     UUID providerUUID = UUID.randomUUID();
@@ -281,6 +289,31 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     assertNoKey(response, "secondarySubnet");
     az.refresh();
     assertNull(az.getSecondarySubnet());
+  }
+
+  @Test
+  public void testCreateZoneV2Payload() {
+    JsonNode azBody = generateAZRequestBody(defaultRegion);
+    Result result = createZoneV2(defaultProvider.getUuid(), defaultRegion.getUuid(), azBody);
+    AvailabilityZone zone =
+        Json.fromJson(Json.parse(contentAsString(result)), AvailabilityZone.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", zone.getUuid());
+
+    Region region =
+        Region.getOrBadRequest(
+            defaultCustomer.getUuid(), defaultProvider.getUuid(), defaultRegion.getUuid());
+    assertEquals(1, region.getZones().size());
+  }
+
+  public JsonNode generateAZRequestBody(Region region) {
+    ObjectNode azRequestBody = Json.newObject();
+    azRequestBody.put("code", "us-west-2a");
+    azRequestBody.put("name", "us-west-2a");
+    azRequestBody.put("subnet", "subnet");
+    azRequestBody.set("region", Json.toJson(region));
+
+    return azRequestBody;
   }
 
   private JsonNode doDeleteAZAndVerify(

@@ -1,8 +1,8 @@
 ---
-title: Launch and Manage
+title: Launch and manage YugabyteDB
 headerTitle: Launch and Manage
 linkTitle: Launch and Manage
-description: Deploying and managing YugabyteDB
+description: Learn how to deploy, manage, and troubleshoot the YugabyteDB database.
 headcontent: Deploy, manage, and troubleshoot YugabyteDB
 image: /images/section_icons/index/quick_start.png
 type: indexpage

@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
@@ -101,12 +102,12 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
-    if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+    if (!(provider == CloudType.gcp || provider == CloudType.aws || provider == CloudType.azu)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+          "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
-    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
@@ -138,7 +139,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
           }
-          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)) {
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+              && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
+              && !super.runtimeConfGetter.getGlobalConf(
+                  GlobalConfKeys.disableImageBundleValidation)) {
             Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
                 bundle.getDetails().getRegions();
             // Validate that the provided image bundle contains all the regions

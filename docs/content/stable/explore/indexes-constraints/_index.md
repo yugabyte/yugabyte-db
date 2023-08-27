@@ -1,8 +1,8 @@
 ---
-title: Indexes and constraints
+title: Indexes and constraints in YugabyteDB
 headerTitle: Indexes and constraints
 linkTitle: Indexes and constraints
-description: Explore indexes and constraints in YSQL and YCQL
+description: Using indexes and constraints in YugabyteDB
 headcontent: Explore indexes and constraints in YSQL and YCQL
 image: /images/section_icons/explore/monitoring.png
 menu:

@@ -41,7 +41,9 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/server/webserver.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/enums.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 
@@ -207,12 +209,16 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp);
   void HandleNamespacesHTML(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_namespaces = false);
   void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTablePageJSON(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
@@ -248,9 +254,10 @@ class MasterPathHandlers {
   TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
-  std::vector<TabletInfoPtr> GetLeaderlessTablets();
+  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
 
-  Result<std::vector<TabletInfoPtr>> GetUnderReplicatedTablets();
+  Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
+      GetUnderReplicatedTablets();
 
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
   std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
@@ -285,5 +292,5 @@ class MasterPathHandlers {
 
 void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
-} // namespace master
-} // namespace yb
+}  //  namespace master
+}  //  namespace yb

@@ -100,7 +100,7 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
 static Schema GetTestSchema() {
-  return Schema({ ColumnSchema("key", INT32) }, 1);
+  return Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
 }
 
 class TabletPeerTest : public YBTabletTest {
@@ -147,7 +147,8 @@ class TabletPeerTest : public YBTabletTest {
             tablet()->tablet_id()),
         &metric_registry_,
         nullptr, // tablet_splitter
-        std::shared_future<client::YBClient*>()));
+        std::shared_future<client::YBClient*>()
+    ));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
@@ -181,8 +182,15 @@ class TabletPeerTest : public YBTabletTest {
                         metadata->schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
-                        new_segment_allocation_callback));
+                        /* pre_log_rollover_callback = */ {}, new_segment_allocation_callback));
 
+    consensus::RetryableRequestsManager retryable_requests_manager(
+        tablet()->tablet_id(),
+        metadata->fs_manager(),
+        metadata->wal_dir(),
+        MemTracker::FindOrCreateTracker(tablet()->tablet_id()),
+        "");
+    ASSERT_OK(retryable_requests_manager.Init(clock()));
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
@@ -193,9 +201,10 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */,
+                                           &retryable_requests_manager,
                                            nullptr /* consensus_meta */,
-                                           multi_raft_manager_.get()));
+                                           multi_raft_manager_.get(),
+                                           nullptr /* flush_retryable_requests_pool */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -205,7 +214,7 @@ class TabletPeerTest : public YBTabletTest {
       if (FLAGS_quick_leader_election_on_create) {
         return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
       }
-      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
       return true;
     }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                          "leader, otherwise emulate.");
@@ -323,7 +332,7 @@ class TabletPeerTest : public YBTabletTest {
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -341,6 +350,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
   // Ensure nothing gets deleted.
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
@@ -362,7 +372,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
 
 // Ensure that Log::GC() doesn't delete logs when the DMS has an anchor.
 TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -417,8 +427,11 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
   // Note that this will allow GC of the 2nd insert done above.
+  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
   earliest_needed = 4;
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+  std::string details;
+  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
+  LOG(INFO) << details;
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -439,7 +452,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
 // Ensure that Log::GC() doesn't compact logs with OpIds of active transactions.
 TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -467,9 +480,9 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   table_info.set_table_id("00004000000030008000000000004020");
   table_info.set_table_name("test");
   table_info.set_table_type(PGSQL_TABLE_TYPE);
-  ColumnSchema col("a", UINT32);
+  ColumnSchema col("a", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
   ColumnId col_id(1);
-  Schema schema({col}, {col_id}, 1);
+  Schema schema({col}, {col_id});
   SchemaToPB(schema, table_info.mutable_schema());
   OpId op_id(100, 5);
   ASSERT_OK(tablet->AddTable(table_info, op_id));

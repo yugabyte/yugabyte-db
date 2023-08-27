@@ -1,4 +1,4 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 import { useQuery } from 'react-query';
@@ -14,6 +14,9 @@ import { UserManagementContainer } from '../components/users';
 import { RuntimeConfigContainer } from '../components/advanced';
 import { HAInstancesContainer } from '../components/ha/instances/HAInstanceContainer';
 
+import ListCACerts from '../components/customCACerts/ListCACerts';
+import { RBACContainer } from '../redesign/features/rbac/RBACContainer';
+import { isCertCAEnabledInRuntimeConfig } from '../components/customCACerts';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -88,6 +91,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     )?.value === 'true' ||
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
+
+  const isRBACEnabled = test['enableRBAC'] || released['enableRBAC'];
+
   const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
     (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
   )?.value;
@@ -95,6 +101,8 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
+
+  const isCustomCaCertsEnabled = isCertCAEnabledInRuntimeConfig(globalRuntimeConfigs?.data);
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
@@ -182,6 +190,22 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     );
   };
 
+  const getCustomCACertsTab = () => {
+    return (
+      <Tab eventKey="custom-ca-certs" title="CA Certificates" key="CA_Certificates">
+        <ListCACerts />
+      </Tab>
+    );
+  };
+
+  const getRbacTab = () => {
+    return (
+      <Tab eventKey="rbac" title="Access Management" key="rbac">
+        <RBACContainer />
+      </Tab>
+    );
+  };
+
   return (
     <div>
       <h2 className="content-title">Platform Configuration</h2>
@@ -195,7 +219,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getHighAvailabilityTab()}
         {getAlertTab()}
         {getUserManagementTab()}
+        {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
+        {isRBACEnabled && getRbacTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

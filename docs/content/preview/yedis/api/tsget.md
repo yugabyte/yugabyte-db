@@ -20,7 +20,7 @@ This command fetches the value for the given `timestamp` in the time series that
 given `key`.
 
 - If the given `key` or `timestamp` does not exist, nil is returned.
-- If the given `key` is associated with non-timeseries data, an error is raised.
+- If the given `key` is associated with non-time series data, an error is raised.
 - If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.
 
 ## Return value

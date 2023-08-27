@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -51,6 +52,8 @@ using dockv::KeyEntryValue;
 using dockv::KeyEntryValues;
 using dockv::SubDocKey;
 
+YB_DEFINE_ENUM(IteratorMode, (kGeneric)(kPg));
+
 class DocRowwiseIteratorTest : public DocDBTestBase {
  protected:
   DocRowwiseIteratorTest() {
@@ -59,13 +62,13 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   ~DocRowwiseIteratorTest() override {}
 
   void SetUp() override {
-    FLAGS_TEST_docdb_sort_weak_intents = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_sort_weak_intents) = true;
     DocDBTestBase::SetUp();
   }
 
   const Schema& projection() {
     if (!projection_) {
-      projection_ = doc_read_context().schema;
+      projection_ = doc_read_context().schema();
     }
     return *projection_;
   }
@@ -86,13 +89,12 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
-      RWOperationCounter *pending_op_counter) {
+      const ReadOperationData& read_operation_data,
+      std::reference_wrapper<const ScopedRWOperation> pending_op) {
     reader_projection_.Reset(projection, projection.column_ids());
     return std::make_unique<DocRowwiseIterator>(
-        reader_projection_, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter);
+        reader_projection_, doc_read_context, txn_op_context, doc_db, read_operation_data,
+        pending_op);
   }
 
   virtual Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -100,13 +102,11 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       const DocQLScanSpec &spec,
-      RWOperationCounter *pending_op_counter = nullptr) {
+      std::reference_wrapper<const ScopedRWOperation> pending_op) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
     RETURN_NOT_OK(iter->Init(spec));
     return iter;
   }
@@ -116,14 +116,12 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
+      const ReadOperationData& read_operation_data,
       const DocPgsqlScanSpec &spec,
-      RWOperationCounter *pending_op_counter = nullptr,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
     RETURN_NOT_OK(iter->Init(spec));
     return iter;
   }
@@ -133,14 +131,12 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
       const DocDB &doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime &read_time,
-      RWOperationCounter *pending_op_counter = nullptr,
+      const ReadOperationData& read_operation_data,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
-        projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-        pending_op_counter);
-    iter->Init(YQL_TABLE_TYPE);
+        projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
+    iter->InitForTableType(YQL_TABLE_TYPE);
     return iter;
   }
 
@@ -205,8 +201,17 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestDeletedDocumentUsingLivenessColumnDelete();
   void TestPartialKeyColumnsProjection();
 
+  void ValidateIterator(
+      YQLRowwiseIteratorIf *iter,
+      IteratorMode mode,
+      const Schema &schema,
+      const Schema *projection,
+      const std::string &expected,
+      const HybridTime &expected_max_seen_ht);
+
   std::optional<Schema> projection_;
   dockv::ReaderProjection reader_projection_;
+  bool skip_pg_validation_ = false;
 };
 
 static const std::string kStrKey1 = "row1";
@@ -219,19 +224,19 @@ const KeyBytes kEncodedDocKey2 = dockv::MakeDocKey(kStrKey2, kIntKey2).Encode();
 
 Schema DocRowwiseIteratorTest::CreateSchema() {
   return Schema({
-        ColumnSchema("a", DataType::STRING, /* is_nullable = */ false),
-        ColumnSchema("b", DataType::INT64, false),
+        ColumnSchema("a", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+        ColumnSchema("b", DataType::INT64, ColumnKind::RANGE_ASC_NULL_FIRST),
         // Non-key columns
-        ColumnSchema("c", DataType::STRING, true),
-        ColumnSchema("d", DataType::INT64, true),
-        ColumnSchema("e", DataType::STRING, true)
+        ColumnSchema("c", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue),
+        ColumnSchema("d", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue),
+        ColumnSchema("e", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)
     }, {
         10_ColId,
         20_ColId,
         30_ColId,
         40_ColId,
         50_ColId
-    }, 2);
+    });
 }
 constexpr int32_t kFixedHashCode = 0;
 
@@ -244,21 +249,13 @@ const KeyBytes GetKeyBytes(
 }
 
 const Schema population_schema(
-    {ColumnSchema(
-         "country", DataType::STRING, /* is_nullable = */ false, true, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "state", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "city", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "area", DataType::STRING, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("country", DataType::STRING, ColumnKind::HASH),
+     ColumnSchema("state", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("city", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("area", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("population", DataType::INT64, true)},
-    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId}, 4);
+     ColumnSchema("population", DataType::INT64, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 20_ColId, 30_ColId, 40_ColId, 50_ColId});
 
 const std::string INDIA = "INDIA";
 const std::string CG = "CG";
@@ -341,18 +338,12 @@ const KeyBytes GetKeyBytes(int32_t hash_key, int32_t range_key1, int32_t range_k
 }
 
 const Schema test_range_schema(
-    {ColumnSchema(
-         "h", DataType::INT32, /* is_nullable = */ false, true, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
-     ColumnSchema(
-         "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-         SortingType::kAscending),
+    {ColumnSchema("h", DataType::INT32, ColumnKind::HASH),
+     ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+     ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
      // Non-key columns
-     ColumnSchema("payload", DataType::INT32, true)},
-    {10_ColId, 11_ColId, 12_ColId, 13_ColId}, 3);
+     ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+    {10_ColId, 11_ColId, 12_ColId, 13_ColId});
 
 void DocRowwiseIteratorTest::InsertTestRangeData() {
   int h = 5;
@@ -369,9 +360,9 @@ void DocRowwiseIteratorTest::InsertPackedRow(
     SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
     const KeyBytes &doc_key, HybridTime ht,
     std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
-  dockv::RowPacker packer(
+  dockv::RowPackerV1 packer(
       version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
-      /* value_control_fields= */ Slice());
+      /* value_control_fields= */ Slice(), doc_read_context().schema());
 
   for (auto &column : columns) {
     ASSERT_OK(packer.AddValue(column.first, column.second));
@@ -403,30 +394,66 @@ Result<std::string> QLTableRowToString(
   return buffer.str();
 }
 
+Result<std::string> PgTableRowToString(
+    const Schema &schema, const dockv::PgTableRow &row, const Schema *projection) {
+  std::stringstream buffer;
+  buffer << "{";
+  for (size_t idx = 0; idx < schema.num_columns(); idx++) {
+    if (idx != 0) {
+      buffer << ",";
+    }
+    if (projection &&
+        projection->find_column_by_id(schema.column_id(idx)) == Schema::kColumnNotFound) {
+      buffer << "missing";
+    } else {
+      auto value = row.GetQLValuePB(schema.column_id(idx));
+      buffer << QLValue(value).ToString();
+    }
+  }
+  buffer << "}";
+  return buffer.str();
+}
+
 Result<std::string> ConvertIteratorRowsToString(
     YQLRowwiseIteratorIf *iter,
+    IteratorMode mode,
     const Schema &schema,
     const Schema *projection = nullptr) {
   std::stringstream buffer;
-  qlexpr::QLTableRow row;
-  while (VERIFY_RESULT(iter->FetchNext(&row))) {
-    buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
-    buffer << "\n";
+  if (mode == IteratorMode::kGeneric) {
+    qlexpr::QLTableRow row;
+    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection)) << std::endl;
+    }
+  } else {
+    down_cast<docdb::DocRowwiseIterator*>(iter)->TEST_force_allow_fetch_pg_table_row();
+    dockv::ReaderProjection reader_projection(projection ? *projection : schema);
+    dockv::PgTableRow row(reader_projection);
+    while (VERIFY_RESULT(iter->PgFetchNext(&row))) {
+      buffer << VERIFY_RESULT(PgTableRowToString(schema, row, projection)) << std::endl;
+    }
   }
 
   return buffer.str();
 }
 
-void ValidateIterator(
+void DocRowwiseIteratorTest::ValidateIterator(
     YQLRowwiseIteratorIf *iter,
+    IteratorMode mode,
     const Schema &schema,
     const Schema *projection,
     const std::string &expected,
     const HybridTime &expected_max_seen_ht) {
+  if (skip_pg_validation_ && mode == IteratorMode::kPg) {
+    return;
+  }
+
+  SCOPED_TRACE(Format("Iterator mode: $0", mode));
+
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       expected,
       ASSERT_RESULT(
-          ConvertIteratorRowsToString(iter, schema, projection)));
+          ConvertIteratorRowsToString(iter, mode, schema, projection)));
 
   ASSERT_EQ(expected_max_seen_ht, iter->TEST_MaxSeenHt());
 }
@@ -442,12 +469,15 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const TransactionOperationContext &txn_op_context) {
   auto doc_read_context = DocReadContext::TEST_Create(schema);
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
-      CoarseTimePoint::max() /* deadline */, read_time, spec));
+  for (auto mode : kIteratorModeArray) {
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection ? *projection : schema, doc_read_context, txn_op_context, doc_db(),
+        ReadOperationData::FromReadTime(read_time), spec, pending_op));
 
-  ValidateIterator(
-      iter.get(), schema, projection, expected, expected_max_seen_ht);
+    ValidateIterator(
+        iter.get(), mode, schema, projection, expected, expected_max_seen_ht);
+  }
 }
 
 void DocRowwiseIteratorTest::CreateIteratorAndValidate(
@@ -457,11 +487,14 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const HybridTime &expected_max_seen_ht,
     const Schema *projection,
     const TransactionOperationContext &txn_op_context) {
-  auto iter = ASSERT_RESULT(CreateIterator(
-      projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
-      CoarseTimePoint::max() /* deadline */, read_time));
+  for (auto mode : kIteratorModeArray) {
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection ? *projection : schema, doc_read_context(), txn_op_context, doc_db(),
+        ReadOperationData::FromReadTime(read_time), pending_op));
 
-  ValidateIterator(iter.get(), schema, projection, expected, expected_max_seen_ht);
+    ValidateIterator(iter.get(), mode, schema, projection, expected, expected_max_seen_ht);
+  }
 }
 
 void DocRowwiseIteratorTest::CreateIteratorAndValidate(
@@ -471,13 +504,16 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
     const TransactionOperationContext &txn_op_context) {
   auto &projection = this->projection();
 
-  auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context(), txn_op_context, doc_db(),
-      CoarseTimePoint::max() /* deadline */, read_time));
+  for (auto mode : kIteratorModeArray) {
+    auto pending_op = ScopedRWOperation::TEST_Create();
+    auto iter = ASSERT_RESULT(CreateIterator(
+        projection, doc_read_context(), txn_op_context, doc_db(),
+        ReadOperationData::FromReadTime(read_time), pending_op));
 
-  ValidateIterator(
-      iter.get(), doc_read_context().schema, &doc_read_context().schema, expected,
-      expected_max_seen_ht);
+    ValidateIterator(
+        iter.get(), mode, doc_read_context().schema(), &doc_read_context().schema(), expected,
+        expected_max_seen_ht);
+  }
 }
 
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
@@ -512,15 +548,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   constexpr ColocationId colocation_id(0x4001);
 
   Schema test_schema(
-      {ColumnSchema(
-           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
-       ColumnSchema(
-           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
        // Non-key columns
-       ColumnSchema("payload", DataType::INT32, true)},
-      {10_ColId, 11_ColId, 12_ColId}, 2);
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
   test_schema.set_colocation_id(colocation_id);
 
   const KeyEntryValues range_components{
@@ -550,7 +582,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
   boost::optional<int32_t> empty_hash_code;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code, nullptr);
+      empty_hash_code, empty_hash_code);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -564,16 +596,11 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   constexpr ColocationId colocation_id(0x4001);
 
   Schema test_schema(
-      {ColumnSchema(
-           "r1", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
-       ColumnSchema(
-           "r2", DataType::INT32, /* is_nullable = */ false, false, false, false, 0,
-           SortingType::kAscending),
+      {ColumnSchema("r1", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("r2", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
        // Non-key columns
-       ColumnSchema("payload", DataType::INT32, true)},
-      {10_ColId, 11_ColId, 12_ColId}, 2);
-  test_schema.set_colocation_id(colocation_id);
+       ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
+      {10_ColId, 11_ColId, 12_ColId});
 
   const KeyEntryValues range_components{
       KeyEntryValue::Int32(5), KeyEntryValue::Int32(6)};
@@ -601,7 +628,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
       test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code, nullptr, default_doc_key, /* is_forward_scan */ false);
+      empty_hash_code, empty_hash_code, default_doc_key, /* is_forward_scan */ false);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -1032,7 +1059,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
     auto iter = CreateIntentAwareIterator(
         doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
-        CoarseTimePoint::max(), ReadHybridTime::SingleTime(kSafeTime));
+        ReadOperationData::FromSingleReadTime(kSafeTime));
 
     {
       SubDocKey subkey(doc_key);
@@ -1072,7 +1099,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 800 w: 2 } -> \
     auto iter = CreateIntentAwareIterator(
         doc_db(), BloomFilterMode::USE_BLOOM_FILTER, doc_key_optional,
         rocksdb::kDefaultQueryId, kMockTransactionalOperationContext,
-        CoarseTimePoint::max(), ReadHybridTime::SingleTime(kSafeTime));
+        ReadOperationData::FromSingleReadTime(kSafeTime));
 
     {
       SubDocKey subkey(doc_key);
@@ -1108,10 +1135,11 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
       )#");
 
   const auto& projection = this->projection();
+  auto pending_op = ScopedRWOperation::TEST_Create();
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
+        ReadOperationData::TEST_FromReadTimeMicros(2800), pending_op));
 
     qlexpr::QLTableRow row;
     QLValue value;
@@ -1150,10 +1178,10 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "d"}, &projection));
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(5000),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(5000),
       R"#(
         {missing,missing,null,int64:10000,missing}
         {missing,missing,null,int64:20000,missing}
@@ -1184,25 +1212,25 @@ SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
 SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
     HT{ physical: 1000 }]) -> null
       )#");
-  Schema schema_copy = doc_read_context().schema;
+  Schema schema_copy = doc_read_context().schema();
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
   auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
+  auto pending_op = ScopedRWOperation::TEST_Create();
 
   // Read should have results before delete...
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500),
-        nullptr));
+        ReadOperationData::TEST_FromReadTimeMicros(1500),
+        pending_op));
     ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
   // ...but there should be no results after delete.
   {
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::Max(),
-        nullptr));
+        ReadOperationData(), pending_op));
     ASSERT_FALSE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
 }
@@ -1256,10 +1284,13 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "e"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "e"}, &projection));
+
+  // PgFetchNext does not support control fields.
+  skip_pg_validation_ = true;
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, read_time,
+      doc_read_context().schema(), read_time,
       R"#(
         {missing,missing,null,missing,string:"row2_e"}
       )#",
@@ -1304,10 +1335,13 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() 
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"c", "d"}, &projection));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"c", "d"}, &projection));
+
+  // PgFetchNext expects liveness column, so does not work in this test.
+  skip_pg_validation_ = true;
 
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(2800),
       R"#(
         {missing,missing,null,null,missing}
         {missing,missing,string:"row2_c",int64:20000,missing}
@@ -1338,9 +1372,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 2 }]
       )#");
 
   Schema projection;
-  ASSERT_OK(doc_read_context().schema.CreateProjectionByNames({"a", "b"}, &projection, 2));
+  ASSERT_OK(doc_read_context().schema().TEST_CreateProjectionByNames({"a", "b"}, &projection));
   CreateIteratorAndValidate(
-      doc_read_context().schema, ReadHybridTime::FromMicros(2800),
+      doc_read_context().schema(), ReadHybridTime::FromMicros(2800),
       R"#(
         {string:"row1",int64:11111,missing,missing,missing}
       )#",
@@ -1572,11 +1606,12 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), TransactionOperationContext());
+      doc_db(), rocksdb::ReadOptions(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000),
+      TransactionOperationContext());
   iter.Seek(DocKey());
-  ASSERT_FALSE(iter.IsOutOfRecords());
-  auto key_data = ASSERT_RESULT(iter.FetchKey());
+  auto key_data = ASSERT_RESULT(iter.Fetch()).get();
+  ASSERT_TRUE(key_data);
   SubDocKey subdoc_key;
   ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
   ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
@@ -1619,11 +1654,12 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       )#");
 
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
+      doc_db(), rocksdb::ReadOptions(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000),
+      TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
-    ASSERT_FALSE(iter.IsOutOfRecords()) << "Seek #" << i << " failed";
+    ASSERT_TRUE(ASSERT_RESULT(iter.Fetch()).get()) << "Seek #" << i << " failed";
   }
 }
 
@@ -1648,12 +1684,14 @@ void DocRowwiseIteratorTest::TestScanWithinTheSameTxn() {
   const auto txn_context = TransactionOperationContext(*txn, &txn_status_manager);
   Schema projection = this->projection();
 
+  auto pending_op = ScopedRWOperation::TEST_Create();
   auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context(), txn_context, doc_db(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000)));
+      projection, doc_read_context(), txn_context, doc_db(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000), pending_op));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
-      ASSERT_RESULT(ConvertIteratorRowsToString(iter.get(), doc_read_context().schema)),
+      ASSERT_RESULT(ConvertIteratorRowsToString(
+          iter.get(), IteratorMode::kGeneric, doc_read_context().schema())),
       R"#(
         {string:"row1",int64:11111,string:"row1_c_t1",null,null}
         {string:"row2",int64:22222,string:"row2_c_t1",null,null}
@@ -1871,12 +1909,12 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
   auto doc_read_context = DocReadContext::TEST_Create(population_schema);
 
   Schema projection;
-  ASSERT_OK(population_schema.CreateProjectionByNames({"population"}, &projection));
+  ASSERT_OK(population_schema.TEST_CreateProjectionByNames({"population"}, &projection));
 
+  auto pending_op = ScopedRWOperation::TEST_Create();
   auto iter = ASSERT_RESULT(CreateIterator(
-      projection, doc_read_context, kNonTransactionalOperationContext,
-      doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
-      /*pending_op_counter = */ nullptr));
+      projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      ReadOperationData::TEST_FromReadTimeMicros(1000), pending_op));
 
   qlexpr::QLTableRow row;
   ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));

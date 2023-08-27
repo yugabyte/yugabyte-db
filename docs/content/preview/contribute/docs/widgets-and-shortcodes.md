@@ -79,6 +79,53 @@ This is a warning with a [link](https://www.yugabyte.com).
 {{</* /warning */>}}
 ```
 
+## Tables
+
+Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables). By design, Markdown table rows are on a single line, and adding bullets and multi-line code blocks in table cells has to be done using HTML on a single line. To make creating custom tables simpler, use the _table_ shortcode. For example:
+
+```md
+{{</*table*/>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3 |
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} |
+{{</*tip title="Awesome tip" */>}} Use 3 ticks for code blocks with pipe symbols {{</*/tip*/>}} |
+{{</*/table*/>}}
+```
+
+The above markdown should render a table as follows:
+
+{{<table>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3 |
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} |
+{{< tip title="Awesome tip" >}} Use 3 ticks for code blocks with pipe symbols {{</tip>}} |
+{{</table>}}
+
+
 ## Inline section switcher
 
 An inline section switcher lets you switch between content sections **without a separate URL**. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
@@ -237,7 +284,22 @@ The corresponding code for this widget is as follows.
   description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
   buttonText="Get started"
   buttonUrl="/preview/quick-start-yugabytedb-managed/"
-  imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
+  imageAlt="Yugabyte cloud"
+  imageUrl="/images/homepage/learn-through-examples.svg"
+*/>}}
+```
+
+To change image background to transparent, add `imageTransparent=true` in the code as shown below
+
+```go
+{{</* sections/text-with-right-image
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud"
+  imageTransparent=true
+  imageUrl="/images/homepage/learn-through-examples.svg"
 */>}}
 ```
 

@@ -25,7 +25,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
       const std::shared_future<client::YBClient*>& client_future);
 
  private:
-  void Activate(const int64_t leader_term) override;
+  void Activate() override;
   void Deactivate() override;
   virtual Result<bool> RunPeriodicTask() override;
 

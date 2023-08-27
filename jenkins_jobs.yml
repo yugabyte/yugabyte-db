@@ -2,12 +2,12 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang15
+    compiler: clang16
     build_type: asan
     release_artifact: false
 
   - os: centos7
-    compiler: clang15
+    compiler: clang16
     build_type: tsan
     release_artifact: false
 
@@ -40,9 +40,9 @@ jobs:
 
   - os: mac12
     compiler: clang
-    build_type: debug
+    build_type: release
     architecture: arm64
-    release_artifact: false
+    release_artifact: true
 
   - os: mac11
     compiler: clang

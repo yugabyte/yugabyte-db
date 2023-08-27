@@ -7,15 +7,15 @@ summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
   stable:
-    identifier: api-ysql
     parent: api
-    weight: 2900
+    identifier: api-ysql
+    weight: 10
 type: indexpage
 ---
 
 ## Introduction
 
-Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API that is best fit for scale-out RDBMS applications that need ultra resilience, massive write scalability and geographic data distribution. The YugabyteDB SQL processing layer is built by using the PostgreSQL code (starting with version 11.2) directly.
+Yugabyte Structured Query Language (YSQL) is an ANSI SQL, fully-relational API that is best fit for scale-out RDBMS applications that need ultra resilience, massive write scalability and geographic data distribution. The YugabyteDB SQL processing layer is built by using the [PostgreSQL](https://www.yugabyte.com/postgresql/) code (starting with version 11.2) directly. The result of this approach is that [YSQL is fully compatible with PostgreSQL _by construction_](https://www.yugabyte.com/postgresql/postgresql-compatibility/).
 
 YSQL therefore supports all of the traditional relational modeling features, such as referential integrity (implemented using a foreign key constraint from a child table to a primary key to its parent table), joins, partial indexes, triggers and stored procedures. It extends the familiar transactional notions into the YugabyteDB Distributed SQL Database architecture.
 

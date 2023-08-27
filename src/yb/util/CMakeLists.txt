@@ -106,7 +106,7 @@ ADD_YB_LIBRARY(opid_proto
 # the build directory.
 set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/version_metadata.json)
 
-list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
+list(APPEND GEN_VERSION_INFO_COMMAND "${YB_SRC_ROOT}/python/yugabyte/gen_version_info.py")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
 if(YB_GIT_HASH)
   message(STATUS "Provided git hash: ${YB_GIT_HASH}")
@@ -129,6 +129,7 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  aggregate_stats.cc
   allocation_tracker.cc
   async_util.cc
   flags/auto_flags.cc
@@ -181,6 +182,8 @@ set(UTIL_SRCS
   init.cc
   jsonreader.cc
   jsonwriter.cc
+  jwt_util.cc
+  jwtcpp_util.cc
   locks.cc
   logging.cc
   malloc.cc
@@ -231,8 +234,8 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
-  stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
+  stats/perf_level_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -242,6 +245,8 @@ set(UTIL_SRCS
   striped64.cc
   subprocess.cc
   sync_point.cc
+  tcmalloc_trace.cc
+  tcmalloc_util.cc
   test_graph.cc
   test_kill.cc
   thread.cc
@@ -359,6 +364,8 @@ ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(jwt_util-test)
+ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(lru_cache-test)
 ADD_YB_TEST(map-util-test)
@@ -426,6 +433,7 @@ ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(operation_counter-test)
+ADD_YB_TEST(write_buffer-test)
 
 #######################################
 # jsonwriter_test_proto

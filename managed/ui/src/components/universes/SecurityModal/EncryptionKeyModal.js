@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import * as Yup from 'yup';
@@ -42,8 +42,7 @@ export default class EncryptionKeyModal extends Component {
       handleSubmitKey,
       fetchCurrentUniverse
     } = this.props;
-    const encryptionAtRestEnabled =
-      universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled;
+    const encryptionAtRestEnabled = universeDetails.encryptionAtRestConfig?.encryptionAtRestEnabled;
 
     // When both the encryption enabled and key values didn't change
     // we don't submit the form
@@ -80,8 +79,7 @@ export default class EncryptionKeyModal extends Component {
       data: { universeDetails }
     } = currentUniverse;
     const encryptionAtRestConfig = universeDetails.encryptionAtRestConfig;
-    const encryptionAtRestEnabled =
-      encryptionAtRestConfig?.encryptionAtRestEnabled;
+    const encryptionAtRestEnabled = encryptionAtRestConfig?.encryptionAtRestEnabled;
     const labelText = currentUniverse.data.name
       ? `Enable Encryption-at-Rest for ${this.props.name} ?`
       : 'Enable Encryption-at-Rest ?';

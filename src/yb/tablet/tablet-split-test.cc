@@ -15,22 +15,25 @@
 
 #include <boost/algorithm/string/join.hpp>
 
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rocksdb/db.h"
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
@@ -44,13 +47,12 @@ namespace tablet {
 
 class TabletSplitTest : public YBTabletTest {
  public:
-  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", INT32, false, true),
-                                            ColumnSchema("val", STRING) },
-                                          1)) {}
+  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+                                            ColumnSchema("val", DataType::STRING) })) {}
 
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 1_MB;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = -1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(tablet()));
   }
@@ -73,7 +75,8 @@ class TabletSplitTest : public YBTabletTest {
     QLReadRequestResult result;
     WriteBuffer rows_data(1024);
     EXPECT_OK(tablet->HandleQLReadRequest(
-        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result, &rows_data));
+        docdb::ReadOperationData::FromReadTime(read_time), req, TransactionMetadataPB(), &result,
+        &rows_data));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
@@ -129,7 +132,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   VLOG(1) << "Source tablet:" << std::endl
           << docdb::DocDBDebugDumpToStr(
-                 tablet()->doc_db(), dockv::SchemaPackingStorage(tablet()->table_type()),
+                 tablet()->doc_db(), &tablet()->GetSchemaPackingProvider(),
                  docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
@@ -222,8 +225,8 @@ TEST_F(TabletSplitTest, SplitTablet) {
     // Each split tablet data size should be less than original data size divided by number
     // of split points.
     ASSERT_LT(
-        split_tablet->doc_db().regular->GetCurrentVersionDataSstFilesSize(),
-        tablet()->doc_db().regular->GetCurrentVersionDataSstFilesSize() / kNumSplits);
+        split_tablet->regular_db()->GetCurrentVersionDataSstFilesSize(),
+        tablet()->regular_db()->GetCurrentVersionDataSstFilesSize() / kNumSplits);
   }
 
   // Split tablets should have all data from the source tablet.

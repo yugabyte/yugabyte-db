@@ -340,8 +340,8 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   const int kPauseAfterStage = GetParam();
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
-  FLAGS_ycql_num_tablets = 5;
-  FLAGS_ysql_num_tablets = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_num_tablets) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_tablets) = 5;
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   LOG(INFO) << "CreateTable done for " << table_name.ToString();
 
@@ -738,7 +738,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   const YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "dereference_tasks_table");
   YBSchema schema;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("key")->Type(DataType::INT32)->NotNull()->PrimaryKey();
   ASSERT_OK(b.Build(&schema));
   auto table_creator = client->NewTableCreator();
   ASSERT_OK(table_creator->table_name(table_name)

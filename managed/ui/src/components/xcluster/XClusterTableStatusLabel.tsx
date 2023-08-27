@@ -1,4 +1,3 @@
-import React from 'react';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
@@ -13,6 +12,7 @@ import styles from './XClusterTableStatusLabel.module.scss';
 
 interface XClusterTableStatusProps {
   status: XClusterTableStatus;
+  streamId: string;
   tableUUID: string;
   nodePrefix: string;
   universeUUID: string;
@@ -69,6 +69,7 @@ const UNABLE_TO_FETCH_LABEL = (
 
 export const XClusterTableStatusLabel = ({
   status,
+  streamId,
   tableUUID,
   nodePrefix,
   universeUUID
@@ -80,8 +81,9 @@ export const XClusterTableStatusLabel = ({
   const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const tableLagQuery = useQuery(['xcluster-metric', nodePrefix, tableUUID, 'metric'], () =>
-    queryLagMetricsForTable(tableUUID, nodePrefix)
+  const tableLagQuery = useQuery(
+    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
+    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix)
   );
 
   switch (status) {

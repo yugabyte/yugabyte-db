@@ -225,8 +225,8 @@ create_ybdb_backup() {
     backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} -v \
      --clean ${PLATFORM_DB_NAME}"
   else
-    backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} --clean \
-      ${PLATFORM_DB_NAME}"
+    backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} \
+     --clean ${PLATFORM_DB_NAME}"
   fi
   # Run ysql_dump.
   echo "Creating YBDB Platform DB backup ${backup_path}..."
@@ -373,14 +373,17 @@ create_backup() {
 
   version_path=$(find ${data_dir} -wholename **/yugaware/conf/version_metadata.json)
 
+  if [ "$disable_version_check" != true ]
+  then
+
   # At least keep some default as a worst case.
   if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
     version_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
   fi
 
   command="cat ${version_path}"
-
   docker_aware_cmd "yugaware" "${command}" > "${output_path}/version_metadata_backup.json"
+  fi
 
   if [[ "$exclude_releases" = true ]]; then
     include_releases_flag=""
@@ -399,6 +402,18 @@ create_backup() {
     create_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
                          "${verbose}" "${yba_installer}" "${pgdump_path}" "${plain_sql}"
   fi
+
+  TAR_OPTIONS="-r"
+  if [[ "${verbose}" = true ]]; then
+     TAR_OPTIONS+="v"
+  fi
+  TAR_OPTIONS+="f ${tar_name}"
+  FIND_OPTIONS=( . \\\( -path  \'**/data/certs/**\' )
+  FIND_OPTIONS+=( $(printf " -o -path '%s'"  "**/data/keys/**" "**/data/provision/**" \
+              "**/data/licenses/**"  "**/data/yb-platform/keys/**" "**/data/yb-platform/certs/**" \
+              "**/swamper_rules/**" "**/swamper_targets/**" "**/prometheus/rules/**"  \
+              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" "${include_releases_flag}") )
+
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
     trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
@@ -410,26 +425,14 @@ create_backup() {
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
     ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
+  FIND_OPTIONS+=( -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" )
   fi
+  # Close out paths in FIND_OPTIONS with a close-paren, and  add -exec
+  FIND_OPTIONS+=( \\\) -exec tar $TAR_OPTIONS \{} + )
   echo "Creating platform backup package..."
   cd ${data_dir}
-  if [[ "${verbose}" = true ]]; then
-    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
-              -o -path "**/data/licenses/**" \
-              -o -path "**/data/yb-platform/keys/**" -o -path "**/data/yb-platform/certs/**" \
-              -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
-              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
-              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
-              -o -path "${include_releases_flag}" \) -exec tar -rvf "${tar_name}" {} +
-  else
-    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
-              -o -path "**/data/licenses/**" \
-              -o -path "**/data/yb-platform/keys/**" -o -path "**/data/yb-platform/certs/**" \
-              -o -path "**/swamper_rules/**" -o -path "**/swamper_targets/**" \
-              -o -path "**/prometheus/rules/**" -o -path "**/prometheus/targets/**" \
-              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
-              -o -path "${include_releases_flag}" \) -exec tar -rf "${tar_name}" {} +
-  fi
+
+  eval find ${FIND_OPTIONS[@]}
 
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
@@ -581,16 +584,22 @@ restore_backup() {
     $tar_cmd "${input_path}" --directory "${yugabackup}"
 
     # Copy over releases. Need to ignore node-agent/ybc releases
+    set +e
     releasesdir=$(find "${yugabackup}" -name "releases" -type d | \
                   grep -v "ybc" | grep -v "node-agent")
-    cp -R "$releasesdir" "$ybai_data_dir"
+    set -e
+    if [[ "$releasesdir" != "" ]] && [[ -d "$releasesdir" ]]; then
+      cp -R "$releasesdir" "$ybai_data_dir"
+    fi
     # Node-agent/ybc foldes can be copied entirely into
     # Copy releases, ybc, certs, keys, over
     # xcerts/keys/licenses can all go directly into data directory
     BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent')
     for d in "${BACKUP_DIRS[@]}"
     do
+      set +e
       found_dir=$(find "${yugabackup}" -path "$d" -type d)
+      set -e
       if [[ "$found_dir" != "" ]] && [[ -d "$found_dir" ]]; then
         cp -R "$found_dir" "$ybai_data_dir"
       fi
@@ -684,6 +693,7 @@ print_backup_usage() {
   echo "  --ybdb                         ybdb backup (default: false)"
   echo "  --ysql_dump_path               path to ysql_sump to dump ybdb"
   echo "  -?, --help                     show create help, then exit"
+  echo "  --disable_version_check        disable the backup version check (default: false)"
   echo
 }
 
@@ -859,6 +869,11 @@ case $command in
           ysql_dump_path=$2
           shift 2
           ;;
+        --disable_version_check)
+          disable_version_check=true
+          set -x
+          shift
+          ;;
         -?|--help)
           print_backup_usage
           exit 0
@@ -878,7 +893,8 @@ case $command in
     fi
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
-    "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path"
+    "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$plain_sql" "$ybdb" "$ysql_dump_path" \
+    "$disable_version_check"
     exit 0
     ;;
   restore)
@@ -954,6 +970,7 @@ case $command in
           ;;
         --yba_installer)
           yba_installer=true
+          DOCKER_BASED=false
           shift
           ;;
         --pg_restore_path)
@@ -970,7 +987,7 @@ case $command in
           ;;
         --ysqlsh_path)
           ysqlsh_path=$2
-          shift
+          shift 2
           ;;
         --yugabundle)
           yugabundle=true

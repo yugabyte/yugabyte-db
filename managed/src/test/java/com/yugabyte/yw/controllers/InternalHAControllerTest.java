@@ -25,6 +25,7 @@ import static play.test.Helpers.fakeRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ha.PlatformInstanceClient;
@@ -76,7 +77,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
 
   @After
   public void tearDown() throws IOException {
-    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = AppConfigHelper.getStoragePath();
     File replicationDir =
         Paths.get(storagePath, PlatformReplicationHelper.REPLICATION_DIR).toFile();
     FileUtils.deleteDirectory(replicationDir);
@@ -323,7 +324,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   @Test
   public void testSyncBackups_no_known_leader_retained() throws IOException {
     String clusterKey = createHAConfig().get("cluster_key").asText("");
-    // no instances set so we have no valid leader
+    // no instances set, so we have no valid leader
     // we always retain invalid all backups even when leader does not match local POV.
 
     String leaderAddr = "http://node0";
@@ -331,7 +332,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     Result result = sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, leaderAddr);
     assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = AppConfigHelper.getStoragePath();
     File uploadedFile =
         Paths.get(
                 storagePath,
@@ -354,7 +355,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
         sendBackupSyncRequest(clusterKey, requestFromLeader, fakeDump, requestFromLeader);
     assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = AppConfigHelper.getStoragePath();
     File uploadedFile =
         Paths.get(
                 storagePath,
@@ -392,7 +393,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     Result result = sendBackupSyncRequest(clusterKey, leaderAddr, fakeDump, leaderAddr);
     assertOk(result);
 
-    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = AppConfigHelper.getStoragePath();
     File uploadedFile =
         Paths.get(
                 storagePath,
@@ -425,7 +426,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertBadRequest(
         result, "Sender: http://different.sender does not match leader: http://leader.yw.com");
 
-    String storagePath = app.config().getString(PlatformReplicationHelper.STORAGE_PATH_KEY);
+    String storagePath = AppConfigHelper.getStoragePath();
     File uploadedFile =
         Paths.get(
                 storagePath,

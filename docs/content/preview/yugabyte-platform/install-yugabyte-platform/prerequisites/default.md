@@ -1,8 +1,9 @@
 ---
-title: Prerequisites
-headerTitle: Prerequisites
-linkTitle: Prerequisites
-description: Prerequisites for installing YugabyteDB Anywhere.
+title: Prerequisites - Replicated
+headerTitle: Prerequisites for YBA
+linkTitle: YBA prerequisites
+description: Prerequisites for installing YugabyteDB Anywhere using Replicated.
+headContent: What you need to install YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: prerequisites
@@ -11,11 +12,23 @@ menu:
 type: docs
 ---
 
+You can install YugabyteDB Anywhere (YBA) using the following methods:
+
+| Method | Using | Use If |
+| :--- | :--- | :--- |
+| Replicated | Docker containers | You're able to use Docker containers. |
+| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
+
+All installation methods support installing YBA with and without (airgapped) Internet connectivity.
+
+Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -23,27 +36,33 @@ type: docs
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-</ul>
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
 
-YugabyteDB Anywhere first needs to be installed on a host computer, and then you configure YugabyteDB Anywhere to work in your on-premises private cloud or in a public cloud environment. In a public cloud environment, YugabyteDB Anywhere spawns instances for starting a YugabyteDB universe. In a private cloud environment, you use YugabyteDB Anywhere to add nodes in which you want to be in the YugabyteDB universe. To manage these nodes, YugabyteDB Anywhere requires SSH access to each of the nodes.
+</ul>
 
 ## Supported Linux distributions
 
-You can install YugabyteDB Anywhere on the following Linux distributions:
+YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
-- CentOS (default)
-- Ubuntu 18 and 20, via Replicated
-- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+- CentOS 7
+- Alma Linux 8
+- Alma Linux 9
+- Ubuntu 18
+- Ubuntu 20
+- RedHat Enterprise Linux 7
+- RedHat Enterprise Linux 8
+- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
 
 ## Hardware requirements
 
 A node running YugabyteDB Anywhere is expected to meet the following requirements:
 
-- 4 cores (minimum) or 8 cores (recommended)
-- 8 GB RAM (minimum) or 10 GB RAM (recommended)
-- 100 GB SSD disk or more
-- x86-64 CPU architecture
-
+- 4 cores
+- 8 GB memory
+- 200 GB disk space
 
 ## Prepare the host
 
@@ -51,21 +70,35 @@ YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for
 
 Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
 
-Installing on airgapped hosts requires additional configurations, as described in [Airgapped hosts](#airgapped-hosts).
-
 ### Airgapped hosts
 
-Installing YugabyteDB Anywhere on airgapped hosts, without access to any Internet traffic (inbound or outbound) requires the following:
+Installing YugabyteDB Anywhere on airgapped hosts (without access to any Internet traffic (inbound or outbound)) requires the following additional configuration:
 
-- Whitelisting endpoints: To install Replicated and YugabyteDB Anywhere on a host with no Internet connectivity, you have to first download the binaries on a computer that has Internet connectivity, and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation:
-  `https://downloads.yugabyte.com`
-  `https://download.docker.com`
+- Whitelist endpoints: To install Replicated and YugabyteDB Anywhere on a host with no Internet connectivity, you have to first download the binaries on a computer that has Internet connectivity, and then copy the files over to the appropriate host. In case of restricted connectivity, whitelist the following endpoints to ensure that they are accessible from the host marked for installation:
 
-- Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
-- Ensuring that the following ports are open on the YugabyteDB Anywhere host:
+  - `https://downloads.yugabyte.com`
+  - `https://download.docker.com`
+
+- Ensure that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
+
+    If you want to set up Docker on Amazon Linux OS, perform the following:
+
+    1. Install Docker using the following commands:
+
+        ```sh
+        sudo yum install docker
+        sudo systemctl daemon-reload
+        ```
+
+    1. Start Docker using the following command:
+
+        ```sh
+        sudo systemctl start docker.service
+        ```
+
+- Ensure that the following ports are open on the YugabyteDB Anywhere host:
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Anywhere UI
   - `22` – SSH
-- Ensuring that the attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum.
-- Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information.
-- Signing the Yugabyte license agreement. Contact Yugabyte Support for more information.
+- Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
+- Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.

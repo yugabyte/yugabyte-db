@@ -1,4 +1,3 @@
-import React from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { SyncProblem } from '@material-ui/icons';
 

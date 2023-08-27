@@ -97,6 +97,15 @@ public class KmsConfig extends Model {
     return kmsConfig;
   }
 
+  public static KmsConfig getOrBadRequest(UUID customerUUID, UUID configUUID) {
+    KmsConfig kmsConfig =
+        find.query().where().idEq(configUUID).eq("customer_uuid", customerUUID).findOne();
+    if (kmsConfig == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "KMS config not found: " + kmsConfig);
+    }
+    return kmsConfig;
+  }
+
   public static KmsConfig createKMSConfig(
       UUID customerUUID, KeyProvider keyProvider, ObjectNode authConfig, String name) {
     KmsConfig kmsConfig = new KmsConfig();

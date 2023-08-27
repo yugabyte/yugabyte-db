@@ -49,24 +49,6 @@ static const char* const kSystemSchemaPartitionsTableName = "partitions";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
-static const char* const kCdcStateTableName = "cdc_state";
-static const char* const kCdcTabletId = "tablet_id";
-constexpr size_t kCdcTabletIdIdx = 0;
-static const char* const kCdcStreamId = "stream_id";
-constexpr size_t kCdcStreamIdIdx = 1;
-static const char* const kCdcCheckpoint  = "checkpoint";
-constexpr size_t kCdcCheckpointIdx = 2;
-static const char* const kCdcData = "data";
-constexpr size_t kCdcDataIdx = 3;
-static const char* const kCdcLastReplicationTime = "last_replication_time";
-constexpr size_t kCdcLastReplicationTimeIdx = 4;
-static const char* const kCdcStreamIdMappingTableName = "cdc_stream_id_mapping";
-constexpr size_t kCdcTabletIdIdxforStreamIdMap = 1;
-static const char* const kCdcDbStreamId = "db_stream_id";
-constexpr size_t kCdcDbStreamIdIdx = 0;
-static const char* const kCdcTableId = "table_id";
-
-
 static const char* const kXClusterSafeTimeTableName = "xcluster_safe_time";
 static const char* const kXCUniverseId = "universe_id";
 constexpr size_t kXCUniverseIdIdx = 0;

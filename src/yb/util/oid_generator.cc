@@ -55,7 +55,7 @@ class Generator {
     auto& entry = entries_[yb::Thread::UniqueThreadId() % kNumOidGenerators];
     boost::uuids::uuid oid;
     {
-      std::lock_guard<LockType> lock(entry.lock);
+      std::lock_guard lock(entry.lock);
       oid = entry.generator();
     }
 

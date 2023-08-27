@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.alerts;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
@@ -32,4 +33,8 @@ public class AlertChannelSlackParams extends AlertChannelParams {
   @ApiModelProperty(value = "Slack icon URL", accessMode = READ_WRITE)
   @URL
   private String iconUrl;
+
+  public AlertChannelSlackParams() {
+    setChannelType(ChannelType.Slack);
+  }
 }

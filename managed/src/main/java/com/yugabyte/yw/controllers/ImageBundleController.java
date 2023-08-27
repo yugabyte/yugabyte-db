@@ -60,6 +60,7 @@ public class ImageBundleController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "getListOfImageBundles")
   public Result list(UUID customerUUID, UUID providerUUID) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     List<ImageBundle> imageBundles = ImageBundle.getAll(providerUUID);
     return PlatformResults.withData(imageBundles);
   }
@@ -69,6 +70,7 @@ public class ImageBundleController extends AuthenticatedController {
       response = ImageBundle.class,
       nickname = "getImageBundle")
   public Result index(UUID customerUUID, UUID providerUUID, UUID imageBundleUUID) {
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     ImageBundle bundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
     return PlatformResults.withData(bundle);
   }
@@ -85,7 +87,7 @@ public class ImageBundleController extends AuthenticatedController {
           required = true))
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    checkImageBundleUsageInUniverses(iBUUID);
+    checkImageBundleUsageInUniverses(providerUUID, iBUUID);
 
     ImageBundle bundle = parseJsonAndValidate(request, ImageBundle.class);
     ImageBundle cBundle = imageBundleHandler.edit(provider, iBUUID, bundle);
@@ -101,7 +103,7 @@ public class ImageBundleController extends AuthenticatedController {
 
   @ApiOperation(value = "Delete a image bundle", response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
-    checkImageBundleUsageInUniverses(iBUUID);
+    checkImageBundleUsageInUniverses(providerUUID, iBUUID);
     imageBundleHandler.delete(providerUUID, iBUUID);
     auditService()
         .createAuditEntryWithReqBody(
@@ -112,8 +114,8 @@ public class ImageBundleController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  private void checkImageBundleUsageInUniverses(UUID imageBundleUUID) {
-    ImageBundle iBundle = ImageBundle.getOrBadRequest(imageBundleUUID);
+  private void checkImageBundleUsageInUniverses(UUID providerUUID, UUID imageBundleUUID) {
+    ImageBundle iBundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
     long universeCount = iBundle.getUniverseCount();
 
     if (universeCount > 0) {

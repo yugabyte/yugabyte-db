@@ -106,8 +106,8 @@ Status PgDropDatabase::Exec() {
 }
 
 PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
-                               const char *database_name,
-                               PgOid database_oid)
+                                 const char *database_name,
+                                 PgOid database_oid)
     : PgDdl(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
@@ -222,7 +222,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
   column.set_attr_ybtype(attr_ybtype);
   column.set_is_hash(is_hash);
   column.set_is_range(is_range);
-  column.set_sorting_type(sorting_type);
+  column.set_sorting_type(to_underlying(sorting_type));
   column.set_attr_pgoid(pg_type_oid);
   return Status::OK();
 }
@@ -352,12 +352,17 @@ PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
 
 Status PgAlterTable::AddColumn(const char *name,
                                const YBCPgTypeEntity *attr_type,
-                               int order) {
+                               int order,
+                               YBCPgExpr missing_value) {
   auto& col = *req_.mutable_add_columns()->Add();
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
   col.set_attr_num(order);
   col.set_attr_pgoid(attr_type->type_oid);
+  if (missing_value) {
+    auto value = VERIFY_RESULT(missing_value->Eval());
+    value->ToGoogleProtobuf(col.mutable_attr_missing_val());
+  }
   return Status::OK();
 }
 

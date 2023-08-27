@@ -16,6 +16,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -69,7 +70,6 @@ public class AttachDetachController extends AuthenticatedController {
 
   @Inject private SwamperHelper swamperHelper;
 
-  private static final String STORAGE_PATH = "yb.storage.path";
   private static final String RELEASES_PATH = "yb.releases.path";
   private static final String YBC_RELEASE_PATH = "ybc.docker.release";
   private static final String YBC_RELEASES_PATH = "ybc.releases.path";
@@ -84,7 +84,7 @@ public class AttachDetachController extends AuthenticatedController {
     log.debug("Universe spec will include releases: {}", !detachUniverseFormData.skipReleases);
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
@@ -160,7 +160,7 @@ public class AttachDetachController extends AuthenticatedController {
 
       List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
 
-      String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH);
+      String storagePath = AppConfigHelper.getStoragePath();
       String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
       String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
       String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
@@ -228,7 +228,7 @@ public class AttachDetachController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Failed to get uploaded spec file");
     }
 
-    String storagePath = confGetter.getStaticConf().getString(STORAGE_PATH);
+    String storagePath = AppConfigHelper.getStoragePath();
     String releasesPath = confGetter.getStaticConf().getString(RELEASES_PATH);
     String ybcReleasePath = confGetter.getStaticConf().getString(YBC_RELEASE_PATH);
     String ybcReleasesPath = confGetter.getStaticConf().getString(YBC_RELEASES_PATH);
@@ -259,7 +259,7 @@ public class AttachDetachController extends AuthenticatedController {
       throws IOException {
     checkAttachDetachEnabled();
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<Schedule> schedules =
         Schedule.getAllSchedulesByOwnerUUIDAndType(

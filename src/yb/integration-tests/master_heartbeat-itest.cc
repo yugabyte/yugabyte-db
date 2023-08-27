@@ -22,6 +22,7 @@
 #include "yb/client/table_handle.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -91,7 +92,7 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   // Remove the tablet from the new tserver and let the remote bootstrap proceed.
   ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, boost::none, timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::REMOVE_SERVER));
-  FLAGS_TEST_pause_before_remote_bootstrap = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_remote_bootstrap) = false;
 
   ASSERT_OK(WaitFor([&]() {
     auto replica_locations = tablet->GetReplicaLocations();
@@ -117,6 +118,97 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
     }
     return true;
   }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
+}
+
+class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
+ public:
+  bool use_external_mini_cluster() { return true; }
+
+  Status RestartAndWipeWithFlags(
+      std::vector<ExternalTabletServer*> tservers,
+      std::vector<std::vector<std::pair<std::string, std::string>>> extra_flags = {}) {
+    for (const auto& tserver : tservers) {
+      tserver->Shutdown();
+    }
+    for (const auto& tserver : tservers) {
+      for (const auto& data_dir : tserver->GetDataDirs()) {
+        RETURN_NOT_OK(Env::Default()->DeleteRecursively(data_dir));
+      }
+    }
+    for (size_t i = 0; i < tservers.size(); ++i) {
+      auto extra_flags_for_tserver = extra_flags.size() > i
+                                         ? extra_flags[i]
+                                         : std::vector<std::pair<std::string, std::string>>();
+      RETURN_NOT_OK(tservers[i]->Restart(
+          ExternalMiniClusterOptions::kDefaultStartCqlProxy, extra_flags_for_tserver));
+    }
+    return Status::OK();
+  }
+
+  Status WaitForRegisteredTserverSet(
+      const std::set<std::string>& uuids, MonoDelta timeout, const std::string& message) {
+    master::MasterClusterProxy master_proxy(
+        proxy_cache_.get(), external_mini_cluster()->master()->bound_rpc_addr());
+    return WaitFor(
+        [&]() -> Result<bool> {
+          master::ListTabletServersResponsePB resp;
+          master::ListTabletServersRequestPB req;
+          rpc::RpcController rpc;
+          RETURN_NOT_OK(master_proxy.ListTabletServers(req, &resp, &rpc));
+          std::set<std::string> current_uuids;
+          for (const auto& server : resp.servers()) {
+            current_uuids.insert(server.instance_id().permanent_uuid());
+          }
+          return current_uuids == uuids;
+        },
+        timeout, message);
+  }
+};
+
+TEST_F(MasterHeartbeatITestWithExternal, ReRegisterRemovedPeers) {
+  auto cluster = external_mini_cluster();
+  ASSERT_EQ(cluster->tserver_daemons().size(), 3);
+  LOG(INFO) << "Create a user table.";
+  CreateTable();
+  constexpr int kNumRows = 1000;
+  for (int i = 0; i < kNumRows; ++i) {
+    PutKeyValue(Format("k$0", i), Format("v$0", i));
+  }
+  std::map<std::string, ExternalTabletServer*> wiped_tservers;
+  wiped_tservers[cluster->tablet_server(1)->uuid()] = cluster->tablet_server(1);
+  wiped_tservers[cluster->tablet_server(2)->uuid()] = cluster->tablet_server(2);
+  LOG(INFO) << "Wipe a majority of the quorum to simulate majority disk failures.";
+  ASSERT_OK(RestartAndWipeWithFlags({cluster->tablet_server(1), cluster->tablet_server(2)}));
+
+  std::set<std::string> original_uuids;
+  std::set<std::string> new_uuids;
+  original_uuids.insert(cluster->tablet_server(0)->uuid());
+  new_uuids.insert(cluster->tablet_server(0)->uuid());
+  for (const auto& [original_uuid, wiped_tserver] : wiped_tservers) {
+    ASSERT_NE(original_uuid, wiped_tserver->uuid())
+        << "Original tserver uuid should not be equal to the restarted tserver uuid";
+    original_uuids.insert(original_uuid);
+    new_uuids.insert(wiped_tserver->uuid());
+  }
+  ASSERT_EQ(original_uuids.size(), 3);
+  ASSERT_EQ(new_uuids.size(), 3);
+  ASSERT_OK(
+      WaitForRegisteredTserverSet(new_uuids, 60s, "Waiting for master to register new uuids"));
+  const std::string override_flag_name = "instance_uuid_override";
+  std::vector<std::vector<std::pair<std::string, std::string>>> extra_flags;
+  std::vector<ExternalTabletServer*> just_tservers;
+  for (const auto& [original_uuid, wiped_tserver] : wiped_tservers) {
+    extra_flags.push_back({{override_flag_name, original_uuid}});
+    just_tservers.push_back(wiped_tserver);
+  }
+  ASSERT_OK(RestartAndWipeWithFlags(just_tservers, extra_flags));
+  for (const auto& [original_uuid, wiped_tserver] : wiped_tservers) {
+    ASSERT_EQ(original_uuid, wiped_tserver->uuid())
+        << "After overriding uuid, new tserver uuid should be equal to original tserver uuid";
+  }
+
+  ASSERT_OK(WaitForRegisteredTserverSet(
+      original_uuids, 60s, "Wait for master to register original uuids"));
 }
 
 }  // namespace integration_tests

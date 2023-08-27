@@ -5,19 +5,11 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
@@ -25,12 +17,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.FileData;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import java.io.File;
 import java.io.IOException;
@@ -39,12 +28,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.time.Duration;
+import java.util.*;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -63,9 +48,10 @@ public class AccessManagerTest extends FakeDBApplication {
   @InjectMocks AccessManager accessManager;
 
   @Mock ShellProcessHandler shellProcessHandler;
-  @Mock RuntimeConfigFactory runtimeConfigFactory;
 
   @Mock Config mockConfig;
+
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Provider defaultProvider;
   private Region defaultRegion;
@@ -88,9 +74,11 @@ public class AccessManagerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
-    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     command = ArgumentCaptor.forClass(List.class);
     shellProcessContext = ArgumentCaptor.forClass(ShellProcessContext.class);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
+        .thenReturn(Duration.ofHours(1));
   }
 
   @After
@@ -284,8 +272,7 @@ public class AccessManagerTest extends FakeDBApplication {
         .map(ShellProcessContext::getExtraEnvVars)
         .forEach((cloudCredential) -> assertTrue(cloudCredential.isEmpty()));
     assertValidAccessKey(json);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 4);
+    assertEquals(4, FileData.getCount());
   }
 
   @Test
@@ -328,8 +315,7 @@ public class AccessManagerTest extends FakeDBApplication {
         .forEach((cloudCredential) -> assertEquals(config, cloudCredential));
     assertValidAccessKey(json);
 
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 4);
+    assertEquals(4, FileData.getCount());
   }
 
   @Test
@@ -454,8 +440,7 @@ public class AccessManagerTest extends FakeDBApplication {
     Path keyFile = Paths.get(expectedPath);
     String permissions = PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile));
     assertEquals(PEM_PERMISSIONS, permissions);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 3);
+    assertEquals(3, FileData.getCount());
   }
 
   @Test
@@ -669,8 +654,7 @@ public class AccessManagerTest extends FakeDBApplication {
       assertNull(config.get("KUBECONFIG_NAME"));
       assertNull(config.get("KUBECONFIG_CONTENT"));
       assertEquals(filePermissions, PosixFilePermissions.fromString("rw-------"));
-      List<FileData> fd = FileData.getAll();
-      assertEquals(fd.size(), 1);
+      assertEquals(1, FileData.getCount());
     } catch (IOException e) {
       e.printStackTrace();
       assertNotNull(e.getMessage());
@@ -709,23 +693,18 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateCredentialsFile() {
-    try {
-      ObjectNode credentials = Json.newObject();
-      credentials.put("foo", "bar");
-      credentials.put("hello", "world");
-      String configFile =
-          accessManager.createGCPCredentialsFile(defaultProvider.getUuid(), credentials);
-      assertEquals(
-          "/tmp/yugaware_tests/amt/keys/" + defaultProvider.getUuid() + "/credentials.json",
-          configFile);
-      List<String> lines = Files.readAllLines(Paths.get(configFile));
-      assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
-      List<FileData> fd = FileData.getAll();
-      assertEquals(fd.size(), 1);
-    } catch (IOException e) {
-      fail();
-    }
+  public void testCreateCredentialsFile() throws IOException {
+    ObjectNode credentials = Json.newObject();
+    credentials.put("foo", "bar");
+    credentials.put("hello", "world");
+    String configFile =
+        accessManager.createGCPCredentialsFile(defaultProvider.getUuid(), credentials);
+    assertEquals(
+        "/tmp/yugaware_tests/amt/keys/" + defaultProvider.getUuid() + "/credentials.json",
+        configFile);
+    List<String> lines = Files.readAllLines(Paths.get(configFile));
+    assertEquals("{\"foo\":\"bar\",\"hello\":\"world\"}", lines.get(0));
+    assertEquals(1, FileData.getCount());
   }
 
   @Test

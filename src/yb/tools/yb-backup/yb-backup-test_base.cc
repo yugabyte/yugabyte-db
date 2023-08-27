@@ -208,7 +208,8 @@ void YBBackupTest::LogTabletsInfo(const std::vector<yb::master::TabletLocationsP
   }
 }
 
-Status YBBackupTest::WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id) {
+Status YBBackupTest::WaitForTabletPostSplitCompacted(
+    size_t tserver_idx, const TabletId& tablet_id) {
   const auto ts = cluster_->tablet_server(tserver_idx);
   return LoggedWaitFor(
       [&]() -> Result<bool> {
@@ -218,11 +219,11 @@ Status YBBackupTest::WaitForTabletFullyCompacted(size_t tserver_idx, const Table
                       << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
-        return resp.tablet_status().has_has_been_fully_compacted() &&
-                resp.tablet_status().has_been_fully_compacted();
+        return resp.tablet_status().has_parent_data_compacted() &&
+                resp.tablet_status().parent_data_compacted();
       },
       15s * kTimeMultiplier,
-      Format("Waiting for tablet $0 fully compacted on tserver $1", tablet_id, ts->id()));
+      Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));
 }
 
 // 1. Insert abc -> 123
@@ -233,7 +234,7 @@ Status YBBackupTest::WaitForTabletFullyCompacted(size_t tserver_idx, const Table
 void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
   ASSERT_TRUE(tableOp == helpers::TableOp::kKeepTable || tableOp == helpers::TableOp::kDropTable);
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
 
   // Create keyspace and table.
   const client::YBTableName table_name(

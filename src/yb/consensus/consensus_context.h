@@ -54,7 +54,7 @@ class ConsensusContext {
   // This is called every time majority-replicated watermarks (OpId / leader leases) change. This is
   // used for updating the "propagated safe time" value in MvccManager and unblocking readers
   // waiting for it to advance.
-  virtual void MajorityReplicated() = 0;
+  virtual Status MajorityReplicated() = 0;
 
   // This is called every time the Raft config was changed and replicated.
   // This is used to notify the higher layer about the config change. Currently it's

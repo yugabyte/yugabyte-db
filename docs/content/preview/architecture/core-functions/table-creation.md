@@ -41,7 +41,7 @@ The YB-Master leader monitors the entire tablet assignment operation and reports
 
 ## Examples
 
-Suppose a table with four nodes is created in a YugabyteDB universe. In addition, suppose that the table has sixteen tablets and a replication factor of 3. The YB-Master leader validates the schema, creates sixteen tablets (forty-eight tablet peers in total, due to the replication factor of 3) and replicates the data needed for table creation across a majority of YB-Masters using Raft. The following diagram depicts the start of the table creation process: 
+Suppose a table is created in a YugabyteDB universe with four nodes. In addition, suppose that the table has sixteen tablets and a replication factor of 3. The YB-Master leader validates the schema, creates sixteen tablets (forty-eight tablet peers in total, due to the replication factor of 3) and replicates the data needed for table creation across a majority of YB-Masters using Raft. The following diagram depicts the start of the table creation process: 
 
 ![create_table_masters](/images/architecture/create_table_masters.png)
 

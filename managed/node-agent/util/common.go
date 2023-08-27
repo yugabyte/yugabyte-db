@@ -43,7 +43,6 @@ const (
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
 	UpgradeScript           = "node-agent-installer.sh"
-	InstallScript           = "node-agent-installer.sh"
 	RequestIdHeader         = "X-REQUEST-ID"
 
 	// Cert names.
@@ -96,9 +95,19 @@ var (
 // ContextKey is the key type go context values.
 type ContextKey string
 
+// Handler is a generic handler func.
 type Handler func(context.Context) (any, error)
 
+// RPCResponseConverter is the converter for response in async executor.
 type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
+
+// UserDetail is a placeholder for OS user.
+type UserDetail struct {
+	User      *user.User
+	UserID    uint32
+	GroupID   uint32
+	IsCurrent bool
+}
 
 func NewUUID() uuid.UUID {
 	return uuid.New()
@@ -271,27 +280,29 @@ func IsDigits(str string) bool {
 }
 
 // UserInfo returns the user, user ID and group ID for the user name.
-func UserInfo(username string) (*user.User, uint32, uint32, error) {
+func UserInfo(username string) (*UserDetail, error) {
 	userAcc, err := user.Current()
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
-	if userAcc.Username != username {
-		var err error
+	isCurrent := true
+	if username != "" && userAcc.Username != username {
 		userAcc, err = user.Lookup(username)
 		if err != nil {
-			return nil, 0, 0, err
+			return nil, err
 		}
+		isCurrent = false
 	}
 	uid, err := strconv.Atoi(userAcc.Uid)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
 	gid, err := strconv.Atoi(userAcc.Gid)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
-	return userAcc, uint32(uid), uint32(gid), nil
+	return &UserDetail{
+		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
 }
 
 // CorrelationID returns the correlation ID from the context.

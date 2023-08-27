@@ -1,13 +1,24 @@
-import React from 'react';
-import { FormHelperText, TextareaAutosize } from '@material-ui/core';
+import { FormHelperText, TextareaAutosize, TextareaAutosizeProps } from '@material-ui/core';
 import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
 
-export type YBTextAreaFieldProps<T extends FieldValues> = UseControllerProps<T>;
+export type YBTextAreaFieldProps<T extends FieldValues> = UseControllerProps<T> &
+  TextareaAutosizeProps;
 
-export const YBTextAreaField = <T extends FieldValues>(
-  useControllerProps: YBTextAreaFieldProps<T>
-) => {
-  const { field, fieldState } = useController(useControllerProps);
+export const YBTextAreaField = <T extends FieldValues>({
+  name,
+  rules,
+  defaultValue,
+  control,
+  shouldUnregister,
+  ...ybInputProps
+}: YBTextAreaFieldProps<T>) => {
+  const { field, fieldState } = useController({
+    name,
+    rules,
+    defaultValue,
+    control,
+    shouldUnregister
+  });
   return (
     <>
       <TextareaAutosize
@@ -16,6 +27,7 @@ export const YBTextAreaField = <T extends FieldValues>(
         value={field.value}
         onChange={field.onChange}
         style={{ width: '100%' }}
+        {...ybInputProps}
       />
       {fieldState.error?.message && (
         <FormHelperText error={true}>{fieldState.error?.message}</FormHelperText>

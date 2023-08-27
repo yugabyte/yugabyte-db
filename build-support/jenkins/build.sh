@@ -565,39 +565,28 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Digest the package.
   digest_package "${YB_PACKAGE_PATH}"
 
-  if grep -q "CentOS Linux 7" /etc/os-release; then
-    log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
-
-    # Have to export this for the script inside Docker to see it.
-    export YB_PACKAGE_PATH
-
-    # Do a quick sanity test on the release package. This verifies that we can at least start the
-    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
-    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
-    docker run -i \
-      -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=${YB_SRC_ROOT}/build,target=/mnt/dir_with_package" centos:7 \
-      bash -c '
-        set -euo pipefail -x
-        yum install -y libatomic
-        package_name=${YB_PACKAGE_PATH##*/}
-        package_path=/mnt/dir_with_package/$package_name
-        set +e
-        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
-        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
-        set -e
-        # Remove the trailing slash.
-        dir_name_inside_archive=${dir_name_inside_archive%/}
-        cd /tmp
-        tar xzf "${package_path}"
-        cd "${dir_name_inside_archive}"
-        bin/post_install.sh
-        bin/yb-ctl create
-        bin/ysqlsh -c "create table t (k int primary key, v int);
-                       insert into t values (1, 2);
-                       select * from t;"'
+  if grep -q "CentOS Linux 7" /etc/os-release || (
+      # We only do this test with AlmaLinux 8 for the Linuxbrew-enabled Clang-based build, because
+      # we still need to set up Docker properly on aarch64 VM images, and the AlmaLinux 8 based test
+      # for the GCC fastdebug build requires locale setup inside the Docker image.
+      grep -Eq "AlmaLinux 8[.]" /etc/os-release &&
+      using_linuxbrew &&
+      [[ $YB_COMPILER_TYPE == clang* ]]
+    ); then
+    "$YB_SRC_ROOT/bin/release_package_docker_test.sh" --package-path "${YB_PACKAGE_PATH}"
   else
-    log "Not doing a quick sanity-check of the release package. OS: ${OSTYPE}."
+    log "Not doing a quick sanity-check of the release package. Details:"
+    log "  OS type: ${OSTYPE}"
+    log "  YB_COMPILER_TYPE: ${YB_COMPILER_TYPE}"
+    if using_linuxbrew; then
+      log "  Using Linuxbrew."
+    else
+      log "  Not using Linuxbrew."
+    fi
+    if [[ -f /etc/os-release ]]; then
+      log "  Contents of /etc/os-release:"
+      cat /etc/os-release >&2
+    fi
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \

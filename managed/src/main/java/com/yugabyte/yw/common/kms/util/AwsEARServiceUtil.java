@@ -317,6 +317,11 @@ public class AwsEARServiceUtil {
     return cmkNode == null ? null : cmkNode.asText();
   }
 
+  public static String getCMKId(ObjectNode authConfig) {
+    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
+    return cmkNode == null ? null : cmkNode.asText();
+  }
+
   public static byte[] getByteArrayFromBuffer(ByteBuffer byteBuffer) {
     byteBuffer.rewind();
     byte[] byteArray = new byte[byteBuffer.remaining()];
@@ -336,6 +341,16 @@ public class AwsEARServiceUtil {
   public static byte[] encryptUniverseKey(UUID configUUID, byte[] plainTextUniverseKey) {
     AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
     String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
+    EncryptRequest request =
+        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
+    EncryptResult response = client.encrypt(request);
+    return getByteArrayFromBuffer(response.getCiphertextBlob());
+  }
+
+  public static byte[] encryptUniverseKey(
+      UUID configUUID, byte[] plainTextUniverseKey, ObjectNode authConfig) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID, authConfig);
+    String cmkId = AwsEARServiceUtil.getCMKId(authConfig);
     EncryptRequest request =
         new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
     EncryptResult response = client.encrypt(request);

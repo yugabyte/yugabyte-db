@@ -1,35 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.*;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Certs;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.*;
+import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -40,26 +23,14 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
-import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.*;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -69,34 +40,16 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
+import java.time.Duration;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import junitparams.JUnitParamsRunner;
@@ -109,11 +62,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
+import org.mockito.*;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
@@ -128,8 +77,6 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
-  @Mock RuntimeConfGetter mockConfGetter;
-
   @Mock ConfigHelper mockConfigHelper;
 
   @InjectMocks NodeManager nodeManager;
@@ -137,6 +84,10 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   @Mock NodeAgentClient nodeAgentClient;
+
+  @Mock RuntimeConfGetter mockConfGetter;
+
+  private CertificateHelper certificateHelper;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
@@ -170,6 +121,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public final List<String> baseCommand = new ArrayList<>();
     public final String replacementVolume = "test-volume";
     public final String NewInstanceType = "test-c5.2xlarge";
+    public final String rootDeviceName = "/dev/sda1";
 
     public TestData(
         Customer customer,
@@ -279,9 +231,7 @@ public class NodeManagerTest extends FakeDBApplication {
     return getCertificatePaths(
         userIntent,
         configureParams,
-        configureParams.enableNodeToNodeEncrypt
-            || (configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt),
+        configureParams.enableNodeToNodeEncrypt,
         configureParams.enableClientToNodeEncrypt,
         ybHomeDir);
   }
@@ -316,9 +266,9 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--client_cert_path");
-              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
               expectedCommand.add("--client_key_path");
-              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
             }
             break;
           }
@@ -356,9 +306,9 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--client_cert_path");
-              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
               expectedCommand.add("--client_key_path");
-              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
             }
             break;
           }
@@ -483,7 +433,7 @@ public class NodeManagerTest extends FakeDBApplication {
     } else {
       when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
       UUID certUUID =
-          CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.getCustomerUUID());
+          certificateHelper.createRootCA(mockConfig, "foobar", t.provider.getCustomerUUID());
       cert = CertificateInfo.get(certUUID);
     }
 
@@ -499,6 +449,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    certificateHelper = new CertificateHelper(confGetter);
     testData = new ArrayList<TestData>();
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
@@ -529,6 +481,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepDefault)))
         .thenReturn(3);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.numCoresToKeep)))
+        .thenReturn(5);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
         .thenReturn("linear");
     when(mockConfGetter.getConfForScope(
@@ -549,6 +503,12 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.oidcFeatureEnhancements))).thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
+        .thenReturn(Duration.ofHours(1));
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -671,8 +631,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("start_cql_proxy", "false");
     }
 
+    gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
     if (configureParams.isMaster) {
-      gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -787,6 +747,10 @@ public class NodeManagerTest extends FakeDBApplication {
       case Replace_Root_Volume:
         expectedCommand.add("--replacement_disk");
         expectedCommand.add(String.valueOf(testData.replacementVolume));
+        if (cloud.equals(Common.CloudType.aws)) {
+          expectedCommand.add("--root_device_name");
+          expectedCommand.add(String.valueOf(testData.rootDeviceName));
+        }
         break;
       case Create_Root_Volumes:
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
@@ -854,9 +818,12 @@ public class NodeManagerTest extends FakeDBApplication {
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
+        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         expectedCommand.add("--master_addresses_for_tserver");
         expectedCommand.add(MASTER_ADDRESSES);
+        expectedCommand.add("--num_cores_to_keep");
+        expectedCommand.add("5");
         if (!configureParams.isMasterInShellMode) {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
@@ -913,6 +880,10 @@ public class NodeManagerTest extends FakeDBApplication {
             case Install:
               expectedCommand.add("--tags");
               expectedCommand.add("install-software");
+              expectedCommand.add("--tags");
+              expectedCommand.add("override_gflags");
+              expectedCommand.add("--gflags");
+              expectedCommand.add(Json.stringify(Json.toJson(gflags)));
               break;
             case None:
               break;
@@ -923,8 +894,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--num_releases_to_keep");
           expectedCommand.add("3");
         }
-
-        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
           if ((configureParams.enableNodeToNodeEncrypt
@@ -1081,7 +1050,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
         if (configureParams.type != Everything
             && configureParams.type != Software
-            && configureParams.type != Certs) {
+            && configureParams.type != Certs
+            && !(configureParams.type == ToggleTls
+                && configureParams.getProperty("taskSubType").equals("CopyCerts"))) {
           expectedCommand.add("--gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
           if (canConfigureYbc) {
@@ -1223,6 +1194,8 @@ public class NodeManagerTest extends FakeDBApplication {
     if (type == NodeManager.NodeCommandType.Create) {
       expectedCommand.add("--as_json");
     }
+    expectedCommand.add("--remote_tmp_dir");
+    expectedCommand.add("/tmp");
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -1326,6 +1299,9 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.replacementDisk = t.replacementVolume;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.rootDeviceName = t.rootDeviceName;
+      }
 
       runAndVerifyNodeCommand(
           t, params, NodeManager.NodeCommandType.Replace_Root_Volume, NODE_IPS[idx]);
@@ -1512,7 +1488,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 7;
+      int accessKeyIndexOffset = 9;
       if (t.cloudType.equals(Common.CloudType.aws)
           && params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
         accessKeyIndexOffset += 2;
@@ -1731,7 +1707,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 6;
+      int accessKeyIndexOffset = 8;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {
@@ -1993,7 +1969,7 @@ public class NodeManagerTest extends FakeDBApplication {
               "/path/to/private.key",
               "--custom_ssh_port",
               "3333");
-      expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 7, accessKeyCommand);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1))
@@ -2248,7 +2224,16 @@ public class NodeManagerTest extends FakeDBApplication {
         params.gflags.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
             "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \""); // will be merged
+                + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "\"host all all jwt jwks={\"a\": \"b\"} jwt_audiences=\"yb,yb2\""
+                + " jwt_issuers=\"\"issuers\"\"\","
+                + "host all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1\""
+                + " jwt_issuers=\"issuers1,issuers2\","
+                + "hostgssenc all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1\""
+                + " jwt_issuers=\"\"issuers1\"\","
+                + "host all all all trust,"
+                + "hostssl all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1,yb\""
+                + " jwt_issuers=\"issuers1,issuers2,issuers3\""); // will be merged
         params.gflags.put(GFlagsUtil.UNDEFOK, "use_private_ip"); // will be merged
         params.gflags.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:1990"); // port replace
         params.gflags.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3"); // port append
@@ -2284,11 +2269,32 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
+        String jwksFileName1 = "";
+        String jwksFileName2 = "";
+        try {
+          jwksFileName1 = FileUtils.computeHashForAFile("{\"a\": \"b\"}", 10);
+          jwksFileName2 = FileUtils.computeHashForAFile("{\"c\": \"d\"}", 10);
+          jwksFileName1 = "/home/yugabyte" + GFlagsUtil.GFLAG_REMOTE_FILES_PATH + jwksFileName1;
+          jwksFileName2 = "/home/yugabyte" + GFlagsUtil.GFLAG_REMOTE_FILES_PATH + jwksFileName2;
+        } catch (NoSuchAlgorithmException e) {
+          throw new RuntimeException("Error generating fileName " + e.getMessage());
+        }
         copy.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
-            "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
-                + "local all yugabyte trust");
+            String.format(
+                "host all all ::1/128 trust,"
+                    + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb,yb2\"\""
+                    + " jwt_issuers=\"\"issuers\"\"\","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2\"\"\","
+                    + "\"hostgssenc all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1\"\"\","
+                    + "host all all all trust,"
+                    + "\"hostssl all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1,yb\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2,issuers3\"\"\","
+                    + "local all yugabyte trust",
+                jwksFileName1, jwksFileName2, jwksFileName2, jwksFileName2));
         copy.remove(GFlagsUtil.FS_DATA_DIRS);
         copy.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
@@ -2299,9 +2305,20 @@ public class NodeManagerTest extends FakeDBApplication {
         copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy2.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
-            "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
-                + "local all yugabyte trust");
+            String.format(
+                "host all all ::1/128 trust,"
+                    + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb,yb2\"\""
+                    + " jwt_issuers=\"\"issuers\"\"\","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2\"\"\","
+                    + "\"hostgssenc all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1\"\"\","
+                    + "host all all all trust,"
+                    + "\"hostssl all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1,yb\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2,issuers3\"\"\","
+                    + "local all yugabyte trust",
+                jwksFileName1, jwksFileName2, jwksFileName2, jwksFileName2));
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
@@ -3155,35 +3172,35 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
+      params.deviceInfo = new DeviceInfo();
+      params.deviceInfo.mountPoints = "/fake/path/d0,/fake/path/d1";
       params.setClientRootCA(params.rootCA);
-      try {
-        reset(shellProcessHandler);
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        List<String> expectedCommand = data.baseCommand;
-        expectedCommand.addAll(
-            nodeCommand(
-                NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
-        reset(shellProcessHandler);
-        verify(shellProcessHandler, times(1)).run(captor.capture(), contextCaptor.capture());
-        contextCaptor
-            .getValue()
-            .getDescription()
-            .equals(
-                String.format(
-                    "bin/ybcloud.sh %s --region %s instance configure %s",
-                    data.region.getProvider().getName(),
-                    data.region.getCode(),
-                    data.node.getNodeName()));
-        List<String> actualCommand = captor.getValue();
-        int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
-        int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
-        expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
-        expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-        assertEquals(expectedCommand, actualCommand);
-      } catch (RuntimeException re) {
-        // TODO: This test seems to be broken since PLAT-2131
-        assertNull(re.getMessage());
-      }
+      reset(shellProcessHandler);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(
+              NodeManager.NodeCommandType.Configure, params, data, userIntent, NODE_IPS[idx]));
+      verify(shellProcessHandler, times(1)).run(captor.capture(), contextCaptor.capture());
+      contextCaptor
+          .getValue()
+          .getDescription()
+          .equals(
+              String.format(
+                  "bin/ybcloud.sh %s --region %s instance configure %s",
+                  data.region.getProvider().getName(),
+                  data.region.getCode(),
+                  data.node.getNodeName()));
+      List<String> actualCommand = captor.getValue();
+      int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
+      int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
+      expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
+      expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
+      int clientCertPathIndex = expectedCommand.indexOf("--server_cert_path_client_to_server") + 1;
+      int clientKeyPathIndex = expectedCommand.indexOf("--server_key_path_client_to_server") + 1;
+      expectedCommand.set(clientCertPathIndex, actualCommand.get(clientCertPathIndex));
+      expectedCommand.set(clientKeyPathIndex, actualCommand.get(clientKeyPathIndex));
+      assertEquals(expectedCommand, actualCommand);
       idx++;
     }
   }
@@ -3290,7 +3307,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     if (certType == CertConfigType.SelfSigned) {
       when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
-      certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
+      certUUID = certificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
       return CertificateInfo.get(certUUID);
     } else if (certType == CertConfigType.CustomCertHostPath) {
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
@@ -3663,7 +3680,7 @@ public class NodeManagerTest extends FakeDBApplication {
                   "/path/to/private.key"));
       accessKeyCommands.add("--custom_ssh_port");
       accessKeyCommands.add("3333");
-      expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommands);
+      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommands);
       reset(shellProcessHandler);
       nodeManager.nodeCommand(NodeManager.NodeCommandType.CronCheck, params);
       verify(shellProcessHandler, times(1))
@@ -3864,6 +3881,68 @@ public class NodeManagerTest extends FakeDBApplication {
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
     }
+  }
+
+  @Test
+  public void testCGroupsSize() {
+    TestData td = this.testData.get(0);
+    Universe universe = createUniverse();
+    PlacementInfo pi = new PlacementInfo();
+    UserIntent userIntent = new UserIntent();
+    userIntent.provider = td.provider.getUuid().toString();
+    userIntent.providerType = td.provider.getCloudCode();
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    PlacementInfoUtil.addPlacementZone(td.zone.getUuid(), pi, 1, 1, false);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    when(mockConfGetter.getConfForScope(eq(universe), eq(UniverseConfKeys.dbMemPostgresMaxMemMb)))
+        .thenReturn(100);
+    when(mockConfGetter.getConfForScope(
+            eq(universe), eq(UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb)))
+        .thenReturn(-1);
+
+    NodeDetails primaryNode = new NodeDetails();
+    primaryNode.azUuid = td.zone.getUuid();
+    primaryNode.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    universe.getUniverseDetails().nodeDetailsSet.add(primaryNode);
+    NodeDetails rrNode =
+        universe
+            .getNodesInCluster(universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+            .iterator()
+            .next();
+
+    UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent rrIntent = universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
+
+    verifyCGroupSize(universe, primaryNode, 100);
+    verifyCGroupSize(universe, rrNode, 100); // inherited
+
+    primaryIntent.setCgroupSize(37);
+    verifyCGroupSize(universe, primaryNode, 37);
+    verifyCGroupSize(universe, rrNode, 37); // inherited
+    rrIntent.setCgroupSize(-1);
+    verifyCGroupSize(universe, rrNode, 37); // inherited
+    rrIntent.setCgroupSize(21);
+    verifyCGroupSize(universe, rrNode, 21);
+
+    primaryIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(UUID.randomUUID(), null, 10));
+    verifyCGroupSize(universe, primaryNode, 37); // still the same as wrong azUUID
+    primaryIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(td.zone.getUuid(), null, 10));
+    verifyCGroupSize(universe, primaryNode, 10);
+    verifyCGroupSize(universe, rrNode, 21);
+
+    rrIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(td.zone.getUuid(), null, 5));
+    verifyCGroupSize(universe, rrNode, 5);
+  }
+
+  private void verifyCGroupSize(Universe universe, NodeDetails node, int value) {
+    NodeTaskParams nodeTaskParams = new NodeTaskParams();
+    nodeTaskParams.azUuid = node.azUuid;
+    nodeTaskParams.placementUuid = node.placementUuid;
+    assertEquals(value, NodeManager.getCGroupSize(mockConfGetter, universe, nodeTaskParams));
   }
 
   private void checkArguments(

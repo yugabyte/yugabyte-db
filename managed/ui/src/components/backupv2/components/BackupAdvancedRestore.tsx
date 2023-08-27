@@ -30,7 +30,7 @@ import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
 import { BACKUP_API_TYPES, IBackup, IStorageConfig } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 
-import { KEYSPACE_VALIDATION_REGEX, PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
+import { KEYSPACE_VALIDATION_REGEX, ParallelThreads } from '../common/BackupUtils';
 
 import { toast } from 'react-toastify';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
@@ -39,6 +39,7 @@ import clsx from 'clsx';
 
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupAdvancedRestore.scss';
 
 const TEXT_RESTORE = 'Restore';
@@ -136,7 +137,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );
@@ -144,8 +145,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
 
   initialValues['parallelThreads'] =
-    Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
-    PARALLEL_THREADS_RANGE.MIN;
+    Math.min(primaryCluster?.userIntent?.numNodes, ParallelThreads.MAX) || ParallelThreads.MIN;
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
@@ -192,12 +192,12 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(
-        PARALLEL_THREADS_RANGE.MIN,
-        `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+        ParallelThreads.MIN,
+        `Parallel threads should be greater than or equal to ${ParallelThreads.MIN}`
       )
       .max(
-        PARALLEL_THREADS_RANGE.MAX,
-        `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+        ParallelThreads.MAX,
+        `Parallel threads should be less than or equal to ${ParallelThreads.MAX}`
       ),
     new_keyspace_name: Yup.string().when('should_rename_keyspace', {
       is: (should_rename_keyspace) => currentStep === STEPS.length - 1 && should_rename_keyspace,

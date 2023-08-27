@@ -62,13 +62,35 @@ DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
 DECLARE_string(vmodule);
-DECLARE_bool(TEST_allow_duplicate_flag_callbacks);
 
 using std::string;
 using strings::Substitute;
 using gflags::FlagSaver;
 
 namespace yb {
+
+namespace {
+
+class YBTestEnvironment : public ::testing::Environment {
+ public:
+  void SetUp() override {
+  }
+
+  void TearDown() override {
+  }
+};
+
+class YBTestEnvironmentRegisterer {
+ public:
+  YBTestEnvironmentRegisterer() {
+    ::testing::AddGlobalTestEnvironment(new YBTestEnvironment());
+  }
+
+};
+
+YBTestEnvironmentRegisterer yb_test_environment_registerer;
+
+}  // namespace
 
 static const char* const kSlowTestsEnvVariable = "YB_ALLOW_SLOW_TESTS";
 
@@ -79,8 +101,8 @@ static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
 ///////////////////////////////////////////////////
 
 YBTest::YBTest()
-  : env_(new EnvWrapper(Env::Default())),
-    test_dir_(GetTestDataDirectory()) {
+    : env_(new EnvWrapper(Env::Default())),
+      test_dir_(GetTestDataDirectory()) {
   InitThreading();
   debug::EnableTraceEvents();
 }
@@ -110,20 +132,13 @@ YBTest::~YBTest() {
 }
 
 void YBTest::SetUp() {
-  FLAGS_TEST_running_test = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_running_test) = true;
 
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
-  FLAGS_enable_tracing = true;
-  FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
-  FLAGS_never_fsync = true;
-  // Certain dynamically registered callbacks like ReloadPgConfig in pg_supervisor use constant
-  // string name as they are expected to be singleton per process. But in MiniClusterTests multiple
-  // YB masters and tservers will register for callbacks with same name in one test process.
-  // Ideally we would prefix the names with the yb process names, but we currently lack the ability
-  // to do so. We still have coverage for this in ExternalMiniClusterTests.
-  // TODO(Hari): #14682
-  FLAGS_TEST_allow_duplicate_flag_callbacks = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memory_limit_hard_bytes) = 8 * 1024 * 1024 * 1024L;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
 
   for (const char* env_var_name : {
       "ASAN_OPTIONS",

@@ -10,6 +10,9 @@ const throwError = (message) =>
   });
 
 module.exports = {
+  typescript: {
+    enableTypeChecking: true /* (default value) */
+  },
   webpack: {
     configure: (webpackConfig, { paths }) => {
       const { hasFoundAny, matches } = getLoaders(webpackConfig, loaderByName('babel-loader'));
@@ -31,7 +34,7 @@ module.exports = {
         loader: require.resolve('esbuild-loader'),
         options: {
           loader: 'tsx',
-          target: 'es2015'
+          target: 'es2016'
         }
       };
 
@@ -55,7 +58,7 @@ module.exports = {
       console.log('replacing TerserPlugin with ESBuildMinifyPlugin');
       webpackConfig.optimization.minimizer = [
         new ESBuildMinifyPlugin({
-          target: 'es2015'
+          target: 'es2016'
         })
       ];
 

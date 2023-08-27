@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var reconfigureCmd = &cobra.Command{
@@ -17,7 +17,7 @@ var reconfigureCmd = &cobra.Command{
 		"YugabyteDB Anywhere services.",
 	Args: cobra.NoArgs,
 	Long: `
-    The reconfigure command is used to apply changes made to yba-ctl.yml to running 
+    The reconfigure command is used to apply changes made to yba-ctl.yml to running
 	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if !common.RunFromInstalled() {
@@ -69,6 +69,15 @@ var reconfigureCmd = &cobra.Command{
 	},
 }
 
+var configGenCmd = &cobra.Command{
+	Use:     "generate-config",
+	Short:   "Create the default config file.",
+	Aliases: []string{"gen-config", "create-config"},
+	Run: func(cmd *cobra.Command, args []string) {
+		config.WriteDefaultConfig()
+	},
+}
+
 func init() {
-	rootCmd.AddCommand(reconfigureCmd)
+	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
 }

@@ -4,7 +4,7 @@
 //
 // This file will hold all the configuration list of alerts.
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -129,7 +129,7 @@ export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
   const [metrics, setMetrics] = useState([]);
   const [alertDestinationList, setAlertDestinationList] = useState([]);
-  const [defaultDestination, setDefaultDestination] = useState([]);
+  const [defaultDestination, setDefaultDestination] = useState(undefined);
   const [filterVisible, setFilterVisible] = useState(true);
   const [filters, setFilters] = useState({});
   const [isAlertListLoading, setIsAlertListLoading] = useState(false);
@@ -222,7 +222,7 @@ export const AlertsList = (props) => {
       return (
         <span>
           {' '}
-          {defaultDestination.name} {tag}
+          {defaultDestination?.name} {tag}
         </span>
       );
     }

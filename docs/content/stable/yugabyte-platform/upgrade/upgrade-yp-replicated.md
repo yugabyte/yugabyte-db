@@ -17,7 +17,7 @@ To start the upgrade, log in to the Replicated Admin Console via <https://:8800>
 
 - Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration:
 
-  ![Release history](/images/yb-platform/upgrade-replicated1.png)
+  ![image](/images/yb-platform/upgrade-replicated1.png)
 
 - Find the required release version and click the corresponding **Install**.
 

@@ -3,9 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
@@ -18,7 +16,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -131,6 +129,32 @@ public class UsersTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpsertApiTokenWithVersion() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    assertNotNull(u.getUuid());
+
+    String apiToken = u.upsertApiToken();
+    assertNotNull(apiToken);
+
+    Users updatedUser = Users.getOrBadRequest(u.getUuid());
+    assertEquals((Long) 1L, updatedUser.getApiTokenVersion());
+
+    assertThrows(
+        "API token version has changed",
+        PlatformServiceException.class,
+        () -> updatedUser.upsertApiToken(0L));
+
+    assertThrows(
+        "API token version has changed",
+        PlatformServiceException.class,
+        () -> updatedUser.upsertApiToken(2L));
+
+    String updatedToken = updatedUser.upsertApiToken(1L);
+    Users apiUser = Users.authWithApiToken(updatedToken);
+    assertEquals(apiUser.getUuid(), u.getUuid());
+  }
+
+  @Test
   public void testSetRole() {
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
     assertNotNull(u.getUuid());
@@ -148,5 +172,18 @@ public class UsersTest extends FakeDBApplication {
     JsonNode json = Json.toJson(u);
     assertEquals(false, json.has("passwordHash"));
     assertEquals(false, json.has("apiToken"));
+  }
+
+  @Test
+  public void testRoleUnion() {
+    Role[] roles = {
+      null, Role.ConnectOnly, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin
+    };
+
+    for (int i = 0; i < roles.length; i++) {
+      for (int j = 0; j < roles.length; j++) {
+        assertEquals(Role.union(roles[i], roles[j]), roles[i > j ? i : j]);
+      }
+    }
   }
 }

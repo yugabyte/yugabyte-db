@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { toast } from 'react-toastify';
 import { useMutation, useQueryClient } from 'react-query';
 import { Col, Row } from 'react-bootstrap';
@@ -24,8 +24,6 @@ interface PointInTimeRecoveryDisableModalProps {
   config: any;
 }
 
-const TOAST_AUTO_CLOSE_INTERVAL = 3000;
-
 export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModalProps> = ({
   visible,
   onHide,
@@ -36,16 +34,12 @@ export const PointInTimeRecoveryDisableModal: FC<PointInTimeRecoveryDisableModal
 
   const deletePITR = useMutation((pUUID: string) => deletePITRConfig(universeUUID, pUUID), {
     onSuccess: () => {
-      toast.success(`Point-in-time recovery disabled successfully for ${config.dbName}`, {
-        autoClose: TOAST_AUTO_CLOSE_INTERVAL
-      });
+      toast.success(`Point-in-time recovery disabled successfully for ${config.dbName}`);
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },
     onError: (err: any) => {
-      toast.error(`Failed to disable point-in-time recovery for ${config.dbName}`, {
-        autoClose: TOAST_AUTO_CLOSE_INTERVAL
-      });
+      toast.error(`Failed to disable point-in-time recovery for ${config.dbName}`);
       onHide();
     }
   });

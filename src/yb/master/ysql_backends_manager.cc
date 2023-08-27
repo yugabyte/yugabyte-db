@@ -44,6 +44,9 @@ DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 
     " flag.");
 TAG_FLAG(ysql_backends_catalog_version_job_expiration_sec, advanced);
 
+DEFINE_test_flag(bool, assert_no_future_catalog_version, false,
+    "Asserts that the clients are never requesting a catalog version which is higher "
+    "than what is seen at the master. Used to assert that there are no stale master reads.");
 DEFINE_test_flag(bool, block_wait_for_ysql_backends_catalog_version, false, // runtime-settable
     "If true, enable toggleable busy-wait at the beginning of WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, true,
@@ -140,6 +143,9 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     }
   }
   if (master_version < version) {
+    LOG_IF(FATAL, FLAGS_TEST_assert_no_future_catalog_version)
+        << "Possible stale read by the master ."
+        << " master_version " << master_version << " client expected version " << version;
     return SetupError(
         resp->mutable_error(),
         STATUS_FORMAT(
@@ -155,7 +161,7 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
 
   std::shared_ptr<BackendsCatalogVersionJob> job;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
     // If it is already known that backends catalog version is sufficient, we're done.
     auto iter = latest_known_versions_.find(db_oid);
@@ -245,6 +251,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
+  auto epoch = l.epoch();
   if (job->state() != MonitoredTaskState::kRunning) {
     // The only reason for this to happen is if catalog manager bg thread does AbortAllJobs or
     // AbortInactiveJobs between CompareAndSwapState and SCOPED_LEADER_SHARED_LOCK above.  Any
@@ -263,12 +270,12 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     RETURN_NOT_OK(CheckLeadership(&l, resp));
   }
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(job);
-  RETURN_NOT_OK(job->Launch(master_->catalog_manager()->leader_ready_term()));
+  RETURN_NOT_OK(job->Launch(epoch));
   return Status::OK();
 }
 
 void YsqlBackendsManager::ClearJobIfCached(std::shared_ptr<BackendsCatalogVersionJob> job) {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
   ClearJobIfCachedUnlocked(job);
 }
 
@@ -312,7 +319,7 @@ void YsqlBackendsManager::TerminateJob(
   switch (target_state) {
     case MonitoredTaskState::kComplete:
       if (did_swap) {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
 
         // Erase job from jobs_ cache.
         ClearJobIfCachedUnlocked(job);
@@ -334,7 +341,7 @@ void YsqlBackendsManager::TerminateJob(
       return;
     case MonitoredTaskState::kAborted:
       if (did_swap) {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
 
         // Erase job from jobs_ cache.
         ClearJobIfCachedUnlocked(job);
@@ -351,7 +358,7 @@ void YsqlBackendsManager::TerminateJob(
 void YsqlBackendsManager::AbortAllJobs() {
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> jobs;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     // Make a copy of jobs.
     std::transform(
         jobs_.begin(),
@@ -367,7 +374,7 @@ void YsqlBackendsManager::AbortAllJobs() {
 void YsqlBackendsManager::AbortInactiveJobs() {
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> inactive_jobs;
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
     for (const auto& entry : jobs_) {
       const auto& job = entry.second;
       if (job->IsInactive()) {
@@ -452,7 +459,7 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Stat
   return old_state;
 }
 
-Status BackendsCatalogVersionJob::Launch(int64_t term) {
+Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
   const auto& descs = master_->ts_manager()->GetAllDescriptors();
@@ -463,10 +470,10 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
   {
     // Lock throughout the whole map initialization to prevent readers from viewing a map without
     // all tservers.
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
     // Commit term now.
-    term_ = term;
+    epoch_ = std::move(epoch);
 
     for (const auto& ts_desc : descs) {
       if (!ts_desc->IsLive()) {
@@ -482,15 +489,16 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
   }
 
   for (const auto& ts_uuid : ts_uuids) {
-    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */));
+    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch_));
   }
 
   return Status::OK();
 }
 
-Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
+Status BackendsCatalogVersionJob::LaunchTS(
+    TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends);
+      shared_from_this(), ts_uuid, num_lagging_backends, epoch_);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -522,19 +530,19 @@ bool BackendsCatalogVersionJob::IsInactive() const {
 
 bool BackendsCatalogVersionJob::IsSameTerm() const {
   const int64_t term = master_->catalog_manager()->leader_ready_term();
-  std::lock_guard<decltype(mutex_)> l(mutex_);
-  if (term_ == term) {
+  std::lock_guard l(mutex_);
+  if (epoch_.leader_term == term) {
     VLOG_WITH_PREFIX(3) << "Sys catalog term is " << term;
     return true;
   }
-  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << term_;
+  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << epoch_.leader_term;
   return false;
 }
 
 Result<int> BackendsCatalogVersionJob::WaitAndGetNumLaggingBackends(
     const CoarseTimePoint& deadline) {
   {
-    std::lock_guard<decltype(state_mutex_)> l(state_mutex_);
+    std::lock_guard l(state_mutex_);
     if (!MonitoredTask::IsStateTerminal(state())) {
       if (state_cv_.WaitUntil(ToSteady(deadline))) {
         return HandleTerminalState();
@@ -603,11 +611,11 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     if (s.IsTryAgain()) {
       int last_known_num_lagging_backends;
       {
-        std::lock_guard<decltype(mutex_)> l(mutex_);
+        std::lock_guard l(mutex_);
         last_known_num_lagging_backends = ts_map_[ts_uuid];
       }
       // Ignore returned status since it is already logged/handled.
-      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends);
+      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch_);
     } else {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString() << " from TS " << ts_uuid;
       master_->ysql_backends_manager()->TerminateJob(
@@ -619,7 +627,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
 
   // Update num_lagging_backends.
   {
-    std::lock_guard<decltype(mutex_)> l(mutex_);
+    std::lock_guard l(mutex_);
 
 #ifndef NDEBUG
     if (ts_map_[ts_uuid] != -1) {
@@ -636,7 +644,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     VLOG_WITH_PREFIX(2) << "still waiting on " << *num_lagging_backends << " backends of TS "
                         << ts_uuid;
     // Ignore returned status since it is already logged/handled.
-    (void)LaunchTS(ts_uuid, *num_lagging_backends);
+    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch_);
     return;
   }
   DCHECK_EQ(*num_lagging_backends, 0);
@@ -658,7 +666,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
 //   it could return zero result is if kAborted right after job Update to zero count but before
 //   manager Update of job to kComplete state, but in that case, the zero result is accurate.
 int BackendsCatalogVersionJob::GetNumLaggingBackends() const {
-  std::lock_guard<decltype(mutex_)> l(mutex_);
+  std::lock_guard l(mutex_);
 
   if (ts_map_.size() == 0) {
     // This can happen if the job just got swapped from waiting to running and did not yet populate
@@ -684,7 +692,7 @@ int BackendsCatalogVersionJob::GetNumLaggingBackends() const {
 bool BackendsCatalogVersionJob::CompareAndSwapState(
     server::MonitoredTaskState old_state,
     server::MonitoredTaskState new_state) {
-  std::lock_guard<decltype(state_mutex_)> l(state_mutex_);
+  std::lock_guard l(state_mutex_);
   if (state_.compare_exchange_strong(old_state, new_state)) {
     if (IsStateTerminal(new_state)) {
       completion_timestamp_ = MonoTime::Now();
@@ -702,11 +710,12 @@ std::string BackendsCatalogVersionJob::LogPrefix() const {
 BackendsCatalogVersionTS::BackendsCatalogVersionTS(
     std::shared_ptr<BackendsCatalogVersionJob> job,
     const std::string& ts_uuid,
-    int prev_num_lagging_backends)
+    int prev_num_lagging_backends, LeaderEpoch epoch)
     : RetryingTSRpcTask(job->master(),
                         job->threadpool(),
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(job->master(), ts_uuid)),
                         nullptr /* table */,
+                        std::move(epoch),
                         nullptr /* async_task_throttler */),
       job_(job),
       prev_num_lagging_backends_(prev_num_lagging_backends) {
@@ -765,6 +774,17 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
             // load.
             should_retry = false;
           }
+          if (status.message().ToBuffer().find("column \"catalog_version\" does not exist") !=
+              std::string::npos) {
+            // This likely means ysql upgrade hasn't happened yet.  Succeed for backwards
+            // compatibility.
+            TransitionToCompleteState();
+            LOG_WITH_PREFIX(INFO)
+                << "wait for backends catalog version failed: " << status
+                << ", but ignoring for backwards compatibility";
+            found_behind_ = true;
+            return;
+          }
         }
         break;
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
@@ -802,22 +822,30 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
     return;
   }
 
-  // Identify dead tserver.
-  bool was_dead = found_dead_;
+  // There are multiple cases where we consider a tserver to be resolved:
+  // - Num lagging backends is zero: directly resolved
+  // - Tserver was found dead in HandleResponse: indirectly resolved assuming issue #13369.
+  // - Tserver was found dead in DoRpcCallback: (same).
+  // - Tserver was found behind in HandleResponse: indirectly resolved for compatibility during
+  //   upgrade: it is possible backends are actually behind.
+  // - Tserver was found behind in DoRpcCallback: (same).
+  bool indirectly_resolved = found_dead_ || found_behind_;
   if (!rpc_.status().ok()) {
-    // Only way for rpc status to be not okay is from ts not being live in
-    // RetryingTSRpcTask::DoRpcCallback, resulting in TransitionToCompleteState.
+    // Only way for rpc status to be not okay is from TransitionToCompleteState in
+    // RetryingTSRpcTask::DoRpcCallback.  That can happen in any of the following ways:
+    // - ts died.
+    // - ts is on an older version that doesn't support the RPC.
     DCHECK_EQ(state(), MonitoredTaskState::kComplete);
     DCHECK(!resp_.has_error()) << LogPrefix() << resp_.error().ShortDebugString();
-    was_dead = true;
+    indirectly_resolved = true;
   }
 
   // Find failures.
   Status status;
-  if (!was_dead) {
-    // Only live tservers can be considered to have failures since dead tservers are considered
-    // resolved.  This check comes first because dead tservers could still get resp error like
-    // catalog version too old.
+  if (!indirectly_resolved) {
+    // Only live tservers can be considered to have failures since dead or behind tservers are
+    // considered resolved.  Dead tservers could still get resp error like catalog version too old,
+    // but we don't want to throw error when they are already considered resolved.
     // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
 
     if (resp_.has_error()) {
@@ -839,11 +867,16 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   }
 
   if (auto job = job_.lock()) {
-    if (was_dead) {
-      // Dead tservers are assumed to be resolved to latest.
-      // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
-      LOG_WITH_PREFIX(INFO)
-          << "tserver died, so assuming its backends are at latest catalog version";
+    if (indirectly_resolved) {
+      // There are three cases of indirectly resolved tservers, outlined in a comment above.
+      if (found_dead_ || !target_ts_desc_->IsLive()) {
+        // The two tserver-found-dead cases.
+        LOG_WITH_PREFIX(INFO)
+            << "tserver died, so assuming its backends are at latest catalog version";
+      } else {
+        // The two tserver-found-behind cases.
+        LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";
+      }
       job->Update(permanent_uuid(), 0);
     } else if (status.ok()) {
       DCHECK(resp_.has_num_lagging_backends());

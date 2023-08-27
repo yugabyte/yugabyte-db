@@ -93,13 +93,13 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   CHECK_EQ(row.column(2).int32_value(), 7);
   CHECK_EQ(row.column(3).int64_value(), 7);
   CHECK_EQ(row.column(4).string_value(), "h7");
-  CHECK_EQ(row.column(5).varint_value(), util::VarInt(7));
+  CHECK_EQ(row.column(5).varint_value(), VarInt(7));
   CHECK_EQ(row.column(6).int8_value(), 107);
   CHECK_EQ(row.column(7).int16_value(), 107);
   CHECK_EQ(row.column(8).int32_value(), 107);
   CHECK_EQ(row.column(9).int64_value(), 107);
   CHECK_EQ(row.column(10).string_value(), "r107");
-  CHECK_EQ(row.column(11).varint_value(), util::VarInt(107));
+  CHECK_EQ(row.column(11).varint_value(), VarInt(107));
   CHECK_EQ(row.column(12).int8_value(), 7);
   CHECK_EQ(row.column(13).int16_value(), 207);
   CHECK_EQ(row.column(14).int32_value(), 207);
@@ -110,7 +110,7 @@ TEST_F(TestQLQuery, TestQLQuerySimple) {
   ival = row.column(18).double_value();;
   CHECK(ival >= 206 && ival <= 207);
   CHECK_EQ(row.column(19).bool_value(), false);
-  CHECK_EQ(row.column(20).varint_value(), util::VarInt(207));
+  CHECK_EQ(row.column(20).varint_value(), VarInt(207));
 }
 
 #define CHECK_EXPECTED_ROW_DECIMAL(processor, name, balance, rate)                               \
@@ -130,8 +130,8 @@ do {                                                                            
   auto row_block = processor->row_block();                                                       \
   CHECK_EQ(row_block->row_count(), 1);                                                           \
   CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                    \
-  util::VarInt expected_varint = CHECK_RESULT(util::VarInt::CreateFromString(balance));          \
-  util::VarInt ret_varint;                                                                       \
+  VarInt expected_varint = CHECK_RESULT(VarInt::CreateFromString(balance));          \
+  VarInt ret_varint;                                                                       \
   ret_varint = row_block->row(0).column(1).varint_value();                                       \
   CHECK_EQ(ret_varint, expected_varint);                                                         \
   CHECK_EQ(row_block->row(0).column(2).double_value(), rate);                                    \

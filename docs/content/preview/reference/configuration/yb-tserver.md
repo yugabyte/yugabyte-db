@@ -305,27 +305,66 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 Default: `64`
 
+##### --reuse_unclosed_segment_threshold_bytes
+
+When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
+
+Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+
 ## Sharding flags
 
 ##### --yb_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YCQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1`, where the number of shards is determined at runtime, as follows:
 
-This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
-On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as `4`.
+  - For three or more CPU cores, the default value is considered as `8`.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
+
+{{< note title="Note" >}}
+
+- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
+- The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YSQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1`, where the number of shards is determined at runtime, as follows:
 
-This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
-On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as `2`.
+  - For servers with three or four CPU cores, the default value is considered as `4`.
+  - Beyond four cores, the default value is considered as `8`.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
+
+{{< note title="Note" >}}
+
+- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
+- The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
 
 ##### --cleanup_split_tablets_interval_sec
 
@@ -333,17 +372,87 @@ Interval at which the tablet manager tries to cleanup split tablets that are no 
 
 Default: `60`
 
+##### --enable_automatic_tablet_splitting
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting).
+
+Default: `true`
+
+{{< note title="Important" >}}
+
+This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< /note >}}
+
 ##### --post_split_trigger_compaction_pool_max_threads
 
-The maximum number of threads allowed for post-split compactions (that is, compactions that remove irrelevant data from new tablets after splits).
-
-Default: `1`
+Deprecated. Use `full_compaction_pool_max_threads`.
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
+Deprecated. Use `full_compaction_pool_max_queue_size`.
 
-Default: `16`
+##### --full_compaction_pool_max_threads
+
+The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `1`
+
+##### --full_compaction_pool_max_queue_size
+
+The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `200`
+
+##### --auto_compact_check_interval_sec
+
+The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
+
+Default: `60`
+
+##### --auto_compact_stat_window_seconds
+
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
+
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+
+Default: `300`
+
+##### --auto_compact_percent_obsolete
+
+The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
+For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
+
+Default: `99`
+
+##### --auto_compact_min_obsolete_keys_found
+
+Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
+
+Default: `10000`
+
+##### --auto_compact_min_wait_between_seconds
+
+Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
+
+Default: `0`
+
+##### --scheduled_full_compaction_frequency_hours
+
+The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
+
+Default: `0`
+
+##### --scheduled_full_compaction_jitter_factor_percentage
+
+Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
+Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
+
+Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
+
+Default: `33`
 
 ##### --automatic_compaction_extra_priority
 
@@ -501,7 +610,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the exception of some logging options. Refer to [PostgreSQL logging options](#postgresql-logging-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
 
 ##### --ysql_timezone
 
@@ -578,18 +687,6 @@ Default: `-1` (disables logging statement durations)
 ##### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
-
-##### --temp_file_limit
-
-Specifies the amount of disk space used for temp files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
-
-Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
-
-You can remove the limit (set the size to unlimited) using `SET temp_file_limit=-1`.
-
-Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes), and `xGB` (in gigabytes).
-
-Default: `1GB`
 
 ### YCQL
 
@@ -697,13 +794,36 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 Used to control rate of memstore flush and SSTable file compaction.
 
-Default: `256MB` (256 MB/second)
+Default: `1GB` (1 GB/second)
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
 Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
+
+##### --rocksdb_max_background_compactions
+
+Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
+
+Default: `-1`, where the value is calculated at runtime as follows:
+
+- For servers with up to 4 CPU cores, the default value is considered as `1`.
+- For servers with up to 8 CPU cores, the default value is considered as `2`.
+- For servers with up to 32 CPU cores, the default value is considered as `3`.
+- Beyond 32 cores, the default value is considered as `4`.
+
+##### --rocksdb_compaction_size_threshold_bytes
+
+Threshold beyond which a compaction is considered large.
+
+Default: `2GB`
+
+##### --rocksdb_level0_file_num_compaction_trigger
+
+Number of files to trigger level-0 compaction. Set to `-1` if compaction should not be triggered by number of files at all.
+
+Default: `5`.
 
 ##### --rocksdb_universal_compaction_size_ratio
 
@@ -961,7 +1081,7 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 Default: `102400`
 
-##### --enable_delete_truncate_cdcsdk_table
+##### --enable_truncate_cdcsdk_table
 
 By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
 
@@ -1033,15 +1153,51 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
-## PostgreSQL logging options
+## PostgreSQL server options
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances. You can modify these parameters using the [`ysql_pg_conf_csv`](#ysql-pg-conf-csv) flag.
+YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+
+You can modify these parameters in the following ways:
+
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+
+- Set the option per-database:
+
+    ```sql
+    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ```
+
+- Set the option per-role:
+
+    ```sql
+    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ```
+
+    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+
+- Set the option for the current session:
+
+    ```sql
+    SET temp_file_limit=-1;
+    --- alternative way
+    SET SESSION temp_file_limit=-1;
+    ```
+
+    If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
+
+    If the surrounding transaction commits, the effects will persist for the whole session.
+
+- Set the option for the current transaction:
+
+    ```sql
+    SET LOCAL temp_file_limit=-1;
+    ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions.
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
-### log_line_prefix
+##### log_line_prefix
 
 YugabyteDB supports the following additional options for the `log_line_prefix` parameter:
 
@@ -1054,11 +1210,23 @@ YugabyteDB supports the following additional options for the `log_line_prefix` p
 
 For information on using `log_line_prefix`, refer to [log_line_prefix](https://www.postgresql.org/docs/11/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) in the PostgreSQL documentation.
 
-### suppress_nonpg_logs (boolean)
+##### suppress_nonpg_logs (boolean)
 
 When set, suppresses logging of non-PostgreSQL output to the PostgreSQL log file in the `tserver/logs` directory.
 
 Default: `off`
+
+##### temp_file_limit
+
+Specifies the amount of disk space used for temporary files for each YSQL connection, such as sort and hash temporary files, or the storage file for a held cursor.
+
+Any query whose disk space usage exceeds `temp_file_limit` will terminate with the error `ERROR:  temporary file size exceeds temp_file_limit`. Note that temporary tables do not count against this limit.
+
+You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
+
+Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
+
+Default: `1GB`
 
 ## Admin UI
 

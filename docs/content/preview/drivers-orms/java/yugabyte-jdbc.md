@@ -60,7 +60,7 @@ For Java applications, the JDBC driver provides database connectivity through th
 
 {{< note title="YugabyteDB Managed" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 {{< /note >}}
 
@@ -144,7 +144,7 @@ To obtain a list of available hosts, you can connect to any cluster node and use
 Delimit the addresses using commas, as follows:
 
 ```sh
-jdbc://yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
 

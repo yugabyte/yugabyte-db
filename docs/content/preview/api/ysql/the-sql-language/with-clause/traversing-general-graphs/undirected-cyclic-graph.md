@@ -66,7 +66,7 @@ select path from paths
 
 The first attempt at the SQL for traversing the present undirected cyclic graph is easily written down just as an obvious paraphrase:
 
-```plpgql
+```plpgsql
 deallocate all;
 
 prepare stmt(text) as
@@ -426,7 +426,7 @@ But there is another, and more critical, reason to discard the approach that avo
 
 It's obviously quicker to identify a single row with an identity predicate on a column with an optimal index for such a predicate than it is to identify the row using the `OR` combination of two predicates, only one of which, of course, will identify the row. Moreover, because the primary key is defined on the column list _"(node_1, node_2)"_ and because the SQL for the denormalized _"edges"_ table approach restricts only on the leading column, the execution plan can use the index that enforces the primary key constraint.
 
-Look at the output of the `\d` metacommand for the _"edges"_ table:
+Look at the output of the `\d` meta-command for the _"edges"_ table:
 
 ```
  Column | Type | Collation | Nullable | Default

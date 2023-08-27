@@ -11,8 +11,6 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -127,35 +125,17 @@ class UniverseLogsComponent implements SupportBundleComponent {
             .collect(Collectors.toList());
 
     if (allLogFilePaths.size() > 0) {
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer,
-              universe,
-              node,
-              nodeHomeDir,
-              String.join(";", allLogFilePaths),
-              nodeTargetFile);
-      try {
-        if (Files.exists(targetFile)) {
-          File unZippedFile =
-              supportBundleUtil.unGzip(
-                  new File(targetFile.toAbsolutePath().toString()),
-                  new File(bundlePath.toAbsolutePath().toString()));
-          Files.delete(targetFile);
-          supportBundleUtil.unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-          unZippedFile.delete();
-        } else {
-          log.debug(
-              String.format(
-                  "No universe log files downloaded from the source path '%s' for universe '%s'.",
-                  nodeHomeDir, universe.getName()));
-        }
-      } catch (Exception e) {
-        log.error(
-            "Something went wrong while trying to untar the files from "
-                + "component 'UniverseLogsComponent' in the DB node: ",
-            e);
-      }
+      // Download all logs batch wise
+      supportBundleUtil.batchWiseDownload(
+          universeInfoHandler,
+          customer,
+          universe,
+          bundlePath,
+          node,
+          nodeTargetFile,
+          nodeHomeDir,
+          allLogFilePaths,
+          this.getClass().getSimpleName());
     } else {
       log.debug(
           "Found no matching universe logs for node: {}, source path: {}, target path: {}, "

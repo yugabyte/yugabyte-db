@@ -20,13 +20,13 @@ Use the `CREATE MATERIALIZED VIEW` statement to create a materialized view.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -34,10 +34,10 @@ Use the `CREATE MATERIALIZED VIEW` statement to create a materialized view.
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_matview.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_matview.diagram.md" %}}
   </div>
 </div>
@@ -52,11 +52,9 @@ Used to specify the tablespace for the materialized view.
 
 ### Storage parameters
 
-COLOCATED
+COLOCATION
 
-Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-Specify `COLOCATED = true` for the materialized view to be colocated. The default value of this option is false.
+Specify `COLOCATION = true` for the materialized view to be colocated. The default value of this option is false.
 
 ## Examples
 

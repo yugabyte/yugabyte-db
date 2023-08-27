@@ -62,11 +62,12 @@ export type ArchitectureType = typeof ArchitectureType[keyof typeof Architecture
 export const ProviderStatus = {
   READY: 'READY',
   UPDATING: 'UPDATING',
-  ERROR: 'ERROR'
+  ERROR: 'ERROR',
+  DELETING: 'DELETING'
 } as const;
 export type ProviderStatus = typeof ProviderStatus[keyof typeof ProviderStatus];
 
-export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING] as const;
+export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING, ProviderStatus.DELETING] as const;
 
 // --------------------------------------------------------------------------------------
 // Route Constants
@@ -139,6 +140,12 @@ export const KUBERNETES_PROVIDERS_MAP = {
   [KubernetesProviderType.TANZU]: [KubernetesProvider.TANZU]
 } as const;
 
+export const SUPPORTED_KUBERNETES_PROVIDERS = [
+  ...KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.MANAGED_SERVICE],
+  ...KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.OPEN_SHIFT],
+  ...KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.TANZU]
+];
+
 export const InstanceTypeOperation = {
   ADD: 'add',
   EDIT: 'edit'
@@ -173,7 +180,8 @@ export const ProviderLabel = {
 export const ProviderStatusLabel = {
   [ProviderStatus.ERROR]: 'Error',
   [ProviderStatus.READY]: 'Ready',
-  [ProviderStatus.UPDATING]: 'Updating'
+  [ProviderStatus.UPDATING]: 'Updating',
+  [ProviderStatus.DELETING]: 'Deleting'
 };
 
 export const NTPSetupTypeLabel = {
@@ -208,7 +216,8 @@ export const KubernetesProviderTypeLabel = {
 export const RegionOperationLabel = {
   [RegionOperation.ADD]: 'Add',
   [RegionOperation.EDIT_EXISTING]: 'Edit',
-  [RegionOperation.EDIT_NEW]: 'Edit'
+  [RegionOperation.EDIT_NEW]: 'Edit',
+  [RegionOperation.VIEW]: 'View'
 };
 
 export const InstanceTypeOperationLabel = {

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -141,7 +142,13 @@ public class AccessKeyController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    Provider.getOrBadRequest(customerUUID, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    long universesCount = provider.getUniverseCount();
+    if (universesCount > 0) {
+      throw new PlatformServiceException(
+          FORBIDDEN, "Cannot delete the access key for the provider in use!");
+    }
+
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
     LOG.info(
         "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);

@@ -5,27 +5,30 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -34,7 +37,6 @@ import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +51,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -148,8 +151,6 @@ public class TaskExecutor {
   // Skip or perform abortable check for subtasks.
   private final boolean skipSubTaskAbortableCheck;
 
-  private static Map<UUID, Universe> kubernetesOperatorMap = new HashMap<UUID, Universe>();
-
   private static final String COMMISSIONER_TASK_WAITING_SEC_METRIC =
       "ybp_commissioner_task_waiting_sec";
 
@@ -160,37 +161,43 @@ public class TaskExecutor {
       buildSummary(
           COMMISSIONER_TASK_WAITING_SEC_METRIC,
           "Duration between task creation and execution",
-          KnownAlertLabels.TASK_TYPE.labelName());
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static final Summary COMMISSIONER_TASK_EXECUTION_SEC =
       buildSummary(
           COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
           "Duration of task execution",
           KnownAlertLabels.TASK_TYPE.labelName(),
-          KnownAlertLabels.RESULT.labelName());
+          KnownAlertLabels.RESULT.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
         .quantile(0.5, 0.05)
         .quantile(0.9, 0.01)
-        .maxAgeSeconds(TimeUnit.HOURS.toSeconds(1))
         .labelNames(labelNames)
         .register(CollectorRegistry.defaultRegistry);
   }
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
-      TaskType taskType, Instant scheduledTime, Instant startTime) {
+      Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name())
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      TaskType taskType, Instant startTime, Instant endTime, State state) {
+      Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name())
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            state.name(),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -338,6 +345,12 @@ public class TaskExecutor {
       // Update task state on submission failure.
       runnableTasks.remove(taskUUID);
       runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+      log.error("Error occurred in submitting the task", e);
+      String msg =
+          (e instanceof RejectedExecutionException)
+              ? "Task submission failed as too many tasks are running"
+              : "Error occurred during task submission for execution";
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
     return taskUUID;
   }
@@ -460,7 +473,8 @@ public class TaskExecutor {
     // Create a new task info object.
     TaskInfo taskInfo = new TaskInfo(taskType);
     // Set the task details.
-    taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+    taskInfo.setDetails(
+        RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     return taskInfo;
@@ -492,12 +506,6 @@ public class TaskExecutor {
     default void beforeTask(TaskInfo taskInfo) {};
 
     void afterTask(TaskInfo taskInfo, Throwable t);
-
-    default void afterSubtaskGroup(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
-
-    default void afterParentTask(
-        String name, TaskInfo taskInfo, Map<UUID, Universe> kubernetesOperatorMap, Throwable t) {};
   }
 
   /**
@@ -539,7 +547,8 @@ public class TaskExecutor {
       int subTaskCount = getSubTaskCount();
       log.info("Adding task #{}: {}", subTaskCount, subTask.getName());
       if (log.isDebugEnabled()) {
-        JsonNode redactedTask = RedactingService.filterSecretFields(subTask.getTaskDetails());
+        JsonNode redactedTask =
+            RedactingService.filterSecretFields(subTask.getTaskDetails(), RedactionTarget.LOGS);
         log.debug(
             "Details for task #{}: {} details= {}", subTaskCount, subTask.getName(), redactedTask);
       }
@@ -800,8 +809,8 @@ public class TaskExecutor {
     @Override
     public void run() {
       Throwable t = null;
-      TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
+      Map<String, String> taskLabels = this.getTaskMetricLabels();
 
       try {
         if (log.isDebugEnabled()) {
@@ -810,7 +819,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -844,7 +853,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(taskLabels, taskStartTime, taskCompletionTime, getTaskState());
         task.terminate();
         publishAfterTask(t);
       }
@@ -874,6 +883,8 @@ public class TaskExecutor {
       taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
+
+    protected abstract Map<String, String> getTaskMetricLabels();
 
     protected abstract Instant getAbortTime();
 
@@ -941,7 +952,7 @@ public class TaskExecutor {
         }
         errorString =
             String.format(
-                "Failed to execute task %s, git error:\n\n %s.",
+                "Failed to execute task %s, hit error:\n\n %s.",
                 StringUtils.abbreviate(maskedTaskDetails, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
       }
@@ -973,20 +984,6 @@ public class TaskExecutor {
       TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
-      }
-    }
-
-    void publishAfterSubtaskGroup(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterSubtaskGroup(name, taskInfo, kubernetesOperatorMap, t);
-      }
-    }
-
-    void publishAfterParentTask(String name, TaskInfo taskInfo, Throwable t) {
-      TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
-      if (taskExecutionListener != null) {
-        taskExecutionListener.afterParentTask(name, taskInfo, kubernetesOperatorMap, t);
       }
     }
 
@@ -1079,6 +1076,15 @@ public class TaskExecutor {
     }
 
     @Override
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of(
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          "No parent",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          taskInfo.getTaskType().name());
+    }
+
+    @Override
     protected Instant getAbortTime() {
       return abortTime;
     }
@@ -1133,7 +1139,6 @@ public class TaskExecutor {
      */
     public void runSubTasks(boolean abortOnFailure) {
       RuntimeException anyRe = null;
-      Throwable throwable = null;
       try {
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
@@ -1159,10 +1164,8 @@ public class TaskExecutor {
               subTaskGroup.waitForSubTasks(abortOnFailure);
             }
           } catch (CancellationException e) {
-            throwable = e;
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (RuntimeException e) {
-            throwable = e;
             if (subTaskGroup.ignoreErrors) {
               log.error("Ignoring error for " + subTaskGroup, e);
             } else {
@@ -1170,14 +1173,11 @@ public class TaskExecutor {
               throw new RuntimeException(subTaskGroup + " failed.", e);
             }
             anyRe = e;
-          } finally {
-            publishAfterSubtaskGroup(subTaskGroup.name, taskInfo, throwable);
           }
         }
       } finally {
         // Clear the subtasks so that new subtasks can be run from the clean state.
         subTaskGroups.clear();
-        publishAfterParentTask(task.getClass().getSimpleName(), taskInfo, throwable);
       }
       if (anyRe != null) {
         throw new RuntimeException("One or more SubTaskGroups failed while running.", anyRe);
@@ -1256,6 +1256,13 @@ public class TaskExecutor {
 
         currentAttempt++;
       }
+    }
+
+    @Override
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of(
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(), parentRunnableTask.getTaskType().name(),
+          KnownAlertLabels.TASK_TYPE.labelName(), taskInfo.getTaskType().name());
     }
 
     @Override

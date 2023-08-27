@@ -3,8 +3,9 @@
 package com.yugabyte.yw.metrics;
 
 import com.cronutils.utils.StringUtils;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.net.URLEncoder;
 import java.util.TimeZone;
 import javax.inject.Inject;
@@ -19,11 +20,11 @@ public class MetricUrlProvider {
 
   private static final String MANAGEMENT_PATH = "/-";
   public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
-  private final Config appConfig;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
-  public MetricUrlProvider(Config appConfig) {
-    this.appConfig = appConfig;
+  public MetricUrlProvider(RuntimeConfGetter runtimeConfGetter) {
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   /**
@@ -39,8 +40,12 @@ public class MetricUrlProvider {
     return getMetricsInternalUrl() + MANAGEMENT_PATH;
   }
 
+  public boolean getMetricsLinkUseBrowserFqdn() {
+    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn);
+  }
+
   public String getMetricsExternalUrl() {
-    String metricsExternalUrl = appConfig.getString("yb.metrics.external.url");
+    String metricsExternalUrl = runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsExternalUrl);
     if (StringUtils.isEmpty(metricsExternalUrl)) {
       // Fallback to internal in case external is not explicitly defined
       metricsExternalUrl = getMetricsInternalUrl();
@@ -70,7 +75,7 @@ public class MetricUrlProvider {
   }
 
   public String getMetricsInternalUrl() {
-    String metricsUrl = appConfig.getString("yb.metrics.url");
+    String metricsUrl = runtimeConfGetter.getStaticConf().getString("yb.metrics.url");
     if (StringUtils.isEmpty(metricsUrl)) {
       throw new RuntimeException("yb.metrics.url not set");
     }

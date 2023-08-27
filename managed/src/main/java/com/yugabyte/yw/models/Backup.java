@@ -16,9 +16,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -59,7 +60,6 @@ import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
@@ -106,6 +106,9 @@ public class Backup extends Model {
     @EnumValue("QueuedForDeletion")
     QueuedForDeletion,
 
+    @EnumValue("QueuedForForcedDeletion")
+    QueuedForForcedDeletion,
+
     @EnumValue("DeleteInProgress")
     DeleteInProgress;
   }
@@ -141,6 +144,9 @@ public class Backup extends Model {
           .put(BackupState.FailedToDelete, BackupState.QueuedForDeletion)
           .put(BackupState.Deleted, BackupState.QueuedForDeletion)
           .put(BackupState.QueuedForDeletion, BackupState.DeleteInProgress)
+          .put(BackupState.QueuedForDeletion, BackupState.QueuedForForcedDeletion)
+          .put(BackupState.QueuedForForcedDeletion, BackupState.FailedToDelete)
+          .put(BackupState.QueuedForForcedDeletion, BackupState.DeleteInProgress)
           .build();
 
   public enum BackupCategory {
@@ -268,6 +274,11 @@ public class Backup extends Model {
     this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
   }
 
+  @JsonIgnore
+  public void setExpiry(Date expiryTime) {
+    this.expiry = expiryTime;
+  }
+
   public void updateExpiryTime(long timeBeforeDeleteFromPresent) {
     setExpiry(timeBeforeDeleteFromPresent);
     save();
@@ -276,6 +287,10 @@ public class Backup extends Model {
   @ApiModelProperty(value = "Time unit for backup expiry time", accessMode = READ_WRITE)
   @Column
   private TimeUnit expiryTimeUnit;
+
+  @ApiModelProperty(value = "Whether the backup has KMS history metadata", accessMode = READ_ONLY)
+  @Column(name = "has_kms_history")
+  private boolean hasKMSHistory;
 
   public void updateExpiryTimeUnit(TimeUnit expiryTimeUnit) {
     setExpiryTimeUnit(expiryTimeUnit);
@@ -336,6 +351,9 @@ public class Backup extends Model {
       if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID != null) {
         params.kmsConfigUUID = universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
       }
+      backup.setHasKMSHistory(
+          CollectionUtils.isNotEmpty(
+              EncryptionAtRestUtil.getAllUniverseKeys(backup.getUniverseUUID())));
     }
     backup.setState(BackupState.InProgress);
     backup.setCategory(category);
@@ -492,6 +510,9 @@ public class Backup extends Model {
       totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(params);
     }
     this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
+    if (this.backupInfo.timeBeforeDelete != 0L) {
+      this.expiry = new Date(this.completionTime.getTime() + this.backupInfo.timeBeforeDelete);
+    }
     this.setState(BackupState.Completed);
     this.save();
   }
@@ -551,24 +572,6 @@ public class Backup extends Model {
         .collect(Collectors.toList());
   }
 
-  public static ImmutablePair<UUID, Long> getUniverseInProgressBackupCreateTime(
-      UUID customerUUID, UUID universeUUID) {
-    Optional<Backup> oBkp =
-        find.query()
-            .where()
-            .eq("customer_uuid", customerUUID)
-            .eq("universe_uuid", universeUUID)
-            .eq("state", BackupState.InProgress)
-            .orderBy("create_time desc")
-            .setMaxRows(1)
-            .findOneOrEmpty();
-    if (oBkp.isPresent()) {
-      Backup backup = oBkp.get();
-      return ImmutablePair.of(universeUUID, backup.getCreateTime().getTime());
-    }
-    return ImmutablePair.of(universeUUID, 0l);
-  }
-
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(
       UUID customerUUID, UUID universeUUID) {
     return fetchByUniverseUUID(customerUUID, universeUUID).stream()
@@ -623,32 +626,21 @@ public class Backup extends Model {
         .findFirst();
   }
 
-  public static Map<Customer, List<Backup>> getExpiredBackups() {
-    // Get current timestamp.
+  public static Map<UUID, List<Backup>> getCompletedExpiredBackups() {
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
-
+        Backup.find.query().where().lt("expiry", now).in("state", BackupState.Completed).findList();
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
-      expiredBackupsByCustomerUUID.putIfAbsent(backup.customerUUID, new ArrayList<>());
-      expiredBackupsByCustomerUUID.get(backup.customerUUID).add(backup);
+      if (!(Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
+          || backup.isIncrementalBackup())) {
+        List<Backup> backupList =
+            expiredBackupsByCustomerUUID.getOrDefault(backup.getCustomerUUID(), new ArrayList<>());
+        backupList.add(backup);
+        expiredBackupsByCustomerUUID.put(backup.getCustomerUUID(), backupList);
+      }
     }
-
-    Map<Customer, List<Backup>> ret = new HashMap<>();
-    expiredBackupsByCustomerUUID.forEach(
-        (customerUUID, backups) -> {
-          Customer customer = Customer.get(customerUUID);
-          List<Backup> backupList =
-              backups.stream()
-                  .filter(
-                      backup ->
-                          !Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
-                              && !backup.isIncrementalBackup())
-                  .collect(Collectors.toList());
-          ret.put(customer, backupList);
-        });
-    return ret;
+    return expiredBackupsByCustomerUUID;
   }
 
   public synchronized void transitionState(BackupState newState) {
@@ -708,7 +700,7 @@ public class Backup extends Model {
         find.query()
             .where()
             .eq("customer_uuid", customerUUID)
-            .eq("state", BackupState.QueuedForDeletion)
+            .in("state", BackupState.QueuedForDeletion, BackupState.QueuedForForcedDeletion)
             .findList();
     return backupList;
   }

@@ -34,6 +34,7 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -77,6 +78,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("XCluster Configuration")
     XClusterConfig(true),
+
+    @EnumValue("Disaster Recovery Config")
+    DrConfig(true),
 
     @EnumValue("Universe Key")
     UniverseKey(true),
@@ -296,8 +300,17 @@ public class CustomerTask extends Model {
     @EnumValue("DisableYbc")
     DisableYbc,
 
+    @EnumValue("ConfigureDBApis")
+    ConfigureDBApis,
+
+    @EnumValue("ConfigureDBApisKubernetes")
+    ConfigureDBApisKubernetes,
+
     @EnumValue("CreateImageBundle")
-    CreateImageBundle;
+    CreateImageBundle,
+
+    @EnumValue("ReprovisionNode")
+    ReprovisionNode;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -427,8 +440,13 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
+        case ConfigureDBApisKubernetes:
+        case ConfigureDBApis:
+          return completed ? "Configured DB APIs" : "Configuring DB APIs";
         case CreateImageBundle:
           return completed ? "Created" : "Creating";
+        case ReprovisionNode:
+          return completed ? "Reprovisioned" : "Reprovisioning";
         default:
           return null;
       }
@@ -458,6 +476,8 @@ public class CustomerTask extends Model {
           return "Reboot";
         case RestartUniverse:
           return "Restart";
+        case ReprovisionNode:
+          return "Re-provision";
         default:
           return toFriendlyTypeName();
       }
@@ -573,7 +593,8 @@ public class CustomerTask extends Model {
       TargetType targetType,
       TaskType type,
       String targetName,
-      @Nullable String customTypeName) {
+      @Nullable String customTypeName,
+      @Nullable String userEmail) {
     CustomerTask th = new CustomerTask();
     th.customerUUID = customer.getUuid();
     th.targetUUID = targetUUID;
@@ -586,7 +607,16 @@ public class CustomerTask extends Model {
     String emailFromContext = Util.maybeGetEmailFromContext();
     if (emailFromContext.equals("Unknown")) {
       // When task is not created as a part of user action get email of the scheduler.
-      th.userEmail = maybeGetEmailFromSchedule();
+      String emailFromSchedule = maybeGetEmailFromSchedule();
+      if (emailFromSchedule.equals("Unknown")) {
+        if (!StringUtils.isEmpty(userEmail)) {
+          th.userEmail = userEmail;
+        } else {
+          th.userEmail = "Unknown";
+        }
+      } else {
+        th.userEmail = emailFromSchedule;
+      }
     } else {
       th.userEmail = emailFromContext;
     }
@@ -604,6 +634,18 @@ public class CustomerTask extends Model {
       TaskType type,
       String targetName) {
     return create(customer, targetUUID, taskUUID, targetType, type, targetName, null);
+  }
+
+  public static CustomerTask create(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName,
+      @Nullable String customTypeName) {
+    return create(
+        customer, targetUUID, taskUUID, targetType, type, targetName, customTypeName, null);
   }
 
   public static CustomerTask get(Long id) {

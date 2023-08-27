@@ -35,7 +35,7 @@ import org.yb.CommonTypes;
 import org.yb.client.*;
 import org.yb.consensus.Metadata;
 import org.yb.minicluster.*;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -44,7 +44,7 @@ import java.util.*;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value= YBTestRunner.class)
 public class TestUnsetDC extends BaseMiniClusterTest {
 
   protected static final Logger LOG = LoggerFactory.getLogger(TestUnsetDC.class);

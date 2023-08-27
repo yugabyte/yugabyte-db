@@ -4,6 +4,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"node-agent/app/executor"
 	"node-agent/app/server"
@@ -34,24 +35,50 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 		Bool("skip_verify_cert", false, "Skip Yugabyte Anywhere SSL cert verification.")
 	configureCmd.PersistentFlags().
 		Bool("disable_egress", false, "Disable connection from node agent.")
-	/* Required only if egress is disabled. */
-	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
-	configureCmd.PersistentFlags().StringP("cert_dir", "d", "", "Node agent cert directory")
+	configureCmd.PersistentFlags().
+		Bool("silent", false, "Silent configuration with egress enabled.")
+	configureCmd.PersistentFlags().String("node_name", "", "Node name")
 	configureCmd.PersistentFlags().StringP("node_ip", "n", "", "Node IP")
-	configureCmd.PersistentFlags().StringP("node_port", "p", "", "Node Port")
-	/* End of non-plex flags. */
+	configureCmd.PersistentFlags().StringP("node_port", "p", "", "Node port")
+	/* Required only if egress is disabled. It is used for cloud auto-provisioned nodes.*/
+	configureCmd.PersistentFlags().StringP("id", "i", "", "Node agent ID")
+	configureCmd.PersistentFlags().String("customer_id", "", "Customer ID")
+	configureCmd.PersistentFlags().String("cert_dir", "", "Node agent cert directory")
+	/* Required only for silent configuration mode. */
+	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID")
+	configureCmd.PersistentFlags().String("instance_type", "", "Instance type")
+	configureCmd.PersistentFlags().String("zone_name", "", "Zone name")
+
 	parentCmd.AddCommand(configureCmd)
 }
 
 func configurePreValidator(cmd *cobra.Command, args []string) {
-	if disabled, err := cmd.Flags().GetBool("disable_egress"); err != nil {
+	disabled, err := cmd.Flags().GetBool("disable_egress")
+	if err != nil {
 		util.ConsoleLogger().
 			Fatalf(server.Context(), "Error in reading disable_egress - %s", err.Error())
-	} else if disabled {
+	}
+	silent, err := cmd.Flags().GetBool("silent")
+	if err != nil {
+		util.ConsoleLogger().
+			Fatalf(server.Context(), "Error in reading silent - %s", err.Error())
+	}
+	if disabled {
 		cmd.MarkPersistentFlagRequired("id")
+		cmd.MarkPersistentFlagRequired("customer_id")
 		cmd.MarkPersistentFlagRequired("cert_dir")
+		cmd.MarkPersistentFlagRequired("node_name")
 		cmd.MarkPersistentFlagRequired("node_ip")
 		cmd.MarkPersistentFlagRequired("node_port")
+	} else if silent {
+		cmd.MarkPersistentFlagRequired("api_token")
+		cmd.MarkPersistentFlagRequired("url")
+		cmd.MarkPersistentFlagRequired("node_name")
+		cmd.MarkPersistentFlagRequired("node_ip")
+		cmd.MarkPersistentFlagRequired("node_port")
+		cmd.MarkPersistentFlagRequired("provider_id")
+		cmd.MarkPersistentFlagRequired("instance_type")
+		cmd.MarkPersistentFlagRequired("zone_name")
 	} else {
 		cmd.MarkPersistentFlagRequired("api_token")
 		cmd.MarkPersistentFlagRequired("url")
@@ -61,11 +88,12 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 func configureNodeHandler(cmd *cobra.Command, args []string) {
 	ctx := server.Context()
 	if disabled, err := cmd.Flags().GetBool("disable_egress"); err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Error in reading disable_egress - %s", err.Error())
+		util.ConsoleLogger().
+			Fatalf(server.Context(), "Error in reading disable_egress - %s", err.Error())
 	} else if disabled {
 		configureDisabledEgress(ctx, cmd)
 	} else {
-		interactiveConfigHandler(ctx, cmd)
+		configureEnabledEgress(ctx, cmd)
 	}
 }
 
@@ -85,6 +113,17 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 	_, err = config.StoreCommandFlagString(
 		ctx,
 		cmd,
+		"customer_id",
+		util.CustomerIdKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store customer ID - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
 		"cert_dir",
 		util.PlatformCertsKey,
 		true, /* isRequired */
@@ -92,6 +131,17 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 	)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent cert dir - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"node_name",
+		util.NodeNameKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node name - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
 		ctx,
@@ -126,10 +176,15 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 }
 
-// Provides a fully interactive configuration setup for the user to configure
-// the node agent. It uses api token to fetch customers and finds
-// subsequent properties using the customer ID.
-func interactiveConfigHandler(ctx context.Context, cmd *cobra.Command) {
+// Provides a fully interactive configuration and silent setup for the user to configure
+// the node agent. It uses api token to fetch customers and finds subsequent properties
+// using the customer ID.
+func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
+	silent, err := cmd.Flags().GetBool("silent")
+	if err != nil {
+		util.ConsoleLogger().
+			Fatalf(server.Context(), "Error in reading silent - %s", err.Error())
+	}
 	apiToken, err := cmd.Flags().GetString("api_token")
 	if err != nil {
 		util.ConsoleLogger().
@@ -157,15 +212,53 @@ func interactiveConfigHandler(ctx context.Context, cmd *cobra.Command) {
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Error storing skip_verify_cert value - %s", err.Error())
 	}
-	// Get node agent name and IP.
-	checkConfigAndUpdate(ctx, util.NodeIpKey, "Node IP")
-	checkConfigAndUpdate(ctx, util.NodeNameKey, "Node Name")
-
 	err = server.RetrieveUser(ctx, apiToken)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(
 			ctx,
 			"Error fetching the current user with the API key - %s", err.Error())
+	}
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"node_port",
+		util.NodePortKey,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent port - %s", err.Error())
+	}
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"node_name",
+			util.NodeNameKey,
+			true, /* isRequired */
+			nil,  /* validator */
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node name - %s", err.Error())
+		}
+	} else {
+		checkConfigAndUpdate(ctx, util.NodeNameKey, "Node Name")
+	}
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"node_ip",
+			util.NodeIpKey,
+			true, /* isRequired */
+			nil,  /* validator */
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent IP - %s", err.Error())
+		}
+	} else {
+		// Get node agent name and IP.
+		checkConfigAndUpdate(ctx, util.NodeIpKey, "Node IP")
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
@@ -182,16 +275,39 @@ func interactiveConfigHandler(ctx context.Context, cmd *cobra.Command) {
 		}
 	}
 	onpremProviders := providers[:i]
-	providerNum, err := displayOptionsAndUpdateSelected(
-		ctx,
-		util.ProviderIdKey,
-		displayInterfaces(ctx, onpremProviders),
-		"Onprem Provider",
-	)
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Error while displaying providers - %s", err.Error())
+	var selectedProvider model.Provider
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"provider_id",
+			util.ProviderIdKey,
+			true, /* isRequired */
+			func(in string) (string, error) {
+				for _, pr := range onpremProviders {
+					if pr.Id() == in {
+						selectedProvider = pr
+						return pr.Id(), nil
+					}
+				}
+				return "", errors.New("Provider is not found")
+			},
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store provider ID - %s", err.Error())
+		}
+	} else {
+		providerNum, err := displayOptionsAndUpdateSelected(
+			ctx,
+			util.ProviderIdKey,
+			displayInterfaces(ctx, onpremProviders),
+			"Onprem Provider",
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Error while displaying providers - %s", err.Error())
+		}
+		selectedProvider = onpremProviders[providerNum]
 	}
-	selectedProvider := onpremProviders[providerNum]
 
 	instanceTypesHandler := task.NewGetInstanceTypesHandler(apiToken)
 	// Get Instance Types for the provider from the platform.
@@ -201,35 +317,79 @@ func interactiveConfigHandler(ctx context.Context, cmd *cobra.Command) {
 		util.ConsoleLogger().Fatalf(ctx, "Error fetching the instance types - %s", err.Error())
 	}
 	instances := *instanceTypesHandler.Result()
-	_, err = displayOptionsAndUpdateSelected(
-		ctx,
-		util.NodeInstanceTypeKey,
-		displayInterfaces(ctx, instances),
-		"Instance Type",
-	)
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Error while displaying instance Types - %s", err.Error())
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"instance_type",
+			util.NodeInstanceTypeKey,
+			true, /* isRequired */
+			func(in string) (string, error) {
+				for _, instance := range instances {
+					if instance.Id() == in {
+						return instance.Id(), nil
+					}
+				}
+				return "", errors.New("Instance type is not found")
+			},
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store instance type - %s", err.Error())
+		}
+	} else {
+		_, err = displayOptionsAndUpdateSelected(
+			ctx,
+			util.NodeInstanceTypeKey,
+			displayInterfaces(ctx, instances),
+			"Instance Type",
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Error while displaying instance types - %s", err.Error())
+		}
 	}
-	regions := selectedProvider.Regions
-	regionNum, err := displayOptionsAndUpdateSelected(
-		ctx,
-		util.NodeRegionKey, displayInterfaces(ctx, regions), "Region")
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Error while displaying regions - %s", err.Error())
-	}
-
 	// Update availability Zone.
-	zones := regions[regionNum].Zones
-	zoneNum, err := displayOptionsAndUpdateSelected(
-		ctx,
-		util.NodeZoneKey,
-		displayInterfaces(ctx, zones),
-		"Zone",
-	)
-	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Error while displaying zones - %s", err.Error())
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"zone_name",
+			util.NodeZoneKey,
+			true, /* isRequired */
+			func(in string) (string, error) {
+				for _, region := range selectedProvider.Regions {
+					for _, zone := range region.Zones {
+						if zone.Id() == in {
+							config.Update(util.NodeAzIdKey, zone.Uuid)
+							return zone.Id(), nil
+						}
+					}
+				}
+				return "", errors.New("Zone name is not found")
+			},
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store zone ID - %s", err.Error())
+		}
+	} else {
+		regions := selectedProvider.Regions
+		regionNum, err := displayOptionsAndUpdateSelected(
+			ctx,
+			util.NodeRegionKey, displayInterfaces(ctx, regions), "Region")
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Error while displaying regions - %s", err.Error())
+		}
+		zones := regions[regionNum].Zones
+		zoneNum, err := displayOptionsAndUpdateSelected(
+			ctx,
+			util.NodeZoneKey,
+			displayInterfaces(ctx, zones),
+			"Zone",
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Error while displaying zones - %s", err.Error())
+		}
+		config.Update(util.NodeAzIdKey, zones[zoneNum].Uuid)
 	}
-	config.Update(util.NodeAzIdKey, zones[zoneNum].Uuid)
 	util.ConsoleLogger().Infof(ctx, "Completed Node Agent Configuration")
 
 	err = server.RegisterNodeAgent(server.Context(), apiToken)

@@ -13,17 +13,12 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -38,11 +33,11 @@ public abstract class DevopsBase {
 
   @Inject ShellProcessHandler shellProcessHandler;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
   @Inject RuntimeConfGetter confGetter;
 
   @Inject NodeAgentClient nodeAgentClient;
+
+  @Inject FileHelperService fileHelperService;
 
   protected NodeAgentClient getNodeAgentClient() {
     return nodeAgentClient;
@@ -76,7 +71,7 @@ public abstract class DevopsBase {
 
     List<String> commandArgs = devopsCommand.commandArgs;
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
 
@@ -124,6 +119,7 @@ public abstract class DevopsBase {
             .extraEnvVars(extraVars)
             .redactedVals(devopsCommand.redactedVals)
             .sensitiveData(devopsCommand.sensitiveData)
+            .timeoutSecs(confGetter.getGlobalConf(GlobalConfKeys.devopsCommandTimeout).toSeconds())
             .build());
   }
 

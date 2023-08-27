@@ -42,6 +42,8 @@ DEFINE_UNKNOWN_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
 DEFINE_UNKNOWN_bool(ycql_use_local_transaction_tables, false,
             "Whether or not to use local transaction tables when possible for YCQL transactions.");
+DEFINE_RUNTIME_bool(ycql_allow_local_calls_in_curr_thread, true,
+                    "Whether or not to allow local calls on the RPC thread.");
 
 namespace yb {
 namespace ql {
@@ -113,37 +115,39 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
   return result;
 }
 
-YBSessionPtr QLEnv::NewSession() {
-  return std::make_shared<YBSession>(client_, clock_);
+YBSessionPtr QLEnv::NewSession(CoarseTimePoint deadline) {
+  auto session = std::make_shared<YBSession>(client_, deadline, clock_);
+  session->set_allow_local_calls_in_curr_thread(FLAGS_ycql_allow_local_calls_in_curr_thread);
+  return session;
 }
 
 //------------------------------------------------------------------------------------------------
-shared_ptr<YBTable> QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
+client::YBTablePtr QLEnv::GetTableDesc(const YBTableName& table_name, bool* cache_used) {
   // Hide tables in system_redis keyspace.
   if (table_name.is_redis_namespace()) {
     return nullptr;
   }
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_name, &yb_table, cache_used);
+  auto res = metadata_cache_->GetTableEx(table_name);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
-shared_ptr<YBTable> QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
-  shared_ptr<YBTable> yb_table;
-  Status s = metadata_cache_->GetTable(table_id, &yb_table, cache_used);
+client::YBTablePtr QLEnv::GetTableDesc(const TableId& table_id, bool* cache_used) {
+  auto res = metadata_cache_->GetTableEx(table_id);
 
-  if (!s.ok()) {
-    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
+  if (!res.ok()) {
+    VLOG(3) << "GetTableDesc: Server returns an error: " << res.status().ToString();
     return nullptr;
   }
 
-  return yb_table;
+  *cache_used = res->cache_used;
+  return res->table;
 }
 
 Result<SchemaVersion> QLEnv::GetCachedTableSchemaVersion(const TableId& table_id) {

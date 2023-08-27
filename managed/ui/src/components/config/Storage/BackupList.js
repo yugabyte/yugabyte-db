@@ -5,7 +5,7 @@
 // This file will hold a common list view for the different kind
 // of storage configuration.
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { AssociatedBackups } from '../../backupv2/components/AssociatedBackups';
@@ -77,12 +77,7 @@ export const BackupList = (props) => {
   // This method will handle all the required actions for
   // the particular row.
   const formatConfigActions = (cell, row) => {
-    const {
-      configName,
-      configUUID,
-      inUse,
-      universeDetails
-    } = row;
+    const { configName, configUUID, inUse, universeDetails } = row;
     return (
       <>
         <DropdownButton
@@ -91,14 +86,14 @@ export const BackupList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onEditConfig(row)}>
-            Edit Configuration
-          </MenuItem>
-          <MenuItem onClick={(e) => {
-            e.stopPropagation();
-            setShowAssociatedBackups(true);
-            setConfigData({ configUUID, configName });
-          }}>
+          <MenuItem onClick={() => onEditConfig(row)}>Edit Configuration</MenuItem>
+          <MenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAssociatedBackups(true);
+              setConfigData({ configUUID, configName });
+            }}
+          >
             Show associated backups
           </MenuItem>
           <MenuItem
@@ -110,20 +105,14 @@ export const BackupList = (props) => {
               }
             }}
           >
-            {!inUse && (
-              <>
-                Delete Configuration
-              </>
-            )}
+            {!inUse && <>Delete Configuration</>}
 
             {inUse && (
               <YBInfoTip
                 content="Storage configuration is in use and cannot be deleted until associated resources are removed."
                 placement="top"
               >
-                <span className="disable-delete">
-                  Delete Configuration
-                </span>
+                <span className="disable-delete">Delete Configuration</span>
               </YBInfoTip>
             )}
           </MenuItem>
@@ -189,7 +178,7 @@ export const BackupList = (props) => {
               columnClassName="yb-actions-cell"
               className="yb-actions-cell"
               width="10%"
-              dataAlign='center'
+              dataAlign="center"
             >
               Actions
             </TableHeaderColumn>
@@ -200,7 +189,11 @@ export const BackupList = (props) => {
             associatedUniverses={associatedUniverses}
             title={`Backup Configuration ${configData}`}
           />
-          <AssociatedBackups visible={showAssociatedBackups} onHide={() => setShowAssociatedBackups(false)} storageConfigData={configData} />
+          <AssociatedBackups
+            visible={showAssociatedBackups}
+            onHide={() => setShowAssociatedBackups(false)}
+            storageConfigData={configData}
+          />
         </>
       }
       noBackground

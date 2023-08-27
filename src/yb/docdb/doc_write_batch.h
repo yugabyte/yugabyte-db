@@ -23,6 +23,7 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/dockv/value.h"
 
 #include "yb/rocksdb/cache.h"
@@ -31,6 +32,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -158,6 +160,7 @@ class DocWriteBatch {
  public:
   explicit DocWriteBatch(const DocDB& doc_db,
                          InitMarkerBehavior init_marker_behavior,
+                         std::reference_wrapper<const ScopedRWOperation> pending_op,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
   // Custom write_id could specified. Such write_id should be previously allocated with
@@ -166,8 +169,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::optional<IntraTxnWriteId> write_id = {});
 
@@ -180,13 +182,12 @@ class DocWriteBatch {
   Status SetPrimitive(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp) {
     return SetPrimitive(
-        doc_path, dockv::ValueControlFields { .timestamp = user_timestamp }, value, read_ht,
-        deadline, query_id);
+        doc_path, dockv::ValueControlFields { .timestamp = user_timestamp }, value,
+        read_operation_data, query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -196,8 +197,7 @@ class DocWriteBatch {
   Status ExtendSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
@@ -205,8 +205,7 @@ class DocWriteBatch {
   Status InsertSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp,
@@ -215,8 +214,7 @@ class DocWriteBatch {
   Status ExtendList(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
@@ -226,8 +224,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       int64_t index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
@@ -239,16 +236,14 @@ class DocWriteBatch {
       const dockv::DocPath &doc_path,
       const int index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
       MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
       MonoDelta write_ttl = dockv::ValueControlFields::kMaxTtl);
 
   Status DeleteSubDoc(
       const dockv::DocPath& doc_path,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
@@ -272,6 +267,8 @@ class DocWriteBatch {
   int GetAndResetNumRocksDBSeeks();
 
   const DocDB& doc_db() { return doc_db_; }
+
+  std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
 
   boost::optional<DocWriteBatchCache::Entry> LookupCache(
       const dockv::KeyBytes& encoded_key_prefix) {
@@ -350,6 +347,7 @@ class DocWriteBatch {
 
   DocDB doc_db_;
   InitMarkerBehavior init_marker_behavior_;
+  std::reference_wrapper<const ScopedRWOperation> pending_op_;
   DocReadContextPtr doc_read_context_;
   std::atomic<int64_t>* monotonic_counter_;
 
@@ -375,7 +373,9 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
       StorageDbType storage_db_type,
       BinaryOutputFormat binary_output_format,
       WriteBatchOutputFormat batch_output_format,
-      std::string line_prefix);
+      std::string line_prefix,
+      SchemaPackingProvider* schema_packing_provider);
+
  protected:
   std::string FormatKey(const Slice& key) override;
 
@@ -383,6 +383,7 @@ class DocWriteBatchFormatter : public WriteBatchFormatter {
 
  private:
   StorageDbType storage_db_type_;
+  SchemaPackingProvider* schema_packing_provider_;
 };
 
 // Converts a RocksDB WriteBatch to a string.
@@ -392,7 +393,8 @@ Result<std::string> WriteBatchToString(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    const std::string& line_prefix);
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
 }  // namespace docdb
 }  // namespace yb

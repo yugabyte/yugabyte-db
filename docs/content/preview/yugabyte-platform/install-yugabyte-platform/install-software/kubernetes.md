@@ -1,8 +1,9 @@
 ---
 title: Install YugabyteDB Anywhere software - Kubernetes
-headerTitle: Install YugabyteDB Anywhere software - Kubernetes
-linkTitle: Install software
+headerTitle: Install YugabyteDB Anywhere
+linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
+headContent: Install YBA software in a Kubernetes environment
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -11,10 +12,19 @@ menu:
 type: docs
 ---
 
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+
+Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
@@ -23,13 +33,13 @@ type: docs
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
+    <a href="../openshift/" class="nav-link">
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -123,7 +133,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     An output similar to the following would confirm that there are no errors and that the server is running:
 
-    ```
+    ```output
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
@@ -202,7 +212,7 @@ kubectl port-forward -n yb-platform svc/yw-test-yugaware-ui 8080:80
 
 #### Set up an internal load balancer
 
-You can add annotations to the YugabyteDB Anywhere service to create an internal load balancer instead of a publicly-accessible one. Since every cloud provider has different annotations for doing this, refer to the following documentation:
+You can add annotations to the YugabyteDB Anywhere service to create an internal load balancer instead of a publicly-accessible one. Because every cloud provider has different annotations for doing this, refer to the following documentation:
 
 - For Google Cloud, see [Internal load balancing in GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
 - For Azure, see [Internal load balancer in AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
@@ -299,7 +309,7 @@ The value is passed to Nginx frontend as [ssl_protocols](https://nginx.org/r/ssl
 
 ### Control placement of YugabyteDB Anywhere pods
 
-The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendaitions provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
 
 #### nodeSelector
 
@@ -358,6 +368,7 @@ yugaware:
       cpu: "5"
       memory: "8Gi"
 ```
+
 For more information, see [Memory resources](https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/) and [CPU resources](https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/).
 
 Similarly, you can modify the values for Prometheus and PostgreSQL containers which are part of the chart, as follows:

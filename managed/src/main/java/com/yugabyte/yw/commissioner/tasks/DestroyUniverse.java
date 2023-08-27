@@ -79,7 +79,8 @@ public class DestroyUniverse extends UniverseTaskBase {
           lockedXClusterUniversesUuidSet,
           Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
           xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */);
+          new HashSet<>() /* excludeXClusterConfigSet */,
+          params().isForceDelete);
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
@@ -99,7 +100,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         // Update the DNS entry for primary cluster to mirror creation.
         Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
         createDnsManipulationTask(
-                DnsManager.DnsCommandType.Delete, params().isForceDelete, primaryCluster.userIntent)
+                DnsManager.DnsCommandType.Delete, params().isForceDelete, universe)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {

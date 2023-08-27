@@ -26,6 +26,7 @@ SET enable_hashjoin = off;
 SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
+SET yb_prefer_bnl = on;
 
 SET yb_bnl_batch_size = 3;
 
@@ -132,6 +133,24 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 /*+Leading((p i2))*/ SELECT * FROM int2type i2 JOIN p1 p ON i2.a = p.a;
 DROP TABLE int2type;
 
+CREATE TABLE q1(a int);
+CREATE TABLE q2(a int);
+CREATE TABLE q3(a int primary key);
+
+-- We shouldn't be producing dangerous plans that have join clauses
+-- that involve more than one rel on a side. Leading hint should not be
+-- respected here.
+-- See issue #17150
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+
+-- This join is not dangerous as the clause q3.a = q2.a + q1.a
+-- will actually receive a cross product of q1 and q2 here.
+/*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading(((q1 q2) q3))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
+
+DROP TABLE q1;
+DROP TABLE q2;
+DROP TABLE q3;
+
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
@@ -235,9 +254,23 @@ create index q3_range on q3(a asc);
 
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/ explain (costs off) select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
 
+explain (costs off) SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 = q2.c1;
+
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+
+create table q1(a int, b int);
+create table q2(a int, b int);
+create index on q2(b, a);
+insert into q1 values (1,2), (1,4), (6,7), (2,0), (10,24), (4,2);
+insert into q2 values (2,1), (6,6), (2,4), (0,2), (1,2), (2,2), (4,2);
+
+/*+Leading((q1 q2))*/ explain (costs off) select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
+/*+Leading((q1 q2))*/ select * from q1,q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;
+
+drop table q1;
+drop table q2;
 
 create table g1(h int, r int, primary key(h hash, r asc));
 create table g2(h int, r int, primary key(h hash, r asc));
@@ -253,20 +286,6 @@ insert into g2 values (2,4), (6,8);
 drop table g1;
 drop table g2;
 drop table main;
-
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/EXPLAIN (COSTS OFF) SELECT c.column_name, c.is_nullable = 'YES', c.udt_name, c.character_maximum_length, c.numeric_precision,
-	c.numeric_precision_radix, c.numeric_scale, c.datetime_precision, 8 * typlen, c.column_default, pd.description,
-	c.identity_increment
-	FROM information_schema.columns AS c
-	JOIN pg_type AS pgt ON c.udt_name = pgt.typname
-	LEFT JOIN pg_catalog.pg_description as pd ON pd.objsubid = c.ordinal_position AND pd.objoid = (
-	  SELECT oid FROM pg_catalog.pg_class
-	  WHERE relname = c.table_name AND relnamespace = (
-	    SELECT oid FROM pg_catalog.pg_namespace
-	    WHERE nspname = c.table_schema
-	    )
-	  )
-	where table_catalog = 'yugabyte' AND table_schema = 'clusters' AND table_name = 'clusters';
 
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));

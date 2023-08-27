@@ -264,6 +264,8 @@ public class ImportController extends AuthenticatedController {
                 importForm,
                 Util.getNodePrefix(customer.getId(), universeName),
                 universeName);
+      } else {
+        Universe.getOrBadRequest(importForm.universeUUID, customer);
       }
       List<Provider> providerList = Provider.get(customer.getUuid(), importForm.providerType);
       Provider provider;
@@ -338,7 +340,7 @@ public class ImportController extends AuthenticatedController {
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
-    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID, customer);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
@@ -436,7 +438,7 @@ public class ImportController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, results.error);
     }
 
-    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID, customer);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {
@@ -544,7 +546,7 @@ public class ImportController extends AuthenticatedController {
                       region,
                       zone,
                       index,
-                      cluster.userIntent.instanceType);
+                      cluster.userIntent.getInstanceType(zone.getUuid()));
 
               node.isMaster = isMaster;
             }

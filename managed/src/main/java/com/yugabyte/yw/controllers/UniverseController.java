@@ -49,7 +49,7 @@ public class UniverseController extends AuthenticatedController {
   @ApiOperation(value = "Get a universe", response = UniverseResp.class, nickname = "getUniverse")
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf()));
   }
@@ -63,7 +63,7 @@ public class UniverseController extends AuthenticatedController {
       boolean isDeleteAssociatedCerts,
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID =
         universeCRUDHandler.destroy(

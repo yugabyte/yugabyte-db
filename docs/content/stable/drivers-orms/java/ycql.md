@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Java Driver 3.10 for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Java driver for YCQL
+description: Connect a Java application using YCQL 3.10 driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:

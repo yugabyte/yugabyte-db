@@ -3,7 +3,7 @@ title: Creating an array value using a literal
 linkTitle: Literals
 headerTitle: Creating an array value using a literal
 description: Creating an array value using a literal
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: array-literals
@@ -23,7 +23,7 @@ Here, in use in a SQL `SELECT` statement, is the literal for a one-dimensional a
 \t on
 select '{1, 2, 3}'::int[];
 ```
-The `\t on` metacommand suppresses column headers and the rule-off under these. Unless the headers are important for understanding, query output from `ysqlsh` will be shown, throughout the present "arrays" major section, without these.
+The `\t on` meta-command suppresses column headers and the rule-off under these. Unless the headers are important for understanding, query output from `ysqlsh` will be shown, throughout the present "arrays" major section, without these.
 
 This is the output that the first example produces:
 

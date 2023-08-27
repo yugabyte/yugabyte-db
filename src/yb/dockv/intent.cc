@@ -13,8 +13,6 @@
 
 #include "yb/dockv/intent.h"
 
-#include <string>
-
 #include <glog/logging.h>
 
 #include "yb/common/row_mark.h"
@@ -26,10 +24,61 @@
 
 #include "yb/gutil/endian.h"
 
-#include "yb/util/result.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status_format.h"
 
 namespace yb::dockv {
+namespace {
+
+inline IntentTypeSet GetIntentTypeSet(
+    IsolationLevel level, RowMarkType row_mark, bool is_write) {
+  if (IsValidRowMarkType(row_mark)) {
+    // Mapping of postgres locking levels to DocDB intent types is described in details by the
+    // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
+    switch (row_mark) {
+      case RowMarkType::ROW_MARK_EXCLUSIVE:
+        // FOR UPDATE: strong read + strong write lock on the DocKey,
+        //             as if we're replacing or deleting the entire row in DocDB.
+        return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+        // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
+        //                    the entire row and then writing only a subset of columns in DocDB.
+        return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
+      case RowMarkType::ROW_MARK_SHARE:
+        // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
+        return IntentTypeSet({IntentType::kStrongRead});
+      case RowMarkType::ROW_MARK_KEYSHARE:
+        // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
+        //               replaced / deleted, as if we're simply reading some of the column.
+        //               This is the type of locking that is used by foreign keys, so this will
+        //               prevent the referenced row from disappearing. The reason it does not
+        //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
+        //               an operation that reads the entire row and then writes a subset of columns
+        //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
+        //               be reading a different subset of columns (FOR KEY SHARE).
+        return IntentTypeSet({IntentType::kWeakRead});
+      default:
+        // We shouldn't get here because other row lock types are disabled at the postgres level.
+        LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
+        break;
+    }
+  }
+
+  switch (level) {
+    case IsolationLevel::READ_COMMITTED:
+    case IsolationLevel::SNAPSHOT_ISOLATION:
+      return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+    case IsolationLevel::SERIALIZABLE_ISOLATION:
+      return is_write ? IntentTypeSet({IntentType::kStrongWrite})
+                      : IntentTypeSet({IntentType::kStrongRead});
+    case IsolationLevel::NON_TRANSACTIONAL:
+      LOG(DFATAL) << "GetStrongIntentTypeSet invoked for non transactional isolation";
+      return IntentTypeSet();
+  }
+  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+}
+
+} // namespace
 
 Status RemoveGroupEndSuffix(RefCntPrefix* key) {
   size_t size = DCHECK_NOTNULL(key)->size();
@@ -110,59 +159,12 @@ IntentTypeSet AllStrongIntents() {
   return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
 }
 
-IntentTypeSet GetStrongIntentTypeSet(
-    IsolationLevel level,
-    OperationKind operation_kind,
-    RowMarkType row_mark) {
-  if (IsValidRowMarkType(row_mark)) {
-    // Mapping of postgres locking levels to DocDB intent types is described in details by the
-    // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
-    switch (row_mark) {
-      case RowMarkType::ROW_MARK_EXCLUSIVE:
-        // FOR UPDATE: strong read + strong write lock on the DocKey,
-        //             as if we're replacing or deleting the entire row in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
-        // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
-        //                    the entire row and then writing only a subset of columns in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
-      case RowMarkType::ROW_MARK_SHARE:
-        // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead});
-      case RowMarkType::ROW_MARK_KEYSHARE:
-        // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
-        //               replaced / deleted, as if we're simply reading some of the column.
-        //               This is the type of locking that is used by foreign keys, so this will
-        //               prevent the referenced row from disappearing. The reason it does not
-        //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
-        //               an operation that reads the entire row and then writes a subset of columns
-        //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
-        //               be reading a different subset of columns (FOR KEY SHARE).
-        return IntentTypeSet({IntentType::kWeakRead});
-      default:
-        // We shouldn't get here because other row lock types are disabled at the postgres level.
-        LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
-        break;
-    }
-  }
+IntentTypeSet GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark) {
+  return GetIntentTypeSet(level, row_mark, /*is_write=*/ false);
+}
 
-  switch (level) {
-    case IsolationLevel::READ_COMMITTED:
-    case IsolationLevel::SNAPSHOT_ISOLATION:
-      return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-    case IsolationLevel::SERIALIZABLE_ISOLATION:
-      switch (operation_kind) {
-        case OperationKind::kRead:
-          return IntentTypeSet({IntentType::kStrongRead});
-        case OperationKind::kWrite:
-          return IntentTypeSet({IntentType::kStrongWrite});
-      }
-      FATAL_INVALID_ENUM_VALUE(OperationKind, operation_kind);
-    case IsolationLevel::NON_TRANSACTIONAL:
-      LOG(DFATAL) << "GetStrongIntentTypeSet invoked for non transactional isolation";
-      return IntentTypeSet();
-  }
-  FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+IntentTypeSet GetIntentTypesForWrite(IsolationLevel level) {
+  return GetIntentTypeSet(level, RowMarkType::ROW_MARK_ABSENT, /*is_write=*/ true);
 }
 
 bool HasStrong(IntentTypeSet inp) {
@@ -282,12 +284,12 @@ inline bool IsEndOfSubKeys(const Slice& key) {
 //
 // The beginning of each intent key will also include any cotable_id or colocation_id,
 // if present.
+template<class Functor>
 Status EnumerateWeakIntents(
     Slice key,
-    const EnumerateIntentsCallback& functor,
+    const Functor& functor,
     KeyBytes* encoded_key_buffer,
     PartialRangeKeyIntents partial_range_key_intents) {
-  static const Slice kEmptyIntentValue;
 
   encoded_key_buffer->Clear();
   if (key.empty()) {
@@ -334,9 +336,7 @@ Status EnumerateWeakIntents(
   }
 
   // For any non-empty key we already know that the empty key intent is weak.
-  RETURN_NOT_OK(functor(
-      IntentStrength::kWeak, FullDocKey::kFalse, kEmptyIntentValue, encoded_key_buffer,
-      LastKey::kFalse));
+  RETURN_NOT_OK(functor(FullDocKey::kFalse, encoded_key_buffer));
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
@@ -361,9 +361,7 @@ Status EnumerateWeakIntents(
     }
 
     // Generate a weak intent that only includes the hash component.
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd),
-        kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
+    RETURN_NOT_OK(functor(FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd), encoded_key_buffer));
 
     // Remove the kGroupEnd we added a bit earlier so we can append some range components.
     encoded_key_buffer->RemoveLastByte();
@@ -388,9 +386,7 @@ Status EnumerateWeakIntents(
     }
     FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
     if (partial_range_key_intents || full_doc_key) {
-      RETURN_NOT_OK(functor(
-          IntentStrength::kWeak, full_doc_key, kEmptyIntentValue, encoded_key_buffer,
-          LastKey::kFalse));
+      RETURN_NOT_OK(functor(full_doc_key, encoded_key_buffer));
     }
     encoded_key_buffer->RemoveLastByte();
     range_key_start = key.cdata();
@@ -410,27 +406,34 @@ Status EnumerateWeakIntents(
       // This was the last subkey.
       return Status::OK();
     }
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey::kTrue, kEmptyIntentValue, encoded_key_buffer,
-        LastKey::kFalse));
+    RETURN_NOT_OK(functor(FullDocKey::kTrue, encoded_key_buffer));
     subkey_start = key.cdata();
   }
 
   return STATUS(
-      Corruption,
-      "Expected to reach the end of the key after decoding last valid subkey");
+      Corruption, "Expected to reach the end of the key after decoding last valid subkey");
 }
 
-}  // anonymous namespace
+}  // namespace
 
 Status EnumerateIntents(
     Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key) {
   RETURN_NOT_OK(EnumerateWeakIntents(
-      key, functor, encoded_key_buffer, partial_range_key_intents));
+      key,
+      [&functor](FullDocKey full_doc_key, KeyBytes* encoded_key_buffer) {
+        return functor(
+            AncestorDocKey::kTrue,
+            full_doc_key,
+            Slice() /* intent_value */,
+            encoded_key_buffer,
+            LastKey::kFalse);
+      },
+      encoded_key_buffer,
+      partial_range_key_intents));
   return functor(
-      IntentStrength::kStrong, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
+      AncestorDocKey::kFalse, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
 }
 
 }  // namespace yb::dockv

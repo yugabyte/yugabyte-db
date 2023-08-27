@@ -259,12 +259,56 @@ TEST(DocKVUtilTest, ComplementZeroEncodingAndDecoding) {
   );
 }
 
+TEST(DocKVUtilTest, DecodeZeroEncodingMalformed) {
+  // no escape character at all
+  EXPECT_NOK(DecodeZeroEncodedStr(""s));
+  EXPECT_NOK(DecodeZeroEncodedStr("abc"s));
+
+  // string is not terminated
+  EXPECT_NOK(DecodeZeroEncodedStr("\0\1 abc"s));
+
+  // escape character followed by end of string
+  EXPECT_NOK(DecodeZeroEncodedStr("\0"s));
+  EXPECT_NOK(DecodeZeroEncodedStr("abc\0"s));
+  EXPECT_NOK(DecodeZeroEncodedStr("\0\1 abc\0"s));
+
+  // escape character followed by incorrect character
+  EXPECT_NOK(DecodeZeroEncodedStr("\0\2 abc\0\0"s));
+
+  // reading past end of Slice
+  EXPECT_NOK(DecodeZeroEncodedStr(Slice("\0\0", 1)));
+  EXPECT_NOK(DecodeZeroEncodedStr(Slice("\0\1", 1)));
+  EXPECT_NOK(DecodeZeroEncodedStr(Slice("\0\2", 1)));
+}
+
+TEST(DocKVUtilTest, DecodeComplementZeroEncodingMalformed) {
+  // no escape character at all
+  EXPECT_NOK(DecodeComplementZeroEncodedStr(""s));
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("abc"s));
+
+  // string is not terminated
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("\xff\xfe abc"s));
+
+  // escape character followed by end of string
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("\xff"s));
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("abc\xff"s));
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("\xff\xfe abc\xff"s));
+
+  // escape character followed by incorrect character
+  EXPECT_NOK(DecodeComplementZeroEncodedStr("\xff\2 abc\xff\xff"s));
+
+  // reading past end of Slice
+  EXPECT_NOK(DecodeComplementZeroEncodedStr(Slice("\xff\xff", 1)));
+  EXPECT_NOK(DecodeComplementZeroEncodedStr(Slice("\xff\xfe", 1)));
+  EXPECT_NOK(DecodeComplementZeroEncodedStr(Slice("\xff\2", 1)));
+}
+
 template <class Generator, class Coder>
 void TestStringCodingPerf(const Generator& generator, const Coder& coder) {
   constexpr size_t kNumStrings = 10000;
   constexpr size_t kNumIterations = RegularBuildVsDebugVsSanitizers(100, 10, 1);
   constexpr size_t kStringLength = 1_KB;
-  std::vector<std::string> strings(kNumStrings);
+  std::vector<std::string> strings;
   strings.reserve(kNumStrings);
   for (size_t i = 0; i != kNumStrings; ++i) {
     strings.push_back(generator(kStringLength));

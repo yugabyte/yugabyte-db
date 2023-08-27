@@ -20,13 +20,13 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.TableSpaceUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -113,7 +113,7 @@ public class TablesController extends AuthenticatedController {
 
   private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
       "yb.wait_for_master_leader_timeout";
-
+  private static final String TABLEGROUP_ID_SUFFIX = ".tablegroup.parent.uuid";
   private static final String COLOCATED_NAME_SUFFIX = ".colocated.parent.tablename";
   private static final String COLOCATION_NAME_SUFFIX = ".colocation.parent.tablename";
 
@@ -164,7 +164,7 @@ public class TablesController extends AuthenticatedController {
   public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Form<TableDefinitionTaskParams> formData =
         formFactory.getFormDataOrBadRequest(request, TableDefinitionTaskParams.class);
     TableDefinitionTaskParams taskParams = formData.get();
@@ -177,7 +177,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted create table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        tableDetails.tableName,
+        CommonUtils.logTableName(tableDetails.tableName),
         taskUUID);
 
     // Add this task uuid to the user universe.
@@ -195,7 +195,7 @@ public class TablesController extends AuthenticatedController {
         taskUUID,
         taskParams.tableUUID,
         tableDetails.keyspace,
-        tableDetails.tableName);
+        CommonUtils.logTableName(tableDetails.tableName));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -217,7 +217,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
@@ -246,7 +246,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted delete table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getFullName(),
+        CommonUtils.logTableName(taskParams.getFullName()),
         taskUUID);
 
     CustomerTask.create(
@@ -260,7 +260,7 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}",
         taskUUID,
         taskParams.tableUUID,
-        taskParams.getFullName());
+        CommonUtils.logTableName(taskParams.getFullName()));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -304,6 +304,9 @@ public class TablesController extends AuthenticatedController {
   @Jacksonized
   static class TableInfoResp {
 
+    @ApiModelProperty(value = "Table ID", accessMode = READ_ONLY)
+    public final String tableID;
+
     @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
     public final UUID tableUUID;
 
@@ -339,6 +342,12 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
     public final String pgSchemaName;
+
+    @ApiModelProperty(value = "Flag, indicating colocated table")
+    public final Boolean colocated;
+
+    @ApiModelProperty(value = "Colocation parent id")
+    public final String colocationParentId;
   }
 
   @ApiOperation(
@@ -351,29 +360,19 @@ public class TablesController extends AuthenticatedController {
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
-      boolean excludeColocatedTables) {
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables) {
 
-    // Do not support this use case as the meaning of parent table is different for these two cases.
-    // The current implementation of listTablesWithParentTableInfo() sets the parentTableUUID of a
-    // partition to the paritioned table. It is possible for partitions to exist in a db with
-    // colocation=true. In this scenario, there can be conflict between the parentTableUUID, as it
-    // can be the UUID of the partitioned table or the colocated parent table UUID.
-    if (includeParentTableInfo && excludeColocatedTables) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "Parameter selection, includeParentTableInfo: %s, excludeColocatedTables: %s, "
-                  + "not supported",
-              includeParentTableInfo, excludeColocatedTables));
-    }
-
-    if (includeParentTableInfo) {
-      return listTablesWithParentTableInfo(customerUUID, universeUUID);
-    }
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    String universeVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean hasColocationInfo =
+        CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
+            || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -386,20 +385,75 @@ public class TablesController extends AuthenticatedController {
     ListTablesResponse response =
         listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
     List<TableInfo> tableInfoList = response.getTableInfoList();
+
+    // First filter out all system tables except redis table.
+    tableInfoList =
+        tableInfoList.stream()
+            .filter(table -> !isSystemTable(table) || isSystemRedis(table))
+            .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
-    if (excludeColocatedTables) {
-      Set<String> colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
-      tableInfoList =
+    // Prepare colocated parent table map.
+    Map<TablePartitionInfoKey, TableInfo> colocatedParentTablesMap =
+        tableInfoList.stream()
+            .filter(this::isColocatedParentTable)
+            .collect(
+                Collectors.toMap(
+                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
+                    Function.identity()));
+
+    // Fetch table partitions information if needed.
+    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
+    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap = new HashMap<>();
+    if (includeParentTableInfo) {
+      Map<String, List<TableInfo>> namespacesToTablesMap =
+          tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
+      for (String namespace : namespacesToTablesMap.keySet()) {
+        partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
+      }
+
+      tablePartitionInfoToTableInfoMap =
           tableInfoList.stream()
-              .filter(t -> !colocatedKeySpaces.contains(t.getNamespace().getName()))
-              .collect(Collectors.toList());
+              .collect(
+                  Collectors.toMap(
+                      ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
+                      Function.identity()));
+    }
+
+    // Fetch colocated keyspaces. excludeColocatedTables effectively means
+    // 'exclude tables from colocated keyspaces'.
+    Set<String> colocatedKeySpaces = Collections.emptySet();
+    if (excludeColocatedTables) {
+      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
     }
 
     for (TableInfo table : tableInfoList) {
-      if ((!isSystemTable(table) || isSystemRedis(table)) && !isColocatedParentTable(table)) {
-        tableInfoRespList.add(buildResponseFromTableInfo(table, null, null, tableSizes).build());
+      TablePartitionInfoKey tableKey =
+          new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
+      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
+        // Exclude tables from colocated keyspaces, if needed.
+        continue;
       }
+      if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
+        // Exclude colocated parent tables unless they are requested explicitly.
+        continue;
+      }
+      TableInfo parentPartitionInfo = null;
+      TablePartitionInfo partitionInfo = null;
+      if (includeParentTableInfo) {
+        if (partitionMap.containsKey(tableKey)) {
+          // This 'table' is a partition of some table.
+          partitionInfo = partitionMap.get(tableKey);
+          parentPartitionInfo =
+              tablePartitionInfoToTableInfoMap.get(
+                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
+          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
+        }
+      }
+      tableInfoRespList.add(
+          buildResponseFromTableInfo(
+                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
+              .build());
     }
     return PlatformResults.withData(tableInfoRespList);
   }
@@ -465,7 +519,7 @@ public class TablesController extends AuthenticatedController {
   @ApiModel(description = "Namespace information response")
   @Builder
   @Jacksonized
-  static class NamespaceInfoResp {
+  public static class NamespaceInfoResp {
 
     @ApiModelProperty(value = "Namespace UUID", accessMode = READ_ONLY)
     public final UUID namespaceUUID;
@@ -475,6 +529,11 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Table type")
     public final TableType tableType;
+
+    public static NamespaceInfoResp createFromNamespaceIdentifier(
+        NamespaceIdentifierPB namespaceIdentifier) {
+      return buildResponseFromNamespaceIdentifier(namespaceIdentifier).build();
+    }
   }
 
   @ApiOperation(
@@ -486,9 +545,9 @@ public class TablesController extends AuthenticatedController {
   public Result listNamespaces(
       UUID customerUUID, UUID universeUUID, boolean includeSystemNamespaces) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -544,9 +603,9 @@ public class TablesController extends AuthenticatedController {
       response = TableDefinitionTaskParams.class)
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     YBClient client = null;
     String masterAddresses = universe.getMasterAddresses(true);
 
@@ -594,7 +653,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<MultiTableBackup.Params> formData =
         formFactory.getFormDataOrBadRequest(request, MultiTableBackup.Params.class);
@@ -679,7 +738,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Form<BackupTableParams> formData =
         formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
@@ -716,7 +775,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           scheduleUUID);
       auditService()
           .createAuditEntryWithReqBody(
@@ -730,7 +789,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           taskUUID);
       CustomerTask.create(
           customer,
@@ -744,7 +803,7 @@ public class TablesController extends AuthenticatedController {
           taskUUID,
           tableUUID,
           taskParams.getTableNames(),
-          taskParams.getTableName());
+          CommonUtils.logTableName(taskParams.getTableName()));
       auditService()
           .createAuditEntryWithReqBody(
               request,
@@ -781,7 +840,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     validateTables(Collections.singletonList(tableUUID), universe);
 
     // TODO: undo hardcode to AWS (required right now due to using EMR).
@@ -810,7 +869,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted import into table for {}:{}, task uuid = {}.",
         tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
 
     CustomerTask.create(
@@ -824,8 +883,8 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}.{}",
         taskUUID,
         tableUUID,
-        taskParams.getTableName(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()),
+        CommonUtils.logTableName(taskParams.getTableName()));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -974,8 +1033,8 @@ public class TablesController extends AuthenticatedController {
       response = TableSpaceInfo.class,
       responseContainer = "List")
   public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
@@ -1050,7 +1109,7 @@ public class TablesController extends AuthenticatedController {
     // Validate customer UUID.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     // Extract tablespaces list.
     CreateTablespaceParams tablespacesInfo =
@@ -1090,66 +1149,6 @@ public class TablesController extends AuthenticatedController {
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
-  private Result listTablesWithParentTableInfo(UUID customerUUID, UUID universeUUID) {
-    // Validate customer UUID
-    Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID);
-
-    final String masterAddresses = universe.getMasterAddresses(true);
-    if (masterAddresses.isEmpty()) {
-      String errMsg = "Expected error. Masters are not currently queryable.";
-      LOG.warn(errMsg);
-      return ok(errMsg);
-    }
-
-    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response =
-        listTablesOrBadRequest(masterAddresses, certificate, true /* excludeSystemTables */);
-    List<TableInfo> tableInfoList = response.getTableInfoList();
-
-    Map<String, List<TableInfo>> namespacesToTablesMap =
-        tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
-
-    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
-    for (String namespace : namespacesToTablesMap.keySet()) {
-      partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
-    }
-
-    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap =
-        tableInfoList.stream()
-            .collect(
-                Collectors.toMap(
-                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
-                    Function.identity()));
-
-    List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
-
-    for (TableInfo table : tableInfoList) {
-      if (!isSystemTable(table) || isSystemRedis(table)) {
-        TablePartitionInfoKey partitionInfoKey =
-            new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-        TableInfo parentPartitionInfo = null;
-        TablePartitionInfo partitionInfo = null;
-        if (partitionMap.containsKey(partitionInfoKey)) {
-          // This 'table' is a partition of some table.
-          partitionInfo = partitionMap.get(partitionInfoKey);
-          parentPartitionInfo =
-              tablePartitionInfoToTableInfoMap.get(
-                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
-          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
-        }
-        tableInfoRespList.add(
-            buildResponseFromTableInfo(table, partitionInfo, parentPartitionInfo, tableSizes)
-                .build());
-      }
-    }
-
-    return PlatformResults.withData(tableInfoRespList);
-  }
-
   private Set<String> getColocatedKeySpaces(List<TableInfo> tableInfoList) {
     Set<String> colocatedKeySpaces = new HashSet<String>();
     for (TableInfo tableInfo : tableInfoList) {
@@ -1166,11 +1165,13 @@ public class TablesController extends AuthenticatedController {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
-      Map<String, TableSizes> tableSizeMap) {
+      Map<String, TableSizes> tableSizeMap,
+      boolean hasColocationInfo) {
     String id = table.getId().toStringUtf8();
     String tableKeySpace = table.getNamespace().getName();
     TableInfoResp.TableInfoRespBuilder builder =
         TableInfoResp.builder()
+            .tableID(id)
             .tableUUID(getUUIDRepresentation(id))
             .keySpace(tableKeySpace)
             .tableType(table.getTableType())
@@ -1191,10 +1192,23 @@ public class TablesController extends AuthenticatedController {
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());
     }
+    if (hasColocationInfo) {
+      if (!table.hasColocatedInfo()) {
+        builder.colocated(false);
+      } else {
+        builder.colocated(table.getColocatedInfo().getColocated());
+        if (builder.colocated) {
+          if (table.getColocatedInfo().hasParentTableId()) {
+            String parentTableId = table.getColocatedInfo().getParentTableId().toStringUtf8();
+            builder.colocationParentId(parentTableId);
+          }
+        }
+      }
+    }
     return builder;
   }
 
-  private NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
+  private static NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
       NamespaceIdentifierPB namespace) {
     String id = namespace.getId().toStringUtf8();
     NamespaceInfoResp.NamespaceInfoRespBuilder builder =

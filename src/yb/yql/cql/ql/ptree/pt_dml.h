@@ -43,20 +43,25 @@ class ColumnOpCounter {
   int lt_count() const { return lt_count_; }
   int eq_count() const { return eq_count_; }
   int in_count() const { return in_count_; }
+  int contains_count() const { return contains_count_; }
+  int contains_key_count() const { return contains_key_count_; }
 
   void increase_gt(bool col_arg = false) { !col_arg ? gt_count_++ : partial_col_gt_count_++; }
   void increase_lt(bool col_arg = false) { !col_arg ? lt_count_++ : partial_col_lt_count_++; }
   void increase_eq(bool col_arg = false) { !col_arg ? eq_count_++ : partial_col_eq_count_++; }
   void increase_in(bool col_arg = false) { !col_arg ? in_count_++ : partial_col_in_count_++; }
+  void increase_contains_key() { contains_key_count_++; }
+  void increase_contains() { contains_count_++; }
 
   bool is_valid() {
-    // A. At most one condition can be set for a column.
+    // A. At most one condition can be set for a column (except for CONTAINS AND CONTAINS KEY).
     // B. More than one condition can be set for a partial column such as col[1] or col->'a'.
     // C. Conditions on a column and its partial member cannot co-exist in the same statement.
+    // Note: we allow adding multiple CONTAINS AND CONTAINS KEY condition on a column
     if (in_count_ + eq_count_ + gt_count_ > 1 || in_count_ + eq_count_ + lt_count_ > 1 ||
         (in_count_ + eq_count_ + gt_count_ + lt_count_ > 0 &&
         partial_col_eq_count_ + partial_col_gt_count_ + partial_col_in_count_ +
-            partial_col_lt_count_ > 0)) {
+            partial_col_lt_count_ + contains_key_count_ + contains_count_ > 0)) {
       return false;
     }
     // D. Both inequality (less and greater) set together.
@@ -67,7 +72,8 @@ class ColumnOpCounter {
   }
 
   bool IsEmpty() const {
-    return gt_count_ == 0 && lt_count_ == 0 && eq_count_ == 0 && in_count_ == 0;
+    return gt_count_ == 0 && lt_count_ == 0 && eq_count_ == 0 && in_count_ == 0 &&
+           contains_key_count_ == 0 && contains_count_ == 0;
   }
 
  private:
@@ -76,6 +82,9 @@ class ColumnOpCounter {
   int lt_count_ = 0;
   int eq_count_ = 0;
   int in_count_ = 0;
+  int contains_key_count_ = 0;
+  int contains_count_ = 0;
+
   // These are counts for partial columns like json(c1->'a') and collection(c1[0]) operators.
   int partial_col_gt_count_ = 0;
   int partial_col_lt_count_ = 0;

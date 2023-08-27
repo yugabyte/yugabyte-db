@@ -30,20 +30,34 @@ export enum NodeType {
   TServer = 'TServer'
 }
 
-export interface CpuMeasureQueryData {
+export interface PerfRecommendationMetaData {
   suggestion?: string;
   maxNodeName: string;
   maxNodeValue: number;
   otherNodesAvgValue: number;
 }
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
+
+export interface HotShardData {
+  suggestion?: string;
+  hotShardNodeName: string;
+  hotShardMaxNodeValue: number;
+  hotShardAvgNodeValue: number;
+}
+
+export interface PerfRecommendationProps {
+  data: PerfRecommendationMetaData;
+  summary: React.ReactNode | string;
+}
+
+export interface HotShardRecommendation {
+  data: HotShardData;
   summary: React.ReactNode | string;
 }
 
 export interface CustomRecommendation {
   summary: React.ReactNode | string;
   suggestion: string;
+  type: string;
 }
 
 export interface IndexSchemaQueryData {
@@ -99,7 +113,7 @@ const EntityType = {
   DATABASE: 'DATABASE',
   TABLE: 'TABLE',
   INDEX: 'INDEX',
-  UNIVERSE:  'UNIVERSE'
+  UNIVERSE: 'UNIVERSE'
 } as const;
 export type EntityType = typeof EntityType[keyof typeof EntityType];
 
@@ -121,10 +135,10 @@ interface HighestNodeQueryLoadDetails {
   DeleteStmt: number;
   InsertStmt: number;
   SelectStmt: number;
-  UpdateStmt: number
+  UpdateStmt: number;
 }
 
-interface OtherNodeQueryLoadDetails extends HighestNodeQueryLoadDetails { }
+interface OtherNodeQueryLoadDetails extends HighestNodeQueryLoadDetails {}
 
 export interface RecommendationInfo {
   // CPU Skew and CPU Usage
@@ -184,4 +198,53 @@ export interface LastRunData {
   state: string;
   universeUUID: string;
   uuid: string;
+}
+
+export interface NodeAgentEntities {
+  archType: string;
+  config: any;
+  customerUuid: string;
+  home: string;
+  ip: string;
+  name: string;
+  osType: string;
+  port: number;
+  reachable: boolean;
+  state: string;
+  updatedAt: string;
+  uuid: string;
+  version: string;
+  versionMatched: boolean;
+}
+
+export enum NodeAgentStatusList {
+  READY = 'READY',
+  REGISTERING = 'REGISTERING',
+  UPGRADE = 'UPGRADE',
+  UPGRADED = 'UPGRADED'
+}
+
+export interface NodeListDetails {
+  instanceName: string;
+  instanceType: string;
+  ip: string;
+  nodeName: string;
+  region: string;
+  sshUser: string;
+  zone: string;
+}
+
+export interface ProviderNode {
+  details: NodeListDetails;
+  detailsJson: any;
+  inUse: boolean;
+  instanceName: string;
+  instanceTypeCode: string;
+  nodeName: string;
+  nodeUuid: string;
+  zoneUuid: string;
+}
+
+export interface TaskResponse {
+  taskUUID: string;
 }

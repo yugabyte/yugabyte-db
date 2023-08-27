@@ -46,6 +46,8 @@ class YQLRowwiseIteratorIf {
     return DoFetchNext(table_row, projection, static_row, static_projection);
   }
 
+  virtual Result<bool> PgFetchNext(dockv::PgTableRow* table_row) = 0;
+
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
   virtual Result<HybridTime> RestartReadHt() = 0;
@@ -70,12 +72,12 @@ class YQLRowwiseIteratorIf {
   virtual Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
-  virtual Result<Slice> GetTupleId() const;
+  virtual Slice GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual void SeekTuple(const Slice& tuple_id);
+  virtual void SeekTuple(Slice tuple_id);
 
-  virtual Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row);
+  virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
 
  protected:
   virtual Result<bool> DoFetchNext(

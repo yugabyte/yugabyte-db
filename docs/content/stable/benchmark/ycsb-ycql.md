@@ -1,9 +1,9 @@
 ---
-title: Benchmark YCQL performance using YCSB
+title: Benchmark YCQL performance in YugabyteDB with YCSB
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YCQL performance with YCSB using the new YCQL binding.
-headcontent: Benchmark YCQL performance using YCSB.
+description: Learn how to test the YCQL api using the YCSB benchmark.
+headcontent: Benchmark YCQL performance using YCSB
 menu:
   stable:
     identifier: ycsb-3-ycql

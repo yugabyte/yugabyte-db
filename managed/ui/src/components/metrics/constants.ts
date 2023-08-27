@@ -81,6 +81,8 @@ export const MetricTypesWithOperations = {
       'disk_iops',
       'disk_usage_percent',
       'disk_used_size_total',
+      'disk_volume_usage_percent',
+      'disk_volume_used',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -185,6 +187,7 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
+      'lsm_rocksdb_mem_tracker_db_memtable',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
       'tablet_splitting_stats',
@@ -246,7 +249,8 @@ export const MetricTypesWithOperations = {
       'table_write_rejections',
       'table_memory_rejections',
       'table_compaction',
-      'table_block_cache_hit_miss'
+      'table_block_cache_hit_miss',
+      'table_mem_tracker_db_memtable'
     ]
   }
 } as const;

@@ -10,8 +10,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -77,6 +78,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   Region defaultRegion;
   AvailabilityZone defaultAZ;
   CertificateInfo defaultCert;
+  CertificateHelper certificateHelper;
   // TODO: when trying to fetch the cluster UUID directly, we get:
   // javax.persistence.EntityNotFoundException: Bean not found during lazy load or refresh
   //
@@ -126,9 +128,10 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     new File(CERTS_DIR).mkdirs();
     Config spyConf = spy(app.config());
     doReturn(CERTS_DIR).when(spyConf).getString("yb.storage.path");
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     defaultCert =
         CertificateInfo.get(
-            CertificateHelper.createRootCA(
+            certificateHelper.createRootCA(
                 spyConf,
                 defaultUniverse.getUniverseDetails().nodePrefix,
                 defaultProvider.getCustomerUUID()));
@@ -542,7 +545,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Yaml yaml = new Yaml();
     InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
-
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
   }
