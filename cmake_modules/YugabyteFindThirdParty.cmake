@@ -217,6 +217,14 @@ macro(yb_find_third_party_dependencies)
   include_directories(SYSTEM ${HIREDIS_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 
+  # Abseil
+  if (NOT APPLE)
+    find_package(Abseil REQUIRED)
+    ADD_THIRDPARTY_LIB(abseil
+      STATIC_LIB "${ABSEIL_STATIC_LIB}"
+      SHARED_LIB "${ABSEIL_SHARED_LIB}")
+    ADD_CXX_FLAGS("-DYB_ABSL_ENABLED")
+  endif()
   # -------------------------------------------------------------------------------------------------
   # Deciding whether to use tcmalloc
   # -------------------------------------------------------------------------------------------------
@@ -245,12 +253,6 @@ macro(yb_find_third_party_dependencies)
     if ("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
       message("Using google/tcmalloc")
       find_package(TCMalloc REQUIRED)
-
-      # Use abseil (which tcmalloc depends on).
-      find_package(Abseil REQUIRED)
-      ADD_THIRDPARTY_LIB(abseil
-        STATIC_LIB "${ABSEIL_STATIC_LIB}"
-        SHARED_LIB "${ABSEIL_SHARED_LIB}")
       ADD_CXX_FLAGS("-DYB_GOOGLE_TCMALLOC")
     else()
       ## Google PerfTools

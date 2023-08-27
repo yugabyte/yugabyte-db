@@ -841,12 +841,16 @@ Status PgApiImpl::ExecCreateTablegroup(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTablegroup*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropTablegroup(const PgOid database_oid,
                                     const PgOid tablegroup_oid,
                                     PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -858,6 +862,7 @@ Status PgApiImpl::ExecDropTablegroup(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTablegroup*>(handle)->Exec();
 }
 
@@ -940,14 +945,16 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
 }
 
 Status PgApiImpl::AlterTableAddColumn(PgStatement *handle, const char *name,
-                                      int order, const YBCPgTypeEntity *attr_type) {
+                                      int order,
+                                      const YBCPgTypeEntity *attr_type,
+                                      YBCPgExpr missing_value) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
-  return pg_stmt->AddColumn(name, attr_type, order);
+  return pg_stmt->AddColumn(name, attr_type, order, missing_value);
 }
 
 Status PgApiImpl::AlterTableRenameColumn(PgStatement *handle, const char *oldname,
@@ -1015,6 +1022,9 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Table is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTable>(pg_session_, table_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1173,12 +1183,16 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Index is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1209,6 +1223,14 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   }
   pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
+}
+
+Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_INDEX)) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  pg_session_->SetDdlHasSyscatalogChanges();
+  return down_cast<PgDropIndex*>(handle)->Exec();
 }
 
 Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
@@ -1566,6 +1588,15 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
   return Status::OK();
 }
 
+Status PgApiImpl::SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDmlRead*>(handle)->SetDistinctPrefixLength(distinct_prefix_length);
+  return Status::OK();
+}
+
 Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
@@ -1850,6 +1881,10 @@ Status PgApiImpl::ResetTransactionReadPoint() {
 
 Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint();
+}
+
+bool PgApiImpl::IsRestartReadPointRequested() {
+  return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
 Status PgApiImpl::CommitTransaction() {

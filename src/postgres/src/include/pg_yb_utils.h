@@ -42,6 +42,8 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb_ysql_conn_mgr_helper.h"
+
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -108,11 +110,6 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.
  */
 extern bool IsYugaByteEnabled();
-
-/*
- * Check whether the connection is made from Ysql Connection Manager.
- */
-extern bool YbIsClientYsqlConnMgr();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
@@ -558,6 +555,18 @@ extern bool yb_test_fail_next_ddl;
 extern char *yb_test_block_index_phase;
 
 /*
+ * Same as above, but fails the operation at the given stage instead of
+ * blocking.
+ */
+extern char *yb_test_fail_index_state_change;
+
+/*
+ * Denotes whether DDL operations touching DocDB system catalog will be rolled
+ * back upon failure.
+*/
+extern bool ddl_rollback_enabled;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -635,6 +644,8 @@ bool YBIsSupportedLibcLocale(const char *localebuf);
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
+
+extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
 char *YBDetailSorted(char *input);
 
@@ -924,14 +935,14 @@ OptSplit *YbGetSplitOptions(Relation rel);
 #endif
 
 /*
- * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
- * maintained for every transaction. 
+ * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
  */
 extern void increment_sticky_object_count();
 
 /*
- * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
- * maintained for every transaction. 
+ * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
  */
 extern void decrement_sticky_object_count();
 
@@ -939,8 +950,6 @@ extern void decrement_sticky_object_count();
  * Check if there exists a database object that requires a sticky connection.
  */
 extern bool YbIsStickyConnection(int *change);
-
-extern bool yb_is_client_ysqlconnmgr;
 
 /*
  * Creates a shallow copy of the pointer list.

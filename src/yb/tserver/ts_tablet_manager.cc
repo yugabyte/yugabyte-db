@@ -89,6 +89,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -374,6 +375,16 @@ using yb::MonoTime;
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 const std::string kDebugBootstrapString = "RemoteBootstrap";
 const std::string kDebugSnapshotTransferString = "RemoteSnapshotTransfer";
+
+// Jenkins builds complain if we use tools::SnapshotIdToString with `undefined reference`.
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+} // namespace
 
 void TSTabletManager::VerifyTabletData() {
   LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
@@ -853,15 +864,15 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_encoded_key = request.split_encoded_key();
 
   auto source_partition = tablet.metadata()->partition();
-  const auto source_key_bounds = *tablet.doc_db().key_bounds;
+  const auto& source_key_bounds = tablet.key_bounds();
 
   {
     TabletCreationMetaData meta;
     meta.tablet_id = request.new_tablet1_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_end(split_partition_key);
     meta.key_bounds.upper.Reset(split_encoded_key);
+    meta.partition.set_partition_key_end(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -870,8 +881,8 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
     meta.tablet_id = request.new_tablet2_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_start(split_partition_key);
     meta.key_bounds.lower.Reset(split_encoded_key);
+    meta.partition.set_partition_key_start(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -1351,8 +1362,11 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir));
 
   // Download the remote file specified in the request.
+  auto snapshot_id = SnapshotIdToString(req.snapshot_id());
+  auto new_snapshot_id =
+      req.has_new_snapshot_id() ? SnapshotIdToString(req.new_snapshot_id()) : snapshot_id;
   RETURN_NOT_OK_PREPEND(
-      remote_snapshot_client->FetchSnapshot(req.snapshot_id()),
+      remote_snapshot_client->FetchSnapshot(snapshot_id, new_snapshot_id),
       "remote snapshot transfer: Unable to fetch data from remote tablet " + source_uuid + " (" +
           source_addr.ToString() + ")");
 

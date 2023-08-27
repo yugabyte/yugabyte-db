@@ -21,6 +21,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/result.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 
@@ -39,6 +40,18 @@ struct Traits<DataType::USER_DEFINED_TYPE> {
 };
 
 constexpr int kMaxValidYCQLTypeIndex = to_underlying(DataType::JSONB) + 1;
+
+// Set of keywords in CQL.
+// Derived from .../cassandra/src/java/org/apache/cassandra/cql3/Cql.g
+static const std::unordered_set<std::string> cql_keywords({
+    "add", "allow", "alter", "and", "apply", "asc", "authorize", "batch", "begin", "by",
+    "columnfamily", "create", "default", "delete", "desc", "describe", "drop", "entries",
+    "execute", "from", "frozen", "full", "grant", "if", "in", "index", "infinity", "insert",
+    "into", "is", "keyspace", "limit", "list", "map", "materialized", "mbean", "mbeans",
+    "modify", "nan", "norecursive", "not", "null", "of", "on", "or", "order", "primary",
+    "rename", "replace", "revoke", "schema", "select", "set", "table", "to", "token",
+    "truncate", "unlogged", "unset", "update", "use", "using", "view", "where", "with"
+});
 
 } // namespace
 
@@ -376,7 +389,14 @@ std::string QLType::ToString() const {
 void QLType::ToString(std::stringstream& os) const {
   if (IsUserDefined()) {
     // UDTs can only be used in the keyspace they are defined in, so keyspace name is implied.
-    os << udtype_name();
+    const std::string udt_name = udtype_name();
+    // Identifiers in cassandra/ycql are case-insensitive unless specified under double quotes.
+    // See: https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/ucase-lcase_r.html
+    if (cql_keywords.contains(ToLowerCase(udt_name))) {
+      os << "\"" <<  udt_name << "\"";
+    } else {
+      os << udt_name;
+    }
   } else {
     os << ToCQLString(id_);
     if (!params_.empty()) {

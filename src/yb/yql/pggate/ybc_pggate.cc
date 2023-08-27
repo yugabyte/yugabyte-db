@@ -700,8 +700,8 @@ YBCStatus YBCPgNewAlterTable(const YBCPgOid database_oid,
 }
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type) {
-  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type));
+                                   const YBCPgTypeEntity *attr_type, YBCPgExpr missing_value) {
+  return ToYBCStatus(pgapi->AlterTableAddColumn(handle, name, order, attr_type, missing_value));
 }
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
@@ -890,6 +890,10 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
+}
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropIndex(handle));
 }
 
 YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
@@ -1148,6 +1152,10 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
   return ToYBCStatus(pgapi->SetForwardScan(handle, is_forward_scan));
 }
 
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length) {
+  return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
+}
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
@@ -1339,6 +1347,10 @@ YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
+bool YBCIsRestartReadPointRequested() {
+  return pgapi->IsRestartReadPointRequested();
+}
+
 YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
@@ -1508,7 +1520,6 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
       .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
       .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_ddl_rollback_enabled                = &FLAGS_ysql_ddl_rollback_enabled,
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
       .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
       .ysql_disable_global_impact_ddl_statements =

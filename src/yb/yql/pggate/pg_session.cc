@@ -258,7 +258,8 @@ class PgSession::RunHelper {
     // can never occur).
 
     VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
-            << table.table_name().table_name() << ", table id: " << table.id();
+            << table.table_name().table_name() << ", table id: " << table.id()
+            << ", force_non_bufferable: " << force_non_bufferable;
     auto& buffer = pg_session_.buffer_;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -653,12 +654,20 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
         false /* read_only */, txn_priority_requirement));
   }
 
-  // In case of flushing of non-transactional operations it is required to set read time with the
-  // very first (and all further) request as flushing is done asynchronously (i.e. YSQL may send
-  // multiple bunch of operations in parallel). As a result PgClientService is unable to use read
-  // time from remote t-server or generate its own.
+  // When YSQL is flushing a pipeline of Perform rpcs asynchronously i.e., without waiting for
+  // responses of those rpcs, it is required that PgClientService pick a read time before the very
+  // first request that is forwarded to docdb (potentially on a remote t-server) so that the same
+  // read time can be used for all Perform rpcs in the transaction.
+  //
+  // If there is no pipelining of Perform rpcs, the read time can be picked on docdb and the later
+  // Perform rpcs can use the same read time. This has some benefits such as not having to wait
+  // for the safe time on docdb to catch up with an already chosen read time, and allowing docdb to
+  // internally retry the request in case of read restart/ conflict errors.
+  //
+  // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
+  // optimization of allowing docdb (which serves the operation) to pick the read time.
   return Perform(
-      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet(!transactional)});
+      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {

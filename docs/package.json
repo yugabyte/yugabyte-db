@@ -4,16 +4,22 @@
   "description": "Yugabyte Docs",
   "main": "public/index.html",
   "scripts": {
-    "start": "run-p webpack-watch hugo-server",
+    "start": "run-p start-diagrams webpack-watch hugo-server",
+    "fast": "run-p webpack-watch hugo-server-fast",
     "start-production": "run-p webpack-watch hugo-server-production",
     "start-static": "run-p webpack-watch hugo-server-static",
-    "build": "rm -rf public && npm ci && run-s webpack-build hugo-build",
-    "debug-build": "rm -rf public && npm ci && run-s webpack-build hugo-build-with-metrics",
+    "build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-build",
+    "hugo-base-build": "run-s webpack-build hugo-build stop-diagrams",
+    "debug-build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-debug-build",
+    "hugo-base-debug-build": "run-s webpack-build hugo-build-with-metrics stop-diagrams",
     "hugo-build": "hugo -b https://docs.yugabyte.com",
     "hugo-build-with-metrics": "hugo --templateMetrics --templateMetricsHints -b https://docs.yugabyte.com",
     "hugo-server": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
+    "hugo-server-fast": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment fast",
     "hugo-server-production": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment production",
     "hugo-server-static": "hugo server --renderStaticToDisk --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
+    "start-diagrams": "npm install --no-audit --no-fund && java -jar node_modules/yb-rrdiagram/rrdiagram*.jar --server",
+    "stop-diagrams": "curl --silent http://localhost:1314/shutdown",
     "webpack-build": "webpack --mode=production",
     "webpack-watch": "webpack --mode=production -w"
   },
@@ -43,7 +49,8 @@
     "run-p": "0.0.0",
     "webpack": "5.88.2",
     "webpack-cli": "5.1.4",
-    "webpack-dev-server": "4.15.1"
+    "webpack-dev-server": "4.15.1",
+    "yb-rrdiagram": "0.0.4"
   },
   "devDependencies": {
     "autoprefixer": "10.4.14",

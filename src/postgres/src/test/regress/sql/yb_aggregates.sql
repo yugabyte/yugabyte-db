@@ -271,19 +271,6 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 \set query 'SELECT SUM(i) FROM rsplit WHERE i = 3'
 :run;
 
----
---- SPLIT
----
-CREATE TABLE rsplit (i int, PRIMARY KEY (i ASC)) SPLIT AT VALUES ((2));
-CREATE INDEX ON rsplit (i ASC) SPLIT AT VALUES ((3));
-INSERT INTO rsplit VALUES (1), (2), (3);
-\set ss '/*+SeqScan(rsplit)*/'
-\set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
-\set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
-:run;
-\set query 'SELECT SUM(i) FROM rsplit WHERE i = 3'
-:run;
-
 --
 -- System tables.
 --
@@ -307,6 +294,48 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 \set isquery ':query WHERE j < 0'
 -- TODO(#18619): change the following to :run;
 :runnois;
+
+--
+-- Prepared statements.
+--
+CREATE TABLE ptest(k int, i int, v int, primary key(k asc));
+CREATE INDEX NONCONCURRENTLY ptestindex on ptest(i asc);
+INSERT INTO ptest select i, i + 1, i + 2 from generate_series(1, 10) i;
+PREPARE iss as select sum(k) from ptest where k = ANY($1);
+PREPARE ioss as select sum(i) from ptest where i = ANY($1);
+\set prm 'ARRAY[1, 2]'
+\set issexec 'EXECUTE iss(:prm)'
+\set iossexec 'EXECUTE ioss(:prm)'
+\set exec ':explain :issexec; :explain :iossexec; :issexec; :iossexec;'
+:exec
+-- repeat multiple times to make sure the statements are not replanned and cached plan is used
+\set prm 'ARRAY[3, 4]'
+:exec
+\set prm 'ARRAY[5, 6]'
+:exec
+\set prm 'ARRAY[7, 8]'
+:exec
+\set prm 'ARRAY[9, 10]'
+:exec
+\set prm 'ARRAY[11, 12]'
+:exec
+DEALLOCATE iss;
+DEALLOCATE ioss;
+
+-- Internal parameters test
+CREATE TABLE nlptest (v1 int, v2 int);
+INSERT INTO nlptest SELECT i*2-1, i*2 FROM generate_series(1,6) i;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(k) FROM ptest t2 WHERE k = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(i) FROM ptest t2 WHERE i = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+
+DROP TABLE ptest;
+DROP TABLE nlptest;
 
 --
 -- Colocation.

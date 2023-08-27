@@ -60,7 +60,7 @@ type: indexpage
         <div class="title">Manage runtime configuration settings</div>
       </div>
       <div class="body">
-        Manage your YB Anywhere universe by setting scopes for runtime configuration keys.
+        Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers.
       </div>
     </a>
   </div>

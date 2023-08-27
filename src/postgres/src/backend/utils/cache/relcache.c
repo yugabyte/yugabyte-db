@@ -715,8 +715,9 @@ RelationBuildTupleDesc(Relation relation)
 			ndef++;
 		}
 
+		/* YB note: attmissingval is unused in YB relations. */
 		/* Likewise for a missing value */
-		if (attp->atthasmissing)
+		if (!IsYBRelation(relation) && attp->atthasmissing)
 		{
 			Datum		missingval;
 			bool		missingNull;
@@ -1778,8 +1779,9 @@ YbApplyAttr(YbAttrProcessorState *state, Relation attrel, HeapTuple htup)
 		++processing->ndef;
 	}
 
+	/* YB note: attmissingval is unused in YB relations. */
 	/* Likewise for a missing value */
-	if (attp->atthasmissing)
+	if (!IsYBRelation(relation) && attp->atthasmissing)
 	{
 		bool missingNull;
 

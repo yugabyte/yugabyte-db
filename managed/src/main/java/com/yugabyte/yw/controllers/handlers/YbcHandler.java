@@ -10,6 +10,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -30,6 +32,8 @@ public class YbcHandler {
   @Inject private Commissioner commissioner;
 
   @Inject private YbcManager ybcManager;
+
+  @Inject private RuntimeConfGetter confGetter;
 
   public UUID disable(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -138,12 +142,13 @@ public class YbcHandler {
 
     if (Util.compareYbVersions(
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            Util.YBC_COMPATIBLE_DB_VERSION,
+            confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
             true)
         < 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot install universe with DB version lower than " + Util.YBC_COMPATIBLE_DB_VERSION);
+          "Cannot install universe with DB version lower than "
+              + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();

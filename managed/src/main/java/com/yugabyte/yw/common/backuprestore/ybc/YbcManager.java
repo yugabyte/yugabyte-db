@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
@@ -841,9 +842,25 @@ public class YbcManager {
         Provider.get(Customer.get(universe.getCustomerId()).getUuid(), providerUUID);
     boolean listenOnAllInterfaces =
         confGetter.getConfForScope(provider, ProviderConfKeys.ybcListenOnAllInterfacesK8s);
+    int hardwareConcurrency;
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      hardwareConcurrency =
+          (int)
+              Math.ceil(
+                  InstanceType.getOrBadRequest(
+                          provider.getUuid(), nodeDetails.cloudInfo.instance_type)
+                      .getNumCores());
+    } else {
+      hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+    }
     Map<String, String> ybcGflags =
         GFlagsUtil.getYbcFlagsForK8s(
-            universe.getUniverseUUID(), nodeDetails.nodeName, listenOnAllInterfaces);
+            universe.getUniverseUUID(),
+            nodeDetails.nodeName,
+            listenOnAllInterfaces,
+            hardwareConcurrency);
     try {
       Path confFilePath =
           fileHelperService.createTempFile(

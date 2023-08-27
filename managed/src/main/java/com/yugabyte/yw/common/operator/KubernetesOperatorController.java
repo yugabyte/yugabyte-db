@@ -183,11 +183,16 @@ public class KubernetesOperatorController {
         UniverseResp universeResp =
             universeCRUDHandler.findByName(cust, universeName).stream().findFirst().orElse(null);
 
-        if (universeResp == null
-            && isRunningInKubernetes()
-            && canDeleteProvider(cust, universeName)) {
-          String status = ybUniverse.getStatus().getUniverseStatus();
-          if (status.contains("DestroyKubernetesUniverse Success")) {
+        if (universeResp == null) {
+          var ybUniStatus = ybUniverse.getStatus();
+          // at this point the universe should be deleted, lets just return.
+          if (ybUniStatus == null) {
+            return;
+          }
+          String status = ybUniStatus.getUniverseStatus();
+          if (status.contains("DestroyKubernetesUniverse Success")
+              && canDeleteProvider(cust, universeName)
+              && isRunningInKubernetes()) {
             LOG.info("Status is: " + status);
             LOG.info("Deleting provider now");
             Result deleteProvider = deleteProvider(cust.getUuid(), universeName);
@@ -620,8 +625,12 @@ public class KubernetesOperatorController {
       userIntent.enableYCQLAuth = true;
       userIntent.ycqlPassword = password;
     }
-    userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
-    userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    if (ybUniverse.getSpec().getMasterGFlags() != null) {
+      userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
+    }
+    if (ybUniverse.getSpec().getTserverGFlags() != null) {
+      userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    }
     return userIntent;
   }
 

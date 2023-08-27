@@ -238,7 +238,8 @@ YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type);
+                                   const YBCPgTypeEntity *attr_type,
+                                   YBCPgExpr missing_value);
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
                                       const char *newname);
@@ -339,6 +340,8 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,
@@ -530,6 +533,9 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
+// Set prefix length for distinct index scans.
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
 // Functions----------------------------------------------------------------------------------------
@@ -551,6 +557,7 @@ YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
+bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);

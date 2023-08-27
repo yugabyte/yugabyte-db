@@ -1,12 +1,9 @@
 package helpers
 
 import (
+    "apiserver/cmd/server/logger"
     "encoding/json"
     "errors"
-    "fmt"
-    "io/ioutil"
-    "net/http"
-    "time"
 )
 
 type HealthCheckStruct struct {
@@ -20,23 +17,18 @@ type HealthCheckFuture struct {
     Error error
 }
 
-func GetHealthCheckFuture(nodeHost string, future chan HealthCheckFuture) {
+func GetHealthCheckFuture(log logger.Logger, nodeHost string, future chan HealthCheckFuture) {
     healthCheck := HealthCheckFuture{
         HealthCheck: HealthCheckStruct{},
         Error: nil,
     }
-    httpClient := &http.Client{
-        Timeout: time.Second * 10,
-    }
-    url := fmt.Sprintf("http://%s:%s/api/v1/health-check", nodeHost, MasterUIPort)
-    resp, err := httpClient.Get(url)
+    urls, err := BuildMasterURLs(log, "api/v1/health-check")
     if err != nil {
         healthCheck.Error = err
         future <- healthCheck
         return
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := AttemptGetRequests(log, urls, true)
     if err != nil {
         healthCheck.Error = err
         future <- healthCheck

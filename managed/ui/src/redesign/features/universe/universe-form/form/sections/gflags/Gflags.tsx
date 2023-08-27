@@ -69,12 +69,11 @@ export const GFlags: FC = () => {
 
   if (isEditPrimary && _.isEmpty(getValues(GFLAGS_FIELD))) return null;
   if (!enableRRGflags && !isPrimary) return null;
-  if (!isPrimary && provider?.code === CloudType.kubernetes) return null;
 
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
       <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
-      {!isPrimary && enableRRGflags && provider?.code !== CloudType.kubernetes && (
+      {!isPrimary && enableRRGflags && (
         <Box className={gflagClasses.inheritFlagsContainer}>
           <Box flexShrink={1}>
             <YBToggleField

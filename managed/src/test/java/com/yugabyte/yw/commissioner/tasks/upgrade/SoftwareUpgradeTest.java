@@ -189,16 +189,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     }
 
     if (isFinalStep) {
+      commonNodeTasks.addAll(
+          ImmutableList.of(TaskType.CheckSoftwareVersion, TaskType.PromoteAutoFlags));
       if (systemCatalogUpgrade) {
         commonNodeTasks.add(TaskType.RunYsqlUpgrade);
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
-              TaskType.CheckSoftwareVersion,
-              TaskType.PromoteAutoFlags,
-              TaskType.UpdateSoftwareVersion,
-              TaskType.RunHooks,
-              TaskType.UniverseUpdateSucceeded));
+              TaskType.UpdateSoftwareVersion, TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);

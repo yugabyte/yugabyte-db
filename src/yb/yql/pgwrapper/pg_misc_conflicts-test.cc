@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <thread>
-
 #include <gtest/gtest.h>
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -21,6 +19,7 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_int32(ysql_max_read_restart_attempts);
@@ -42,7 +41,7 @@ class PgMiscConflictsTest : public PgMiniTestBase {
 };
 
 // Test checks conflict detection on colocated table in case of explicit row lock
-TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupRowLock)) {
+TEST_F(PgMiscConflictsTest, TablegroupRowLock) {
   constexpr auto* kTable = "tbl";
 
   auto conn = ASSERT_RESULT(Connect());
@@ -64,7 +63,7 @@ TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupRowLock)) {
 }
 
 // Test checks conflict detection on colocated table with FK
-TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupFKDelete)) {
+TEST_F(PgMiscConflictsTest, TablegroupFKDelete) {
   constexpr auto* kRefTable = "ref_tbl";
   constexpr auto* kTable = "tbl";
 
@@ -84,6 +83,36 @@ TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupFKDelete)) {
 
   ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_NOK(aux_conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 1)", kTable));
+  ASSERT_OK(aux_conn.RollbackTransaction());
+
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+// Test checks absence of conflict with concurrent update in case only key columns are read by the
+// query and all key columns are specified.
+TEST_F(PgMiscConflictsTest, SerializableInsolationWeakReadIntent) {
+  constexpr auto* kTable = "tbl";
+
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto aux_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 10)", kTable));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v = v + 1 WHERE k = 1", kTable));
+
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  // No conflict. Because only key column is read and StrongRead intent is created on
+  // kLivenessColumn of k = 1 row
+  ASSERT_OK(aux_conn.FetchFormat("SELECT k FROM $0 WHERE k = 1", kTable));
+  ASSERT_OK(aux_conn.CommitTransaction());
+
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  // Conflict. Because not only key columns are read and StrongRead intent is created on
+  // entire k = 1 row
+  auto status = aux_conn.ExecuteFormat("SELECT * FROM $0 WHERE k = 1", kTable);
+  ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_OK(aux_conn.RollbackTransaction());
 
   ASSERT_OK(conn.CommitTransaction());

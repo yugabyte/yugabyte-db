@@ -265,9 +265,9 @@ begin = 'BEGIN' [ 'TRANSACTION' | 'WORK' ] { transaction_mode } ;
 
 (* 'CALL' *)
 
-call_procedure = 'CALL' subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')' ;
+call_procedure = 'CALL' subprogram_name '(' [ actual_arg { ',' actual_arg } ] ')' ;
 
-subprogram_arg = [ arg_name '=>' ] expression ;
+actual_arg = [ formal_arg '=>' ] expression ;
 
 (* 'COMMENT' *)
 comment_on = 'COMMENT' 'ON' (
@@ -372,7 +372,7 @@ create_aggregate_old = 'CREATE' 'AGGREGATE' aggregate_name
                        'STYPE' '=' state_data_type
                        { ',' aggregate_old_option } ')' ;
 
-aggregate_arg = [ aggregate_arg_mode ] [ arg_name ] arg_type ;
+aggregate_arg = [ aggregate_arg_mode ] [ formal_arg ] arg_type ;
 
 aggregate_normal_option = 'SSPACE' '=' state_data_size
                         | 'FINALFUNC' '=' ffunc
@@ -480,20 +480,20 @@ create_function =  'CREATE' [ 'OR' 'REPLACE' ] 'FUNCTION'
 
 arg_decl_with_dflt = arg_decl [ ( 'DEFAULT' | '=' ) expression ] ;
 
-arg_decl = [ arg_name ] [ arg_mode ] arg_type ;
+arg_decl = [ formal_arg ] [ arg_mode ] arg_type ;
 
 subprogram_signature = arg_decl { ',' arg_decl } ;
 
-fn_invocation = subprogram_name '(' [ subprogram_arg { ',' subprogram_arg } ] ')' ;
+fn_invocation = subprogram_name '(' [ actual_arg { ',' actual_arg } ] ')' ;
 
 subprogram_call_signature = arg_type { ',' arg_type } ;
 
 (* | ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
-unalterable_fn_attribute = 'WINDOW' | 'LANGUAGE' lang_name | 'AS' implementation_definition ;
+unalterable_fn_attribute = 'WINDOW' | 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
 lang_name = 'SQL' | 'PLPGSQL' | 'C' ;
 
-implementation_definition = "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" | ( "'" obj_file"'" [ ',' "'" link_symbol "'" ] ) ;
+subprogram_implementation = "'" sql_stmt_list "'" |"'" plpgsql_block_stmt "'" | ( "'" obj_file"'" [ ',' "'" link_symbol "'" ] ) ;
 
 obj_file = text_literal ;
 link_symbol = text_literal ;
@@ -605,7 +605,7 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
                     { ( unalterable_proc_attribute |  alterable_fn_and_proc_attribute ) } ;
 
 (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
-unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' implementation_definition ;
+unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event 'TO' table_name \
@@ -805,7 +805,7 @@ user = ( user_name
 
 (* 'CREATE' 'VIEW' *)
 create_view = 'CREATE' [ 'OR' 'REPLACE' ] [ 'TEMPORARY' | 'TEMP' ] 'VIEW' qualified_name \
-              [ '(' name { ',' name } ')' ] 'AS' select ;
+              [ '(' column_name { ',' column_name } ')' ] 'AS' select ;
 
 
 (* 'DEALLOCATE' *)
@@ -1173,7 +1173,7 @@ trailing_select_clauses = [ 'FROM' ( from_item { ','  from_item } ) ] \
 
 from_item = '<See https://www.postgresql.org/docs/11/sql-select.html>' ;
 
-common_table_expression = name [ '(' name { ',' name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
+common_table_expression = cte_name [ '(' column_name { ',' column_name } ')' ] 'AS' '(' ( select | values | insert | update | delete ) ')' ;
 
 select_expression = expression [ [ 'AS' ] name ] ;
 
@@ -1312,11 +1312,12 @@ grouping_element = '(' ')' | '(' expression { ',' expression } ')' | 'ROLLUP' '(
 having_clause = 'HAVING' ( boolean_expression ) ;
 
 (* Supporting rules *)
-qualified_name = [ [ database_name '.' ] schema_name '.' ] name ;
+qualified_name = name { '.' name } ;
 role_name = name ;
 database_name = name ;
 schema_name = name ;
 table_name = qualified_name ;
+cte_name = name ;
 column_name = name ;
 object_name = name ;
 access_method_name = name ;
@@ -1336,7 +1337,7 @@ index_method = text_literal ;
 
 arg_mode = ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
 
-arg_name = name ;
+formal_arg = name ;
 
 arg_type = type_name ;
 
@@ -1356,7 +1357,7 @@ large_object_oid = int_literal ;
 left_type = ( qualified_name | 'NONE' ) ;
 right_type = ( qualified_name | 'NONE' ) ;
 
-name = text_literal ;
+name = '<Text Literal as specified in [Names and identifiers](../../names-and-identifiers/)>' ;
 
 column_names = column_name { ',' column_name } ;
 
@@ -1467,15 +1468,15 @@ plpgsql_declaration_section = 'DECLARE' [ plpgsql_declaration { plpgsql_declarat
 
 plpgsql_declaration = ( plpgsql_regular_declaration | plpgsql_bound_refcursor_declaration );
 
-plpgsql_regular_declaration = [variable_name] [ 'CONSTANT' ] [data_type] ['NOT' 'NULL' ]  [ ':=' expression ] ';' ;
+plpgsql_regular_declaration = [variable] [ 'CONSTANT' ] [data_type] ['NOT' 'NULL' ]  [ ':=' expression ] ';' ;
 
-variable_name = name ;
+variable = name ;
 
 plpgsql_bound_refcursor_declaration = plpgsql_bound_refcursor_name [ [ 'NO' ] 'SCROLL' ] \
                                       'CURSOR' [ '(' plpgsql_cursor_arg { ',' plpgsql_cursor_arg } ')' ] \
                                       'FOR' subquery ';' ;
 
-plpgsql_cursor_arg = arg_name arg_type ;
+plpgsql_cursor_arg = formal_arg arg_type ;
 
 (* 'Executable section' *)
 plpgsql_executable_section = 'BEGIN' [ plpgsql_executable_stmt { plpgsql_executable_stmt } ] ;
@@ -1509,7 +1510,7 @@ plpgsql_basic_stmt = (
 plpgsql_assert_stmt = 'ASSERT' boolean_expression [ ',' text_expression ] ;
 
 (* PL/pgSQ Assignment Dtatement *)
-plpgsql_assignment_stmt = ( variable_name | arg_name ) ':=' expression ;
+plpgsql_assignment_stmt = ( variable | formal_arg ) ':=' expression ;
 
 (* 'PL/pgSQL EXECUTE' *)
 plpgsql_dynamic_sql_stmt = 'EXECUTE' text_expression [ 'INTO' [ 'STRICT' ] plpgsql_into_target { ',' plpgsql_into_target } ] [ 'USING' expression { ',' expression } ] ;
@@ -1517,7 +1518,7 @@ plpgsql_dynamic_sql_stmt = 'EXECUTE' text_expression [ 'INTO' [ 'STRICT' ] plpgs
 (* 'GET DIAGNOSTICS' *)
 plpgsql_get_diagnostics_stmt = 'GET' [ 'CURRENT' ] 'DIAGNOSTICS' plpgsql_diagnostics_item { ',' plpgsql_diagnostics_item } ;
 
-plpgsql_diagnostics_item = ( variable_name | arg_name ) ( ':=' | '=' ) plpgsql_diagnostics_item_name ;
+plpgsql_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_diagnostics_item_name ;
 
 plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' | 
                                   'ROW_COUNT'  |
@@ -1526,7 +1527,7 @@ plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' |
 (* 'GET STACKED DIAGNOSTICS' *)
 plpgsql_get_stacked_diagnostics_stmt = 'GET' 'STACKED' 'DIAGNOSTICS' plpgsql_stacked_diagnostics_item { ',' plpgsql_stacked_diagnostics_item } ;
 
-plpgsql_stacked_diagnostics_item = ( variable_name | arg_name ) ( ':=' | '=' ) plpgsql_stacked_diagnostics_item_name ;
+plpgsql_stacked_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_stacked_diagnostics_item_name ;
 
 plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    | 
                                   'MESSAGE_TEXT'         |
@@ -1572,7 +1573,7 @@ plpgsql_static_dml_returning_stmt = ( insert | update | delete ) returning_claus
 
 plpgsql_static_select_into_stmt = [with_clause] 'SELECT' select_list 'INTO' [ 'STRICT' ] plpgsql_into_target { ',' plpgsql_into_target } [trailing_select_clauses] ;
 
-plpgsql_into_target = ( variable_name | arg_name ) ;
+plpgsql_into_target = ( variable | formal_arg ) ;
 
 (* 'PL/pgSQL Open Cursor' *)
 plpgsql_open_cursor_stmt = 'OPEN' plpgsql_refcursor_name [ [ 'NO' ] 'SCROLL' ] 'FOR' subquery ;
@@ -1593,7 +1594,7 @@ plpgsql_close_cursor_stmt = 'CLOSE' plpgsql_refcursor_name ;
 plpgsql_refcursor_name = name ;
 
 (* 'PERFORM' *)
-plpgsql_perform_stmt = 'PERFORM' select_list [trailing_select_clauses] ;
+plpgsql_perform_stmt = 'PERFORM' ( select_list [trailing_select_clauses] | '(' select ')' ) ;
 
 (* 'RETURN' *)
 plpgsql_return_stmt = 'RETURN' [ expression | 'NEXT' | 'NEW' | 'OLD' | 'NULL' ] ;
@@ -1613,15 +1614,15 @@ plpgsql_bounded_loop_defn = ( plpgsql_integer_for_loop_defn |
                               plpgsql_array_foreach_loop_defn |
                               plpgsql_query_for_loop_defn ) ;
 
-plpgsql_integer_for_loop_defn = 'FOR' variable_name 'IN' \
+plpgsql_integer_for_loop_defn = 'FOR' variable 'IN' \
                                 [ 'REVERSE' ] int_expression '..' int_expression \
                                 [ 'BY' int_expression ] ;
 
-plpgsql_array_foreach_loop_defn = 'FOREACH' variable_name \
+plpgsql_array_foreach_loop_defn = 'FOREACH' variable \
                                   [ 'SLICE' int_literal ]
                                   'IN' 'ARRAY' array_expression ;
 
-plpgsql_query_for_loop_defn = 'FOR' variable_name [ variable_name { ',' variable_name } ] 'IN' \
+plpgsql_query_for_loop_defn = 'FOR' variable [ variable { ',' variable } ] 'IN' \
                               ( subquery | plpgsql_bound_refcursor_name | plpgsql_dynamic_subquery ) ;
 
 plpgsql_bound_refcursor_name = plpgsql_refcursor_name ;

@@ -1,9 +1,9 @@
 ---
-title: Partitioning data by time
-headerTitle: Partitioning data by time
-linkTitle: Partitioning data by time
-description: Partition your data for efficient data management
-headcontent: Partition your data for efficient data management
+title: Partition data by time
+headerTitle: Partition data by time
+linkTitle: Partition data by time
+description: Partition data for efficient data management
+headcontent: Partition data for efficient data management
 menu:
   preview:
     identifier: timeseries-partition-by-time
@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Partitioning refers to splitting what is logically one large table into smaller physical pieces. The key advantage of partitioning in YugabyteDB is that each partition is a separate table and it would be efficient to keep the most significant data in one partition and not-so-important data in other partitions so that they can be dropped easily.
+Partitioning refers to splitting what is logically one large table into smaller physical pieces. The key advantage of partitioning in YugabyteDB is that, because each partition is a separate table, it is efficient to keep the most significant (for example, most recent) data in one partition, and not-so-important data in other partitions so that they can be dropped easily.
 
-The following example describes the advantage of partitions in little more detail.
+The following example describes the advantages of partitions in more detail.
 
 {{<note title="Note">}}
 Partitioning is only available in [YSQL](../../../../api/ysql/).
@@ -24,7 +24,7 @@ Partitioning is only available in [YSQL](../../../../api/ysql/).
 
 {{<cluster-setup-tabs>}}
 
-Consider a scenario where you have a lot of data points from cars and you care about only the last month's data. Yes, you do execute a statement to delete data that is older than 30 days, but because data is not immediately removed from the underlying storage (LSM-based DocDB), it could affect the performance of scans.
+Consider a scenario where you have a lot of data points from cars and you care about only the last month's data. Although you can execute a statement to delete data that is older than 30 days, because data is not immediately removed from the underlying storage (LSM-based DocDB), it could affect the performance of scans.
 
 Create a table with an example schema as follows:
 
@@ -37,7 +37,7 @@ CREATE TABLE part_demo (
 ) PARTITION BY RANGE (ts);
 ```
 
-Create partitions for each month. Also, create a `DEFAULT` partition that would hold data that does not that fall into any of the other partitions.
+Create partitions for each month. Also, create a `DEFAULT` partition for data that does not fall into any of the other partitions.
 
 ```sql
 CREATE TABLE part_7_23 PARTITION OF part_demo
@@ -50,10 +50,9 @@ CREATE TABLE part_9_23 PARTITION OF part_demo
     FOR VALUES FROM ('2023-09-01') TO ('2023-10-01');
 
 CREATE TABLE def_part_demo PARTITION OF part_demo DEFAULT;
-
 ```
 
-Insert some data into the main table `part_demo`.
+Insert some data into the main table `part_demo`:
 
 ```sql
 INSERT INTO part_demo (ts, car, speed)
@@ -63,7 +62,7 @@ INSERT INTO part_demo (ts, car, speed)
         FROM generate_series(1,100) AS id);
 ```
 
-If you retrieve the rows from the respective partitions, notice that they have the rows for their respective date ranges. For example,
+If you retrieve the rows from the respective partitions, notice that they have the rows for their respective date ranges. For example:
 
 ```sql
 SELECT * FROM part_9_23 LIMIT 4;
@@ -80,7 +79,7 @@ SELECT * FROM part_9_23 LIMIT 4;
 
 ## Fetch data
 
-Although data is stored in different tables as partitions, to access all the data you just need to query the parent table. Take a look at the query plan for a select query as follows:
+Although data is stored in different tables as partitions, to access all the data, you just need to query the parent table. Take a look at the query plan for a select query as follows:
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM part_demo;
@@ -103,9 +102,9 @@ EXPLAIN ANALYZE SELECT * FROM part_demo;
 
 When querying the parent table, the child partitions are automatically queried.
 
-## Fetch data within a time range
+## Fetch data in a time range
 
-As the data is split based on time, when querying for a specific time range, the query executor fetches data only from the partition that the data is expected to be in. For example, see the query plan for fetching data for a specific month.
+As the data is split based on time, when querying for a specific time range, the query executor fetches data only from the partition that the data is expected to be in. For example, see the query plan for fetching data for a specific month:
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM part_demo WHERE ts > '2023-07-01' AND ts < '2023-08-01';
@@ -128,7 +127,7 @@ You can see that the planner has chosen only one partition to fetch the data fro
 
 ## Dropping older data
 
-The key advantage of data partitioning is to drop older data easily. To drop the older data, all you need to do is drop that particular partition table. For example, when month `7`'s data is not needed,
+The key advantage of data partitioning is to drop older data easily. To drop the older data, all you need to do is drop that particular partition table. For example, when month `7`'s data is not needed, do the following:
 
 ```sql
 DROP TABLE part_7_23;

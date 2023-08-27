@@ -17,6 +17,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
@@ -46,6 +47,9 @@ DECLARE_bool(ysql_use_packed_row_v2);
 
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
+
+DEFINE_test_flag(bool, keep_intent_doc_ht, false,
+                 "Whether to keep intent doc hybrid time when packing column during compaction.");
 
 namespace yb::docdb {
 
@@ -210,7 +214,7 @@ class PackedRowData {
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
       ColumnId column_id, Slice value, const EncodedDocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, bool has_intent_doc_ht,
+      const ValueControlFields& control_fields, Slice intent_doc_ht,
       size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
@@ -249,7 +253,7 @@ class PackedRowData {
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
     std::optional<ValueControlFields> control_fields_copy;
-    if (has_intent_doc_ht) {
+    if (!intent_doc_ht.empty()) {
       control_fields_copy = control_fields;
     }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
@@ -260,6 +264,10 @@ class PackedRowData {
     }
     if (control_fields_copy) {
       control_fields_buffer_.clear();
+      if (PREDICT_FALSE(FLAGS_TEST_keep_intent_doc_ht) && !intent_doc_ht.empty()) {
+        control_fields_buffer_.PushBack(dockv::KeyEntryTypeAsChar::kHybridTime);
+        control_fields_buffer_.Append(intent_doc_ht);
+      }
       control_fields_copy->AppendEncoded(&control_fields_buffer_);
       dockv::PackedValueV1 value_v1(value.WithoutPrefix(encoded_control_fields_size));
       return std::visit([this, column_id, value_v1, tail_size](auto& packer) {
@@ -325,7 +333,8 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
+        *new_packing_.schema);
   }
 
   Status Flush() {
@@ -360,15 +369,18 @@ class PackedRowData {
   }
 
   Status PackOldValue(ColumnId column_id) {
-    if (old_value_slice_.empty()) {
-      return CheckPackOldValueResult(column_id, std::visit([column_id](auto& packer) {
-        return packer.AddValue(
-            column_id, std::remove_reference_t<decltype(packer)>::PackedValue::Null(),
-            kUnlimitedTail);
-      }, *packer_));
-    }
     return std::visit([this, column_id](auto& decoder) {
-      return DoPackOldValue(column_id, decoder.FetchValue(column_id));
+      if (old_value_slice_.empty() ||
+          decoder.GetPackedIndex(column_id) == dockv::SchemaPacking::kSkippedColumnIdx) {
+        VLOG(4) << "Packing missing value for column " << column_id;
+        const auto& missing_value = VERIFY_RESULT_REF(
+            dockv::PackerBase(&*packer_).schema().GetMissingValueByColumnId(column_id));
+        return CheckPackOldValueResult(
+            column_id, std::visit([column_id, missing_value](auto& packer) {
+          return packer.AddValue(column_id, missing_value);
+        }, *packer_));
+      }
+      return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
     }, old_row_decoder_);
   }
 
@@ -974,7 +986,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, !intent_doc_ht.empty(),
+                column_id, value, encoded_doc_ht, control_fields, intent_doc_ht,
                 encoded_control_fields_size, &lazy_ht))) {
           return Status::OK();
         }

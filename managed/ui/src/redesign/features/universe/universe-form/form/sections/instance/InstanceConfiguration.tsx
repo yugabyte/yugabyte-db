@@ -49,15 +49,14 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
 
   // Value of runtime config key
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
-    (c: RunTimeConfigEntry) => c.key === 'yb.ui.feature_flags.k8s_custom_resources'
+    (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
   );
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
 
   //form context
   const { getValues } = useFormContext<UniverseFormData>();
-  const { mode, clusterType, newUniverse, universeConfigureTemplate } = useContext(
-    UniverseFormContext
-  )[0];
+  const { mode, clusterType, newUniverse, universeConfigureTemplate } =
+    useContext(UniverseFormContext)[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
@@ -76,8 +75,12 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       <Box width={masterPlacement === MasterPlacementMode.DEDICATED ? '100%' : CONTAINER_WIDTH}>
         {provider?.code === CloudType.kubernetes && useK8CustomResources ? (
           <>
-            <K8NodeSpecField isDedicatedMasterField={isDedicatedMasterField} />
+            <K8NodeSpecField
+              isEditMode={!isCreateMode}
+              isDedicatedMasterField={isDedicatedMasterField}
+            />
             <K8VolumeInfoField
+              isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
               disableVolumeSize={!isNodeResizable}
               disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}

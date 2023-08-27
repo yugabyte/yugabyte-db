@@ -37,6 +37,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -48,6 +49,7 @@ DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_int32(replication_factor);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_string(certs_dir);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 namespace yb {
 
@@ -82,7 +84,7 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(producer_cluster()->StartSync());
+    RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
 
   auto consumer_opts = opts;
@@ -91,15 +93,14 @@ Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(consumer_cluster()->StartSync());
+    RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
 
-  RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
-    return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
+  RETURN_NOT_OK(RunOnBothClusters([](Cluster* cluster) {
+    RETURN_NOT_OK(cluster->mini_cluster_->WaitForAllTabletServers());
+    cluster->client_ = VERIFY_RESULT(cluster->mini_cluster_->CreateClient());
+    return Status();
   }));
-
-  producer_cluster_.client_ = VERIFY_RESULT(producer_cluster()->CreateClient());
-  consumer_cluster_.client_ = VERIFY_RESULT(consumer_cluster()->CreateClient());
 
   return Status::OK();
 }
@@ -165,12 +166,18 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_o
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
-  RETURN_NOT_OK(
-      producer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
-  return consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
+  auto se = ScopeExit([catalog_manager_bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) =
+        catalog_manager_bg_task_wait_ms;
+  });
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10;
+
+  RETURN_NOT_OK(WaitForLoadBalancerToStabilize(producer_cluster()));
+  RETURN_NOT_OK(WaitForLoadBalancerToStabilize(consumer_cluster()));
+  return Status::OK();
 }
 
-Status XClusterTestBase::WaitForLoadBalancersToStabilize(MiniCluster* cluster) {
+Status XClusterTestBase::WaitForLoadBalancerToStabilize(MiniCluster* cluster) {
   return cluster->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
 }
 

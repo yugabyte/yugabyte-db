@@ -58,6 +58,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
   Status CommitTransaction();
   Status AbortTransaction();
@@ -97,6 +98,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status FinishTransaction(Commit commit);
 
+  void IncTxnSerialNo();
+
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -105,6 +108,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
+  uint64_t read_time_serial_no_ = 0;
   SubTransactionId active_sub_transaction_id_ = 0;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;

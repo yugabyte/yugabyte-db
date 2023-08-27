@@ -1,13 +1,21 @@
 package helpers
+
 import (
+    "apiserver/cmd/server/logger"
     "crypto/rand"
+    "encoding/json"
     "errors"
     "fmt"
+    "io/ioutil"
     "math/big"
+    "net"
+    "net/http"
+    "net/url"
     "os/exec"
     "path/filepath"
     "strconv"
     "strings"
+    "time"
 )
 
 func Random128BitString() (string, error) {
@@ -129,4 +137,124 @@ func FindBinaryLocation(binaryName string) (string, error) {
         }
     }
     return "", fmt.Errorf("failed to find binary %s", binaryName)
+}
+
+// Removes all 127 addresses from a list of addresses, unless every address is a 127 address,
+// in which case it keeps one
+func RemoveLocalAddresses(nodeList []string) []string {
+    listToReturn := []string{}
+    nonLocalAddressFound := false
+    for _, address := range nodeList {
+        if len(listToReturn) > 0 && len(address) >= 3 && address[0:3] == "127" {
+            // Don't add 127 address to list if list is non-empty
+            continue
+        }
+        if !nonLocalAddressFound && (len(address) < 3 || address[0:3] != "127") {
+            // The first time we encounter a non 127 address, clear the list
+            nonLocalAddressFound = true
+            listToReturn = nil
+        }
+        listToReturn = append(listToReturn, address)
+    }
+    return listToReturn
+}
+
+// Attempt GET requests to every URL in the provided slice, one at a time. Returns the result
+// of the first successful request (status OK), or the most recent error if all requests failed.
+func AttemptGetRequests(
+    log logger.Logger,
+    urlList []string,
+    expectJson bool,
+) ([]byte, error) {
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    var resp *http.Response
+    var err error
+    var body []byte
+    log.Debugf("getting requests from list of urls: %v", urlList)
+    for _, url := range urlList {
+        resp, err = httpClient.Get(url)
+        if err != nil {
+            log.Debugf("attempt to get request to " + url + " failed with error: " + err.Error())
+            continue
+        }
+        if resp.StatusCode != http.StatusOK {
+            resp.Body.Close()
+            log.Debugf("response from %s failed with status %s", url, resp.Status)
+            err = errors.New("most recent request failed with status " + resp.Status)
+        } else {
+            body, err = ioutil.ReadAll(resp.Body)
+            resp.Body.Close()
+            if err != nil {
+                log.Debugf("failed to read response from %s", url)
+                err = errors.New("failed to read response")
+            } else if !expectJson || json.Valid([]byte(body)) {
+                log.Debugf("good response from %s", url)
+                err = nil
+                break
+            }
+        }
+    }
+    if err != nil {
+        log.Debugf("all requests failed")
+        return nil, err
+    }
+    return body, err
+}
+
+// The purpose of this function is to create a list of urls to each master, for use with the
+// AttemptGetRequest function. If the current node is a master, then the first entry of the list
+// will use the current node's master address (i.e. we will prefer querying the current node
+// first when calling AttemptGetRequest)
+func BuildMasterURLs(log logger.Logger, path string) ([]string, error) {
+    urlList := []string{}
+    // Attempt to get a list of masters from both master and tserver, in case one of them is down
+    hostList := []string{}
+    mastersFuture := make(chan MastersFuture)
+    go GetMastersFuture(HOST, mastersFuture)
+    mastersListFuture := make(chan MastersListFuture)
+    go GetMastersFromTserverFuture(HOST, mastersListFuture)
+    mastersListResponse := <-mastersListFuture
+    if mastersListResponse.Error != nil {
+        log.Debugf("failed to get masters list from tserver, attempt to get from master")
+        mastersResponse := <-mastersFuture
+        if mastersResponse.Error != nil {
+            log.Debugf("failed to get masters from master")
+            return urlList, mastersResponse.Error
+        }
+
+        for _, master := range mastersResponse.Masters {
+            if len(master.Registration.PrivateRpcAddresses) > 0 {
+                host := master.Registration.PrivateRpcAddresses[0].Host
+                if host == HOST {
+                    hostList = append([]string{host}, hostList...)
+                } else {
+                    hostList = append(hostList, host)
+                }
+            }
+        }
+    } else {
+        for _, master := range mastersListResponse.Masters {
+            host, _, err := net.SplitHostPort(master.HostPort)
+            if err != nil {
+                log.Debugf("failed to split host and port of %s", master.HostPort)
+                continue
+            }
+            if host == HOST {
+                hostList = append([]string{host}, hostList...)
+            } else {
+                hostList = append(hostList, host)
+            }
+        }
+    }
+    for _, host := range hostList {
+        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
+        if err != nil {
+            log.Debugf("failed to construct url for %s:%s with path %s", host, MasterUIPort, path)
+            continue
+        }
+        urlList = append(urlList, url)
+    }
+    return urlList, nil
 }

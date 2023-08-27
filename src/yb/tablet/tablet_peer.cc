@@ -535,7 +535,10 @@ void TabletPeer::CompleteShutdown(
   {
     std::lock_guard lock(lock_);
     strand_.reset();
-    retryable_requests_flusher_.reset();
+    if (retryable_requests_flusher_) {
+      retryable_requests_flusher_->Shutdown();
+      retryable_requests_flusher_.reset();
+    }
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     // Clear the consensus and destroy it outside the lock.
@@ -784,7 +787,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
-  status_pb_out->set_has_been_fully_compacted(meta_->has_been_fully_compacted());
+  status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -1051,20 +1054,9 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
 
-  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
-    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
-    // active transaction.
-    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
-    if (index > 0) {
-      index--;
-    }
-    // Term does not matter, so can be set to 0.
-
-    auto op_id = OpId(0, index);
-    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
-    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
-  }
+  SCHECK_NE(
+      tablet->table_type(), TableType::TRANSACTION_STATUS_TABLE_TYPE, IllegalState,
+      "Transaction status table cannot be bootstrapped.");
 
   auto op_id = GetLatestLogEntryOpId();
 
@@ -1598,8 +1590,8 @@ bool TabletPeer::CanBeDeleted() {
 
   LOG_WITH_PREFIX(INFO) << Format(
       "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
-      "id: $1, split op id: $2)",
-      tablet_id(), all_applied_op_id, op_id);
+      "id: $1, split op id: $2, data state: $3)",
+      tablet_id(), all_applied_op_id, op_id, TabletDataState_Name(data_state()));
 
   return true;
 }
@@ -1719,6 +1711,16 @@ bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
       ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+      : false;
+}
+
+bool TabletPeer::TEST_IsFlushingRetryableRequests() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return false;
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  return retryable_requests_flusher
+      ? retryable_requests_flusher->TEST_IsFlushing()
       : false;
 }
 

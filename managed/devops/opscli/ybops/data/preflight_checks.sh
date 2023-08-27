@@ -178,6 +178,10 @@ preflight_configure_check() {
   vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
   test ${vm_max_map_count:-0} -ge $VM_MAX_MAP_COUNT
   update_result_json_with_rc "vm_max_map_count" "$?"
+
+  # Check for chronyc utility.
+  command -v chronyc >/dev/null 2>&1
+  update_result_json_with_rc "chronyc_installed" "$?"
 }
 
 # Checks for an available python executable

@@ -1200,7 +1200,7 @@ class TabletBootstrap {
     // function's comment mentions.
     auto op_id_replay_lowest = replay_state_->GetLowestOpIdToReplay(
         // Determine whether we have an intents DB.
-        tablet_->doc_db().intents || (test_hooks_ && test_hooks_->HasIntentsDB()),
+        tablet_->intents_db() || (test_hooks_ && test_hooks_->HasIntentsDB()),
         kBootstrapOptimizerLogPrefix);
 
     // OpId::Max() can avoid bootstrapping the retryable requests.

@@ -880,7 +880,7 @@ TEST_F(QLTabletTest, BoundaryValues) {
     ASSERT_EQ(1, peers.size());
     auto& peer = *peers[0];
     auto op_id = peer.log()->GetLatestEntryOpId();
-    auto* db = peer.tablet()->TEST_db();
+    auto* db = peer.tablet()->regular_db();
     int64_t max_index = 0;
     int64_t min_index = std::numeric_limits<int64_t>::max();
     for (const auto& file : db->GetLiveFilesMetaData()) {
@@ -1124,7 +1124,7 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
     LOG(INFO) << "Leader: " << peers[0]->permanent_uuid();
     int stop_key = 0;
     for (;;) {
-      auto meta = peers[0]->tablet()->TEST_db()->GetLiveFilesMetaData();
+      auto meta = peers[0]->tablet()->regular_db()->GetLiveFilesMetaData();
       LOG(INFO) << "Total files: " << meta.size();
 
       ++key;
@@ -1458,7 +1458,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
   // Need to have the largest file to be more than 50% of total size of all SST -- setting to 600KB
   // is enough to achive this condition (should give ~65% of total size when packed rows are on).
-  while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() <
+  while (tablet.regular_db()->GetCurrentVersionDataSstFilesSize() <
          implicit_cast<size_t>(30 * FLAGS_db_write_buffer_size)) {
     std::this_thread::sleep_for(100ms);
   }
@@ -1468,7 +1468,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   LOG(INFO) << "Workload stopped, it took: " << AsString(s.elapsed());
 
   LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
-  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -1497,7 +1497,7 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
 
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
-  std::unique_ptr<rocksdb::Iterator> iter(tablet.TEST_db()->NewIterator(read_opts));
+  std::unique_ptr<rocksdb::Iterator> iter(tablet.regular_db()->NewIterator(read_opts));
 
   for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     Slice key = iter->key();
@@ -1889,7 +1889,7 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
     if (!peer->tablet()) {
       continue;
     }
-    auto* db = peer->tablet()->TEST_db();
+    auto* db = peer->tablet()->regular_db();
     for (const auto& sst_file : db->GetLiveFilesMetaData()) {
       LOG(INFO) << "Found SST file: " << AsString(sst_file);
       const auto path_to_corrupt = sst_file.DataFilePath();

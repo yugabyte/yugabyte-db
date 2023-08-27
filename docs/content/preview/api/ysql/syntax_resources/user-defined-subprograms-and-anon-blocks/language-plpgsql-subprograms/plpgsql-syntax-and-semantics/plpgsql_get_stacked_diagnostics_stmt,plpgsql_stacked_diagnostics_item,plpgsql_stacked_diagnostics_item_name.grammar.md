@@ -3,7 +3,7 @@ plpgsql_get_stacked_diagnostics_stmt ::= GET STACKED DIAGNOSTICS
                                          plpgsql_stacked_diagnostics_item 
                                          [ , ... ]
 
-plpgsql_stacked_diagnostics_item ::= { variable_name | arg_name } 
+plpgsql_stacked_diagnostics_item ::= { variable | formal_arg } 
                                      { := | = } 
                                      plpgsql_stacked_diagnostics_item_name
 

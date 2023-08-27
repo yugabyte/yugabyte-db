@@ -68,6 +68,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::future;
 using std::pair;
@@ -1450,9 +1451,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   ASSERT_EQ(PQntuples(res.get()), 1);
 
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
-  ASSERT_FALSE(status.ok());
-  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
+  ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
@@ -1509,6 +1508,18 @@ TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsYbSeq, PgLibPqFailOnConflictTes
       "test_db" /* database_name */, true, /* colocated */
       "test_tgroup" /* tablegroup_name */,
       "/*+ SeqScan(t) */ SELECT * FROM t FOR UPDATE" /* query_statement */);
+}
+
+// Test for ensuring that transaction conflicts work as expected for Tablegroups, where the SELECT
+// is done with an ORDER BY clause.
+TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsOrdered, PgLibPqFailOnConflictTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */, true, /* colocated */
+      "test_tgroup" /* tablegroup_name */,
+      "SELECT * FROM t ORDER BY a FOR UPDATE" /* query_statement */);
 }
 
 Result<PGConn> PgLibPqTest::RestartTSAndConnectToPostgres(
@@ -3301,54 +3312,6 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(oom_score_adj, expected_oom_score);
 }
 #endif
-
-class PgLibPqRefreshMatviewFailure: public PgLibPqTest {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-        Format("--TEST_yb_test_fail_matview_refresh_after_creation=true"));
-    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
-  }
-};
-
-// Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
-// by transaction GC.
-TEST_F_EX(PgLibPqTest,
-          TestRefreshMatviewFailure,
-          PgLibPqRefreshMatviewFailure) {
-
-  const string kDatabaseName = "yugabyte";
-
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(
-      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_user_ddl_operation_timeout_sec", "1"));
-  ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW mv"));
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    LOG(INFO) << "Requesting TableExists";
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
-
-  // DocDB will notice the PG layer failure because the transaction aborts.
-  // Confirm that DocDB async deletes the orphaned materialized view.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(40), "Verify Table was removed by Transaction GC"));
-}
 
 TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";

@@ -150,6 +150,7 @@ IndexNext(IndexScanState *node)
 			scandesc->yb_idx_pushdown =
 				YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 			scandesc->yb_aggrefs = node->yb_iss_aggrefs;
+			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		}
 
 		/*
@@ -172,8 +173,7 @@ IndexNext(IndexScanState *node)
 
 		// Add row marks.
 		plan = castNode(IndexScan, node->ss.ps.plan);
-		if (plan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
-			plan->scan.yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
+		if (IsolationIsSerializable() || plan->yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
 		{
 			/*
 			 * In case of SERIALIZABLE isolation level we have to take prefix range locks to disallow
@@ -1131,8 +1131,6 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	indexstate->iss_RuntimeKeysReady = false;
 	indexstate->iss_RuntimeKeys = NULL;
 	indexstate->iss_NumRuntimeKeys = 0;
-	/* YB: Prefix length parameter passed to DocDB. */
-	estate->yb_exec_params.yb_distinct_prefixlen = node->yb_distinct_prefixlen;
 
 	/*
 	 * build the index scan keys from the index qualification

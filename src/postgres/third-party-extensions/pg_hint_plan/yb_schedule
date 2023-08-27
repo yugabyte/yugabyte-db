@@ -1,0 +1,4 @@
+# third-party-extensions/pg_hint_plan/yb_schedule
+
+test: yb_pg_init
+test: yb_pg_pg_hint_plan

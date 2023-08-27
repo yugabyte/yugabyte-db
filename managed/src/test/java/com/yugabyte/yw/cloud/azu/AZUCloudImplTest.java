@@ -53,8 +53,6 @@ public class AZUCloudImplTest extends FakeDBApplication {
     defaultProvider.getRegions().add(defaultRegion);
     ProviderDetails providerDetails = new ProviderDetails();
     CloudInfo cloudInfo = new CloudInfo();
-    // cloudInfo.gcp = new GCPCloudInfo();
-    // cloudInfo.gcp.setGceProject("project");
     providerDetails.setCloudInfo(cloudInfo);
     defaultProvider.setDetails(providerDetails);
     mockApiClient = mock(AZUResourceGroupApiClient.class);
@@ -113,7 +111,7 @@ public class AZUCloudImplTest extends FakeDBApplication {
   public void testEnsureProbes() {
     List<Integer> ports = Arrays.asList(5433);
     NLBHealthCheckConfiguration healthCheckConfiguration =
-        new NLBHealthCheckConfiguration(ports, Protocol.TCP, "");
+        new NLBHealthCheckConfiguration(ports, Protocol.TCP, new ArrayList<>());
     List<ProbeInner> newProbes =
         azuCloudImpl.ensureProbesForPorts(healthCheckConfiguration, new ArrayList<ProbeInner>());
     assertEquals(1, newProbes.size());

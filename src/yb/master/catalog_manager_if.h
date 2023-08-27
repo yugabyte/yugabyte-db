@@ -192,6 +192,9 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual Status ListSnapshotRestorations(
+      const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
+
   virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
 
   virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;

@@ -175,7 +175,7 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
 
   if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
-    return CreateTransactionAwareSnapshot(*req, resp, rpc);
+    return CreateTransactionAwareSnapshot(*req, resp, rpc->GetClientDeadline());
   }
 
   if (req->has_schedule_id()) {
@@ -433,14 +433,14 @@ server::Clock* CatalogManager::Clock() {
 }
 
 Status CatalogManager::CreateTransactionAwareSnapshot(
-    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc) {
+    const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline) {
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
   flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
        .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types());
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
 
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, req.imported(), leader_ready_term(), rpc->GetClientDeadline()));
+      entries, req.imported(), leader_ready_term(), deadline));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -732,6 +732,23 @@ Status CatalogManager::RestoreEntry(
   return Status::OK();
 }
 
+Status CatalogManager::AbortSnapshotRestore(
+    const AbortSnapshotRestoreRequestPB* req, AbortSnapshotRestoreResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto txn_restoration_id = TryFullyDecodeTxnSnapshotRestorationId(req->restoration_id());
+
+  if (txn_restoration_id) {
+    LOG(INFO) << Substitute(
+        "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
+        txn_restoration_id.ToString(), req->ShortDebugString());
+    return snapshot_coordinator_.AbortRestore(
+        txn_restoration_id, leader_ready_term(), rpc->GetClientDeadline());
+  }
+
+  return STATUS(
+      NotSupported, Format("Invalid restoration id: $0", req->restoration_id()));
+}
+
 Status CatalogManager::DeleteSnapshot(
     const DeleteSnapshotRequestPB* req,
     DeleteSnapshotResponsePB* resp,
@@ -815,6 +832,68 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(
   return Status::OK();
 }
 
+Status CatalogManager::DoImportSnapshotMeta(
+      const SnapshotInfoPB& snapshot_pb,
+      const LeaderEpoch& epoch,
+      ImportSnapshotMetaResponsePB* resp,
+      NamespaceMap* namespace_map,
+      UDTypeMap* type_map,
+      ExternalTableSnapshotDataMap* tables_data,
+      CoarseTimePoint deadline) {
+  bool successful_exit = false;
+
+  auto se = ScopeExit([this, &namespace_map, &type_map, &tables_data, &successful_exit, &epoch] {
+    if (!successful_exit) {
+      DeleteNewSnapshotObjects(*namespace_map, *type_map, *tables_data, epoch);
+    }
+  });
+
+  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() != 2) {
+    return STATUS(
+        InternalError, "Expected snapshot data in format 2", snapshot_pb.ShortDebugString(),
+        MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  if (snapshot_pb.backup_entries_size() == 0) {
+    return STATUS(
+        InternalError, "Expected snapshot data prepared for backup", snapshot_pb.ShortDebugString(),
+        MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  // PHASE 1: Recreate namespaces, create type's & table's meta data.
+  RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, epoch, namespace_map, type_map, tables_data));
+
+  // PHASE 2: Recreate UD types.
+  RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, type_map, *namespace_map));
+
+  // PHASE 3: Recreate ONLY tables.
+  RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
+      snapshot_pb, *namespace_map, *type_map, epoch, tables_data, deadline));
+
+  // PHASE 4: Recreate ONLY indexes.
+  RETURN_NOT_OK(
+      ImportSnapshotCreateIndexes(snapshot_pb, *namespace_map, *type_map, epoch, tables_data));
+
+  // PHASE 5: Restore tablets.
+  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, tables_data));
+
+  if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
+    const string msg = "ImportSnapshotMeta interrupted due to test flag";
+    LOG_WITH_FUNC(WARNING) << msg;
+    return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+  }
+
+  successful_exit = true;
+  // Copy the table mapping into the response.
+  for (auto& [_, table_data] : *tables_data) {
+    if (table_data.table_meta) {
+      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::ImportSnapshotPreprocess(
     const SnapshotInfoPB& snapshot_pb,
     const LeaderEpoch& epoch,
@@ -855,6 +934,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1164,57 +1244,11 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   NamespaceMap namespace_map;
   UDTypeMap type_map;
   ExternalTableSnapshotDataMap tables_data;
-  bool successful_exit = false;
 
-  auto se = ScopeExit([this, &namespace_map, &type_map, &tables_data, &successful_exit, &epoch] {
-    if (!successful_exit) {
-      DeleteNewSnapshotObjects(namespace_map, type_map, tables_data, epoch);
-    }
-  });
+  RETURN_NOT_OK(DoImportSnapshotMeta(
+      req->snapshot(), epoch, resp, &namespace_map, &type_map, &tables_data,
+      rpc->GetClientDeadline()));
 
-  const SnapshotInfoPB& snapshot_pb = req->snapshot();
-
-  if (!snapshot_pb.has_format_version() || snapshot_pb.format_version() != 2) {
-    return STATUS(InternalError, "Expected snapshot data in format 2",
-        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-  }
-
-  if (snapshot_pb.backup_entries_size() == 0) {
-    return STATUS(InternalError, "Expected snapshot data prepared for backup",
-        snapshot_pb.ShortDebugString(), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-  }
-
-  // PHASE 1: Recreate namespaces, create type's & table's meta data.
-  RETURN_NOT_OK(
-      ImportSnapshotPreprocess(snapshot_pb, epoch, &namespace_map, &type_map, &tables_data));
-
-  // PHASE 2: Recreate UD types.
-  RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, &type_map, namespace_map));
-
-  // PHASE 3: Recreate ONLY tables.
-  RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
-      snapshot_pb, namespace_map, type_map, epoch, &tables_data, rpc->GetClientDeadline()));
-
-  // PHASE 4: Recreate ONLY indexes.
-  RETURN_NOT_OK(
-      ImportSnapshotCreateIndexes(snapshot_pb, namespace_map, type_map, epoch, &tables_data));
-
-  // PHASE 5: Restore tablets.
-  RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, &tables_data));
-
-  if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
-     const string msg = "ImportSnapshotMeta interrupted due to test flag";
-     LOG_WITH_FUNC(WARNING) << msg;
-     return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
-  }
-
-  successful_exit = true;
-  // Copy the table mapping into the response.
-  for (auto& [_, table_data] : tables_data) {
-    if (table_data.table_meta) {
-      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
-    }
-  }
   return Status::OK();
 }
 

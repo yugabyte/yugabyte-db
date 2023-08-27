@@ -53,21 +53,25 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               true,
               taskParams().isEnableYbc(),
               taskParams().getYbcSoftwareVersion());
-          if (taskParams().upgradeSystemCatalog) {
-            // Run YSQL upgrade on the universe
-            createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
-                .setSubTaskGroupType(getTaskSubGroupType());
-          }
-          // Promote Auto flags on compatible versions.
-          if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
-            createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-                Collections.singleton(taskParams().getUniverseUUID()),
-                Collections.singleton(taskParams().getUniverseUUID()),
-                xClusterUniverseService,
-                new HashSet<>(),
-                getUniverse(),
-                taskParams().ybSoftwareVersion);
+
+          if (!confGetter.getConfForScope(getUniverse(), UniverseConfKeys.skipUpgradeFinalize)) {
+            // Promote Auto flags on compatible versions.
+            if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
+                && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
+              createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+                  Collections.singleton(taskParams().getUniverseUUID()),
+                  Collections.singleton(taskParams().getUniverseUUID()),
+                  xClusterUniverseService,
+                  new HashSet<>(),
+                  getUniverse(),
+                  taskParams().ybSoftwareVersion);
+            }
+
+            if (taskParams().upgradeSystemCatalog) {
+              // Run YSQL upgrade on the universe
+              createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
           }
 
           if (taskParams().isEnableYbc()) {

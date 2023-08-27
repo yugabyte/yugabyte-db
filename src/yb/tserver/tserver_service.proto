@@ -450,6 +450,12 @@ message StartRemoteSnapshotTransferRequestPB {
   repeated HostPortPB source_private_addr = 5;
   repeated HostPortPB source_broadcast_addr = 6;
   optional CloudInfoPB source_cloud_info = 7;
+
+  // When importing a snapshot from producer to consumer, the consumer universe
+  // actually creates a new snapshot with a separate ID. Thus, when downloading
+  // files from producer to consumer, we want to account for the new_snapshot_id
+  // generated on the consumer universe.
+  optional bytes new_snapshot_id = 8;
 }
 
 message StartRemoteSnapshotTransferResponsePB {
