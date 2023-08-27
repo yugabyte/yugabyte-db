@@ -2173,6 +2173,10 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "useTablespaces" : {
+          "description" : "Use tablespaces during restore",
+          "type" : "boolean"
         }
       },
       "type" : "object"
@@ -2436,6 +2440,13 @@
           "items" : {
             "format" : "uuid",
             "type" : "string"
+          },
+          "type" : "array"
+        },
+        "tablespacesList" : {
+          "description" : "Tablespaces info",
+          "items" : {
+            "$ref" : "#/definitions/Tablespace"
           },
           "type" : "array"
         },
@@ -6459,6 +6470,13 @@
           },
           "type" : "array"
         },
+        "tablespacesList" : {
+          "description" : "Tablespaces info",
+          "items" : {
+            "$ref" : "#/definitions/Tablespace"
+          },
+          "type" : "array"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -7492,6 +7510,10 @@
         "perBackupLocationKeyspaceTables" : {
           "$ref" : "#/definitions/PerBackupLocationKeyspaceTables",
           "description" : "Keyspace and tables list for given backup location"
+        },
+        "tablespaceResponse" : {
+          "$ref" : "#/definitions/TablespaceResponse",
+          "description" : "List of tablespaces in backup"
         }
       },
       "type" : "object"
@@ -8566,6 +8588,25 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "ReplicaPlacement" : {
+      "properties" : {
+        "numReplicas" : {
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
+        "placementBlocks" : {
+          "items" : {
+            "$ref" : "#/definitions/PlacementBlock"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        }
+      },
+      "required" : [ "numReplicas", "placementBlocks" ],
       "type" : "object"
     },
     "ResizeNodeParams" : {
@@ -11069,6 +11110,41 @@
         }
       },
       "required" : [ "name", "placementBlocks" ],
+      "type" : "object"
+    },
+    "Tablespace" : {
+      "properties" : {
+        "replicaPlacement" : {
+          "$ref" : "#/definitions/ReplicaPlacement"
+        },
+        "tablespaceName" : {
+          "maxLength" : 2147483647,
+          "minLength" : 1,
+          "type" : "string"
+        }
+      },
+      "required" : [ "replicaPlacement", "tablespaceName" ],
+      "type" : "object"
+    },
+    "TablespaceResponse" : {
+      "properties" : {
+        "conflictingTablespaces" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "containsTablespaces" : {
+          "type" : "boolean"
+        },
+        "unsupportedTablespaces" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "conflictingTablespaces", "containsTablespaces", "unsupportedTablespaces" ],
       "type" : "object"
     },
     "TelemetryProvider" : {

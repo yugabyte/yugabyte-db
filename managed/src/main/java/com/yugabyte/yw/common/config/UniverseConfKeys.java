@@ -910,4 +910,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip backup metadata based validation during restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> alwaysBackupTablespaces =
+      new ConfKeyInfo<>(
+          "yb.backup.always_backup_tablespaces",
+          ScopeType.UNIVERSE,
+          "Always backup tablespaces when taking YSQL backup",
+          "Always backup tablespaces when taking ysql backups. This is a UI flag"
+              + " used to appropriately send 'useTablespaces' parameter to backend in API.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }

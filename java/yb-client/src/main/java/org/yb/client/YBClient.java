@@ -61,6 +61,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -2092,6 +2093,13 @@ public class YBClient implements AutoCloseable {
       UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d =
       asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ValidateReplicationInfoResponse validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) throws Exception {
+    Deferred<ValidateReplicationInfoResponse> d =
+      asyncClient.validateReplicationInfo(replicationInfoPB);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
