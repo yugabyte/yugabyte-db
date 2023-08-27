@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.TablespaceResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata.TableDetails.IndexTable;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
@@ -263,6 +265,10 @@ public class YbcBackupUtil {
     @NotNull
     @Valid
     public List<SnapshotObjectDetails> snapshotObjectDetails;
+
+    @JsonAlias("tablespace_info")
+    @Valid
+    public List<Tablespace> tablespaceInfos;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
@@ -518,16 +524,9 @@ public class YbcBackupUtil {
       String taskId,
       YbcBackupResponse successMarker) {
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
-    BackupServiceTaskExtendedArgs.Builder extendedArgs = BackupServiceTaskExtendedArgs.newBuilder();
-    if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
-      extendedArgs.setUserSpec(
-          UserChangeSpec.newBuilder()
-              .setNewUsername(backupStorageInfo.newOwner)
-              .setOldUsername(backupStorageInfo.oldOwner)
-              .build());
-    }
+    BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForRestore(backupStorageInfo);
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
-        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs.build());
+        backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
     CloudStoreConfig cloudStoreConfig = createRestoreConfig(config, successMarker);
     backupServiceTaskCreateRequestBuilder.setCsConfig(cloudStoreConfig);
@@ -1018,6 +1017,23 @@ public class YbcBackupUtil {
     return true;
   }
 
+  public BackupServiceTaskExtendedArgs getExtendedArgsForRestore(
+      BackupStorageInfo backupStorageInfo) {
+    BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
+        BackupServiceTaskExtendedArgs.newBuilder();
+    if (backupStorageInfo.isUseTablespaces()) {
+      extendedArgsBuilder.setUseTablespaces(true);
+    }
+    if (StringUtils.isNotBlank(backupStorageInfo.newOwner)) {
+      extendedArgsBuilder.setUserSpec(
+          UserChangeSpec.newBuilder()
+              .setNewUsername(backupStorageInfo.newOwner)
+              .setOldUsername(backupStorageInfo.oldOwner)
+              .build());
+    }
+    return extendedArgsBuilder.build();
+  }
+
   public String getBaseLogMessage(UUID backupUUID, String keyspace) {
     return getBaseLogMessage(backupUUID, keyspace, null);
   }
@@ -1182,7 +1198,8 @@ public class YbcBackupUtil {
   public static RestorePreflightResponse generateYBCRestorePreflightResponseUsingMetadata(
       Map<String, YbcBackupResponse> ybcSuccessMarkerMap,
       boolean selectiveRestoreYbcCheck,
-      boolean filterIndexes) {
+      boolean filterIndexes,
+      Map<String, TablespaceResponse> tablespaceResponsesMap) {
     RestorePreflightResponse.RestorePreflightResponseBuilder restorePreflightResponseBuilder =
         RestorePreflightResponse.builder();
 
@@ -1231,6 +1248,10 @@ public class YbcBackupUtil {
                       PerBackupLocationKeyspaceTables.PerBackupLocationKeyspaceTablesBuilder
                           perBackupKeyspaceTablesBuilder =
                               PerBackupLocationKeyspaceTables.builder();
+
+                      // Populate tablespaces related info
+                      perLocationBackupInfoBuilder.tablespaceResponse(
+                          tablespaceResponsesMap.get(e.getKey()));
 
                       // Populate keyspace name
                       perBackupKeyspaceTablesBuilder.originalKeyspace(

@@ -124,6 +124,7 @@ import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
@@ -1579,6 +1580,21 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     DeleteSnapshotRequest request =
         new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Validate given ReplicationInfo against current TS placement.
+   *
+   * @param replicationInfoPB ReplicationInfoPB object
+   * @return a deffered object that yeilds a Replication info validation response.
+   */
+  public Deferred<ValidateReplicationInfoResponse> validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) {
+    checkIsClosed();
+    ValidateReplicationInfoRequest request =
+        new ValidateReplicationInfoRequest(this.masterTable, replicationInfoPB);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
