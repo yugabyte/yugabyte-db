@@ -64,47 +64,34 @@ You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB
 
 ### Set up the cloud provider
 
-You need to navigate to **Configs > On-Premises Datacenters**, click **Add Configuration**, and then select  **Provider Info**. Enter sample values into the following fields:
+Navigate to **Configs > On-Premises Datacenters**, click **Create Config**. Enter sample values into the following fields:
 
-* **Provider Name** is `multi-cloud-demo`.
-* **SSH User** is the user which will run Yugabyte on the node (yugabyte in this case).
+* **Provider Name** is, for example. `multi-cloud-demo`.
+* **SSH User** is the user which will run YugabyteDB Anywhere on the node (yugabyte in this case).
 * **SSH Port** should remain the default of `22` unless your servers have a different SSH port.
 * **Manually Provision Nodes** should be disabled so that YugabyteDB Anywhere installs the software on these nodes.
-* **SSH Key** is the contents of the private key file to be used for authentication.
-  \
-  Note that Paramiko is used for SSH validation, which typically does not accept keys generated with OpenSSL. If you generate your keys with OpenSSL, use a format similar to the following:
+* **SSH Key Pairs** is the contents of the private key file to be used for authentication.
+
+    Note that Paramiko is used for SSH validation, which typically does not accept keys generated with OpenSSL. If you generate your keys with OpenSSL, use a format similar to the following:
 
     ```sh
-  ssh-keygen -m PEM -t rsa -b 2048 -f test_id_rsa
+    ssh-keygen -m PEM -t rsa -b 2048 -f test_id_rsa
     ```
 
-* **Air Gap Install** should only be enabled if your nodes do not have the Internet connectivity.
+* **DB Nodes have public internet access?** should be enabled if your nodes have Internet connectivity (that is, you are not performing an airgap install).
+* Click **Add Region** atond define your regions and availability zones.
 
-  ![caption](/images/ee/multi-cloud-provider-info.png)
+Click **Create Provider Configuation** when done.
 
-### Define an instance type
+### Define instance types and add instances
 
-Select **Instance Types** and enter a machine description which matches the nodes you will be using. The machine type can be any logical name, given the machine types will be different between all three regions. The following example uses `8core`:
+After the provider configuration is created, select the provider in the **On-Premises Datacenters** list, and choose **Instances** to display the provider instances. This is where you create instance types and provision the nodes that your universe will be deployed on.
 
-![Multi-cloud instance description](/images/ee/multi-cloud-instances.png)
+Click **Add Instance Type** and enter a machine description that matches the nodes you will be using. The machine type can be any logical name, given the machine types will be different between all three regions (cloud providers).
 
-### Define regions
+Click **Add Instances** to add nodes in the regions you defined for the provider configuration. For each node, select the zone where you want it deployed, choose the instance type, and enter the IP address of the node. The address should be a private IP address of the VPN you configured.
 
-Select **Regions and Zones** and define your regions, using descriptive names, as per the following illustration:
-
-![Multi-cloud regions](/images/ee/multi-cloud-regions.png)
-
-Click **Finish** to create your cloud provider. Once fully configured, the provider should look similar to the following:
-
-![Multi-cloud provider map view](/images/ee/multi-cloud-provider-map.png)
-
-### Provision instances
-
-After you have defined your cloud provider configuration, click **Manage Instances** to provision as many nodes as your application requires. Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-yugabytedb-nodes).
-
-The provider's instance list should be similar to the following:
-
-![Multi-cloud instance list](/images/ee/multi-cloud-provider-instance-list.png)
+Follow the instructions provided in [Configure the on-premises cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-hardware-for-yugabytedb-nodes).
 
 ## Create a universe
 
@@ -120,15 +107,13 @@ You can create a multi-region universe as follows:
 
 1. Enter the set of regions: `us-aws-west-2`, `us-azu-east-1`, `us-centra1-b`
 
-1. Set the instance type to `8core`.
+1. Set the instance type to the instance type you created.
 
 1. Add the following flags for Master and T-Server:
 
     * `leader_failure_max_missed_heartbeat_periods=10` - As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
     * `use_cassandra_authentication=true` - Deployments on public clouds require security.
     * `ysql_enable_auth=true` - Deployments on public clouds require security.
-
-    ![New universe flags details](/images/ee/multi-cloud-create-universe2.png)
 
 1. Click **Create**.
 
