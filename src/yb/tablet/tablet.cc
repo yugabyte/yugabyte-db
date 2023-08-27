@@ -4256,7 +4256,9 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   intent_iter->SeekToFirst();
 
   if (transactions.empty()) {
-    while (intent_iter->Valid()) {
+    intent_iter->Seek(key_bounds_.lower);
+    while (intent_iter->Valid() &&
+           (key_bounds_.upper.empty() || intent_iter->key().compare(key_bounds_.upper) < 0)) {
       auto key = intent_iter->key();
 
       if (key[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
@@ -4298,9 +4300,14 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
         intent_iter->Next();
       }
 
+      // Scan the transaction's corresponding reverse index section.
       while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
         DCHECK_EQ(intent_iter->key()[0], dockv::KeyEntryTypeAsChar::kTransactionId);
-        txn_intent_keys.emplace_back(intent_iter->value());
+        // We should only consider intents whose value is within the tablet's key bounds.
+        // Else, we would observe duplicate results in case of tablet split.
+        if (key_bounds_.IsWithinBounds(intent_iter->value())) {
+          txn_intent_keys.emplace_back(intent_iter->value());
+        }
         intent_iter->Next();
       }
       RETURN_NOT_OK(intent_iter->status());

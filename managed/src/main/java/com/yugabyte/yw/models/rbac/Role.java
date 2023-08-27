@@ -4,7 +4,7 @@ package com.yugabyte.yw.models.rbac;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -140,7 +140,7 @@ public class Role extends Model {
     Role role = get(customerUUID, roleUUID);
     if (role == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
+          NOT_FOUND,
           String.format("Invalid role UUID '%s' for customer '%s'.", roleUUID, customerUUID));
     }
     return role;

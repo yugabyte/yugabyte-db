@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -26,15 +25,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
-  private final NodeAgentManager nodeAgentManager;
 
   @Inject
   protected AnsibleDestroyServer(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeAgentManager nodeAgentManager) {
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
     super(baseTaskDependencies, nodeManager);
-    this.nodeAgentManager = nodeAgentManager;
   }
 
   public static class Params extends NodeTaskParams {

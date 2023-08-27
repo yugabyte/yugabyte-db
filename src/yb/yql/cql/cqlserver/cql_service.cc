@@ -64,9 +64,11 @@ DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,
 DEFINE_UNKNOWN_bool(cql_check_table_schema_in_paging_state, true,
             "Return error for prepared SELECT statement execution if the table was altered "
             "during the prepared statement execution.");
+DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true, "If enabled, it will track queries "
+            "and dump the metrics on http://localhost:12000/statements.");
 DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
             "Limit the number of statements that are dumped at the /statements endpoint.");
-DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 0,
+DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
             "Limit the number of unprepared statements that are being tracked.");
 
 namespace yb {
@@ -250,7 +252,8 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
     const ql::CQLMessage::QueryId& query_id, const string& query,
     ql::QLEnv* ql_env, IsPrepare is_prepare) {
   shared_ptr<CQLStatement> stmt;
-  if (!is_prepare && FLAGS_cql_unprepared_stmts_entries_limit == 0) {
+  if (!is_prepare &&
+      (!FLAGS_ycql_enable_stat_statements || FLAGS_cql_unprepared_stmts_entries_limit == 0)) {
     return stmt;
   }
   // Get exclusive lock before allocating a statement and updating the LRU list.
@@ -515,7 +518,7 @@ void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
   }
   std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetWritableCounters();
   LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null statement counters.";
-  LOG_IF(DFATAL, stmt_counters->query.empty()) << "Unexpected empty query string in the counters.";
+  LOG_IF(WARNING, stmt_counters->query.empty()) << "Unexpected empty query string in the counters.";
   UpdateCountersUnlocked(execute_time_in_msec, stmt_counters);
 }
 

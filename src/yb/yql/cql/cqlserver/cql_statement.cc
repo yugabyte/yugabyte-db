@@ -58,7 +58,9 @@ void StmtCounters::WriteAsJson(
     JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
   jw->StartObject();
   jw->String("query_id");
-  jw->String(b2a_hex(query_id));
+  // Write only the 8 bytes of the query_id instead of 16.
+  jw->Int64(std::stoull(b2a_hex(query_id).substr(
+        0, std::min(16, static_cast<int>(query_id.size()))), 0, 16));
 
   jw->String("query");
   jw->String(this->query);

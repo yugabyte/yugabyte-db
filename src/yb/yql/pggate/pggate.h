@@ -593,6 +593,7 @@ class PgApiImpl {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
