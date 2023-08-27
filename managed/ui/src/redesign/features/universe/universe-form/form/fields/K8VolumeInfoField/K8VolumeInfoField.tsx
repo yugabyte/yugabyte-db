@@ -11,6 +11,8 @@ import { NodeType } from '../../../../../../utils/dtos';
 import {
   DEVICE_INFO_FIELD,
   MASTER_DEVICE_INFO_FIELD,
+  INSTANCE_TYPE_FIELD,
+  MASTER_INSTANCE_TYPE_FIELD,
   PROVIDER_FIELD
 } from '../../../utils/constants';
 
@@ -24,12 +26,14 @@ interface K8VolumeInfoFieldProps {
   isDedicatedMasterField: boolean;
   disableVolumeSize: boolean;
   disableNumVolumes: boolean;
+  isEditMode: boolean;
 }
 
 export const K8VolumeInfoField = ({
   isDedicatedMasterField,
   disableVolumeSize,
-  disableNumVolumes
+  disableNumVolumes,
+  isEditMode
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -42,23 +46,31 @@ export const K8VolumeInfoField = ({
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
   const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
+  // To set value based on master or tserver field in dedicated mode
+  const INSTANCE_TYPE_UPDATE_FIELD = isDedicatedMasterField
+    ? MASTER_INSTANCE_TYPE_FIELD
+    : INSTANCE_TYPE_FIELD;
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
+  const { data: providerRuntimeConfigs, refetch: providerConfigsRefetch } = useQuery(
+    QUERY_KEY.fetchProviderRunTimeConfigs,
+    () => api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
   useEffect(() => {
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
-      const deviceInfo = getK8DeviceInfo(providerRuntimeConfigs);
+      let deviceInfo = getK8DeviceInfo(providerRuntimeConfigs);
+
+      if (fieldValue && deviceInfo && isEditMode) {
+        deviceInfo.volumeSize = fieldValue.volumeSize;
+        deviceInfo.numVolumes = fieldValue.numVolumes;
+      }
       setValue(UPDATE_FIELD, deviceInfo);
     };
     getProviderRuntimeConfigs();
+    setValue(INSTANCE_TYPE_UPDATE_FIELD, null);
   }, []);
 
   const onVolumeSizeChanged = (value: any) => {

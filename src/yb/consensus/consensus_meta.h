@@ -184,6 +184,10 @@ class ConsensusMetadata {
   // Used internally for storing the role + term combination atomically.
   using PackedRoleAndTerm = uint64;
 
+  const ConsensusMetadataPB& GetConsensusMetadataPB() const {
+    return pb_;
+  }
+
  private:
   ConsensusMetadata(FsManager* fs_manager, std::string tablet_id,
                     std::string peer_uuid);

@@ -1,8 +1,8 @@
 ---
-title: The "get diagnostics" statement [YSQL]
-headerTitle: The "get diagnostics" statement
+title: The PL/pgSQL "get diagnostics" statement [YSQL]
+headerTitle: The PL/pgSQL "get diagnostics" statement
 linkTitle: >
-  The "get diagnostics" statement
+  "get diagnostics" statement
 description: Describes the syntax and semantics of the PL/pgSQL "get diagnostics" statement. [YSQL].
 menu:
   preview:
@@ -40,6 +40,7 @@ showRightNav: true
 </div>
 
 ## Semantics
+
 The PL/pgSQL _get diagnostics_ statement is typically used, for tracing, during the development process. It's likely, here, that you'd use _raise info_ to display the information that it returns.
 
 The _get diagnostics_ syntax specifies three separate run-time facts—all or some of which can, optionally, be read at once:

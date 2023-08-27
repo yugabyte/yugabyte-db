@@ -453,6 +453,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void EnableFlushRetryableRequests();
 
   bool TEST_HasRetryableRequestsOnDisk();
+  bool TEST_IsFlushingRetryableRequests();
 
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;

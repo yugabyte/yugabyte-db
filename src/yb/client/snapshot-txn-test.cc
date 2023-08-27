@@ -974,7 +974,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     bool found = false;
-    auto files = tablet->TEST_db()->GetLiveFilesMetaData();
+    auto files = tablet->regular_db()->GetLiveFilesMetaData();
     for (const auto& meta : files) {
       auto min_ht = down_cast<docdb::ConsensusFrontier&>(
           *meta.smallest.user_frontier).hybrid_time();

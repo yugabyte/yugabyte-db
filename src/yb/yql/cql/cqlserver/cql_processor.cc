@@ -102,9 +102,8 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_bool(ycql_enable_stat_statements);
 
-DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true,
-    "If enabled, it will track queries and dump the metrics on http://localhost:12000/statements.");
 DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
     "If enabled, setting TRACING ON in cqlsh will cause "
     "the server to enable tracing for the requested RPCs and print them. Use this as a safety flag "

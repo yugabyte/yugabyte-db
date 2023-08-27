@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -364,7 +365,12 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    // PLAT-10007 use ybc-data instead of /tmp
+    if (ybcTempDir.equals("/tmp")) {
+      ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    }
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);

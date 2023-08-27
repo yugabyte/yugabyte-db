@@ -18,9 +18,18 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -165,10 +174,7 @@ public class MetricStorage {
       }
     }
 
-    NamedMetricStore store =
-        metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore());
-
-    store.save(metric);
+    metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore()).save(metric);
   }
 
   private static UUID getUuidKey(UUID uuid) {
@@ -177,7 +183,7 @@ public class MetricStorage {
 
   @Value
   private static class NamedMetricStore {
-    Map<UUID, CustomerMetricStore> customerMetrics = new HashMap<>();
+    ConcurrentMap<UUID, CustomerMetricStore> customerMetrics = new ConcurrentHashMap<>();
 
     private Optional<CustomerMetricStore> get(UUID uuid) {
       return Optional.ofNullable(customerMetrics.get(getUuidKey(uuid)));
@@ -218,7 +224,7 @@ public class MetricStorage {
 
   @Value
   private static class CustomerMetricStore {
-    Map<UUID, SourceMetricStore> sourceMetrics = new HashMap<>();
+    ConcurrentMap<UUID, SourceMetricStore> sourceMetrics = new ConcurrentHashMap<>();
 
     private Optional<SourceMetricStore> get(UUID uuid) {
       return Optional.ofNullable(sourceMetrics.get(getUuidKey(uuid)));
@@ -259,7 +265,7 @@ public class MetricStorage {
 
   @Value
   private static class SourceMetricStore {
-    List<Metric> sourceMetrics = new ArrayList<>();
+    List<Metric> sourceMetrics = new CopyOnWriteArrayList<>();
 
     private Optional<Metric> get(Map<String, String> labels) {
       return sourceMetrics.stream()

@@ -1588,6 +1588,15 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
   return Status::OK();
 }
 
+Status PgApiImpl::SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDmlRead*>(handle)->SetDistinctPrefixLength(distinct_prefix_length);
+  return Status::OK();
+}
+
 Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
@@ -1872,6 +1881,10 @@ Status PgApiImpl::ResetTransactionReadPoint() {
 
 Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint();
+}
+
+bool PgApiImpl::IsRestartReadPointRequested() {
+  return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
 Status PgApiImpl::CommitTransaction() {

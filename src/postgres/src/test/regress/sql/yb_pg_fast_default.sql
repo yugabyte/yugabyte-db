@@ -489,8 +489,6 @@ INSERT INTO vtype VALUES (1);
 ALTER TABLE vtype ADD COLUMN b DOUBLE PRECISION DEFAULT 0.2;
 ALTER TABLE vtype ADD COLUMN c BOOLEAN DEFAULT true;
 SELECT * FROM vtype;
--- YB TODO(fizaa): fix output after issue #18352 is resolved.
--- (ALTER TABLE with ALTER TYPE on multiple columns fails).
 ALTER TABLE vtype
       ALTER b TYPE text USING b::text,
       ALTER c TYPE text USING c::text;

@@ -1681,7 +1681,7 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     size_t total_sst_files = 0;
     for (auto& peer : peers) {
-      auto intents_db = peer->tablet()->TEST_intents_db();
+      auto intents_db = peer->tablet()->intents_db();
       if (!intents_db) {
         continue;
       }
