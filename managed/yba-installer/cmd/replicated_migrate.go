@@ -11,6 +11,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replflow"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
@@ -136,17 +137,15 @@ var replicatedMigrationStart = &cobra.Command{
 
 		// Create yugaware postgres DB.
 		if pg, ok := services[PostgresServiceName].(Postgres); ok {
-			pg.finishMigrateFromReplicated()
+			pg.replicatedMigrateStep2()
 		}
-
-
 
 		// Restore data using yugabundle method, pass in ybai data dir so that data can be copied over
 		log.Info("Restoring data to newly installed YBA.")
 		files, err := os.ReadDir(replBackupDir)
-    if err != nil {
-      log.Fatal(fmt.Sprintf("error reading directory %s: %s", replBackupDir, err.Error()))
-    }
+		if err != nil {
+			log.Fatal(fmt.Sprintf("error reading directory %s: %s", replBackupDir, err.Error()))
+		}
 		// Looks for most recent backup first.
 		sort.Slice(files, func(i, j int) bool {
 			iinfo, e1 := files[i].Info()
@@ -200,10 +199,36 @@ var replicatedMigrationStart = &cobra.Command{
 	},
 }
 
+var replicatedMigrateFinish = &cobra.Command{
+	Use:   "finish",
+	Short: "Complete the replicated migration, fully deleting the replicated install",
+	Long: "Complete the replicated migration. This will fully move data over from replicated to " +
+		"yba installer, delete replicated data, and remove all replicated containers.",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		prompt := `replicated-migrate finish will completely uninstall replicated, completing the
+migration to yba-installer. This involves deleting the storage directory (default /opt/yugabyte).
+Are you sure you want to continue?`
+		if !common.UserConfirm(prompt, common.DefaultYes) {
+			log.Info("Canceling finish")
+			os.Exit(0)
+		}
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		for _, name := range serviceOrder {
+			if err := services[name].FinishReplicatedMigrate(); err != nil {
+				log.Fatal("could not finish replicated migration for " + name + ": " + err.Error())
+			}
+		}
+		if err := replflow.Uninstall(); err != nil {
+			log.Fatal("unable to uninstall replicated: " + err.Error())
+		}
+	},
+}
+
 var replicatedMigrationConfig = &cobra.Command{
-	Use:	 	"config",
-	Short:	"generated yba-ctl.yml equivalent of replicated config",
-	Run: func(cmd *cobra.Command, args[]string) {
+	Use:   "config",
+	Short: "generated yba-ctl.yml equivalent of replicated config",
+	Run: func(cmd *cobra.Command, args []string) {
 		ctl := replicatedctl.New(replicatedctl.Config{})
 		config, err := ctl.AppConfigExport()
 		if err != nil {
@@ -222,6 +247,7 @@ func init() {
 	replicatedMigrationStart.Flags().StringVarP(&licensePath, "license-path", "l", "",
 		"path to license file")
 
-	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig)
+	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig,
+		replicatedMigrateFinish)
 	rootCmd.AddCommand(baseReplicatedMigration)
 }

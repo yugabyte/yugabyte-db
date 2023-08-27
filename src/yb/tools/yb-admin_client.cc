@@ -3643,6 +3643,10 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
     req.set_record_type(cdc::CDCRecordType::ALL);
+  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
+    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
+  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
   } else {
     req.set_record_type(cdc::CDCRecordType::CHANGE);
   }

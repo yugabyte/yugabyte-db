@@ -531,6 +531,18 @@ YBIsDBCatalogVersionMode()
 		yb_last_known_catalog_cache_version = 1;
 		YbUpdateCatalogCacheVersion(1);
 		elog(DEBUG3, "switching to per-db mode");
+		/*
+		 * YB does write operation buffering to reduce the number of RPCs.
+		 * That is, PG backend can buffer several write operations and send
+		 * them out in a single RPC. Here we dynamically switch from global
+		 * catalog version mode to per-database catalog version mode, so
+		 * flush the buffered write operations. Otherwise, we can end up
+		 * having the first write operations in global catalog version mode,
+		 * and the rest write operations in per-database catalog version.
+		 * Mixing global and per-database catalog versions in a single RPC
+		 * triggers a tserver SCHECK failure.
+		 */
+		YBFlushBufferedOperations();
 		return true;
 	}
 

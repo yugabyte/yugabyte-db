@@ -515,6 +515,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
         if (state_->allow_only_leader_balancing_) {
           YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 2)
               << "Skipping removing replicas. Only leader balancing table " << table->id();
+          break;
         }
         auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
         if (!handle_remove.ok()) {
@@ -878,6 +879,8 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
 
 Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  DCHECK(!state_->allow_only_leader_balancing_);
+
   if (state_->options_->kAllowLimitStartingTablets) {
     if (global_state_->total_starting_tablets_ >= state_->options_->kMaxTabletRemoteBootstraps) {
       return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
@@ -1308,6 +1311,8 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
 
 Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
+  DCHECK(!state_->allow_only_leader_balancing_);
+
   // Give high priority to removing tablets that are not respecting the placement policy.
   if (VERIFY_RESULT(HandleRemoveIfWrongPlacement(out_tablet_id, out_from_ts))) {
     return true;

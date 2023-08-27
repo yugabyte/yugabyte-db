@@ -128,7 +128,7 @@ func (pg Postgres) Install() error {
 	pg.Start()
 
 	// work to set up LDAP
-	if (viper.GetBool("postgres.install.ldap_enabled")) {
+	if viper.GetBool("postgres.install.ldap_enabled") {
 		if err := pg.setUpLDAP(); err != nil {
 			return err
 		}
@@ -491,7 +491,7 @@ func (pg Postgres) MigrateFromReplicated() error {
 }
 
 // TODO: Error handling for this function (need to return errors from createYugawareDB and start)
-func (pg Postgres) finishMigrateFromReplicated() error {
+func (pg Postgres) replicatedMigrateStep2() error {
 	pg.Start()
 
 	if viper.GetBool("postgres.install.enabled") {
@@ -501,6 +501,11 @@ func (pg Postgres) finishMigrateFromReplicated() error {
 	if !common.HasSudoAccess() {
 		pg.createCronJob()
 	}
+	return nil
+}
+
+// FinishReplicatedMigrate is a no-op for postgres, as this was done via backup, restore.
+func (pg Postgres) FinishReplicatedMigrate() error {
 	return nil
 }
 
@@ -580,9 +585,9 @@ func (pg Postgres) setUpLDAP() error {
 	ldapPort := viper.GetInt("postgres.install.ldap_port")
 	ldapTLS := viper.GetBool("postgres.install.secure_ldap")
 	_, err = hbaConf.WriteString(
-		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" " +
-								"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
-								ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
+		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" "+
+			"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
+			ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
 	if err != nil {
 		return fmt.Errorf("Error writing ldap config to %s: %s", pgHbaConfPath, err.Error())
 	}
