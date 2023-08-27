@@ -143,7 +143,7 @@ components:
       - source: public
         image_name: postgres
         name: postgres
-        version: 14.8
+        version: 14.9
         env_vars:
           - name: POSTGRES_DB
             static_val: 'yugaware'
