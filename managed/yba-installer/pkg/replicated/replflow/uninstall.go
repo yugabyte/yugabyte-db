@@ -2,9 +2,12 @@ package replflow
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
@@ -24,8 +27,20 @@ var (
 )
 
 func Uninstall() error {
+	// Get the root install dir for deletion later
+	replCtl := replicatedctl.New(replicatedctl.Config{})
+	config, err := replCtl.AppConfigExport()
+	if err != nil {
+		logging.Fatal("failed to export replicated app config: " + err.Error())
+	}
+	rootDir, ok := config.ConfigEntries[replicatedctl.StoragePathKey]
+	if !ok {
+		logging.Warn("replicated config had no config entry " + replicatedctl.StoragePathKey +
+			". Skipping delete of root install directory.")
+	}
+
 	// Stop and disable the replicated services
-	logging.Debug("stopping replicated system services")
+	logging.Info("stopping replicated system services")
 	if err := systemd.Stop(replicatedServices...); err != nil {
 		return fmt.Errorf("uninstall failed to stop replicated: %w", err)
 	}
@@ -33,7 +48,7 @@ func Uninstall() error {
 		return fmt.Errorf("uninstall failed to disable replicated: %w", err)
 	}
 
-	logging.Debug("stopping replicated containers")
+	logging.Info("stopping replicated containers")
 	// Stop the 2 containers
 	for _, ctr := range replicatedStopContainers {
 		if err := stopContainer(ctr); err != nil {
@@ -41,27 +56,38 @@ func Uninstall() error {
 		}
 	}
 
-	logging.Debug("deleting all replicated containers")
+	logging.Info("deleting all replicated containers")
 	// Force remove all containers
 	if err := forceDeleteContainer(replicatedDeleteContainers...); err != nil {
 		return fmt.Errorf("uninstall failed to force delete containers: %w", err)
 	}
 
-	logging.Debug("deleting replicated images")
+	logging.Info("deleting replicated images")
 	for _, rgx := range replicatedImageRegexes {
 		if err := deleteContainerImagesRegex(rgx); err != nil {
 			return fmt.Errorf("uninstall failed to delete images matching %s: %w", rgx, err)
 		}
 	}
 
-	logging.Debug("removing replicated files")
-	args := append([]string{"-rf"}, replicatedFiles...)
-	if out := shell.Run("rm", args...); !out.SucceededOrLog() {
-		return fmt.Errorf("uninstall failed to delete replicated files: %w", out.Error)
+	logging.Info("removing replicated files")
+	for _, file := range replicatedFiles {
+		if out := shell.RunShell("rm", "-r", file); !out.Succeeded() {
+			if strings.Contains(out.StderrString(), "No such file or directory") {
+				logging.Debug("file " + file + " already deleted")
+				continue
+			}
+			out.SucceededOrLog()
+			return fmt.Errorf("failed to delete %s: %w", file, out.Error)
+		}
 	}
 
 	if err := systemd.DaemonReload(); err != nil {
 		return fmt.Errorf("uninstall failed to reload systemd: %w", err)
 	}
+
+	if err := common.RemoveAll(rootDir.Value); err != nil {
+		return fmt.Errorf("failed to delete replicated install directory %s: %w", rootDir.Value, err)
+	}
+	logging.Info("Uninstalled replicated")
 	return nil
 }

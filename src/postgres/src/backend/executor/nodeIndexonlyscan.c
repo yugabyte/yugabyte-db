@@ -126,6 +126,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			scandesc->yb_rel_pushdown =
 				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
+			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		}
 
 		/*
@@ -676,8 +677,6 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	indexstate->ioss_RuntimeKeysReady = false;
 	indexstate->ioss_RuntimeKeys = NULL;
 	indexstate->ioss_NumRuntimeKeys = 0;
-	/* YB: Prefix length parameter passed to DocDB. */
-	estate->yb_exec_params.yb_distinct_prefixlen = node->yb_distinct_prefixlen;
 
 	/*
 	 * build the index scan keys from the index qualification

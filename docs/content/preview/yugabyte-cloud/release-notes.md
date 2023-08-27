@@ -20,6 +20,13 @@ On this page:
 
 ## Change log
 
+### August 15, 2023
+
+**Database**
+
+- Innovation track updated to 2.16.6.0.
+- Production track updated to 2.14.11.0.
+
 ### July 13, 2023
 
 **Database**

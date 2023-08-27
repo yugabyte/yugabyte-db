@@ -295,7 +295,6 @@ typedef struct PgExecParameters {
   //     to Postgres code layer.
   // For now we only support one rowmark.
 
-  // yb_distinct_prefixlen - prefix for distinct index scan
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
@@ -312,7 +311,6 @@ typedef struct PgExecParameters {
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
-  int yb_distinct_prefixlen = 0;
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
@@ -332,7 +330,6 @@ typedef struct PgExecParameters {
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
-  int yb_distinct_prefixlen;
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;

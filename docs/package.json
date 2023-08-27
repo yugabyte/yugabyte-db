@@ -5,6 +5,7 @@
   "main": "public/index.html",
   "scripts": {
     "start": "run-p start-diagrams webpack-watch hugo-server",
+    "fast": "run-p webpack-watch hugo-server-fast",
     "start-production": "run-p webpack-watch hugo-server-production",
     "start-static": "run-p webpack-watch hugo-server-static",
     "build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-build",
@@ -14,6 +15,7 @@
     "hugo-build": "hugo -b https://docs.yugabyte.com",
     "hugo-build-with-metrics": "hugo --templateMetrics --templateMetricsHints -b https://docs.yugabyte.com",
     "hugo-server": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
+    "hugo-server-fast": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment fast",
     "hugo-server-production": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment production",
     "hugo-server-static": "hugo server --renderStaticToDisk --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
     "start-diagrams": "npm install --no-audit --no-fund && java -jar node_modules/yb-rrdiagram/rrdiagram*.jar --server",

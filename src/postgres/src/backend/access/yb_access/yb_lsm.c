@@ -379,6 +379,7 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->xs_want_itup, nscankeys, scankey,
 									 scan->yb_scan_plan, scan->yb_rel_pushdown,
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
+									 scan->yb_distinct_prefixlen,
 									 scan->yb_exec_params);
 	scan->opaque = ybScan;
 }

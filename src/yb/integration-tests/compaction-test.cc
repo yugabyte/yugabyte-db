@@ -840,7 +840,7 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
   for (auto peer : ts_tablet_manager->GetTabletPeers()) {
     auto tablet = peer->shared_tablet();
     // Find the tablet peer with the db for early compaction (matching pointers)
-    if (tablet && tablet->TEST_db() == db_with_early_compaction) {
+    if (tablet && tablet->regular_db() == db_with_early_compaction) {
       auto metadata = tablet->metadata();
       // Previous compaction time set to 30 days prior to now.
       auto now = clock_->Now();

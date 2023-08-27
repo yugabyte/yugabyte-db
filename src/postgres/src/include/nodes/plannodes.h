@@ -448,8 +448,8 @@ typedef struct IndexScan
 	PushdownExprs yb_rel_pushdown;
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
-	int         yb_distinct_prefixlen; /* skip scan prefix */
-	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
+	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
 /* ----------------
@@ -486,7 +486,7 @@ typedef struct IndexOnlyScan
 	List	   *yb_indexqual_for_recheck;
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
-	int         yb_distinct_prefixlen; /* skip scan prefix */
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------

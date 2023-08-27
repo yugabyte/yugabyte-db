@@ -491,8 +491,17 @@ SocketBackend(StringInfo inBuf)
 		case 'A': /* Auth Passthrough Request */
 
 			if (!YbIsClientYsqlConnMgr())
-				ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-						errmsg("invalid frontend message type %d", qtype)));
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 's': /* SET SESSION PARAMETER */
+
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
 		default:
@@ -3972,26 +3981,14 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			if (edata->detail == NULL && edata->hint == NULL)
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
-			else
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errdetail("%s", edata->detail),
-						 errhint("%s", edata->hint),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
+			ereport(edata->elevel,
+					(yb_txn_errcode(edata->yb_txn_errcode),
+					 errcode(error_code),
+					 errmsg("%s", edata->message),
+					 edata->detail ? errdetail("%s", edata->detail) : 0,
+					 edata->hint ? errhint("%s", edata->hint) : 0,
+					 errcontext("Catalog Version Mismatch: A DDL occurred "
+								"while processing this query. Try again.")));
 		}
 		else
 		{
@@ -5877,9 +5874,27 @@ PostgresMain(int argc, char *argv[],
 				}
 				else
 				{
-					ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-									errmsg("invalid frontend message type %d",
-										   firstchar)));
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 's': /* SET SESSION PARAMETER */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbHandleSetSessionParam(pq_getmsgint(&input_message, 4));
+					finish_xact_command();
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+								firstchar)));
 				}
 				break;
 

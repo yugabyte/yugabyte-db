@@ -249,19 +249,11 @@ extern PathKey *make_canonical_pathkey(PlannerInfo *root,
 					   int strategy, bool nulls_first);
 extern void add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 						List *live_childrels);
-extern List *yb_get_distinct_prefix(IndexOptInfo *index, List *index_clauses);
-
-/*
- * YB: Enum representing if the uniqkeys of a pathnode is sufficient to
- * satisfy the distinctness requirements of a query.
- */
-typedef enum {
-	YB_UNIQKEYS_NONE, /* path must be dropped since it skipped some rows */
-	YB_UNIQKEYS_EXACT, /* path satisfies the query requirements exactly */
-	YB_UNIQKEYS_EXCESS /* path is only partially distinct */
-} YbUniqKeysCmp;
-
-extern YbUniqKeysCmp yb_has_sufficient_uniqkeys(PlannerInfo *root,
-												Path *pathnode);
+extern bool yb_reject_distinct_pushdown(Node *expr);
+extern List *yb_get_uniqkeys(IndexOptInfo *index, int prefixlen);
+extern int yb_calculate_distinct_prefixlen(IndexOptInfo *index,
+										   List *index_clauses);
+extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
+extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 
 #endif							/* PATHS_H */

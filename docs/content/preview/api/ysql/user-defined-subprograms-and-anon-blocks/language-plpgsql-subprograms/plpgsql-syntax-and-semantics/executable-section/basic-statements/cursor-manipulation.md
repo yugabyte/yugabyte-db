@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: cursor-manipulation
     parent: basic-statements
-    weight: 40
+    weight: 50
 type: docs
 showRightNav: true
 ---

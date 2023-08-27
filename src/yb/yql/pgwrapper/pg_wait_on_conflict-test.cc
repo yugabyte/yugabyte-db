@@ -56,6 +56,8 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
+DECLARE_int32(send_wait_for_report_interval_ms);
+DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 
 using namespace std::literals;
 
@@ -239,9 +241,42 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockWithWrites)) {
   TestDeadlockWithWrites();
 }
 
+class PgWaitQueuesAggressiveWaitingRegistryReporter : public PgWaitQueuesTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_send_wait_for_report_interval_ms) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_process_update_resp_delay_ms) = 10;
+    PgWaitQueuesTest::SetUp();
+  }
+};
+
+TEST_F(PgWaitQueuesAggressiveWaitingRegistryReporter, TestStatusTabletDataCleanup) {
+  constexpr int kClients = 8;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE foo (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO foo SELECT generate_series(0, 11), 0"));
+  TestThreadHolder thread_holder;
+
+  CountDownLatch done(kClients);
+
+  for (int i = 0; i != kClients; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop) {
+        ASSERT_OK(conn.StartTransaction(GetIsolationLevel()));
+        ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+        std::this_thread::sleep_for(5ms);
+        ASSERT_OK(conn.CommitTransaction());
+        std::this_thread::sleep_for(50ms);
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+
 class PgWaitQueuesDropParticipantSignal : public PgWaitQueuesTest {
  protected:
-
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_drop_participant_signal) = true;
     PgWaitQueuesTest::SetUp();

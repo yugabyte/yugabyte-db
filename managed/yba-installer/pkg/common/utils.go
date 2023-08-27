@@ -146,7 +146,7 @@ func HasSudoAccess() bool {
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
 	log.Debug("creating file (and parent directories) " + p)
-	if err := MkdirAll(filepath.Dir(p), 0777); err != nil {
+	if err := MkdirAll(filepath.Dir(p), DirMode); err != nil {
 		return nil, err
 	}
 	return os.Create(p)
@@ -176,6 +176,23 @@ func Symlink(src string, dest string) error {
 	out := shell.Run("ln", "-sf", src, dest)
 	out.SucceededOrLog()
 	return out.Error
+}
+
+// ResolveSymlink will read the given symlink and move the original file to the symlinks
+// destination. This requires the given path is a symlink, and will not check if it is a real file
+// or a symlink
+func ResolveSymlink(path string) error {
+	orig, err := os.Readlink(path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve symlink for %s: %w", path, err)
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("failed to remove the symlink %s: %w", path, err)
+	}
+	if err := os.Rename(orig, path); err != nil {
+		return fmt.Errorf("failed to move %s -> %s: %w", orig, path, err)
+	}
+	return nil
 }
 
 // Copy will copy the source to the destination
@@ -455,7 +472,7 @@ func UpdateRootInstall(newRoot string) {
 // creates a mapping entry for every key in path except for the last key which maps to value
 // value can be of type string/int/bool
 func createYamlValue(root *yaml.Node, path string, value interface{}) error {
-	if (root.Kind == yaml.DocumentNode) {
+	if root.Kind == yaml.DocumentNode {
 		return createYamlValue(root.Content[0], path, value)
 	}
 	var key, val yaml.Node
@@ -509,7 +526,7 @@ func setYamlValue(root *yaml.Node, findPath, setPath string, value interface{}) 
 				return err
 			}
 		}
-	} else {	// recursive case where there may be more levels to create/follow before setting value
+	} else { // recursive case where there may be more levels to create/follow before setting value
 		if len(matchNodes) != 1 {
 			// Path does not exist in yaml, need to create all entries (including findPath)
 			if err = createYamlValue(root, fmt.Sprintf("%s.%s", findPath, setPath), value); err != nil {

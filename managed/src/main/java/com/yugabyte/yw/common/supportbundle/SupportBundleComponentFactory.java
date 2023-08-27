@@ -85,8 +85,10 @@ public class SupportBundleComponentFactory {
         break;
       case K8sInfo:
         supportBundleComponent = this.k8sInfoComponent;
+        break;
       case NodeAgent:
         supportBundleComponent = this.nodeAgentComponent;
+        break;
       default:
         break;
     }

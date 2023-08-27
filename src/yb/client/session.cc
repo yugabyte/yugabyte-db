@@ -28,10 +28,11 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -39,20 +40,15 @@ using namespace std::placeholders;
 DEFINE_UNKNOWN_int32(client_read_write_timeout_ms, 60000,
     "Timeout for client read and write operations.");
 
-namespace yb {
-namespace client {
-
-using internal::AsyncRpcMetrics;
-using internal::Batcher;
-
-using std::shared_ptr;
+namespace yb::client {
 
 YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
   batcher_config_.client = client;
   batcher_config_.non_transactional_read_point =
       clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr;
   const auto metric_entity = client->metric_entity();
-  async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
+  async_rpc_metrics_ =
+      metric_entity ? std::make_shared<internal::AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
 YBSession::YBSession(YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock)
@@ -207,6 +203,9 @@ void BatcherFlushDone(
     }
     retry_batcher->Add(op);
   }
+
+  TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
+
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
       internal::IsWithinTransactionRetry::kTrue);
 }
@@ -439,5 +438,4 @@ bool ShouldSessionRetryError(const Status& status) {
          consensus::ConsensusError(status) == consensus::ConsensusErrorPB::TABLET_SPLIT;
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client
