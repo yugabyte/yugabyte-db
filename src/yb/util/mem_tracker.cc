@@ -196,12 +196,14 @@ class MemTracker::TrackerMetrics {
       name += "_";
       name += name_suffix;
     }
-    metric_ = metric_entity_->FindOrCreateGauge(
+    metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
         std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
-          metric_entity_->prototype().name(), std::move(name),
-          CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
-          CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
-        mem_tracker.consumption());
+            metric_entity_->prototype().name(), std::move(name),
+            CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
+            CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
+        static_cast<int64_t>(0));
+    // Consumption could be changed when gauge is created, so set it separately.
+    metric_->set_value(mem_tracker.consumption());
   }
 
   TrackerMetrics(TrackerMetrics&) = delete;
@@ -318,7 +320,6 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
       consumption_functor_(std::move(consumption_functor)),
       descr_(Substitute("memory consumption for $0", id)),
       parent_(std::move(parent)),
-      rand_(GetRandomSeed32()),
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace),
       add_to_parent_(add_to_parent) {
@@ -813,8 +814,9 @@ void MemTracker::SetMetricEntity(
         << metrics_->metric_entity_->id();
     return;
   }
-  metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
-  metrics_->Init(*this, name_suffix);
+  auto metrics = std::make_unique<TrackerMetrics>(metric_entity);
+  metrics->Init(*this, name_suffix);
+  metrics_ = std::move(metrics);
 }
 
 void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {

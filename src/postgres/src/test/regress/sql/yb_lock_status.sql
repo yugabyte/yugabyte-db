@@ -224,6 +224,11 @@ INSERT INTO yb_lock_tests SELECT i, i, i, 'value', i, i from generate_series(10,
 -- TODO: Remove WHERE when we support the relation argument
 SELECT COUNT(DISTINCT(tablet_id)) FROM yb_lock_status('yb_lock_tests'::regclass, null)
                                   WHERE relation = 'yb_lock_tests'::regclass;
+-- Validate node field
+SELECT COUNT(DISTINCT (node)) > 0 AS valid_node
+FROM yb_lock_status(null, null) l
+         INNER JOIN yb_servers() s ON l.node = s.uuid;
+
 ABORT;
 
 -- Validate attnum

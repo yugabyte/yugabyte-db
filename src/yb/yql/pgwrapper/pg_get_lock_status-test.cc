@@ -57,8 +57,8 @@ class PgGetLockStatusTest : public PgLocksTestBase {
 
     TransactionIdSet txn_ids_set;
     for (const auto& tablet_lock_info : resp.tablet_lock_infos()) {
-      for (const auto& txn_lock_pair : tablet_lock_info.transaction_locks()) {
-        auto id = VERIFY_RESULT(TransactionId::FromString(txn_lock_pair.first));
+      for (const auto& txn_lock_info : tablet_lock_info.transaction_locks()) {
+        auto id = VERIFY_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
         RSTATUS_DCHECK(!id.IsNil(),
                        IllegalState,
                        "Expected to see non-empty transaction id.");
@@ -96,13 +96,12 @@ class PgGetLockStatusTest : public PgLocksTestBase {
         ASSERT_NE(tablet_map_it, expected_tablet_txn_locks.end());
         ASSERT_EQ(tablet_locks.transaction_locks().size(), tablet_map_it->second.size());
 
-        for (const auto& txn_lock_pair : tablet_locks.transaction_locks()) {
-          auto id = ASSERT_RESULT(TransactionId::FromString(txn_lock_pair.first));
+        for (const auto& txn_lock_info : tablet_locks.transaction_locks()) {
+          auto id = ASSERT_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
           auto txn_map_it = tablet_map_it->second.find(id);
           ASSERT_NE(txn_map_it, tablet_map_it->second.end());
-          const auto& lock_info = txn_lock_pair.second;
           ASSERT_EQ(
-              lock_info.granted_locks_size() + lock_info.waiting_locks().locks_size(),
+              txn_lock_info.granted_locks_size() + txn_lock_info.waiting_locks().locks_size(),
               txn_map_it->second);
           tablet_map_it->second.erase(txn_map_it);
         }
@@ -170,7 +169,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusWithCustomTransactionsList) {
   ASSERT_EQ(num_txns, 1);
 }
 
-TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
+TEST_F(PgGetLockStatusTest, TestLocksFromWaitQueue) {
   const auto table = "foo";
   const auto key = "1";
   auto session = ASSERT_RESULT(Init(table, key));
@@ -182,15 +181,12 @@ TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
   auto status_future = ASSERT_RESULT(
       ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
 
-  // Assert that locks corresponding to the waiter txn as well are returned in
-  // GetLockStatusResponsePB.
+  // Assert that locks corresponding to the waiter txn as well are returned in pg_locks;
   SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
-  const auto& tablet_id = session.first_involved_tablet;
-  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
-  auto num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
+  auto num_txns = ASSERT_RESULT(session.conn->FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
   ASSERT_EQ(num_txns, 2);
 
-  ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
   ASSERT_OK(status_future.get());
 }
@@ -342,23 +338,13 @@ TEST_F(PgGetLockStatusTest, TestWaiterLockContainingColumnId) {
       ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=1 WHERE k=$1", table, key)));
 
   SleepFor(2s * kTimeMultiplier);
-  // Workaround to get the other transaction id, currently can't get it through a pg command.
-  auto tserver_lock_status_resp = ASSERT_RESULT(GetLockStatus(session.first_involved_tablet));
-  auto txns_set = ASSERT_RESULT(GetTxnsInLockStatusResponse(tserver_lock_status_resp));
-  txns_set.erase(session.txn_id);
-  ASSERT_EQ(txns_set.size(), 1);
-  auto other_txn = *txns_set.begin();
-  ASSERT_NE(other_txn, session.txn_id);
-
   auto res = ASSERT_RESULT(session.conn->FetchValue<int64_t>(
-    Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'transactionid' = '$0'",
-    other_txn.ToString())));
+      "SELECT COUNT(*) FROM pg_locks WHERE NOT granted"));
   // The waiter acquires 3 locks in total,
   // 1 {STRONG_READ,STRONG_WRITE} on the column
   // 1 {WEAK_READ,WEAK_WRITE} on the row
   // 1 {WEAK_READ,WEAK_WRITE} on the table
   ASSERT_EQ(res, 3);
-  ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
 }
 
@@ -431,15 +417,15 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
   ASSERT_EQ(resp.node_locks_size(), 1);
   ASSERT_EQ(resp.node_locks(0).tablet_lock_infos_size(), 1);
   ASSERT_EQ(resp.node_locks(0).tablet_lock_infos(0).transaction_locks_size(), 1);
-  for (const auto& [txn_id, txn_lock] :
+  for (const auto& txn_lock_info :
           resp.node_locks(0).tablet_lock_infos(0).transaction_locks()) {
-    auto waiter_txn_id = ASSERT_RESULT(TransactionId::FromString(txn_id));
+    auto waiter_txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
     ASSERT_EQ(waiter_txn_id, waiter_session.txn_id);
 
-    ASSERT_EQ(txn_lock.waiting_locks().locks().size(), 2);
+    ASSERT_EQ(txn_lock_info.waiting_locks().locks().size(), 2);
 
     std::set<TransactionId> blockers;
-    for (const auto& blocking_txn_id : txn_lock.waiting_locks().blocking_txn_ids()) {
+    for (const auto& blocking_txn_id : txn_lock_info.waiting_locks().blocking_txn_ids()) {
       auto decoded = ASSERT_RESULT(FullyDecodeTransactionId(blocking_txn_id));
       blockers.insert(decoded);
       ASSERT_TRUE(decoded == session1.txn_id || decoded == session2.txn_id);
@@ -453,6 +439,15 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
     return lock_acquired.load();
   }, 5s * kTimeMultiplier, "select for update to unblock and execute"));
   th.join();
+
+  auto null_blockers_ct = ASSERT_RESULT(session1.conn->FetchValue<int64_t>(
+      Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'blocked_by' IS NULL")));
+  auto not_null_blockers_ct = ASSERT_RESULT(session1.conn->FetchValue<int64_t>(
+      Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'blocked_by' IS NOT NULL")));
+
+  EXPECT_GT(null_blockers_ct, 0);
+  EXPECT_EQ(not_null_blockers_ct, 0);
+
   ASSERT_OK(waiter_session.conn->CommitTransaction());
 }
 
@@ -496,6 +491,173 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   }
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
+  const auto tablegroup = "tg";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup));
+
+  const auto table_name = "foo";
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) TABLEGROUP $1", table_name, tablegroup));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
+
+  const auto key = "1";
+  const auto num_txns = 2;
+  TestThreadHolder thread_holder;
+  CountDownLatch fetched_locks{1};
+  for (auto i = 0 ; i < num_txns ; i++) {
+    thread_holder.AddThreadFunctor([this, &fetched_locks, table_name, key] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=$1", table_name, key));
+      ASSERT_TRUE(fetched_locks.WaitFor(15s * kTimeMultiplier));
+      ASSERT_OK(conn.RollbackTransaction());
+    });
+  }
+
+  SleepFor(5s * kTimeMultiplier);
+  // Each transaction above acquires 3 locks, one {STRONG_READ,STRONG_WRITE} on the column,
+  // one {WEAK_READ, WEAK_WRITE} on the row, and a {WEAK_READ,WEAK_WRITE} on the table.
+  auto res = ASSERT_RESULT(setup_conn.FetchValue<int64_t>("SELECT COUNT(*) FROM pg_locks"));
+  ASSERT_EQ(res, num_txns * 3);
+  fetched_locks.CountDown();
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
+  const auto table = "foo";
+  const auto locked_key = "1";
+  constexpr int kMinTxnAgeSeconds = 1;
+
+  auto blocker_session = ASSERT_RESULT(Init(table, locked_key));
+
+  auto waiter = ASSERT_RESULT(Init("bar", locked_key));
+  ASSERT_OK(waiter.conn->Execute("SAVEPOINT s1"));
+  std::thread th([&waiter, &table, &locked_key] {
+    ASSERT_OK(waiter.conn->FetchFormat(
+        "SELECT * FROM $0 WHERE k=$1 FOR SHARE", table, locked_key));
+  });
+
+  ASSERT_OK(blocker_session.conn->ExecuteFormat(
+      "SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+
+  auto waiting_subtxn_id = ASSERT_RESULT(blocker_session.conn->FetchValue<string>(Format(
+    "SELECT DISTINCT(ybdetails->>'subtransaction_id') FROM pg_locks "
+    "WHERE ybdetails->>'subtransaction_id' != '1' "
+      "AND ybdetails->>'transactionid'='$0' "
+      "AND NOT granted",
+    waiter.txn_id.ToString())));
+
+  ASSERT_OK(blocker_session.conn->CommitTransaction());
+
+  auto granted_subtxn_id = ASSERT_RESULT(blocker_session.conn->FetchValue<string>(Format(
+    "SELECT DISTINCT(ybdetails->>'subtransaction_id') FROM pg_locks "
+    "WHERE ybdetails->>'subtransaction_id' != '1' AND ybdetails->>'transactionid'='$0' AND granted",
+    waiter.txn_id.ToString())));
+
+  ASSERT_EQ(waiting_subtxn_id, granted_subtxn_id);
+
+  th.join();
+}
+
+TEST_F(PgGetLockStatusTest, HidesLocksFromAbortedSubTransactions) {
+  const auto table = "foo";
+  const auto locked_key = "1";
+  constexpr int kMinTxnAgeSeconds = 1;
+
+  auto session = ASSERT_RESULT(Init(table, locked_key));
+
+  ASSERT_OK(session.conn->Execute("SAVEPOINT s1"));
+  ASSERT_OK(session.conn->FetchFormat("SELECT * FROM $0 WHERE k=2 FOR UPDATE", table));
+  ASSERT_OK(session.conn->Execute("SAVEPOINT s2"));
+  ASSERT_OK(session.conn->FetchFormat("SELECT * FROM $0 WHERE k=3 FOR UPDATE", table));
+
+  auto get_distinct_subtxn_count_query = Format(
+    "SELECT COUNT(DISTINCT(ybdetails->>'subtransaction_id')) FROM pg_locks "
+    "WHERE ybdetails->>'transactionid'='$0'",
+    session.txn_id.ToString());
+
+  ASSERT_OK(session.conn->ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 3);
+
+  ASSERT_OK(session.conn->Execute("ROLLBACK TO s2"));
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 2);
+
+  ASSERT_OK(session.conn->Execute("ROLLBACK TO s1"));
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 1);
+}
+
+TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute(
+          "CREATE TABLE foo AS SELECT i AS a, i+1 AS b FROM generate_series(1,10000)i"));
+    return Status::OK();
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  while (status_future.wait_for(0ms) != std::future_status::ready) {
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM pg_locks"));
+  }
+  ASSERT_OK(status_future.get());
+}
+
+class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
+  size_t NumTabletServers() override {
+    return 3;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 4;
+  }
+};
+
+TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
+  constexpr auto table = "foo";
+  constexpr auto key = "1";
+  constexpr int kMinTxnAgeSeconds = 1;
+  constexpr int kNumKeys = 10;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1,$1), 0", table, kNumKeys));
+
+  auto old_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(old_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(old_conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, key));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=1"));
+  auto old_txn_id = ASSERT_RESULT(setup_conn.FetchValue<string>(
+      "SELECT DISTINCT(ybdetails->>'transactionid') FROM pg_locks"));
+
+  TestThreadHolder thread_holder;
+  CountDownLatch started_txns{kNumKeys - 1};
+  CountDownLatch done{1};
+  for (auto i = 2 ; i <= kNumKeys ; i++) {
+    thread_holder.AddThreadFunctor([this, &done, &started_txns, kMinTxnAgeSeconds, i, table] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, i));
+      SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+      started_txns.CountDown();
+      ASSERT_TRUE(done.WaitFor(10s * kTimeMultiplier));
+    });
+  }
+  ASSERT_TRUE(started_txns.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(old_txn_id, ASSERT_RESULT(setup_conn.FetchValue<string>(
+      "SELECT DISTINCT(ybdetails->>'transactionid') FROM pg_locks")));
+  done.CountDown();
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper

@@ -71,14 +71,11 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       otherwise: Yup.string()
     }
   ),
-  ldap_tls_protocol: Yup.string().when(
-    ['ldap_security'],
-    {
-      is: (ldap_security) => ['enable_ldaps', 'enable_ldap_start_tls'].includes(ldap_security),
-      then: Yup.string().required('TLS Version is required'),
-      otherwise: Yup.string()
-    }
-  )
+  ldap_tls_protocol: Yup.string().when(['ldap_security'], {
+    is: (ldap_security) => ['enable_ldaps', 'enable_ldap_start_tls'].includes(ldap_security),
+    then: Yup.string().required('TLS Version is required'),
+    otherwise: Yup.string()
+  })
 });
 
 const LDAP_PATH = 'yb.security.ldap';
@@ -292,7 +289,8 @@ export const LDAPAuth = (props) => {
       if (formValues[key] !== initValues[key]) {
         const keyName = `${LDAP_PATH}.${key}`;
         const value =
-        isString(formValues[key]) && !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
+          isString(formValues[key]) &&
+          !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
             ? `"${formValues[key]}"`
             : formValues[key];
         promiseArr.push(
@@ -516,7 +514,7 @@ export const LDAPAuth = (props) => {
                             <Col lg={12} className="ua-field ua-radio-c">
                               <Row className="ua-radio-field-c">
                                 {SECURITY_OPTIONS.map(({ label, value }) => (
-                                  <Col key={`security-${value}`} className="ua-radio-field">
+                                  <Col key={`security-${value}`} className="ua-auth-radio-field">
                                     <Field
                                       name={'ldap_security'}
                                       type="radio"
@@ -541,49 +539,52 @@ export const LDAPAuth = (props) => {
                         </Col>
                       </Row>
 
-                      {['enable_ldap_start_tls', 'enable_ldaps'].includes(values?.ldap_security) &&
-                      <Row key="tls_protocol">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                TLS Version &nbsp;
-                                <YBInfoTip
-                                  customClass="ldap-info-popover"
-                                  title="TLS Protocol Version"
-                                  content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field ua-radio-c">
-                              <Row className="ua-radio-field-c">
-                                {TLS_VERSIONS.map(({ label, value }) => (
-                                  <Col key={`tls-${value}`} className="ua-radio-field">
-                                    <Field
-                                      name={'ldap_tls_protocol'}
-                                      type="radio"
-                                      component="input"
-                                      value={value}
-                                      checked={`${value}` === `${values['ldap_tls_protocol']}`}
-                                      disabled={isDisabled}
-                                    />
-                                    &nbsp;&nbsp;{label}
-                                  </Col>
-                                ))}
-                              </Row>
-                              <Row className="has-error">
-                                {errors.ldap_security && (
-                                  <div className="help-block standard-error">
-                                    <span>{errors.ldap_security}</span>
-                                  </div>
-                                )}
-                              </Row>
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>}
+                      {['enable_ldap_start_tls', 'enable_ldaps'].includes(
+                        values?.ldap_security
+                      ) && (
+                        <Row key="tls_protocol">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  TLS Version &nbsp;
+                                  <YBInfoTip
+                                    customClass="ldap-info-popover"
+                                    title="TLS Protocol Version"
+                                    content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field ua-radio-c">
+                                <Row className="ua-radio-field-c">
+                                  {TLS_VERSIONS.map(({ label, value }) => (
+                                    <Col key={`tls-${value}`} className="ua-radio-field">
+                                      <Field
+                                        name={'ldap_tls_protocol'}
+                                        type="radio"
+                                        component="input"
+                                        value={value}
+                                        checked={`${value}` === `${values['ldap_tls_protocol']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{label}
+                                    </Col>
+                                  ))}
+                                </Row>
+                                <Row className="has-error">
+                                  {errors.ldap_security && (
+                                    <div className="help-block standard-error">
+                                      <span>{errors.ldap_security}</span>
+                                    </div>
+                                  )}
+                                </Row>
+                              </Col>
+                            </Row>
+                          </Col>
+                        </Row>
+                      )}
 
                       <Row key="ldap_basedn">
                         <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
@@ -741,13 +742,9 @@ export const LDAPAuth = (props) => {
                               &nbsp;
                               <Col>
                                 <Row>
-                                  <b>Note!</b> {YUGABYTE_TITLE} will use the following format to
-                                  connect to your LDAP server.
-                                </Row>
-                                <Row>
-                                  {
-                                    '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
-                                  }
+                                  <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
+                                  {`{{Bind DN}}`} to connect to your LDAP server and perform the
+                                  search.
                                 </Row>
                               </Col>
                             </div>
@@ -774,40 +771,47 @@ export const LDAPAuth = (props) => {
                           <div className="ua-box-c default-ldap-role-b">
                             <Row className="ua-field-row">
                               <Col className="ua-label-c">
-                                <div>
-                                  User&apos;s default role &nbsp;
-                                </div>
+                                <div>User&apos;s default role &nbsp;</div>
                               </Col>
                               <Col lg={12} className="ua-field ua-radio-c">
                                 <Row className="ua-radio-field-c">
-                                  {YBA_ROLES.filter((role) => role.showInDefault).map(({ label, value }) => (
-                                    <Col key={`ldap_default_value-${value}`} className="ua-auth-radio-field">
-                                      <Field
-                                        name={'ldap_default_role'}
-                                        type="radio"
-                                        component="input"
-                                        value={value}
-                                        checked={`${value}` === `${values['ldap_default_role']}`}
-                                        disabled={isDisabled}
-                                      />
-                                      &nbsp;&nbsp;{label}&nbsp;
-                                      {value === 'ConnectOnly' &&
-                                        <YBInfoTip
-                                        customClass="ldap-info-popover"
-                                        title="ConnectOnly role"
-                                        content="Users with ConnectOnly role cannot see any information other than their own profile information">
-                                        <i className="fa fa-info-circle" />
-                                        </YBInfoTip>
-                                      }
-                                    </Col>
-                                  ))}
+                                  {YBA_ROLES.filter((role) => role.showInDefault).map(
+                                    ({ label, value }) => (
+                                      <Col
+                                        key={`ldap_default_value-${value}`}
+                                        className="ua-auth-radio-field"
+                                      >
+                                        <Field
+                                          name={'ldap_default_role'}
+                                          type="radio"
+                                          component="input"
+                                          value={value}
+                                          checked={`${value}` === `${values['ldap_default_role']}`}
+                                          disabled={isDisabled}
+                                        />
+                                        &nbsp;&nbsp;{label}&nbsp;
+                                        {value === 'ConnectOnly' && (
+                                          <YBInfoTip
+                                            customClass="ldap-info-popover"
+                                            title="ConnectOnly role"
+                                            content="Users with ConnectOnly role cannot see any information other than their own profile information"
+                                          >
+                                            <i className="fa fa-info-circle" />
+                                          </YBInfoTip>
+                                        )}
+                                      </Col>
+                                    )
+                                  )}
                                 </Row>
                               </Col>
                             </Row>
                           </div>
                         </div>
                         <div className="ua-box-c ">
-                          <Row key="ldap_use_role_mapping" className="role-mapping-c">
+                          <Row
+                            key="ldap_use_role_mapping"
+                            className="role-mapping-c mapping-toggle"
+                          >
                             <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
                               <YBToggle
                                 name="ldap_group_use_role_mapping"
@@ -820,7 +824,8 @@ export const LDAPAuth = (props) => {
                                   }
                                 }}
                               />{' '}
-                              &nbsp; Map YugabyteDB Anywhere built-in roles to your existing LDAP groups
+                              &nbsp; Map YugabyteDB Anywhere built-in roles to your existing LDAP
+                              groups
                             </Col>
                           </Row>
                           {`true` === `${values.ldap_group_use_role_mapping}` && (
@@ -937,9 +942,7 @@ export const LDAPAuth = (props) => {
                                 )}
                               </div>
 
-                              <div className="box-title">
-                                2. Define Role to Group Mapping
-                              </div>
+                              <div className="box-title">2. Define Role to Group Mapping</div>
                               <div className="box-content map-roles">
                                 <div className="ua-box-c">
                                   {!mappingData.length && (
@@ -1036,7 +1039,13 @@ export const LDAPAuth = (props) => {
                       <div className="ua-box-c">
                         {showServiceAccToggle ? (
                           <Row key="ldap_use_service_account">
-                            <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
+                            <Col
+                              xs={10}
+                              sm={9}
+                              md={8}
+                              lg={4}
+                              className="ua-field-row-c serv-acc-toggle"
+                            >
                               <YBToggle
                                 name="use_service_account"
                                 input={{
@@ -1126,13 +1135,9 @@ export const LDAPAuth = (props) => {
                                 &nbsp;
                                 <Col>
                                   <Row>
-                                    <b>Note!</b> {YUGABYTE_TITLE} will use the following format to
-                                    connect to your LDAP server.
-                                  </Row>
-                                  <Row>
-                                    {
-                                      '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
-                                    }
+                                    <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
+                                    {`{{Bind DN}}`} to connect to your LDAP server and perform the
+                                    search.
                                   </Row>
                                 </Col>
                               </div>

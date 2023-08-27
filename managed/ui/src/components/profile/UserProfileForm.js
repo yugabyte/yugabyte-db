@@ -74,6 +74,8 @@ export default class UserProfileForm extends Component {
     const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
     showOrRedirect(customer.data.features, 'main.profile');
 
+    const userRole = currentUser?.data?.role;
+    const isSuperAdmin = ['SuperAdmin'].includes(userRole);
     const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
     const defaultTimezoneOption = { value: '', label: 'Default' };
     const initialValues = {
@@ -310,7 +312,7 @@ export default class UserProfileForm extends Component {
                     </FlexContainer>
                     {isNonEmptyString(apiToken.data || customer.data.apiToken) &&
                       waringMessageContent}
-                    {isOIDCEnhancementEnabled && (
+                    {!isSuperAdmin && isOIDCEnhancementEnabled && (
                       <>
                         <FlexContainer>
                           <FlexGrow className="copy-text-field">

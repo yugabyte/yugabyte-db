@@ -33,16 +33,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -193,7 +184,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // universe to happen.
       Universe universe = unlockUniverseForUpdate(errorString);
 
-      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+      if (universe != null
+          && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
         universe.updateConfig(
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,
@@ -450,12 +442,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             params.updateMasterAddrsOnly = true;
             params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
-      createSetFlagInMemoryTasks(
-              allTservers,
-              ServerType.TSERVER,
-              true /* force flag update */,
-              null /* no gflag to update */,
-              true /* updateMasterAddrs */)
+      createUpdateMasterAddrsInMemoryTasks(allTservers, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
       Set<NodeDetails> allMasters = new HashSet<>(newMasters);
@@ -479,12 +466,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             params.isMaster = true;
             params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
-      createSetFlagInMemoryTasks(
-              allMasters,
-              ServerType.MASTER,
-              true /* force flag update */,
-              null /* no gflag to update */,
-              true /* updateMasterAddrs */)
+      createUpdateMasterAddrsInMemoryTasks(allMasters, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
       // Update the master addresses on the target universes whose source universe belongs to
@@ -591,18 +573,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // task. So we might do multiple leader stepdown's, which happens automatically in the
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
     for (int idx = numIters; idx < newMasters.size(); idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
   }
 }

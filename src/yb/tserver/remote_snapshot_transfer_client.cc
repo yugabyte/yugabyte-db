@@ -51,17 +51,16 @@ DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 namespace yb {
 namespace tserver {
 
-using std::string;
 using tablet::RaftGroupMetadataPtr;
 
 RemoteSnapshotTransferClient::RemoteSnapshotTransferClient(
-    std::string tablet_id, FsManager* fs_manager)
+    const TabletId& tablet_id, FsManager* fs_manager)
     : RemoteClientBase(tablet_id, fs_manager) {}
 
 RemoteSnapshotTransferClient::~RemoteSnapshotTransferClient() {}
 
 Status RemoteSnapshotTransferClient::Start(
-    rpc::ProxyCache* proxy_cache, const std::string& source_tablet_uuid,
+    rpc::ProxyCache* proxy_cache, const PeerId& source_peer_uuid,
     const HostPort& source_tablet_addr, const std::string& rocksdb_dir) {
   CHECK(!started_);
 
@@ -75,7 +74,11 @@ Status RemoteSnapshotTransferClient::Start(
 
   BeginRemoteSnapshotTransferSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_id_);
+
+  // Set request tablet_id = source_peer_uuid because it is not guaranteed that the source tablet is
+  // in the same RAFT group as the consumer tablet. For example, in xCluster native bootstrap, the
+  // request is sent to an entirely separate universe.
+  req.set_tablet_id(source_peer_uuid);
 
   rpc::RpcController controller;
   controller.set_timeout(
@@ -95,7 +98,7 @@ Status RemoteSnapshotTransferClient::Start(
   if (!CanServeTabletData(resp.superblock().tablet_data_state())) {
     Status s = STATUS(
         IllegalState,
-        "Remote peer (" + source_tablet_uuid + ")" + " is currently remotely bootstrapping itself!",
+        "Remote peer (" + source_peer_uuid + ")" + " is currently remotely bootstrapping itself!",
         resp.superblock().ShortDebugString());
     LOG_WITH_PREFIX(WARNING) << s.ToString();
     return s;
@@ -120,9 +123,13 @@ Status RemoteSnapshotTransferClient::Start(
   return Status::OK();
 }
 
-Status RemoteSnapshotTransferClient::FetchSnapshot(const SnapshotId& snapshot_id) {
+Status RemoteSnapshotTransferClient::FetchSnapshot(
+    const SnapshotId& snapshot_id, const SnapshotId& new_snapshot_id) {
+  SCHECK(!snapshot_id.empty(), InvalidArgument, "Snapshot id is empty!");
+
   snapshot_component_.reset(new RemoteBootstrapSnapshotsComponent(&downloader_, superblock_.get()));
-  return snapshot_component_->Download(snapshot_id.empty() ? nullptr : &snapshot_id);
+  return snapshot_component_->DownloadInto(
+      &snapshot_id, new_snapshot_id.empty() ? nullptr : &new_snapshot_id);
 }
 
 Status RemoteSnapshotTransferClient::Finish() {

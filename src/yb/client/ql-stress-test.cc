@@ -316,7 +316,7 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       if (peer->tablet()->metadata()->table_id() != table_.table()->id()) {
         continue;
       }
-      auto db = peer->tablet()->TEST_db();
+      auto db = peer->tablet()->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
@@ -632,7 +632,7 @@ void QLStressTest::VerifyFlushedFrontiers() {
   for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
     auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      rocksdb::DB* db = peer->tablet()->TEST_db();
+      rocksdb::DB* db = peer->tablet()->regular_db();
       OpId op_id;
       ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
 

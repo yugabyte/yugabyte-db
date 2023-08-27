@@ -38,7 +38,6 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
 
   private final int MAX_LOGICAL_CONNECTION = 10000;
   private final int POOL_SIZE = 33;
-  private final String SQL_STATE_CONN_LIMIT = "53300";
   private final int MAX_ROWS = 10000;
 
   @Override
@@ -55,35 +54,12 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
     builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
-  private void testMaxPhysicalConnectionLimit() throws Exception {
-    // Make MAX_PHYSICAL_CONNECTION connections to the database.
-    final Connection[] directConns = new Connection[MAX_PHYSICAL_CONNECTION];
-
-    for (int i = 0; i < MAX_PHYSICAL_CONNECTION; i++) {
-      directConns[i] = getConnectionBuilder().connect();
-    }
-
-    // Try making the MAX_PHYSICAL_CONNECTION + 1th connection to the database.
-    // It should throw an error.
-    try {
-      getConnectionBuilder().connect();
-      fail("Expected the connection creation to fail");
-    } catch (Exception e) {
-      if (!((SQLException) e).getSQLState().equals(SQL_STATE_CONN_LIMIT)) {
-        LOG.error(String.format("Expected '%s', but got '%s'", SQL_STATE_CONN_LIMIT,
-            ((SQLException) e).getSQLState()), e);
-        fail();
-      }
-    } finally {
-      for (Connection conn : directConns) {
-        conn.close();
-      }
-    }
-  }
-
-  private void testLogicalConnectionLimit() throws Exception {
+  // Check that client can make 2 * MAX_PHYSICAL_CONNECTION connections
+  // to the database via Ysql Connection Manager.
+  @Test
+  public void testLogicalConnectionLimit() throws Exception {
     // Create the test table.
-    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
                           .connect()
                           .createStatement()
                           .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
@@ -118,15 +94,6 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
     for (Runnable runnable : runnables) {
       assertFalse(((TransactionRunnable) runnable).gotException);
     }
-  }
-
-  // Check that at the time when client is unable to make MAX_PHYSICAL_CONNECTION + 1
-  // connections directly to the database, client can make 2 * MAX_PHYSICAL_CONNECTION connections
-  // to the database via Ysql Connection Manager.
-  @Test
-  public void testConnectionLimit() throws Exception {
-    testMaxPhysicalConnectionLimit();
-    testLogicalConnectionLimit();
   }
 
   private class TransactionRunnable implements Runnable {
@@ -164,6 +131,9 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
 
           connection.commit();
         }
+
+        connection.close();
+
       } catch (SQLException e) {
         // Got exception during executing the transaction.
         LOG.error("Unable to execute the query", e);

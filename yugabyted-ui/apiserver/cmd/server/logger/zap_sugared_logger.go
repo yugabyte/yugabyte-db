@@ -60,3 +60,4 @@ func (zapLogger *ZapSugaredLogger) Cleanup() {
 // Ensure that Logger interface is implemented
 var _ Logger = (*ZapSugaredLogger)(nil)
 var Log, _ = NewSugaredLogger(false)
+var DebugLog, _ = NewSugaredLogger(true)

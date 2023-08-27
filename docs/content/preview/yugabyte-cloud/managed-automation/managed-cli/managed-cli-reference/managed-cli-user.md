@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `user` resource to invite and manage YugabyteDB Managed account [users](../../../../cloud-admin/manage-access/).
+Use the `user` resource to invite and manage YugabyteDB Managed account [users](../../../../managed-security/manage-access/).
 
 ## Syntax
 

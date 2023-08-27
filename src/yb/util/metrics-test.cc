@@ -228,8 +228,11 @@ TEST_F(MetricsTest, TEstExposeGaugeAsCounter) {
   ASSERT_EQ(MetricType::kCounter, METRIC_counter_as_gauge.type());
 }
 
-METRIC_DEFINE_histogram_with_percentiles(test_entity, test_hist, "Test Histogram",
+METRIC_DEFINE_histogram(test_entity, test_hist, "Test Histogram",
                         MetricUnit::kMilliseconds, "A default histogram.", 100000000L, 2);
+
+METRIC_DEFINE_event_stats(test_entity, test_event_stats, "Test Event Stats",
+                          MetricUnit::kMilliseconds, "A default event stats.");
 
 METRIC_DEFINE_entity(tablet);
 
@@ -354,6 +357,47 @@ TEST_F(MetricsTest, ResetHistogramTest) {
   EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(99));
   EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(99.9));
   EXPECT_EQ(0, hist->histogram_->ValueAtPercentile(100));
+}
+
+TEST_F(MetricsTest, SimpleEventStatsTest) {
+  scoped_refptr<EventStats> stats = METRIC_test_event_stats.Instantiate(entity_);
+  stats->Increment(2);
+  stats->IncrementBy(4, 1);
+  ASSERT_EQ(2, stats->stats_->MinValue());
+  ASSERT_EQ(3, stats->stats_->MeanValue());
+  ASSERT_EQ(4, stats->stats_->MaxValue());
+  ASSERT_EQ(2, stats->stats_->TotalCount());
+  ASSERT_EQ(6, stats->stats_->TotalSum());
+}
+
+TEST_F(MetricsTest, ResetEventStatsTest) {
+  scoped_refptr<EventStats> stats = METRIC_test_event_stats.Instantiate(entity_);
+  for (int i = 1; i <= 100; i++) {
+    stats->Increment(i);
+  }
+  EXPECT_EQ(5050, stats->stats_->TotalSum());
+  EXPECT_EQ(100, stats->stats_->TotalCount());
+  EXPECT_EQ(5050, stats->stats_->CurrentSum());
+  EXPECT_EQ(100, stats->stats_->CurrentCount());
+
+  EXPECT_EQ(1, stats->stats_->MinValue());
+  EXPECT_EQ(50.5, stats->stats_->MeanValue());
+  EXPECT_EQ(100, stats->stats_->MaxValue());
+
+  // Test that the EventStat's min/mean/max are reset.
+  HistogramSnapshotPB snapshot_pb;
+  MetricJsonOptions options;
+  options.include_raw_histograms = true;
+  ASSERT_OK(stats->GetAndResetHistogramSnapshotPB(&snapshot_pb, options));
+
+  EXPECT_EQ(5050, stats->stats_->TotalSum());
+  EXPECT_EQ(100, stats->stats_->TotalCount());
+  EXPECT_EQ(0, stats->stats_->CurrentSum());
+  EXPECT_EQ(0, stats->stats_->CurrentCount());
+
+  EXPECT_EQ(0, stats->stats_->MinValue());
+  EXPECT_EQ(0, stats->stats_->MeanValue());
+  EXPECT_EQ(0, stats->stats_->MaxValue());
 }
 
 TEST_F(MetricsTest, JsonPrintTest) {
@@ -580,8 +624,10 @@ int StringOccurence(const string& s, const string& target) {
   return occurence;
 }
 
-METRIC_DEFINE_histogram_with_percentiles(server, t_hist, "Test Histogram Label",
+METRIC_DEFINE_histogram(server, t_hist, "Test Histogram Label",
     MetricUnit::kMilliseconds, "Test histogram description", 100000000L, 2);
+METRIC_DEFINE_event_stats(server, t_event_stats, "Test EventStats Label",
+    MetricUnit::kMilliseconds, "Test event stats description");
 METRIC_DEFINE_counter(tablet, t_counter, "Test Counter Label", MetricUnit::kMilliseconds,
     "Test counter description");
 METRIC_DEFINE_gauge_int32(tablet, t_gauge, "Test Gauge Label", MetricUnit::kMilliseconds,
@@ -602,6 +648,7 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   scoped_refptr<Gauge> gauge = METRIC_t_gauge.Instantiate(tablet_entity, 0);
   scoped_refptr<Counter> counter = METRIC_t_counter.Instantiate(tablet_entity);
   scoped_refptr<Histogram> hist = METRIC_t_hist.Instantiate(server_entity);
+  scoped_refptr<EventStats> event_stats = METRIC_t_event_stats.Instantiate(server_entity);
   scoped_refptr<MillisLag> lag = METRIC_t_lag.Instantiate(server_entity);
 
   entities.insert({"tablet", tablet_entity});
@@ -620,8 +667,15 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
       "# HELP t_hist_sum Test histogram description\n# TYPE t_hist_sum counter"));
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_hist_count Test histogram description\n# TYPE t_hist_count counter"));
-  EXPECT_EQ(5, StringOccurence(output_str,
+  EXPECT_EQ(6, StringOccurence(output_str,
       "# HELP t_hist Test histogram description\n# TYPE t_hist gauge"));
+  // Check coarse histogram output.
+  EXPECT_EQ(1, StringOccurence(output_str,
+      "# HELP t_event_stats_sum Test event stats description\n"
+      "# TYPE t_event_stats_sum counter"));
+  EXPECT_EQ(1, StringOccurence(output_str,
+      "# HELP t_event_stats_count Test event stats description\n"
+      "# TYPE t_event_stats_count counter"));
   // Check gauge output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_gauge Test gauge description\n# TYPE t_gauge gauge"));

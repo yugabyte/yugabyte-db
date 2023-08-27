@@ -88,11 +88,11 @@ public class ConfigTest {
   // This test compares entire resolved config one entry at a time.
   // This will generate a filtered view of the actual config key=value
   // An entry is added to generated file if any of these conditions are met:
-  //    - There is existing entry for that path in expected config
-  //    - The path is one of the special (ALWAYS_GENERATE_PATH_PREFIXES
-  //       like "yb. or "db." )
-  //    - The path exist in both configs but the values do not match
-  //  @Test
+  // - There is existing entry for that path in expected config
+  // - The path is one of the special (ALWAYS_GENERATE_PATH_PREFIXES
+  // like "yb. or "db." )
+  // - The path exist in both configs but the values do not match
+  // @Test
   @Parameters({
     "test.replicated.params.conf, replicated.expected.conf, envRepl",
     "test.helm.params.conf, helm.expected.conf, envHelm",
@@ -165,7 +165,8 @@ public class ConfigTest {
   private static Config loadTestDeploymentConfig(String testConfigFile, String envName) {
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
-    // play uses this property to locate resource instead of taking an argument to load method.
+    // play uses this property to locate resource instead of taking an argument to
+    // load method.
     Configuration load =
         Configuration.load(env.asScala(), Scala.asScala(getEnvVarMap(envName, testConfigFile)));
     return load.underlying();
@@ -212,6 +213,7 @@ public class ConfigTest {
             "YB_OIDC_DISCOVERY_URI",
             "YB_OIDC_EMAIL_ATTR",
             "YB_OIDC_SCOPE",
+            "YB_SHOW_JWT_TOKEN",
             "YB_OIDC_SECRET",
             "YB_SECURITY_TYPE",
             "YW_STORAGE_PATH",
@@ -236,6 +238,7 @@ public class ConfigTest {
             "YB_OIDC_DISCOVERY_URI",
             "YB_OIDC_EMAIL_ATTR",
             "YB_OIDC_SCOPE",
+            "YB_SHOW_JWT_TOKEN",
             "YB_OIDC_SECRET",
             "YB_SECURITY_TYPE",
             "YW_STORAGE_PATH",

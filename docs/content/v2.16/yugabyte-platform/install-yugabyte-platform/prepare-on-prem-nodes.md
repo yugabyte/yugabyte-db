@@ -87,7 +87,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
   {{< /tip >}}
 
-* Verify that Python 2.7 is installed.
+* Verify that Python 3 is installed.
 * Enable core dumps and set ulimits, as follows:
 
     ```sh

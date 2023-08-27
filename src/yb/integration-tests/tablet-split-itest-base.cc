@@ -111,20 +111,23 @@ void DumpWorkloadStats(const TestWorkload& workload) {
 Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
   const auto& tablet_id = tablet.tablet_id();
   LOG(INFO) << "Tablet: " << tablet_id;
-  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
   std::string properties;
-  tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
+  tablet.regular_db()->GetProperty(
+      rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  return catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+  return catalog_mgr->SplitTablet(
+      tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal());
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
   const auto& tablet_id = tablet.tablet_id();
   LOG(INFO) << "Tablet: " << tablet_id;
-  LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
+  LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
   std::string properties;
-  tablet.TEST_db()->GetProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
+  tablet.regular_db()->GetProperty(
+      rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
   const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
@@ -641,19 +644,19 @@ Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListSplitCompleteTa
   return ListTableInactiveSplitTabletPeers(this->cluster_.get(), VERIFY_RESULT(GetTestTableId()));
 }
 
-Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListPostSplitChildrenTabletPeers() {
+Result<std::vector<tablet::TabletPeerPtr>> TabletSplitITest::ListTestTableActiveTabletPeers() {
   return ListTableActiveTabletPeers(this->cluster_.get(), VERIFY_RESULT(GetTestTableId()));
 }
 
-Status TabletSplitITest::WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelta timeout) {
+Status TabletSplitITest::WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta timeout) {
   auto peer_to_str = [](const tablet::TabletPeerPtr& peer) {
     return peer->LogPrefix() +
-           (peer->tablet_metadata()->has_been_fully_compacted() ? "Compacted" : "NotCompacted");
+           (peer->tablet_metadata()->parent_data_compacted() ? "Compacted" : "NotCompacted");
   };
   std::vector<std::string> not_compacted_peers;
   auto s = LoggedWaitFor(
       [this, &not_compacted_peers, &peer_to_str]() -> Result<bool> {
-        auto peers = ListPostSplitChildrenTabletPeers();
+        auto peers = ListTestTableActiveTabletPeers();
         if (!peers.ok()) {
           return false;
         }
@@ -661,7 +664,7 @@ Status TabletSplitITest::WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelt
                   << JoinStrings(*peers | boost::adaptors::transformed(peer_to_str), "\n");
         not_compacted_peers.clear();
         for (auto peer : *peers) {
-          if (!peer->tablet_metadata()->has_been_fully_compacted()) {
+          if (!peer->tablet_metadata()->parent_data_compacted()) {
             not_compacted_peers.push_back(peer_to_str(peer));
           }
         }
@@ -669,17 +672,17 @@ Status TabletSplitITest::WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelt
       },
       timeout, "Wait for post tablet split compaction to be completed");
   if (!s.ok()) {
-    LOG(ERROR) << "Following post-split tablet peers have not been fully compacted:\n"
+    LOG(ERROR) << "Following post-split tablet peers have not been post split compacted:\n"
                << JoinStrings(not_compacted_peers, "\n");
   }
   return s;
 }
 
-Result<int> TabletSplitITest::NumPostSplitTabletPeersFullyCompacted() {
+Result<int> TabletSplitITest::NumTestTableTabletPeersPostSplitCompacted() {
   int count = 0;
-  for (auto peer : VERIFY_RESULT(ListPostSplitChildrenTabletPeers())) {
+  for (auto peer : VERIFY_RESULT(ListTestTableActiveTabletPeers())) {
     const auto* tablet = peer->tablet();
-    if (tablet->metadata()->has_been_fully_compacted()) {
+    if (tablet->metadata()->parent_data_compacted()) {
       ++count;
     }
   }

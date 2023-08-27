@@ -62,7 +62,7 @@ StatefulServiceBase::StatefulServiceBase(
       client_future_(client_future) {}
 
 StatefulServiceBase::~StatefulServiceBase() {
-  LOG_IF(DFATAL, !shutdown_) << "Shutdown was not called for " << ServiceName();
+  LOG_IF(DFATAL, initialized_ && !shutdown_) << "Shutdown was not called for " << ServiceName();
 }
 
 Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
@@ -80,8 +80,10 @@ Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
       &FLAGS_stateful_service_periodic_task_interval_ms, ServiceName(),
       [this]() { StartPeriodicTaskIfNeeded(); }));
 
-  return ts_manager->RegisterServiceCallback(
-      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this)));
+  RETURN_NOT_OK(ts_manager->RegisterServiceCallback(
+      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this))));
+  initialized_ = true;
+  return Status::OK();
 }
 
 void StatefulServiceBase::Shutdown() {
@@ -361,8 +363,8 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   StartPeriodicTaskIfNeeded();
 }
 
-Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession() {
-  auto session = GetYBClient()->NewSession();
+Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(MonoDelta delta) {
+  auto session = GetYBClient()->NewSession(delta);
   session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
   return session;
 }

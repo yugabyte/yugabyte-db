@@ -15,6 +15,7 @@ import com.google.api.services.compute.model.ForwardingRule;
 import com.google.api.services.compute.model.HealthCheck;
 import com.google.api.services.compute.model.InstanceReference;
 import com.google.api.services.compute.model.TCPHealthCheck;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.util.ArrayList;
@@ -159,15 +161,34 @@ public class GCPCloudImplTest extends FakeDBApplication {
     String region = "us-west1";
     String protocol = "TCP";
     int port = 5433;
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, new ArrayList<>());
     String helathCheckName = UUID.randomUUID().toString();
     String healthCheckUrl = GCPBaseUrl + "/regions/" + region + "/healthChecks/" + helathCheckName;
     List<String> healthCheckUrls = new ArrayList();
     healthCheckUrls.add(healthCheckUrl);
-    when(mockApiClient.createNewHealthCheckForPort(anyString(), eq("TCP"), eq(5433)))
+    when(mockApiClient.createNewTCPHealthCheckForPort(anyString(), eq(5433)))
         .thenReturn(healthCheckUrl);
     List<String> finalHealthChecks =
         gcpCloudImpl.ensureHealthChecks(
-            mockApiClient, region, protocol, port, new ArrayList<String>());
+            mockApiClient, region, healthCheckConfiguration, new ArrayList<String>());
+    assertEquals(1, finalHealthChecks.size());
+    assertEquals(healthCheckUrl, finalHealthChecks.get(0));
+  }
+
+  @Test
+  public void testEnsureHealthChecksNull() throws Exception {
+    String region = "us-west1";
+    String protocol = "TCP";
+    int port = 5433;
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(Arrays.asList(port), Protocol.TCP, Arrays.asList());
+    String helathCheckName = UUID.randomUUID().toString();
+    String healthCheckUrl = GCPBaseUrl + "/regions/" + region + "/healthChecks/" + helathCheckName;
+    when(mockApiClient.createNewTCPHealthCheckForPort(anyString(), eq(5433)))
+        .thenReturn(healthCheckUrl);
+    List<String> finalHealthChecks =
+        gcpCloudImpl.ensureHealthChecks(mockApiClient, region, healthCheckConfiguration, null);
     assertEquals(1, finalHealthChecks.size());
     assertEquals(healthCheckUrl, finalHealthChecks.get(0));
   }
@@ -185,6 +206,7 @@ public class GCPCloudImplTest extends FakeDBApplication {
     HealthCheck healthCheck = new HealthCheck();
     TCPHealthCheck tcpHealthCheck = new TCPHealthCheck();
     tcpHealthCheck.setPort(incorrectHealthCheckPort);
+    healthCheck.setType("TCP");
     healthCheck.setTcpHealthCheck(tcpHealthCheck);
     when(mockApiClient.getRegionalHelathCheckByName(anyString(), eq(incorrectHealthCheckName)))
         .thenReturn(healthCheck);
@@ -194,11 +216,14 @@ public class GCPCloudImplTest extends FakeDBApplication {
         GCPBaseUrl + "/regions/" + region + "/healthChecks/" + newHelathCheckName;
     List<String> healthCheckUrls = new ArrayList();
     healthCheckUrls.add(newHealthCheckUrl);
-    when(mockApiClient.createNewHealthCheckForPort(anyString(), eq("TCP"), eq(5433)))
+    when(mockApiClient.createNewTCPHealthCheckForPort(anyString(), eq(5433)))
         .thenReturn(newHealthCheckUrl);
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(
+            Arrays.asList(newHealthCheckPort), Protocol.valueOf(protocol), Arrays.asList());
     List<String> finalHealthChecks =
         gcpCloudImpl.ensureHealthChecks(
-            mockApiClient, region, protocol, newHealthCheckPort, incorrectHealthCheckUrls);
+            mockApiClient, region, healthCheckConfiguration, incorrectHealthCheckUrls);
     assertEquals(1, finalHealthChecks.size());
     assertEquals(newHealthCheckUrl, finalHealthChecks.get(0));
   }
@@ -285,14 +310,23 @@ public class GCPCloudImplTest extends FakeDBApplication {
     Mockito.doReturn(Arrays.asList(backend)).when(gcpCloudImpl).ensureBackends(any(), any(), any());
     Mockito.doReturn(Arrays.asList())
         .when(gcpCloudImpl)
-        .ensureHealthChecks(any(), any(), any(), any(), any());
+        .ensureHealthChecks(any(), any(), any(), any());
     Mockito.doNothing().when(mockApiClient).updateBackendService(any(), any());
     when(mockApiClient.getRegionalForwardingRulesForBackend(any(), any())).thenReturn(null);
     Mockito.doNothing().when(gcpCloudImpl).ensureForwardingRules(any(), any(), any());
     List<Integer> ports = new ArrayList();
     ports.add(5433);
     ports.add(9042);
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(ports, Protocol.TCP, Arrays.asList());
     gcpCloudImpl.manageNodeGroup(
-        defaultProvider, region, lbName, azToNodeIdMap, "TCP", ports, mockApiClient);
+        defaultProvider,
+        region,
+        lbName,
+        azToNodeIdMap,
+        "TCP",
+        ports,
+        healthCheckConfiguration,
+        mockApiClient);
   }
 }

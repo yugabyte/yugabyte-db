@@ -78,16 +78,18 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 1,
     "Maximum number of over-replicated tablet peer removals to do in any one run of the "
     "load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 10,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
     "any one run of the load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, 1,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, -1,
     "Maximum number of tablet leaders per table to move in any one run of the load "
     "balancer. The maximum number of tablet leader moves across the cluster is still "
     "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
     "prevent a single table from using all of the leader moves quota and starving "
-    "other tables.");
+    "other tables."
+    "If set to -1, the number of leader moves per table is set to the global number of leader "
+    "moves (load_balancer_max_concurrent_moves).");
 
 DEFINE_RUNTIME_int32(load_balancer_num_idle_runs, 5,
     "Number of idle runs of load balancer to deem it idle.");
@@ -285,7 +287,8 @@ bool ClusterLoadBalancer::IsLoadBalancerEnabled() const {
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
       is_enabled_(FLAGS_enable_load_balancing),
-      cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
+      cbuf_activities_(FLAGS_load_balancer_num_idle_runs),
+      epoch_(LeaderEpoch(-1)) {
   ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;
@@ -512,6 +515,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
         if (state_->allow_only_leader_balancing_) {
           YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 2)
               << "Skipping removing replicas. Only leader balancing table " << table->id();
+          break;
         }
         auto handle_remove = HandleRemoveReplicas(&out_tablet_id, &out_from_ts);
         if (!handle_remove.ok()) {
@@ -584,7 +588,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   RecordActivity(task_added, master_errors);
 }
 
-void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
+void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch, Options* options) {
+  epoch_ = epoch;
   SysClusterConfigEntryPB config;
   CHECK_OK(catalog_manager_->GetClusterConfig(&config));
 
@@ -874,6 +879,8 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
 
 Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  DCHECK(!state_->allow_only_leader_balancing_);
+
   if (state_->options_->kAllowLimitStartingTablets) {
     if (global_state_->total_starting_tablets_ >= state_->options_->kMaxTabletRemoteBootstraps) {
       return STATUS_SUBSTITUTE(TryAgain, "Cannot add replicas. Currently remote bootstrapping $0 "
@@ -1304,6 +1311,8 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
 
 Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts) {
+  DCHECK(!state_->allow_only_leader_balancing_);
+
   // Give high priority to removing tablets that are not respecting the placement policy.
   if (VERIFY_RESULT(HandleRemoveIfWrongPlacement(out_tablet_id, out_from_ts))) {
     return true;
@@ -1665,7 +1674,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
              IllegalState,
              "Sending duplicate add replica task.");
     catalog_manager_->SendAddServerRequest(
-        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid);
+        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
@@ -1675,7 +1684,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           IllegalState,
           "Sending duplicate leader stepdown task.");
       catalog_manager_->SendLeaderStepDownRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader,
+          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
           new_leader_ts_uuid);
     } else {
       SCHECK_EQ(
@@ -1684,7 +1693,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           IllegalState,
           "Sending duplicate remove replica task.");
       catalog_manager_->SendRemoveServerRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid);
+          tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
     }
   }
   return Status::OK();

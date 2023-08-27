@@ -5,16 +5,25 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
@@ -40,6 +49,38 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     return SubTaskGroupType.UpdatingGFlags;
   }
 
+  public SpecificGFlags getPrimaryClusterSpecificGFlags() {
+    for (Cluster incomingCluster : taskParams().clusters) {
+      if (incomingCluster.clusterType == ClusterType.PRIMARY) {
+        UserIntent incomingUserIntent = incomingCluster.userIntent;
+        return incomingUserIntent.specificGFlags;
+      }
+    }
+    return null;
+  }
+
+  public boolean areGflagsModified(ServerType serverType) {
+    List<Cluster> incomingClusters =
+        new ArrayList<>(taskParams().getNewVersionsOfClusters(getUniverse()).values());
+    for (Cluster incomingCluster : incomingClusters) {
+      UserIntent incomingUserIntent = incomingCluster.userIntent;
+      Cluster sourceCluster =
+          getUniverse().getUniverseDetails().getClusterByUuid(incomingCluster.uuid);
+      Map<String, String> sourceGflagsHashMap =
+          GFlagsUtil.getBaseGFlags(
+              serverType, sourceCluster, getUniverse().getUniverseDetails().clusters);
+
+      Map<String, String> targetGflagsHashMap =
+          GFlagsUtil.getBaseGFlags(serverType, incomingCluster, incomingClusters);
+      if (!sourceGflagsHashMap.equals(targetGflagsHashMap)) {
+        // found a different flag, modified true;
+        return true;
+      }
+    }
+    // Did not find anything that was different, return false no flags modified.
+    return false;
+  }
+
   @Override
   public void run() {
     runUpgrade(
@@ -59,17 +100,25 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                 .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
           }
           // Update the list of parameter key/values in the universe with the new ones.
-          updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+          updateGFlagsPersistTasks(
+                  cluster,
+                  taskParams().masterGFlags,
+                  taskParams().tserverGFlags,
+                  getPrimaryClusterSpecificGFlags())
               .setSubTaskGroupType(getTaskSubGroupType());
-          // Create Kubernetes Upgrade Task
+
+          boolean updateMaster = areGflagsModified(ServerType.MASTER);
+          boolean updateTserver = areGflagsModified(ServerType.TSERVER);
+          log.info("Update Master {} ; Update Tserver{} ", updateMaster, updateTserver);
+
           try {
             switch (taskParams().upgradeOption) {
               case ROLLING_UPGRADE:
                 createUpgradeTask(
                     getUniverse(),
                     userIntent.ybSoftwareVersion,
-                    !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-                    !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                    updateMaster,
+                    updateTserver,
                     universe.isYbcEnabled(),
                     universe.getUniverseDetails().getYbcSoftwareVersion());
                 break;
@@ -77,8 +126,8 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                 createNonRollingGflagUpgradeTask(
                     getUniverse(),
                     userIntent.ybSoftwareVersion,
-                    !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-                    !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                    updateMaster,
+                    updateTserver,
                     universe.isYbcEnabled(),
                     universe.getUniverseDetails().getYbcSoftwareVersion());
                 break;

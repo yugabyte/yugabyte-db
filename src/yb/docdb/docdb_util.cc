@@ -576,7 +576,8 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
     .schema_packing = rpc::SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
-    .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+    .packed_row_version = PackedRowVersion(TableType::YQL_TABLE_TYPE, false),
+    .schema = rpc::SharedField(doc_read_context_, &doc_read_context_->schema())
   };
 }
 

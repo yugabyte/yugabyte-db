@@ -67,6 +67,7 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   void AssertDocDbDebugDumpStrEq(
       const std::string &expected, const std::string& packed_row_expected = "");
   void FullyCompactHistoryBefore(HybridTime history_cutoff);
+  void FullyCompactHistoryBefore(HistoryCutoff history_cutoff);
 
   // num_files_to_compact - number of files that should participate in the minor compaction
   // start_index - the index of the file to start with (0 = the oldest file, -1 = compact

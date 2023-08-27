@@ -243,6 +243,7 @@ interface ProviderDetailsBase {
 type ProviderDetailsMutation = ProviderDetailsBase;
 interface ProviderDetails extends ProviderDetailsBase {
   showSetUpChrony: boolean; // showSetUpChrony is `True` if the provider was created after PLAT-3009
+  enableNodeAgent: boolean; // Flag to enable node agent for this provider depending on the runtime config settings.
 }
 
 interface AWSCloudInfoBase {

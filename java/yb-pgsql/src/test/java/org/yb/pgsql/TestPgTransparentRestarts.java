@@ -130,6 +130,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17302
     flags.put("enable_wait_queues", "false");
+    flags.put("enable_deadlock_detection", "false");
     return flags;
   }
 
@@ -1093,10 +1094,23 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
           if (expectReadRestartErrors) {
+            // Read restart errors can never occur in serializable isolation.
+            assertTrue(
+                isolation == IsolationLevel.REPEATABLE_READ ||
+                isolation == IsolationLevel.READ_COMMITTED);
+            // We don't assert for selectsSecondOpRestartRequired > 0 because of the following
+            // reasoning:
+            //
+            // Read restart errors are retried transparently only for the first statement in the
+            // transaction. So, we can expect some read restart errors in the second statement.
+            // However, it is highly unlikely that we see them because all tservers holding data
+            // would have responded with a local limit during the first statement, hence
+            // reducing the scope of ambiguity that results in a read restart in the second
+            // statement. Moreover, the first statement might have faced a read restart error
+            // and moved the read time ahead to reduce the scope of ambiguity even further.
             assertTrue("SELECT (" + isolation + "): Expected restarts, but " +
-                " selectsFirstOpRestartRequired=" + selectsFirstOpRestartRequired +
-                " selectsSecondOpRestartRequired=" + selectsSecondOpRestartRequired,
-                selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);
+                " selectsFirstOpRestartRequired=" + selectsFirstOpRestartRequired,
+                selectsFirstOpRestartRequired > 0);
           } else {
             assertEquals("SELECT (" + isolation + "): Unexpected restarts!",
                 0, selectsFirstOpRestartRequired);
@@ -1107,8 +1121,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 break;
               case REPEATABLE_READ:
                 // Read restart errors are retried transparently only for the first statement in the
-                // transaction
-                assertGreaterThan(selectsSecondOpRestartRequired, 0);
+                // transaction. So, we can expect some read restart errors in the second statement.
+                // However, it is highly unlikely that we see them because all tservers holding data
+                // would have responded with a local limit during the first statement, hence
+                // reducing the scope of ambiguity that results in a read restart in the second
+                // statement. Moreover, the first statement might have faced a read restart error
+                // and moved the read time ahead to reduce the scope of ambiguity even further.
                 break;
               case READ_COMMITTED:
                 // Read restarts retries are performed transparently for each statement in
@@ -1265,7 +1283,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public abstract boolean execute(Stmt stmt) throws Exception;
 
     public DmlTester(ConnectionBuilder cb, String valueToInsert) {
-      super(cb, valueToInsert, 10 /* numInserts */);
+      super(cb, valueToInsert, 500 /* numInserts */);
     }
 
     @Override

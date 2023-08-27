@@ -92,7 +92,7 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("P");
-    RETURN_NOT_OK(producer_cluster()->StartSync());
+    RETURN_NOT_OK(producer_cluster()->StartAsync());
   }
 
   auto consumer_opts = opts;
@@ -106,12 +106,11 @@ Status XClusterYsqlTestBase::InitClusters(const MiniClusterOptions& opts) {
 
   {
     TEST_SetThreadPrefixScoped prefix_se("C");
-    RETURN_NOT_OK(consumer_cluster()->StartSync());
+    RETURN_NOT_OK(consumer_cluster()->StartAsync());
   }
 
-  RETURN_NOT_OK(RunOnBothClusters([&opts](MiniCluster* cluster) {
-    return cluster->WaitForTabletServerCount(opts.num_tablet_servers);
-  }));
+  RETURN_NOT_OK(
+      RunOnBothClusters([](MiniCluster* cluster) { return cluster->WaitForAllTabletServers(); }));
 
   // Verify the that the selected tablets have their rpc servers bound to the expected pg addr.
   CHECK_EQ(producer_cluster_.mini_cluster_->mini_tablet_server(pg_ts_idx)->bound_rpc_addr().
@@ -175,7 +174,7 @@ Result<std::string> XClusterYsqlTestBase::GetNamespaceId(YBClient* client) {
   master::GetNamespaceInfoResponsePB resp;
 
   RETURN_NOT_OK(
-      client->GetNamespaceInfo({} /* namespace_id */, kDatabaseName, YQL_DATABASE_PGSQL, &resp));
+      client->GetNamespaceInfo({} /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
 
   return resp.namespace_().id();
 }
@@ -240,18 +239,16 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
       verify_schema_name);
 }
 
-Status XClusterYsqlTestBase::CreateYsqlTable(
-    uint32_t idx, uint32_t num_tablets, Cluster* cluster, std::vector<YBTableName>* table_names,
+Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
+    uint32_t idx, uint32_t num_tablets, Cluster* cluster,
     const boost::optional<std::string>& tablegroup_name, bool colocated,
     const bool ranged_partitioned) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
-  auto table = VERIFY_RESULT(CreateYsqlTable(
-      cluster, kNamespaceName, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id, ranged_partitioned));
-  table_names->push_back(table);
-  return OK();
+  return CreateYsqlTable(
+      cluster, namespace_name, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
+      num_tablets, colocated, colocation_id, ranged_partitioned);
 }
 
 Result<std::string> XClusterYsqlTestBase::GetUniverseId(Cluster* cluster) {

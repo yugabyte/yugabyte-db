@@ -64,6 +64,7 @@ using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_int32(sys_catalog_write_timeout_ms);
+DECLARE_bool(enable_fast_pitr);
 
 DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
@@ -267,8 +268,7 @@ class MasterSnapshotCoordinator::Impl {
     return operation->snapshot_id;
   }
 
-  Status CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) {
+  Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) {
     // TODO(txn_backup) retain logs with this operation while doing snapshot
     auto id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
 
@@ -461,8 +461,32 @@ class MasterSnapshotCoordinator::Impl {
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
-  Status DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) {
+  // Abort tasks on each tablet and mark them as FAILED to ensure that we dont create
+  // AsyncSnapshotOps for them later on.
+  Status AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+      int64_t leader_term, CoarseTimePoint deadline) {
+    VLOG_WITH_FUNC(4) << restoration_id.ToString() << ", " << leader_term;
+    {
+      std::lock_guard lock(mutex_);
+      auto restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
+      RETURN_NOT_OK_PREPEND(restoration_ptr->Abort(), "Failed to abort tasks");
+
+      // Update restoration entry to sys catalog.
+      LOG(INFO) << Format(
+          "Marking restoration $0 as FAILED in sys catalog", restoration_id.ToString());
+      docdb::KeyValueWriteBatchPB write_batch;
+      RETURN_NOT_OK_PREPEND(
+          restoration_ptr->StoreToWriteBatch(&write_batch),
+          "Failed to prepare write batch for snapshot");
+      RETURN_NOT_OK_PREPEND(
+          SubmitWrite(std::move(write_batch), leader_term, &context_),
+          "Failed to submit snapshot abort operation");
+    }
+
+    return Status::OK();
+  }
+
+  Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
 
@@ -491,7 +515,6 @@ class MasterSnapshotCoordinator::Impl {
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
     ExecuteOperations(operations, leader_term);
-
     return Status::OK();
   }
 
@@ -716,8 +739,8 @@ class MasterSnapshotCoordinator::Impl {
   Status RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at,
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
-    auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(
-        schedule_id, restore_at, leader_term, deadline));
+    auto snapshot_id =
+        VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, leader_term, deadline));
 
     bool suitable_snapshot_is_complete = false;
     while (CoarseMonoClock::now() < deadline) {
@@ -784,21 +807,30 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata) {
     HybridTime min_last_snapshot_ht = HybridTime::kMax;
+    HybridTime min_retention = HybridTime::kMax;
     std::lock_guard lock(mutex_);
     for (const auto& schedule : schedules_) {
       if (schedule->deleted()) {
         continue;
       }
+      int64_t retention = schedule->options().retention_duration_sec();
+      HybridTime retention_ht = context_.Clock()->Now().AddSeconds(-retention);
+      min_retention.MakeAtMost(retention_ht);
       auto complete_time = LastSnapshotTime(schedule->id());
       // No snapshot yet for the schedule so retain everything.
       if (!complete_time) {
-        return HybridTime::kMin;
+        min_last_snapshot_ht = HybridTime::kMin;
+        continue;
       }
       min_last_snapshot_ht.MakeAtMost(complete_time);
     }
-    return min_last_snapshot_ht;
+    if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      return { min_retention, min_last_snapshot_ht };
+    }
+    return { min_last_snapshot_ht, min_last_snapshot_ht };
   }
 
   Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
@@ -831,13 +863,13 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   void SendPendingRestoreRpcs(
-      const vector<RestorationData>& postponed_restores, int64_t term) {
+      const vector<RestorationData>& postponed_restores, int64_t leader_term) {
     for (const auto& restoration : postponed_restores) {
       LOG(INFO) << "PITR: Issuing pending tserver RPCs for restoration "
                 << restoration.restoration_id;
       auto status = DoRestore(restoration.snapshot_id, restoration.restore_at,
                               restoration.restoration_id,
-                              RestorePhase::kPostSysCatalogLoad, term,
+                              RestorePhase::kPostSysCatalogLoad, leader_term,
                               restoration.db_oid);
       LOG_IF(DFATAL, !status.ok())
           << "Failed to restore tablets for restoration "
@@ -874,8 +906,8 @@ class MasterSnapshotCoordinator::Impl {
     return db_oid;
   }
 
-  void SysCatalogLoaded(int64_t term) {
-    if (term == OpId::kUnknownTerm) {
+  void SysCatalogLoaded(int64_t leader_term) {
+    if (leader_term == OpId::kUnknownTerm) {
       // Do nothing on follower.
       return;
     }
@@ -921,12 +953,12 @@ class MasterSnapshotCoordinator::Impl {
         // Set the throttling limits.
         restoration->Throttler().RefreshLimit(
             GetRpcLimit(FLAGS_max_concurrent_restoration_rpcs,
-                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, term));
+                        FLAGS_max_concurrent_restoration_rpcs_per_tserver, leader_term));
         // Set the current term so that the snapshot coordinator can pick it up.
-        restoration->SetLeaderTerm(term);
+        restoration->SetLeaderTerm(leader_term);
       }
     }
-    SendPendingRestoreRpcs(postponed_restores, term);
+    SendPendingRestoreRpcs(postponed_restores, leader_term);
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
@@ -1203,14 +1235,15 @@ class MasterSnapshotCoordinator::Impl {
     }
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
 
+    auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
     if (operation.state == SysSnapshotEntryPB::DELETING) {
       auto task = context_.CreateAsyncTabletSnapshotOp(
           tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET,
-          callback);
+          epoch, callback);
       context_.ScheduleTabletSnapshotOp(task);
     } else if (operation.state == SysSnapshotEntryPB::CREATING) {
       auto task = context_.CreateAsyncTabletSnapshotOp(
-          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET,
+          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET, epoch,
           callback);
       task->SetSnapshotScheduleId(operation.schedule_id);
       task->SetSnapshotHybridTime(operation.snapshot_hybrid_time);
@@ -1274,9 +1307,10 @@ class MasterSnapshotCoordinator::Impl {
     auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
     // If this tablet did not participate in snapshot, i.e. was deleted.
     // We just change hybrid time limit and clear hide state.
+    auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
     auto task = context_.CreateAsyncTabletSnapshotOp(
         tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
-        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET, callback);
+        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET, epoch, callback);
     task->SetSnapshotHybridTime(operation.restore_at);
     task->SetRestorationId(operation.restoration_id);
     if (!operation.schedule_id.IsNil()) {
@@ -1361,7 +1395,7 @@ class MasterSnapshotCoordinator::Impl {
       CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
     }
     ExecuteOperations(operations, leader_term);
-    PollSchedulesComplete(schedules_data, leader_term);
+    PollSchedulesComplete(schedules_data, l.epoch());
     ExecuteRestoreOperations(restore_operations, leader_term);
   }
 
@@ -1416,9 +1450,10 @@ class MasterSnapshotCoordinator::Impl {
     }
   }
 
-  void PollSchedulesComplete(const PollSchedulesData& data, int64_t leader_term) EXCLUDES(mutex_) {
+  void PollSchedulesComplete(const PollSchedulesData& data, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_) {
     for (const auto& id : data.delete_snapshots) {
-      Status submit_status = SubmitDelete(id, leader_term, /* synchronizer */ nullptr);
+      Status submit_status = SubmitDelete(id, epoch.leader_term, /* synchronizer */ nullptr);
       // TODO(submit_error): is this sufficient to handle this error?
       LOG_IF(DFATAL, !submit_status.ok())
           << "Failed to submit delete operation for snapshot " << id << ". "
@@ -1427,12 +1462,12 @@ class MasterSnapshotCoordinator::Impl {
     for (const auto& operation : data.schedule_operations) {
       switch (operation.type) {
         case SnapshotScheduleOperationType::kCreateSnapshot:
-          WARN_NOT_OK(ExecuteScheduleOperation(operation, leader_term),
+          WARN_NOT_OK(ExecuteScheduleOperation(operation, epoch.leader_term),
                       Format("Failed to execute operation on $0", operation.schedule_id));
           break;
         case SnapshotScheduleOperationType::kCleanup:
           CleanupObject(
-              leader_term, operation.schedule_id, schedules_,
+              epoch.leader_term, operation.schedule_id, schedules_,
               SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
           break;
         default:
@@ -1440,7 +1475,7 @@ class MasterSnapshotCoordinator::Impl {
           break;
       }
     }
-    context_.CleanupHiddenObjects(data.schedule_min_restore_time);
+    context_.CleanupHiddenObjects(data.schedule_min_restore_time, epoch);
   }
 
   SnapshotState* BoundingSnapshot(const SnapshotScheduleId& schedule_id, Bound bound)
@@ -1740,11 +1775,12 @@ class MasterSnapshotCoordinator::Impl {
 
     std::vector<TabletId> tablet_ids = restoration->TabletIdsInState(SysSnapshotEntryPB::RESTORED);
     auto tablets = context_.GetTabletInfos(tablet_ids);
+    auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
     int tablet_ids_counter = 0;
     for (const auto& tablet : tablets) {
       if (tablet) {
         auto task = context_.CreateAsyncTabletSnapshotOp(
-            tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED,
+            tablet, std::string(), tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED, epoch,
             /* callback= */ nullptr);
         task->SetRestorationId(restoration->restoration_id());
         task->SetRestorationTime(restoration->complete_time());
@@ -2062,6 +2098,11 @@ Status MasterSnapshotCoordinator::Delete(
   return impl_->Delete(snapshot_id, leader_term, deadline);
 }
 
+Status MasterSnapshotCoordinator::AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+    int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->AbortRestore(restoration_id, leader_term, deadline);
+}
+
 Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
     const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term) {
   return impl_->Restore(snapshot_id, restore_at, leader_term);
@@ -2122,7 +2163,7 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
   return impl_->FillHeartbeatResponse(resp);
 }
 
-HybridTime MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
+docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   return impl_->AllowedHistoryCutoffProvider(metadata);
 }
@@ -2142,8 +2183,8 @@ Result<bool> MasterSnapshotCoordinator::IsTableUndergoingPitrRestore(
   return impl_->IsTableUndergoingPitrRestore(table_info);
 }
 
-void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t term) {
-  impl_->SysCatalogLoaded(term);
+void MasterSnapshotCoordinator::SysCatalogLoaded(int64_t leader_term) {
+  impl_->SysCatalogLoaded(leader_term);
 }
 
 Result<TxnSnapshotId> MasterSnapshotCoordinator::CreateForSchedule(

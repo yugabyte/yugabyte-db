@@ -16,7 +16,7 @@ from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMe
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod,
-                                       DeleteRootVolumesMethod)
+                                       DeleteRootVolumesMethod, HardRebootInstancesMethod)
 from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -314,6 +314,8 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
+        if args.boot_script is not None:
+            self.cloud.update_user_data(args)
         server_ports = self.get_server_ports_to_check(args)
         self.cloud.start_instance(vars(args), server_ports)
 
@@ -331,31 +333,11 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
         self.cloud.stop_instance(vars(args))
 
 
-class GcpHardRebootInstancesMethod(AbstractInstancesMethod):
+class GcpHardRebootInstancesMethod(HardRebootInstancesMethod):
     def __init__(self, base_command):
-        super(GcpHardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
-
-    def add_extra_args(self):
-        super(GcpHardRebootInstancesMethod, self).add_extra_args()
-
-    def callback(self, args):
-        instance = self.cloud.get_host_info(args)
-        if not instance:
-            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
-                args.search_pattern))
-        host_info = vars(args)
-        host_info.update(instance)
-        instance_state = host_info['instance_state']
-        if instance_state not in ('RUNNING', 'STOPPING', 'TERMINATED', 'PROVISIONING', 'STAGING'):
-            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
-                                    .format(instance_state))
-        if instance_state in ('RUNNING', 'STOPPING'):
-            logging.info("Stopping instance {}".format(args.search_pattern))
-            self.cloud.stop_instance(host_info)
-        logging.info("Starting instance {}".format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
-        server_ports = self.get_server_ports_to_check(args)
-        self.cloud.start_instance(host_info, server_ports)
+        super(GcpHardRebootInstancesMethod, self).__init__(base_command)
+        self.valid_states = ('RUNNING', 'STOPPING', 'TERMINATED', 'PROVISIONING', 'STAGING')
+        self.valid_stoppable_states = ('RUNNING', 'STOPPING')
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):

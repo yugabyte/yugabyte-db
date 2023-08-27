@@ -93,9 +93,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   req->clear_backfill_spec();
 
   if (paging_state.has_read_time()) {
-    VLOG(4) << "Setting read time for next request: "
-            << paging_state.read_time().ShortDebugString();
-    read_op->set_read_time(ReadHybridTime::FromPB(paging_state.read_time()));
+    auto paging_read_hybrid_time = ReadHybridTime::FromPB(paging_state.read_time());
+    VLOG(4) << "Setting read time for next request: " << paging_read_hybrid_time;
+    read_op->set_read_time(paging_read_hybrid_time);
   }
 
   // Setup backfill_spec for the next request.
@@ -108,7 +108,7 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   // So resetting the limit to prevent excessive RPCs due to too small fetch size, if the estimation
   // is too far from reality.
   uint64_t prefetch_limit = yb_fetch_row_limit;
-  if (req->limit() < prefetch_limit) {
+  if (req->limit() != prefetch_limit) {
     req->set_limit(prefetch_limit);
   }
 

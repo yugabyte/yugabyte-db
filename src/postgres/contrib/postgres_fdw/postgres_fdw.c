@@ -1323,8 +1323,7 @@ postgresGetForeignPlan(PlannerInfo *root,
 							fdw_private,
 							fdw_scan_tlist,
 							fdw_recheck_quals,
-							outer_plan,
-							best_path->path.yb_path_info);
+							outer_plan);
 }
 
 /*

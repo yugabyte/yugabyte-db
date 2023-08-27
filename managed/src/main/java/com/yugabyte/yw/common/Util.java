@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
@@ -22,6 +23,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -29,18 +32,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.math.BigDecimal;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.MalformedURLException;
-import java.net.Socket;
-import java.net.URL;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,18 +44,7 @@ import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -72,6 +55,7 @@ import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -85,6 +69,7 @@ public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
+  public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
@@ -110,8 +95,6 @@ public class Util {
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
 
   public static final double EPSILON = 0.000001d;
-
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
@@ -947,5 +930,61 @@ public class Util {
       delay = maxDelayMs;
     }
     return delay;
+  }
+
+  /**
+   * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
+   *
+   * @param universe
+   * @param node
+   * @param config
+   * @return the path to "yb-data/" folder on the node
+   */
+  public static String getDataDirectoryPath(Universe universe, NodeDetails node, Config config) {
+    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    CloudType cloudType = userIntent.providerType;
+
+    if (cloudType == CloudType.onprem) {
+      // On prem universes:
+      // Onprem universes have to specify the mount points for the volumes at the time of provider
+      // creation itself.
+      // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
+      try {
+        String mountPoints = userIntent.deviceInfo.mountPoints;
+        dataDirPath = mountPoints.split(",")[0];
+      } catch (Exception e) {
+        LOG.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
+      }
+    } else if (cloudType == CloudType.kubernetes) {
+      // Kubernetes universes:
+      // K8s universes have a default mount path "/mnt/diskX" with X = {0, 1, 2...} based on number
+      // of volumes
+      // This is specified in the charts repo:
+      // https://github.com/yugabyte/charts/blob/master/stable/yugabyte/templates/service.yaml
+      String mountPoint = config.getString("yb.support_bundle.k8s_mount_point_prefix");
+      dataDirPath = mountPoint + "0";
+    } else {
+      // Other provider based universes:
+      // Providers like GCP, AWS have the mountPath stored in the instance types for the most part.
+      // Some instance types don't have mountPath initialized. In such cases, we default to
+      // "/mnt/d0"
+      try {
+        String nodeInstanceType = node.cloudInfo.instance_type;
+        String providerUUID = userIntent.provider;
+        InstanceType instanceType =
+            InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
+        List<VolumeDetails> volumeDetailsList =
+            instanceType.getInstanceTypeDetails().volumeDetailsList;
+        if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
+          dataDirPath = volumeDetailsList.get(0).mountPath;
+        } else {
+          LOG.info("Mount point is not defined. Defaulting to {}", dataDirPath);
+        }
+      } catch (Exception e) {
+        LOG.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
+      }
+    }
+    return dataDirPath;
   }
 }

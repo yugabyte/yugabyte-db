@@ -17,7 +17,7 @@ To create an admin account, go to [http://yugaware-host-public-ip/register](http
 
 After you click **Submit**, you are automatically logged into the Yugabyte Platform console. Proceed to [configuring cloud providers](../set-up-cloud-provider/aws).
 
-By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Login to the application using the credentials you had provided during the Register customer step.
+By default, [http://yugaware-host-public-ip](http://yugaware-host-public-ip) redirects to [http://yugaware-host-public-ip/login](http://yugaware-host-public-ip/login). Log in to the application using the credentials you had provided during the Register customer step.
 
 ![Login](/images/ee/login.png)
 

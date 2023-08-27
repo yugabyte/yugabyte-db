@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -34,9 +35,8 @@ TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEFINE_NON_RUNTIME_bool(
     enable_pg_savepoints, true,
-    "Set to false to disable savepoints in YugaByte PostgreSQL API. "
-    "This needs to be set to false when using xcluster replication for now.");
-TAG_FLAG(enable_pg_savepoints, evolving);
+    "Set to false to disable savepoints in YugaByte PostgreSQL API.");
+TAG_FLAG(enable_pg_savepoints, stable);
 TAG_FLAG(enable_pg_savepoints, advanced);
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kNewInstallsOnly, false, true,
@@ -63,13 +63,9 @@ DEFINE_NON_RUNTIME_bool(enable_wait_queues, kEnableWaitOnConflict,
     "resolution whenever required.");
 TAG_FLAG(enable_wait_queues, evolving);
 
-DEFINE_RUNTIME_bool(ysql_ddl_rollback_enabled, false,
-            "If true, failed YSQL DDL transactions that affect both pg catalog and DocDB schema "
-            "will be rolled back by YB-Master. Note that this is applicable only for few DDL "
-            "operations such as dropping a table, adding a column, renaming a column/table. This "
-            "flag should not be changed in the middle of a DDL operation.");
-TAG_FLAG(ysql_ddl_rollback_enabled, hidden);
-TAG_FLAG(ysql_ddl_rollback_enabled, advanced);
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, ddl_rollback_enabled, false,
+    "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
+    "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
@@ -77,10 +73,6 @@ DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "the current database. For an old cluster that is upgraded, this gflag should "
                  "only be turned on after pg_yb_catalog_version is upgraded to one row per "
                  "database.");
-
-DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
-                      "Retention window on both the coordinator and participant for uncommitted "
-                      "transactions from a producer.");
 
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
@@ -126,6 +118,13 @@ void RpcThrottleThresholdBytesValidator() {
   }
 }
 
+void EnableDeadlockDetectionValidator() {
+  if (FLAGS_enable_deadlock_detection && !FLAGS_enable_wait_queues) {
+    LOG(FATAL) << "Flag validation failed. Cannot enable deadlock detection if "
+               << "enable_wait_queues=false.";
+  }
+}
+
 }  // namespace
 
 // Normally we would have used DEFINE_validator. But this validation depends on the value of another
@@ -136,6 +135,12 @@ void RpcThrottleThresholdBytesValidator() {
 // after all the flags have been parsed.
 REGISTER_CALLBACK(rpc_throttle_threshold_bytes, "RpcThrottleThresholdBytesValidator",
     &RpcThrottleThresholdBytesValidator);
+
+// This validator depends on the value of another flag (enable_wait_queues), so we use
+// REGISTER_CALLBACK instead of DEFINE_validator. We only need to register callback on one of the
+// flags since both are NON_RUNTIME.
+REGISTER_CALLBACK(enable_deadlock_detection, "EnableDeadlockDetectionValidator",
+    &EnableDeadlockDetectionValidator);
 
 namespace yb {
 

@@ -69,7 +69,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
@@ -102,7 +101,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleConfigureServers,
@@ -191,16 +189,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     }
 
     if (isFinalStep) {
+      commonNodeTasks.addAll(
+          ImmutableList.of(TaskType.CheckSoftwareVersion, TaskType.PromoteAutoFlags));
       if (systemCatalogUpgrade) {
         commonNodeTasks.add(TaskType.RunYsqlUpgrade);
       }
       commonNodeTasks.addAll(
           ImmutableList.of(
-              TaskType.CheckSoftwareVersion,
-              TaskType.PromoteAutoFlags,
-              TaskType.UpdateSoftwareVersion,
-              TaskType.RunHooks,
-              TaskType.UniverseUpdateSucceeded));
+              TaskType.UpdateSoftwareVersion, TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
     }
     for (TaskType commonNodeTask : commonNodeTasks) {
       assertTaskType(subTasksByPosition.get(position), commonNodeTask);
@@ -299,7 +295,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testSoftwareUpgradeWithSameVersion() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.14.11.0-b34";
+    taskParams.ybSoftwareVersion = "2.14.12.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
     TaskInfo taskInfo = submitTask(taskParams);
@@ -358,7 +354,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(133, position);
+    assertEquals(128, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -490,7 +486,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(178, position);
+    assertEquals(173, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

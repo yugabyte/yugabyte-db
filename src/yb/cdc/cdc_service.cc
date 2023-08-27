@@ -122,7 +122,10 @@ DEFINE_UNKNOWN_int32(update_min_cdc_indices_interval_secs, 60,
 DEFINE_RUNTIME_int32(update_metrics_interval_ms, kUpdateIntervalMs,
     "How often to update xDC cluster metrics.");
 
-DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, true,
+// enable_cdc_client_tablet_caching is disabled because cdc code does notify the meta cache when
+// requests to the peers fail. Also, meta cache does not handle addition of peers, which can cause
+// issues with cdc checkpoint updates.
+DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, false,
     "Enable caching the tablets found by client.");
 
 DEFINE_RUNTIME_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
@@ -135,7 +138,7 @@ DEFINE_UNKNOWN_double(cdc_get_changes_free_rpc_ratio, .10,
     "When the TServer only has this percentage of RPCs remaining because the rest are "
     "GetChanges, reject additional requests to throttle/backoff and prevent deadlocks.");
 
-DEFINE_UNKNOWN_bool(enable_update_local_peer_min_index, false,
+DEFINE_UNKNOWN_bool(enable_update_local_peer_min_index, true,
     "Enable each local peer to update its own log checkpoint instead of the leader "
     "updating all peers.");
 
@@ -419,7 +422,8 @@ class CDCServiceImpl::Impl {
 
   bool UpdateCheckpoint(
       const ProducerTabletInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id) {
-    VLOG(1) << "Going to update the checkpoint with " << commit_op_id;
+    VLOG(1) << "T " << producer_tablet.tablet_id << " going to update the checkpoint with "
+            << commit_op_id;
     auto now = CoarseMonoClock::Now();
     auto active_time = GetCurrentTimeMicros();
 
@@ -1602,6 +1606,8 @@ void CDCServiceImpl::GetChanges(
     auto last_checkpoint = RPC_VERIFY_RESULT(
         GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType()),
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    LOG(WARNING) << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
+                 << " without an index. Using last checkpoint: " << last_checkpoint;
     if (record.GetSourceType() == XCLUSTER) {
       from_op_id = last_checkpoint;
     } else {
@@ -1748,7 +1754,7 @@ void CDCServiceImpl::GetChanges(
     tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
   }
 
-  VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
+  VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
@@ -2281,7 +2287,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    std::string last_replicated_time_str;
+    std::string last_replicated_time_str = "";
     if (entry.last_replication_time) {
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
@@ -2341,6 +2347,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
+    // If the tablet_id, stream_id pair have OpId::Min() as checkpoint, but the LastReplicatedTime
+    // is not set, we know this was a child tablet (refer: UpdateCDCProducerOnTabletSplit). We will
+    // not update the checkpoint details.
+    if (checkpoint == OpId::Min() && last_replicated_time_str.empty() &&
+        record.GetSourceType() == CDCSDK) {
+      continue;
+    }
+
     // Check that requested tablet_id is part of the CDC stream.
     ProducerTabletInfo producer_tablet = {{}, stream_id, tablet_id};
 
@@ -2396,17 +2410,21 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
     const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
     std::unordered_set<TabletId>* failed_tablet_ids) {
-  auto enable_update_local_peer_min_index =
-      GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
-
   TabletCDCCheckpointInfo tablet_info;
   tablet_info.cdc_sdk_op_id = OpId::Max();
   tablet_info.cdc_op_id = OpId::Max();
   tablet_info.cdc_sdk_latest_active_time = 0;
 
   for (const auto& tablet_id : tablet_ids_with_max_checkpoint) {
+    // When a CDCSDK Stream is deleted the row will be marked for deletion with OpId::Max(). All
+    // such rows are collected here. We will try set the CDCSDK checkpoint as OpId::Max in all the
+    // tablet peers by sending RPCs , and only if they all succeeded we will delete the
+    // corresponding row from 'cdc_state' table. To ensure the OpId::Max() is set in all tablet
+    // peers before we delete the row from 'cdc_state' table, we are passing
+    // 'enable_update_local_peer_min_index' as false.
     auto s = UpdateTabletPeerWithCheckpoint(
-        tablet_id, &tablet_info, enable_update_local_peer_min_index, false);
+        tablet_id, &tablet_info, false /* enable_update_local_peer_min_index */,
+        false /* ignore_rpc_failures */);
 
     if (!s.ok()) {
       failed_tablet_ids->insert(tablet_id);
@@ -2496,7 +2514,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     const std::set<TabletId>& parent_tablets,
     const std::map<TabletId, TabletId>& child_to_parent_mapping,
     std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result) {
-  std::set<TabletId> parents_with_polled_children;
+  std::map<TabletId, uint> parent_to_polled_child_count;
   std::set<TabletId> polled_tablets;
 
   Status iteration_status;
@@ -2527,7 +2545,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto iter = child_to_parent_mapping.find(tablet_id);
     if (iter != child_to_parent_mapping.end()) {
-      parents_with_polled_children.insert(iter->second);
+      parent_to_polled_child_count[iter->second] += 1;
     }
   }
   RETURN_NOT_OK(iteration_status);
@@ -2554,13 +2572,20 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto is_parent = (parent_tablets.find(tablet_id) != parent_tablets.end());
 
+    auto are_both_children_polled = [&](const TabletId& tablet_id) {
+      auto iter = parent_to_polled_child_count.find(tablet_id);
+      if (iter != parent_to_polled_child_count.end() && iter->second == 2) {
+        return true;
+      }
+      return false;
+    };
+
     CDCSDKCheckpointPB checkpoint_pb;
     checkpoint_pb.set_term(entry.checkpoint->term);
     checkpoint_pb.set_index(entry.checkpoint->index);
     if (entry.cdc_sdk_safe_time.has_value()) {
       checkpoint_pb.set_snapshot_time(*entry.cdc_sdk_safe_time);
     }
-    const auto& checkpoint = *entry.checkpoint;
 
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
 
@@ -2569,13 +2594,13 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     if (is_parent) {
       // This means the current tablet itself was a parent tablet. If we find
-      // that we have already started polling the children, we will not add the parent tablet to
-      // the result set. This situation is only possible within a small window where we have
+      // that we have already started polling both the children, we will not add the parent tablet
+      // to the result set. This situation is only possible within a small window where we have
       // reported the tablet split to the client and but the background thread has not yet deleted
       // the hidden parent tablet.
-      bool is_any_child_polled =
-          (parents_with_polled_children.find(tablet_id) != parents_with_polled_children.end());
-      if (!is_any_child_polled) {
+      bool both_children_polled = are_both_children_polled(tablet_id);
+
+      if (!both_children_polled) {
         // This can occur in two scenarios:
         // 1. The client has just called "GetTabletListToPollForCDC" for the first time, meanwhile
         //    a tablet split has succeded. In this case we will only add the children tablets to
@@ -2597,36 +2622,29 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
       // result set.
       add_to_result = true;
     } else {
-      // This means the current tablet is a child tablet, and not itself a parent tablet.
-      if (checkpoint > OpId::Min() || is_cur_tablet_polled) {
-        // This means the client has started polling on this child tablet already. So we will add
-        // the current child tablet to the result set.
+      // This means the current tablet is a child tablet.If we see that the any ancestor tablet is
+      // also not polled we will add the current child tablet to the result set.
+      bool found_active_ancestor = false;
+      while (parent_iter != child_to_parent_mapping.end()) {
+        const auto& ancestor_tablet_id = parent_iter->second;
+
+        bool both_children_polled = are_both_children_polled(ancestor_tablet_id);
+        bool is_current_polled = (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
+        if (is_current_polled && !both_children_polled) {
+          VLOG(1) << "Found polled ancestor tablet: " << ancestor_tablet_id
+                  << ", for un-polled child tablet: " << tablet_id
+                  << ". Hence this tablet is not yet ready to be polled by CDC stream: "
+                  << stream_id;
+          found_active_ancestor = true;
+          break;
+        }
+
+        // Get the iter to the parent of the current tablet.
+        parent_iter = child_to_parent_mapping.find(ancestor_tablet_id);
+      }
+
+      if (!found_active_ancestor) {
         add_to_result = true;
-      } else {
-        // This means the client has not started streaming from the child tablet. If we see that the
-        // any ancestor tablet is also not polled we will add the current child tablet to the result
-        // set.
-        bool found_polled_ancestor = false;
-        while (parent_iter != child_to_parent_mapping.end()) {
-          const auto& ancestor_tablet_id = parent_iter->second;
-          bool is_current_polled =
-              (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
-          if (is_current_polled) {
-            VLOG(1) << "Found polled ancestor tablet: " << ancestor_tablet_id
-                    << ", for un-polled child tablet: " << tablet_id
-                    << ". Hence this tablet is not yet ready to be polled by CDC stream: "
-                    << stream_id;
-            found_polled_ancestor = true;
-            break;
-          }
-
-          // Get the iter to the parent of the current tablet.
-          parent_iter = child_to_parent_mapping.find(ancestor_tablet_id);
-        }
-
-        if (!found_polled_ancestor) {
-          add_to_result = true;
-        }
       }
     }
 
@@ -2671,6 +2689,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       continue;
     }
     time_since_update_peers = MonoTime::Now();
+    VLOG(2) << "Updating tablet peers with min cdc replicated index";
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Started to read minimum replicated indices for all tablets";
@@ -3142,13 +3161,13 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) {
   GetLatestEntryOpIdResponsePB resp;
 
-  std::unordered_set<TabletId> tablet_ids;
+  std::vector<TabletId> tablet_ids;
   if (req.has_tablet_id()) {
     // Support backwards compatibility.
-    tablet_ids.insert(req.tablet_id());
+    tablet_ids.push_back(req.tablet_id());
   } else {
     for (int i = 0; i < req.tablet_ids_size(); i++) {
-      tablet_ids.insert(req.tablet_ids(i));
+      tablet_ids.push_back(req.tablet_ids(i));
     }
   }
 
@@ -3494,7 +3513,11 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
 
   // Check that all tablets have a valid op id.
   for (const auto& tablet_op_id_pair : tablet_op_ids) {
-    if (!tablet_op_id_pair.second.valid()) {
+    LOG(WARNING) << "CDC checkpoint for T " << tablet_op_id_pair.first.second << " S "
+                 << tablet_op_id_pair.first.first << " is: " << tablet_op_id_pair.second;
+    // Also check for not empty here, since 0.0 has different behaviour (start from beginning of log
+    // cache), which we don't want for bootstrapping.
+    if (!tablet_op_id_pair.second.is_valid_not_empty()) {
       return STATUS(
           InternalError, "Could not retrieve op id for tablet", tablet_op_id_pair.first.second);
     }

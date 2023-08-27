@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -21,6 +22,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,6 +59,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -102,6 +105,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       // Do nothing
     }
+    when(mockAccessManager.createKubernetesAuthDataFile(
+            anyString(), anyString(), anyString(), anyBoolean()))
+        .thenReturn("/tmp/some-fake-path-here/kubernetes-auth-file.txt");
   }
 
   private Result listProviders() {
@@ -276,7 +282,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
-    assertBadRequest(result, "Provider with the name Amazon already exists");
+    assertConflict(result, "Provider with the name Amazon already exists");
   }
 
   @Test
@@ -412,6 +418,35 @@ public class CloudProviderControllerTest extends FakeDBApplication {
         AvailabilityZone.getAZsForRegion(createdRegions.get(0).getUuid());
     assertEquals(1, createdZones.size());
     assertAuditEntry(1, customer.getUuid());
+
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(false));
+    verify(mockAccessManager, times(2))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(false));
+    verify(mockPrometheusConfigManager, times(1)).updateK8sScrapeConfigs();
+  }
+
+  @Test
+  public void testCreateKubernetesWithNonTokenKubeConfig() {
+    JsonNode k8sProviderBody = getK8sProviderCreateBody();
+    ObjectNode config = (ObjectNode) k8sProviderBody.get("config");
+    config.put("KUBECONFIG_CONTENT", TestUtils.readResource("test-kubeconfig-client-cert.conf"));
+
+    Result result = createKubernetesProvider(k8sProviderBody);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", "Kubernetes-Provider");
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
+    KubernetesInfo k8sInfo = CloudInfoInterface.get(provider);
+    // Provider creation shouldn't fail, and we have partial details.
+    assertEquals("https://1.2.3.4", k8sInfo.getApiServerEndpoint());
+    assertNotNull(k8sInfo.getKubeConfigCAFile());
+    assertNull(k8sInfo.getKubeConfigTokenFile());
+
+    verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(false));
+    verify(mockAccessManager, times(1))
+        .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(false));
+    verify(mockPrometheusConfigManager, times(1)).updateK8sScrapeConfigs();
   }
 
   @Test
@@ -908,7 +943,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("name", providerName);
     ObjectNode configJson = Json.newObject();
     configJson.put("KUBECONFIG_NAME", "test");
-    configJson.put("KUBECONFIG_CONTENT", "test");
+    configJson.put("KUBECONFIG_CONTENT", TestUtils.readResource("test-kubeconfig.conf"));
     bodyJson.set("config", configJson);
 
     ArrayNode regions = mapper.createArrayNode();

@@ -100,6 +100,11 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+// Version gets the version
+func (plat Platform) Version() string {
+	return plat.version
+}
+
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
@@ -183,13 +188,15 @@ func (plat Platform) createNecessaryDirectories() error {
 	userName := viper.GetString("service_username")
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			if mkErr := common.MkdirAll(dir, os.ModePerm); mkErr != nil {
+			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
 				log.Error("failed to make " + dir + ": " + err.Error())
 				return mkErr
 			}
-			if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
-				log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
-				return chErr
+			if common.HasSudoAccess() {
+				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
+					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
+					return chErr
+				}
 			}
 		}
 	}
@@ -576,10 +583,27 @@ func (plat Platform) MigrateFromReplicated() error {
 		}
 	}
 
-	if err := plat.Start(); err != nil {
-		return err
-	}
 	log.Info("Finishing Platform migration")
+	return nil
+}
+
+// FinishReplicatedMigrate completest the replicated migration platform specific tasks
+func (plat Platform) FinishReplicatedMigrate() error {
+	files, err := os.ReadDir(filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases"))
+	if err != nil {
+		return fmt.Errorf("could not read releases directory: %w", err)
+	}
+	for _, file := range files {
+		if file.Type() != fs.ModeSymlink {
+			log.DebugLF("skipping directory " + file.Name() + " as it is not a symlink")
+			continue
+		}
+		err = common.ResolveSymlink(filepath.Join(
+			common.GetBaseInstall(), "data/yb-platform/releases", file.Name()))
+		if err != nil {
+			return fmt.Errorf("Could not complete migration of platform: %w", err)
+		}
+	}
 	return nil
 }
 

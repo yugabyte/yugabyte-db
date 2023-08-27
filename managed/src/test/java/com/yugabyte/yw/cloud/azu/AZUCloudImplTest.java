@@ -12,6 +12,7 @@ import com.azure.resourcemanager.network.fluent.models.LoadBalancingRuleInner;
 import com.azure.resourcemanager.network.fluent.models.ProbeInner;
 import com.azure.resourcemanager.network.models.ProbeProtocol;
 import com.azure.resourcemanager.network.models.TransportProtocol;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -51,8 +53,6 @@ public class AZUCloudImplTest extends FakeDBApplication {
     defaultProvider.getRegions().add(defaultRegion);
     ProviderDetails providerDetails = new ProviderDetails();
     CloudInfo cloudInfo = new CloudInfo();
-    // cloudInfo.gcp = new GCPCloudInfo();
-    // cloudInfo.gcp.setGceProject("project");
     providerDetails.setCloudInfo(cloudInfo);
     defaultProvider.setDetails(providerDetails);
     mockApiClient = mock(AZUResourceGroupApiClient.class);
@@ -89,18 +89,9 @@ public class AZUCloudImplTest extends FakeDBApplication {
   @Test
   public void testCreateNewProbeSuccess() {
     Integer port = 5433;
-    ProbeInner probe = azuCloudImpl.createNewProbeForPort("TCP", port);
+    ProbeInner probe = azuCloudImpl.createNewTCPProbeForPort(port);
     assertEquals(ProbeProtocol.TCP, probe.protocol());
     assertEquals(port, probe.port());
-  }
-
-  @Test
-  public void testCreateNewProbeFailure() {
-    Integer port = 5433;
-    PlatformServiceException exception =
-        assertThrows(
-            PlatformServiceException.class, () -> azuCloudImpl.createNewProbeForPort("HTTP", port));
-    assert (exception.getMessage().contains("Only TCP probes are supported"));
   }
 
   @Test
@@ -119,8 +110,10 @@ public class AZUCloudImplTest extends FakeDBApplication {
   @Test
   public void testEnsureProbes() {
     List<Integer> ports = Arrays.asList(5433);
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(ports, Protocol.TCP, new ArrayList<>());
     List<ProbeInner> newProbes =
-        azuCloudImpl.ensureProbesForPorts("TCP", ports, new ArrayList<ProbeInner>());
+        azuCloudImpl.ensureProbesForPorts(healthCheckConfiguration, new ArrayList<ProbeInner>());
     assertEquals(1, newProbes.size());
   }
 }

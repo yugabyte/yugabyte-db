@@ -68,11 +68,11 @@ Status StoreValue(
   return Status::OK();
 }
 
-Status StoreValue(
+/*Status StoreValue(
     const Schema& schema, const dockv::ProjectedColumn& column, size_t col_idx,
     dockv::DocKeyDecoder* decoder, dockv::PgTableRow* row) {
   return row->DecodeKey(col_idx, decoder->mutable_input());
-}
+}*/
 
 } // namespace
 
@@ -241,11 +241,13 @@ void DocRowwiseIteratorBase::FinalizeKeyFoundStats() {
     return;
   }
 
-  doc_db_.metrics->docdb_keys_found->IncrementBy(keys_found_);
+  doc_db_.metrics->IncrementBy(tablet::TabletCounters::kDocDBKeysFound, keys_found_);
   if (obsolete_keys_found_) {
-    doc_db_.metrics->docdb_obsolete_keys_found->IncrementBy(obsolete_keys_found_);
+    doc_db_.metrics->IncrementBy(
+        tablet::TabletCounters::kDocDBObsoleteKeysFound, obsolete_keys_found_);
     if (obsolete_keys_found_past_cutoff_) {
-      doc_db_.metrics->docdb_obsolete_keys_found_past_cutoff->IncrementBy(
+      doc_db_.metrics->IncrementBy(
+          tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
           obsolete_keys_found_past_cutoff_);
     }
   }
@@ -274,7 +276,7 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_ke
   return Status::OK();
 }
 
-Result<Slice> DocRowwiseIteratorBase::GetTupleId() const {
+Slice DocRowwiseIteratorBase::GetTupleId() const {
   // Return tuple id without cotable id / colocation id if any.
   Slice tuple_id = row_key_;
   if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kTableId)) {
@@ -316,7 +318,7 @@ void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
 }
 
 Result<bool> DocRowwiseIteratorBase::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {
-  return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
+  return VERIFY_RESULT(FetchNext(row)) && GetTupleId() == tuple_id;
 }
 
 Slice DocRowwiseIteratorBase::shared_key_prefix() const {
@@ -377,7 +379,32 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
 
 Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
     const dockv::ReaderProjection& projection, dockv::PgTableRow* row) {
-  return DoCopyKeyColumnsToRow(projection, row);
+//  RETURN_NOT_OK(DoCopyKeyColumnsToRow(projection, row));
+  if (!row) {
+    return Status::OK();
+  }
+  if (!pg_key_decoder_) {
+    pg_key_decoder_.emplace(doc_read_context_.schema(), projection);
+  }
+  return pg_key_decoder_->Decode(
+      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()), row);
+/*
+  dockv::PgTableRow temp_row(row->projection());
+  CHECK_OK(doc_read_context_.pg_row_key_decoder().Decode(
+      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()),
+      &temp_row));
+  for (size_t i = 0; i != row->projection().num_key_columns; ++i) {
+    auto o1 = row->GetValueByIndex(i);
+    auto o2 = temp_row.GetValueByIndex(i);
+    if (!o1 || !o2) {
+      CHECK(!o1 && !o2) << "index: " << i;
+      continue;
+    }
+    auto v1 = o1->ToQLValuePB(row->projection().columns[i].data_type);
+    auto v2 = o1->ToQLValuePB(row->projection().columns[i].data_type);
+    CHECK_EQ(v1.ShortDebugString(), v2.ShortDebugString()) << "index: " << i;
+  }
+  return Status::OK();*/
 }
 
 template <class Row>

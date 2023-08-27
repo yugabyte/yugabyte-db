@@ -62,8 +62,7 @@ DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb req
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 namespace {
 
@@ -259,7 +258,8 @@ class PgSession::RunHelper {
     // can never occur).
 
     VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
-            << table.table_name().table_name() << ", table id: " << table.id();
+            << table.table_name().table_name() << ", table id: " << table.id()
+            << ", force_non_bufferable: " << force_non_bufferable;
     auto& buffer = pg_session_.buffer_;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -382,15 +382,11 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
 PgSession::PgSession(
     PgClient* pg_client,
     const std::string& database_name,
-    scoped_refptr<PgTxnManager>
-        pg_txn_manager,
-    scoped_refptr<server::HybridClock>
-        clock,
+    scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      clock_(std::move(clock)),
       metrics_(stats_state),
       buffer_(
           std::bind(
@@ -658,12 +654,20 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
         false /* read_only */, txn_priority_requirement));
   }
 
-  // In case of flushing of non-transactional operations it is required to set read time with the
-  // very first (and all further) request as flushing is done asynchronously (i.e. YSQL may send
-  // multiple bunch of operations in parallel). As a result PgClientService is unable to use read
-  // time from remote t-server or generate its own.
+  // When YSQL is flushing a pipeline of Perform rpcs asynchronously i.e., without waiting for
+  // responses of those rpcs, it is required that PgClientService pick a read time before the very
+  // first request that is forwarded to docdb (potentially on a remote t-server) so that the same
+  // read time can be used for all Perform rpcs in the transaction.
+  //
+  // If there is no pipelining of Perform rpcs, the read time can be picked on docdb and the later
+  // Perform rpcs can use the same read time. This has some benefits such as not having to wait
+  // for the safe time on docdb to catch up with an already chosen read time, and allowing docdb to
+  // internally retry the request in case of read restart/ conflict errors.
+  //
+  // EnsureReadTimeIsSet helps PgClientService to determine whether it can safely use the
+  // optimization of allowing docdb (which serves the operation) to pick the read time.
   return Perform(
-      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet(!transactional)});
+      std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet::kTrue});
 }
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
@@ -675,7 +679,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
+    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -683,7 +687,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     if (ops_read_time) {
       RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }
-    ProcessPerformOnTxnSerialNo(txn_serial_no, ops_options.ensure_read_time_is_set, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -753,24 +756,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
-}
-
-void PgSession::ProcessPerformOnTxnSerialNo(
-    uint64_t txn_serial_no,
-    EnsureReadTimeIsSet ensure_read_time_set_for_current_txn_serial_no,
-    tserver::PgPerformOptionsPB* options) {
-  if (txn_serial_no != std::get<0>(last_perform_on_txn_serial_no_).txn_serial_no) {
-    last_perform_on_txn_serial_no_.emplace<0>(
-        txn_serial_no,
-        ensure_read_time_set_for_current_txn_serial_no
-            ? ReadHybridTime::FromHybridTimeRange(clock_->NowRange())
-            : ReadHybridTime());
-  }
-  const auto& read_time = std::get<0>(last_perform_on_txn_serial_no_).read_time;
-  if (ensure_read_time_set_for_current_txn_serial_no && read_time && !options->has_read_time()) {
-    read_time.ToPB(options->mutable_read_time());
-  }
-  options->set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
@@ -890,7 +875,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options);
+  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
   return pg_client_.RollbackToSubTransaction(id, &options);
 }
 
@@ -988,5 +973,4 @@ Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

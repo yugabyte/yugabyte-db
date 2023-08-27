@@ -108,6 +108,12 @@ extern bool yb_run_with_explain_analyze;
 extern bool yb_enable_hash_batch_in;
 
 /*
+ * GUC variable that enables using the default value for existing rows after
+ * an ADD COLUMN ... DEFAULT operation.
+ */
+extern bool yb_enable_add_column_missing_default;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -148,6 +154,7 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
+bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();

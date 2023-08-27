@@ -101,7 +101,7 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 ### Update 2 rows with the same partition key
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> BEGIN TRANSACTION

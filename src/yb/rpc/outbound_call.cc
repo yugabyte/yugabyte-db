@@ -68,13 +68,13 @@
 
 using std::string;
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_send_time, "Time taken to send the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_time_to_response, "Time taken to get the response ",
     yb::MetricUnit::kMicroseconds,
     "Microseconds spent to send the request and get a response on the wire");
@@ -191,7 +191,8 @@ OutboundCall::~OutboundCall() {
   DecrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
-void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void OutboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
+  sent_time_ = CoarseMonoClock::Now();
   if (IsFinished()) {
     auto current_state = state();
     LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
@@ -200,6 +201,11 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
         << "(" << StateName(current_state) << ")"
         << ", status: " << this->status();
   } else if (status.ok()) {
+    if (!conn) {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << this << " - Unexpected - Connection is null with ok status";
+    }
+    connection_ = conn;
     SetSent();
   } else {
     VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
@@ -360,6 +366,10 @@ bool OutboundCall::SetState(State new_state) {
 }
 
 void OutboundCall::InvokeCallback() {
+  invoke_callback_time_ = CoarseMonoClock::Now();
+  // Release the connection reference once the callback is invoked. This helps prevent circular
+  // dependencies for cleanup between OutboundCall and Connection.
+  connection_.reset();
   if (callback_thread_pool_) {
     callback_task_.SetOutboundCall(shared_from(this));
     callback_thread_pool_->Enqueue(&callback_task_);
@@ -399,6 +409,12 @@ void OutboundCall::InvokeCallbackSync() {
 
 void OutboundCall::SetResponse(CallResponse&& resp) {
   DCHECK(!IsFinished());
+
+  if (test_ignore_response) {
+    LOG_WITH_PREFIX(WARNING) << "Skipping OutboundCall response processing: " << this << " - "
+                             << ToString();
+    return;
+  }
 
   auto now = CoarseMonoClock::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
@@ -591,6 +607,18 @@ Status OutboundCall::InitHeader(RequestHeader* header) {
     header->set_timeout_millis(VERIFY_RESULT(TimeoutMs()));
   }
   return Status::OK();
+}
+
+std::string OutboundCall::DebugString() const {
+  if (connection_) {
+    connection_->QueueDumpConnectionState(call_id_, this);
+  }
+
+  return Format(
+      "OutboundCall($0): $1, start_time: $2, sent_time: $3, callback_time: $4, now: $5, "
+      "connection: $6",
+      this, ToString(), start_, sent_time_, invoke_callback_time_, CoarseMonoClock::Now(),
+      connection_);
 }
 
 ///

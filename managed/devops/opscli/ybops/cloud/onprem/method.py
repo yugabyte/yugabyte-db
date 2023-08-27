@@ -150,34 +150,49 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+
+        # Force db-related commands to use the "yugabyte" user.
+        ssh_user = args.ssh_user
+        args.ssh_user = "yugabyte"
+        self.update_ansible_vars_with_args(args)
+
+        # First stop both tserver and master processes.
+        processes = ["tserver", "master"]
+        logging.info(("[app] Running control script to stop " +
+                      "against master and tserver at {}").format(host_info['name']))
+        self.cloud.run_control_script(processes[0], "stop", args, self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[1], "stop", args, self.extra_vars, host_info)
+
+        # Revert the force using of user yugabyte.
+        args.ssh_user = ssh_user
+        self.update_ansible_vars_with_args(args)
+
+        if args.provisioning_cleanup:
+            self.cloud.run_control_script(
+                "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
-        self.update_ansible_vars_with_args(args)
-        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.install_node_exporter and args.provisioning_cleanup:
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
             self.cloud.run_control_script(
                 "thirdparty", "remove-services", args, self.extra_vars, host_info)
 
-        if args.provisioning_cleanup:
-            self.cloud.run_control_script(
-                "platform-services", "remove-services", args, self.extra_vars, host_info)
-
-        # Force db-related commands to use the "yugabyte" user.
+        # Use "yugabyte" user again to do the cleanups.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
-        servers = ["master", "tserver"]
-        commands = ["stop", "clean", "clean-logs"]
-        logging.info(("[app] Running control script stop+clean+clean-logs " +
-                     "against master+tserver at {}").format(host_info['name']))
-        for s in servers:
-            for c in commands:
+        logging.info(("[app] Running control script to clean and clean-logs " +
+                     "against master and tserver at {}").format(host_info['name']))
+        for process in processes:
+            for command in ["clean", "clean-logs"]:
                 self.cloud.run_control_script(
-                    s, c, args, self.extra_vars, host_info)
+                    process, command, args, self.extra_vars, host_info)
 
         # Now clean the instance, we pass "" as the 'process' since this command isn't really
         # specific to any process and needs to be just run on the node.
+        logging.info(("[app] Running control script to clean-instance " +
+                      "against node {}").format(host_info['name']))
         self.cloud.run_control_script("", "clean-instance", args, self.extra_vars, host_info)
 
 
@@ -553,6 +568,9 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
                          headers=self.auth_header)
             with open(self.local_installer_path, "wb") as file:
                 response = conn.getresponse()
+                if response.status != 200:
+                    raise YBOpsRuntimeError("Failed({}) to download node-agent installer."
+                                            .format(response.status))
                 file.write(response.read())
             st = os.stat(self.local_installer_path)
             os.chmod(self.local_installer_path,
@@ -567,12 +585,17 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
     def uninstall_node_agent(self, args):
         remote_shell = RemoteShell(self.extra_vars)
         try:
-            uninstall_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
-                             f" && . {self.sudo_pass_file}"
-                             f" && echo -n $YB_SUDO_PASS | sudo -H -S"
-                             f" {self.remote_installer_path} -c uninstall -u {args.yba_url}"
-                             f" -t {args.api_token} --node_ip {args.node_agent_ip}"
-                             " --skip_verify_cert"]
+            sudo_pass = os.getenv("YB_SUDO_PASS", None)
+            uninstall_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                uninstall_cmd_args += f" . {self.sudo_pass_file}"
+                uninstall_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                uninstall_cmd_args += " sudo -H -n"
+            uninstall_cmd_args += f" {self.remote_installer_path} -c uninstall -u {args.yba_url}"
+            uninstall_cmd_args += f" -t {args.api_token} --node_ip {args.node_agent_ip}"
+            uninstall_cmd_args += " --skip_verify_cert"
+            uninstall_cmd = ["bash", "-c", uninstall_cmd_args]
             remote_shell.run_command(uninstall_cmd)
         finally:
             remote_shell.close()
@@ -580,21 +603,35 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
     def install_node_agent(self, args):
         remote_shell = RemoteShell(self.extra_vars)
         try:
-            install_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir}"
-                           f" && . {self.sudo_pass_file}"
-                           f" && echo -n $YB_SUDO_PASS | sudo -H -S -u {self.install_user}"
-                           f" {self.remote_installer_path} -c install -u {args.yba_url}"
-                           f" -t {args.api_token} --skip_verify_cert --silent"
-                           f" --user {self.install_user}"
-                           f" --node_name {args.node_name} --node_ip {args.node_agent_ip}"
-                           f" --node_port {args.node_agent_port} --provider_id {args.provider_id}"
-                           f" --instance_type {args.instance_type} --zone_name {args.zone_name}"]
+            sudo_pass = os.getenv("YB_SUDO_PASS", None)
+            install_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                install_cmd_args += f". {self.sudo_pass_file}"
+                install_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                install_cmd_args += " sudo -H -n"
+            install_cmd_args += f" -u {self.install_user}"
+            install_cmd_args += f" {self.remote_installer_path} -c install -u {args.yba_url}"
+            install_cmd_args += f" -t {args.api_token} --skip_verify_cert --silent"
+            install_cmd_args += f" --user {self.install_user}"
+            install_cmd_args += f" --node_name {args.node_name} --node_ip {args.node_agent_ip}"
+            install_cmd_args += f" --node_port {args.node_agent_port}"
+            install_cmd_args += f" --provider_id {args.provider_id}"
+            install_cmd_args += f" --instance_type {args.instance_type}"
+            install_cmd_args += f" --zone_name {args.zone_name}"
+            install_cmd = ["bash", "-c", install_cmd_args]
             # Run the installer script.
             remote_shell.run_command(install_cmd)
             # Install service as root.
-            service_cmd = ["bash", "-c", f"cd {args.remote_tmp_dir} && . {self.sudo_pass_file}"
-                           f" && echo -n $YB_SUDO_PASS | sudo -H -S {self.remote_installer_path}"
-                           f" -c install_service --user {self.install_user}"]
+            service_cmd_args = f"cd {args.remote_tmp_dir} &&"
+            if sudo_pass:
+                service_cmd_args += f" . {self.sudo_pass_file}"
+                service_cmd_args += " && echo -n $YB_SUDO_PASS | sudo -H -S"
+            else:
+                service_cmd_args += " sudo -H -n"
+            service_cmd_args += f" {self.remote_installer_path}"
+            service_cmd_args += f" -c install_service --user {self.install_user}"
+            service_cmd = ["bash", "-c", service_cmd_args]
             remote_shell.run_command(service_cmd)
         finally:
             remote_shell.close()

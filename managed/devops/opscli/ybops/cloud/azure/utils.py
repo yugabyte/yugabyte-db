@@ -7,6 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import time
 
+from azure.core.exceptions import HttpResponseError
 from azure.identity import ClientSecretCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -657,11 +658,13 @@ class AzureCloudAdmin():
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
                     break
-            except CloudError as e:
+            except (CloudError, HttpResponseError) as e:
                 if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
                     break
-                elif e.error and e.error.error == 'NicReservedForAnotherVm':
+                elif e.error and (
+                  (hasattr(e.error, 'error') and e.error.error == 'NicReservedForAnotherVm') or
+                  (hasattr(e.error, 'code') and e.error.code == 'NicReservedForAnotherVm')):
                     # In case VM wasn't created, Azure reserves the NICs for the VMs
                     # for 180 seconds and throws NicReservedForAnotherVm error code,
                     # and suggests to retry after 180 seconds.
@@ -679,8 +682,8 @@ class AzureCloudAdmin():
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
                 logging.info("[app] Deleting ip {}".format(ip_name))
                 ip_del = self.network_client.public_ip_addresses.begin_delete(
-                                                                        NETWORK_RESOURCE_GROUP,
-                                                                        ip_name)
+                    NETWORK_RESOURCE_GROUP,
+                    ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
@@ -794,6 +797,42 @@ class AzureCloudAdmin():
             image_reference = {
                 "id": image
             }
+            fields = shared_gallery_image_match.groupdict()
+            logging.info("Parsing Shared Image Gallery fields: {}".format(fields))
+
+            # We need to handle the case where the Gallery Image is in a different
+            # subscription than the one we are currently using.
+            local_compute_client = None
+            if fields['subscription_id'] == SUBSCRIPTION_ID:
+                local_compute_client = self.compute_client
+            else:
+                local_compute_client = ComputeManagementClient(
+                    self.credentials, fields['subscription_id'])
+
+            image_identifier = local_compute_client.gallery_images.get(
+                fields['resource_group'],
+                fields['gallery_name'],
+                fields['image_definition_name']).as_dict().get('identifier')
+
+            # When creating VMs with images that are NOT from the marketplace,
+            # the creator of the VM needs to provide the plan information.
+            # We try to extract this info from the publisher, offer, sku fields
+            # of the image definition.
+            logging.info("Image parameters: {}, publisher = {}, offer={}, sku={}".format(
+                image_identifier,
+                image_identifier['publisher'],
+                image_identifier['offer'],
+                image_identifier['sku']))
+
+            if (image_identifier is not None
+                    and image_identifier['publisher'] is not None
+                    and image_identifier['offer'] is not None
+                    and image_identifier['sku'] is not None):
+                plan = {
+                    "publisher": image_identifier['publisher'],
+                    "product": image_identifier['offer'],
+                    "name": image_identifier['sku'],
+                }
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')

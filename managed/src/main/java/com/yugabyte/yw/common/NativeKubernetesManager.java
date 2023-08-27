@@ -425,6 +425,12 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public String getPlatformPodName() {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  @Override
   public String getHelmValues(
       Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
     // TODO Auto-generated method stub

@@ -205,7 +205,7 @@ $ ./ysqlsh -U yugabyte -W
 
 When prompted for the password, enter the yugabyte password.
 
-You should be able to login and see an output similar to the following:
+You should be able to log in and see an output similar to the following:
 
 
     ysqlsh (11.2-YB-2.5.0.0-b0)

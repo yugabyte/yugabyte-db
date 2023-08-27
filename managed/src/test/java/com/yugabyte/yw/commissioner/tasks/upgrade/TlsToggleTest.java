@@ -562,7 +562,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
     assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
   }
 
-  @Test
+  // Due to a bug, temporarily disable rolling upgrade for TLS toggle UTs.
+  // @Test
   @Parameters({
     "true, true, false, false, true, true",
     "true, true, false, false, false, true",

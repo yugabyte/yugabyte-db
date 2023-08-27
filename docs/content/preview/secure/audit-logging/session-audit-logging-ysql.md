@@ -34,7 +34,7 @@ Enable session logging for all commands except MISC and raise audit log messages
 
 ## Example
 
-In this example session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
+In this example, session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
 
 SQL statements are shown below.
 
@@ -46,7 +46,7 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
 
 ```output
 ysqlsh (11.2-YB-2.5.0.0-b0)

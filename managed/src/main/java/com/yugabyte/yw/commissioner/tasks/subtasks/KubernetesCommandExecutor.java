@@ -561,10 +561,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
             if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-              nodeDetail.cloudInfo.instance_type =
+              UserIntent userIntent =
                   taskParams().isReadOnlyCluster
-                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
-                      : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                      : u.getUniverseDetails().getPrimaryCluster().userIntent;
+              nodeDetail.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(nodeDetail);
             }
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
@@ -653,9 +654,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? u.getUniverseDetails().getReadOnlyClusters().get(0)
             : u.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    // TODO Support overriden instance types
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      log.info(
+          "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
@@ -891,9 +895,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tserverLimit.put(
           "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
     }
-
-    masterResource.put(
-        "cpu", KubernetesUtil.getCoreCountFromInstanceType(instanceType, true /* isMaster */));
 
     Map<String, Object> resourceOverrides = new HashMap();
     if (!masterResource.isEmpty() && !masterLimit.isEmpty()) {

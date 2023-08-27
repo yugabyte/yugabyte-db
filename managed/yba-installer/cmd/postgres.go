@@ -92,8 +92,14 @@ func (pg Postgres) Name() string {
 	return pg.name
 }
 
+// Version gets the version.
+func (pg Postgres) Version() string {
+	return pg.version
+}
+
+// Version gets the version
 func (pg Postgres) getPgUserName() string {
-	return "postgres"
+	return viper.GetString("postgres.install.username")
 }
 
 // Install postgres and create the yugaware DB for YBA.
@@ -122,7 +128,7 @@ func (pg Postgres) Install() error {
 	pg.Start()
 
 	// work to set up LDAP
-	if (viper.GetBool("postgres.install.ldap_enabled")) {
+	if viper.GetBool("postgres.install.ldap_enabled") {
 		if err := pg.setUpLDAP(); err != nil {
 			return err
 		}
@@ -459,7 +465,48 @@ func (pg Postgres) Upgrade() error {
 // restored onto the new postgres install, we currently will just do a full install.
 // TODO: Implement the backup/restore of postgres.
 func (pg Postgres) MigrateFromReplicated() error {
-	return pg.Install()
+	config.GenerateTemplate(pg)
+	if err := pg.extractPostgresPackage(); err != nil {
+		return fmt.Errorf("Error extracting postgres package: %s", err.Error())
+	}
+
+	if err := pg.createFilesAndDirs(); err != nil {
+		return fmt.Errorf("Error creating postgres files and directories: %s", err.Error())
+	}
+
+	// First let initdb create its config and data files in the software/pg../conf location
+	if err := pg.runInitDB(); err != nil {
+		return fmt.Errorf("Error running initdb: %s", err.Error())
+	}
+	// Then copy over data files to the intended data dir location
+	if err := pg.setUpDataDir(); err != nil {
+		return fmt.Errorf("Error setting up data directory: %s", err.Error())
+	}
+
+	// Finally update the conf file location to match this new data dir location
+	pg.modifyPostgresConf()
+
+	log.Info("Finished postgres migration")
+	return nil
+}
+
+// TODO: Error handling for this function (need to return errors from createYugawareDB and start)
+func (pg Postgres) replicatedMigrateStep2() error {
+	pg.Start()
+
+	if viper.GetBool("postgres.install.enabled") {
+		pg.createYugawareDatabase()
+	}
+
+	if !common.HasSudoAccess() {
+		pg.createCronJob()
+	}
+	return nil
+}
+
+// FinishReplicatedMigrate is a no-op for postgres, as this was done via backup, restore.
+func (pg Postgres) FinishReplicatedMigrate() error {
+	return nil
 }
 
 func (pg Postgres) extractPostgresPackage() error {
@@ -508,11 +555,18 @@ func (pg Postgres) modifyPostgresConf() error {
 	if err != nil {
 		return fmt.Errorf("Error opening %s: %s", pgConfPath, err.Error())
 	}
+
 	defer confFile.Close()
+
 	_, err = confFile.WriteString(
 		fmt.Sprintf("data_directory = '%s'\n", pg.dataDir))
 	if err != nil {
 		return fmt.Errorf("Error writing data directory to %s: %s", pgConfPath, err.Error())
+	}
+
+	_, err = confFile.WriteString(fmt.Sprintf("port = %d", viper.GetInt("postgres.install.port")))
+	if err != nil {
+		return fmt.Errorf("Error writing port to %s: %s", pgConfPath, err.Error())
 	}
 
 	return nil
@@ -531,19 +585,20 @@ func (pg Postgres) setUpLDAP() error {
 	ldapPort := viper.GetInt("postgres.install.ldap_port")
 	ldapTLS := viper.GetBool("postgres.install.secure_ldap")
 	_, err = hbaConf.WriteString(
-		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" " +
-								"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
-								ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
+		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" "+
+			"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
+			ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
 	if err != nil {
 		return fmt.Errorf("Error writing ldap config to %s: %s", pgHbaConfPath, err.Error())
 	}
+
 	// Reload hba conf
 	reloadCmd := "SELECT pg_reload_conf();"
 	psql := filepath.Join(pg.PgBin, "psql")
 	args := []string{
 		"-d", "postgres",
 		"-h", "localhost",
-		"-p", viper.GetString("postgres.port"),
+		"-p", viper.GetString("postgres.install.port"),
 		"-U", pg.getPgUserName(),
 		"-c", reloadCmd,
 	}
@@ -605,6 +660,7 @@ func (pg Postgres) createYugawareDatabase() {
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
+		"-p", viper.GetString("postgres.install.port"),
 		"yugaware",
 	}
 	var out *shell.Output

@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -43,12 +44,16 @@ import play.libs.Json;
 public class CloudBootstrap extends CloudTaskBase {
 
   private CloudProviderHandler cloudProviderHandler;
+  private CloudProviderHelper cloudProviderHelper;
 
   @Inject
   protected CloudBootstrap(
-      BaseTaskDependencies baseTaskDependencies, CloudProviderHandler cloudProviderHandler) {
+      BaseTaskDependencies baseTaskDependencies,
+      CloudProviderHandler cloudProviderHandler,
+      CloudProviderHelper cloudProviderHelper) {
     super(baseTaskDependencies);
     this.cloudProviderHandler = cloudProviderHandler;
+    this.cloudProviderHelper = cloudProviderHelper;
   }
 
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
@@ -314,6 +319,8 @@ public class CloudBootstrap extends CloudTaskBase {
       p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.READY);
       p.save();
+
+      cloudProviderHelper.updatePrometheusConfig(p);
     } catch (RuntimeException e) {
       log.error("Received exception during bootstrap", e);
       p = Provider.getOrBadRequest(taskParams().providerUUID);

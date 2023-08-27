@@ -6,9 +6,10 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-- set_fact:
+- name: Check s3cmd version
+  set_fact:
     s3cmd_cur_version: "{{ util_cur_version.stdout | regex_search('s3cmd version (.+)', '\\1')\
-      | first }}"
+     | first }}"
   when: util_exists.rc == 0
 
 - debug:
@@ -16,8 +17,14 @@
   when: util_exists.rc == 0
 
 - block:
-    - set_fact:
+    - name: Set variables for package paths and python interpreter
+      set_fact:
         setuptools_package_path: "/usr/local/setuptools-44.1.1"
+        python_magic_package_path: "/usr/local/python-magic-0.4.18"
+        python_dateutil_package_path: "/usr/local/python-dateutil-2.8.2"
+        s3cmd_package_path: "/usr/local/{{ s3cmd_package_name }}"
+        setuptools_scm_package_path: "/usr/local/setuptools_scm-1.17.0"
+        python_interpreter: "python2"
 
     - set_fact:
         prefix: "--prefix /usr"
@@ -27,109 +34,59 @@
         prefix: ""
       when: ansible_os_family == "Debian"
 
-    - set_fact:
-        python_interpreter: "python2"
-
-    # in case of changed dependencies - create purging tasks for reprovisioning
-    - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
-      unarchive:
-        src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
-        dest: "/usr/local"
-        creates: "{{ setuptools_package_path }}"
-        remote_src: "{{ is_remote }}"
-
-    - set_fact:
-        python_magic_package_path: "/usr/local/python-magic-0.4.18"
-
-    - name: s3cmd | Copy and unarchive python magic from {{ package_path }}
-      unarchive:
-        src: "{{ package_path }}/python-magic-0.4.18.tar.gz"
-        dest: "/usr/local"
-        creates: "{{ python_magic_package_path }}"
-        remote_src: "{{ is_remote }}"
-
-    - set_fact:
-        python_dateutil_package_path: "/usr/local/python-dateutil-2.8.2"
-
-    - name: s3cmd | Copy and unarchive dateutil from {{ package_path }}
-      unarchive:
-        src: "{{ package_path }}/python-dateutil-2.8.2.tar.gz"
-        dest: "/usr/local"
-        creates: "{{ python_dateutil_package_path }}"
-        remote_src: "{{ is_remote }}"
-
-    - set_fact:
-        s3cmd_package_path: "/usr/local/{{ s3cmd_package_name }}"
-
-    - name: s3cmd | Copy and unarchive {{ s3cmd_package }} from {{ package_path }}
-      unarchive:
-        src: "{{ package_path }}/{{ s3cmd_package }}"
-        dest: "/usr/local"
-        creates: "{{ s3cmd_package_path }}"
-        remote_src: "{{ is_remote }}"
-
-    - set_fact:
-        setuptools_scm_package_path: "/usr/local/setuptools_scm-1.17.0"
-
-    - name: s3cmd | Copy and unarchive setuptools_scm from {{ package_path }}
-      unarchive:
-        src: "{{ package_path }}/setuptools_scm-1.17.0.tar.gz"
-        dest: "/usr/local"
-        creates: "{{ setuptools_scm_package_path }}"
-        remote_src: "{{ is_remote }}"
-
-    - name: Extract the installed python version on the host machine
+    - name: Determine Python interpreter version
       raw: 'which python2 2> /dev/null || which python3 2> /dev/null'
       register: py_interpreter
       changed_when: py_interpreter.stdout != ""
 
-    - name: set python interpreter as python 3 if python2 is not present.
+    - name: Set Python interpreter to python3 if python2 is not present
       set_fact:
         python_interpreter: "python3"
       when: py_interpreter.stdout.find("python3") != -1
 
-    - name: Extract the current python version on db host.
+    - name: Extract the current Python version on the host machine
       raw: '{{ python_interpreter }} --version'
       register: py_version
       changed_when: py_version.stdout != ""
 
-    - name: Download python3-distutils required for setup.py on python3 installed OS
+    - name: Download python3-distutils required for setup.py on Python 3 installed OS
       ansible.builtin.package:
         name: python3-distutils
         state: present
       when: py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
 
-    - name: s3cmd | Install setuptools
-      raw: "cd {{ setuptools_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py install {{ prefix }}"
+    - name: Copy and unarchive required packages
+      unarchive:
+        src: "{{ package_path }}/{{ item }}.tar.gz"
+        dest: "/usr/local"
+        creates: "/usr/local/{{ item }}"
+        remote_src: "{{ is_remote }}"
+        owner: root
+        group: root
+      loop:
+        - "setuptools-44.1.1"
+        - "python-magic-0.4.18"
+        - "python-dateutil-2.8.2"
+        - "{{ s3cmd_package_name }}"
+        - "setuptools_scm-1.17.0"
+      become: true
 
-    - name: s3cmd | Install python magic
-      raw: "cd {{ python_magic_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py install {{ prefix }}"
-
-    - name: s3cmd | Install setuptools_scm
-      raw: "cd {{ setuptools_scm_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py install {{ prefix }}"
-
-    - name: s3cmd | Build dateutil
-      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py build"
-
-    - name: s3cmd | Install dateutil
-      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py install {{ prefix }}"
-      environment:
-        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
-                      {{ setuptools_scm_package_path }}"
-
-    - name: s3cmd | Install s3cmd
-      raw: "cd {{ s3cmd_package_path }} && umask 0022 && {{ python_interpreter }} \
-             setup.py install {{ prefix }}"
+    - name: Install setuptools, python magic, setuptools_scm, dateutil, and s3cmd
+      command: "{{ python_interpreter }} setup.py install {{ prefix }}"
+      args:
+        chdir: "/usr/local/{{ item }}"
       environment:
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                      {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
+      loop:
+        - "setuptools-44.1.1"
+        - "python-magic-0.4.18"
+        - "setuptools_scm-1.17.0"
+        - "python-dateutil-2.8.2"
+        - "{{ s3cmd_package_name }}"
+      become: true
 
-    - name: s3cmd | Create symlinks to {{ bin_path }}
+    - name: Create symlinks to s3cmd
       file:
         src: "{{ s3cmd_package_path }}/s3cmd"
         path: "{{ bin_path }}/s3cmd"
@@ -137,4 +94,7 @@
         force: yes
       # We don't want to symlink on db hosts on which python3 is used rather than python2.
       when: py_version.stdout is match("Python 2.")
+      become: true
+
   when: util_exists.rc != 0 or s3cmd_version != s3cmd_cur_version
+  become: true

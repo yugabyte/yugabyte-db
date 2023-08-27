@@ -1,9 +1,14 @@
 Parsed test spec with 2 sessions
 
-starting permutation: s1_insert s2_begin s2_insert s1_lock_status s1_commit
+starting permutation: s1_insert s2_begin s2_insert s1_1secold s1_wait2s s1_lock_status s1_commit
 step s1_insert: INSERT INTO foo VALUES (2,2);
 step s2_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_insert: INSERT INTO foo VALUES (2,2); <waiting ...>
+step s1_1secold: SET yb_locks_min_txn_age TO 1;
+step s1_wait2s: SELECT pg_sleep(2);
+pg_sleep
+
+
 step s1_lock_status:
     SELECT
         locktype, relation::regclass, mode, granted, fastpath, is_explicit,

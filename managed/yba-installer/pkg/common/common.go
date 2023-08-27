@@ -55,6 +55,8 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
+		GetBaseInstall(),
+		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
@@ -62,15 +64,19 @@ func createInstallDirs() {
 	}
 
 	for _, dir := range createDirs {
-		if err := MkdirAll(dir, os.ModePerm); err != nil {
-			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+		_, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			if err := MkdirAll(dir, DirMode); err != nil {
+				log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+			}
 		}
 		// Only change ownership for root installs.
 		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
+			serviceuser := viper.GetString("service_username")
+			err := Chown(dir, serviceuser, serviceuser, true)
 			if err != nil {
 				log.Fatal("failed to change ownership of " + dir + " to " +
-					viper.GetString("service_username") + ": " + err.Error())
+					serviceuser + ": " + err.Error())
 			}
 		}
 	}
@@ -85,7 +91,7 @@ func createUpgradeDirs() {
 	}
 
 	for _, dir := range createDirs {
-		if err := MkdirAll(dir, os.ModePerm); err != nil {
+		if err := MkdirAll(dir, DirMode); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
 		if HasSudoAccess() {
@@ -308,33 +314,33 @@ func fixConfigValues() {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
-		setYamlValue(InputFile(), "service_username", DefaultServiceUser)
+		SetYamlValue(InputFile(), "service_username", DefaultServiceUser)
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
+		SetYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
 		InitViper()
 	}
 
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		setYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
+		SetYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
 		InitViper()
 	}
 
 	if len(viper.GetString("host")) == 0 {
 		host := GuessPrimaryIP()
 		log.Info("Guessing primary IP of host to be " + host)
-		setYamlValue(InputFile(), "host", host)
+		SetYamlValue(InputFile(), "host", host)
 		InitViper()
 	}
 
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
 		serverCertPath, serverKeyPath := generateSelfSignedCerts()
-		setYamlValue(InputFile(), "server_cert_path", serverCertPath)
-		setYamlValue(InputFile(), "server_key_path", serverKeyPath)
+		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
+		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
 		InitViper()
 	}
 
@@ -348,7 +354,7 @@ func generateSelfSignedCerts() (string, string) {
 	caCertPath := filepath.Join(certsDir, "ca_cert.pem")
 	caKeyPath := filepath.Join(certsDir, "ca_key.pem")
 
-	err := MkdirAll(certsDir, os.ModePerm)
+	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
 	}

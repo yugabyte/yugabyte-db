@@ -18,21 +18,11 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
-import com.yugabyte.yw.forms.ConfigureDBApiParams;
-import com.yugabyte.yw.forms.DatabaseSecurityFormData;
-import com.yugabyte.yw.forms.DatabaseUserDropFormData;
-import com.yugabyte.yw.forms.DatabaseUserFormData;
-import com.yugabyte.yw.forms.RunQueryFormData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -92,7 +82,7 @@ public class UniverseYbDbAdminHandler {
     boolean isCloudEnabled =
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
-      if (!userIntent.enableYSQLAuth) {
+      if (!userIntent.enableYSQLAuth && !isCloudEnabled) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change password for ysql as its auth is already disabled.");
       } else if (!dbCreds.ysqlAdminUsername.equals(Util.DEFAULT_YSQL_USERNAME) && !isCloudEnabled) {
@@ -100,7 +90,7 @@ public class UniverseYbDbAdminHandler {
       }
     }
     if (!StringUtils.isEmpty(dbCreds.ycqlAdminUsername)) {
-      if (!userIntent.enableYCQLAuth) {
+      if (!userIntent.enableYCQLAuth && !isCloudEnabled) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change password for ycql as its auth is already disabled.");
       } else if (!dbCreds.ycqlAdminUsername.equals(Util.DEFAULT_YCQL_USERNAME) && !isCloudEnabled) {
@@ -110,9 +100,7 @@ public class UniverseYbDbAdminHandler {
 
     dbCreds.validation();
     if (!isCloudEnabled) {
-      boolean checkPasswordLeak =
-          confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-      dbCreds.validatePassword(policyService, checkPasswordLeak);
+      dbCreds.validatePassword(policyService);
     }
 
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
@@ -187,9 +175,7 @@ public class UniverseYbDbAdminHandler {
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
     requestParams.verifyParams(universe);
-    boolean checkPasswordLeak =
-        confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-    requestParams.validatePassword(policyService, checkPasswordLeak);
+    requestParams.validatePassword(policyService);
     TaskType taskType =
         userIntent.providerType.equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes
@@ -222,9 +208,7 @@ public class UniverseYbDbAdminHandler {
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Verify request params
     requestParams.verifyParams(universe);
-    boolean checkPasswordLeak =
-        confGetter.getConfForScope(customer, CustomerConfKeys.enforceSecureUniversePassword);
-    requestParams.validatePassword(policyService, checkPasswordLeak);
+    requestParams.validatePassword(policyService);
     TaskType taskType =
         userIntent.providerType.equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes

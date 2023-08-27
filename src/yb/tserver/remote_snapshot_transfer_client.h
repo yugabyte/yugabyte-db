@@ -43,7 +43,7 @@ class RemoteSnapshotTransferClient : public RemoteClientBase {
  public:
   // Construct the remote bootstrap client.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteSnapshotTransferClient(std::string tablet_id, FsManager* fs_manager);
+  RemoteSnapshotTransferClient(const TabletId& tablet_id, FsManager* fs_manager);
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
@@ -54,10 +54,12 @@ class RemoteSnapshotTransferClient : public RemoteClientBase {
   // universe. The rocksdb_dir passed must be the corresponding path for the current tablet (i.e.
   // the one that is doing the downloading).
   Status Start(
-      rpc::ProxyCache* proxy_cache, const std::string& source_tablet_uuid,
+      rpc::ProxyCache* proxy_cache, const PeerId& source_peer_uuid,
       const HostPort& source_tablet_addr, const std::string& rocksdb_dir);
 
-  Status FetchSnapshot(const SnapshotId& snapshot_id);
+  // Since the producer and consumer universe can have different snapshot IDs, we give the option of
+  // downloading producer snapshot files into a specific consumer snapshot directory.
+  Status FetchSnapshot(const SnapshotId& snapshot_id, const SnapshotId& new_snapshot_id = "");
 
   // After downloading all files successfully, write out the completed
   // replacement superblock.

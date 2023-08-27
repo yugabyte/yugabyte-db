@@ -18,8 +18,10 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 
@@ -43,6 +45,7 @@ class PgRowLockTest : public PgMiniTestBase {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgMiniTestBase::SetUp();
   }
 };
@@ -130,12 +133,10 @@ void PgRowLockTest::TestStmtBeforeRowLock(
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION && statement == TestStatement::kDelete) {
     ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(),
-                        "could not serialize access due to concurrent update");
-    ASSERT_OK(read_conn.Execute("ABORT"));
+    const auto& status = result.status();
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+    ASSERT_OK(read_conn.RollbackTransaction());
   } else {
     ASSERT_OK(result);
     // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for
@@ -179,6 +180,20 @@ TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.message().ToBuffer(),
                       "Read request with row mark types must be part of a transaction");
+}
+
+TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
+  const auto table = "foo";
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
+
+  ASSERT_OK(cluster_->RestartSync());
 }
 
 class PgMiniTestNoTxnRetry : public PgRowLockTest {

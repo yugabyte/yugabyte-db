@@ -126,6 +126,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			scandesc->yb_rel_pushdown =
 				YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 			scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
+			scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		}
 
 		/*
@@ -260,7 +261,13 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			StoreIndexTuple(slot, scandesc->xs_itup, scandesc->xs_itupdesc);
 		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
 		{
-			/* Slot should have already been updated by YB amgettuple. */
+			/*
+			 * Slot should have already been updated by YB amgettuple.
+			 *
+			 * Also, index only aggregate pushdown cannot support recheck, and
+			 * this should have been prevented by earlier logic.
+			 */
+			Assert(!scandesc->xs_recheck);
 		}
 		else
 			elog(ERROR, "no data returned for index-only scan");
@@ -641,9 +648,17 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
 	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
 	 * references to nonexistent indexes.
+	 *
+	 * YB note: For aggregate pushdown, we need recheck knowledge to determine
+	 * whether aggregates can be pushed down or not.  At the time of writing,
+	 * - aggregate pushdown only supports YB relations
+	 * - there cannot be a mix of non-YB tables and YB indexes, and vice versa
+	 * Use those assumptions to avoid the perf hit on EXPLAIN non-YB relations.
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-		return indexstate;
+		if (!(IsYBRelation(currentRelation) &&
+			  (eflags & EXEC_FLAG_YB_AGG_PARENT)))
+			return indexstate;
 
 	/*
 	 * Open the index relation.
@@ -676,6 +691,27 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 						   &indexstate->ioss_NumRuntimeKeys,
 						   NULL,	/* no ArrayKeys */
 						   NULL);
+
+	/*
+	 * For aggregate pushdown purposes, using the scan keys, determine ahead of
+	 * beginning the scan whether indexqual recheck might happen, and pass that
+	 * information up to the aggregate node.  Only attempt this for YB
+	 * relations since pushdown is not supported otherwise.
+	 */
+	if (IsYBRelation(indexstate->ioss_RelationDesc) &&
+		(eflags & EXEC_FLAG_YB_AGG_PARENT))
+	{
+		indexstate->yb_ioss_might_recheck =
+			yb_index_might_recheck(currentRelation,
+								   indexstate->ioss_RelationDesc,
+								   true /* xs_want_itup */,
+								   indexstate->ioss_ScanKeys,
+								   indexstate->ioss_NumScanKeys);
+
+		/* Got the info for aggregate pushdown.  EXPLAIN can return now. */
+		if  (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+			return indexstate;
+	}
 
 	/*
 	 * any ORDER BY exprs have to be turned into scankeys in the same way

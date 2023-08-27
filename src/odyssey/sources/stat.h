@@ -35,6 +35,10 @@ struct od_stat {
 
 	td_histogram_t *transaction_hgram[QUANTILES_WINDOW];
 	td_histogram_t *query_hgram[QUANTILES_WINDOW];
+
+	// Time taken by a logical connection to acquire a physical connection.
+	// i.e. wait time in the queue + time taken to find/create a physical connection
+	od_atomic_u64_t wait_time;
 };
 
 static inline void od_stat_state_init(od_stat_state_t *state)
@@ -130,6 +134,7 @@ static inline void od_stat_copy(od_stat_t *dst, od_stat_t *src)
 	dst->recv_server = od_atomic_u64_of(&src->recv_server);
 	dst->count_parse = od_atomic_u64_of(&src->count_parse);
 	dst->count_parse_reuse = od_atomic_u64_of(&src->count_parse_reuse);
+	dst->wait_time = od_atomic_u64_of(&src->wait_time);
 }
 
 static inline void od_stat_sum(od_stat_t *sum, od_stat_t *stat)
@@ -142,6 +147,7 @@ static inline void od_stat_sum(od_stat_t *sum, od_stat_t *stat)
 	sum->recv_server += od_atomic_u64_of(&stat->recv_server);
 	sum->count_parse += od_atomic_u64_of(&stat->count_parse);
 	sum->count_parse_reuse += od_atomic_u64_of(&stat->count_parse_reuse);
+	sum->wait_time += od_atomic_u64_of(&stat->wait_time);
 }
 
 static inline void od_stat_update_of(od_atomic_u64_t *prev,
@@ -162,6 +168,7 @@ static inline void od_stat_update(od_stat_t *dst, od_stat_t *stat)
 	od_stat_update_of(&dst->recv_server, &stat->recv_server);
 	od_stat_update_of(&dst->count_parse, &stat->count_parse);
 	od_stat_update_of(&dst->count_parse_reuse, &stat->count_parse_reuse);
+	od_stat_update_of(&dst->wait_time, &stat->wait_time);
 }
 
 static inline void od_stat_average(od_stat_t *avg, od_stat_t *current,
@@ -204,6 +211,9 @@ static inline void od_stat_average(od_stat_t *avg, od_stat_t *current,
 	if (count_tx > 0) {
 		avg->tx_time = (od_atomic_u64_of(&current->tx_time) -
 				od_atomic_u64_of(&prev->tx_time)) /
+			       count_tx;
+		avg->wait_time = (od_atomic_u64_of(&current->wait_time) -
+				od_atomic_u64_of(&prev->wait_time)) /
 			       count_tx;
 	}
 

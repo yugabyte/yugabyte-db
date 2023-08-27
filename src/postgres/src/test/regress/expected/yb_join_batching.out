@@ -21,6 +21,7 @@ SET enable_hashjoin = off;
 SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
+SET yb_prefer_bnl = on;
 SET yb_bnl_batch_size = 3;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
                      QUERY PLAN
@@ -398,16 +399,16 @@ SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                                QUERY PLAN
+                                QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
+         ->  Index Scan using p1_b_idx on p1 t1
+               Index Cond: (b <= 10)
          ->  Index Scan using p2_pkey on p2 t2
-               Index Cond: (b <= 15)
-         ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
+               Index Cond: ((b = ANY (ARRAY[t1.a, $1, $2])) AND (b <= 15))
    ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (a = ANY (ARRAY[t1.a, $4, $5]))
 (10 rows)
@@ -415,54 +416,54 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
 SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
  a  | b  |  c   | a
 ----+----+------+----
- 10 | 10 | 0010 | 10
-    |    |      |  6
-    |    |      |  6
- 10 | 10 | 0010 | 10
- 10 | 10 | 0010 | 10
-    |    |      |  8
- 10 | 10 | 0010 | 10
-    |    |      |  2
-    |    |      |  2
   0 |  0 | 0000 |  0
   0 |  0 | 0000 |  0
-    |    |      |  4
   0 |  0 | 0000 |  0
-    |    |      |  4
-    |    |      |  8
- 10 | 10 | 0010 | 10
-    |    |      |  4
-    |    |      |  6
- 10 | 10 | 0010 | 10
-    |    |      |  4
-    |    |      |  4
-    |    |      |  2
-    |    |      |  8
-    |    |      |  6
- 10 | 10 | 0010 | 10
-    |    |      |  2
-    |    |      |  8
   0 |  0 | 0000 |  0
-    |    |      |  4
-    |    |      |  6
   0 |  0 | 0000 |  0
-    |    |      |  4
-    |    |      |  8
+  0 |  0 | 0000 |  0
   0 |  0 | 0000 |  0
   0 |  0 | 0000 |  0
     |    |      |  2
     |    |      |  2
+    |    |      |  2
+    |    |      |  2
+    |    |      |  2
+    |    |      |  2
+    |    |      |  2
     |    |      |  4
-    |    |      |  8
+    |    |      |  4
     |    |      |  2
+    |    |      |  4
+    |    |      |  4
+    |    |      |  4
+    |    |      |  4
+    |    |      |  4
+    |    |      |  4
+    |    |      |  6
+    |    |      |  6
+    |    |      |  6
+    |    |      |  6
+    |    |      |  6
+    |    |      |  6
     |    |      |  8
     |    |      |  6
-  0 |  0 | 0000 |  0
-    |    |      |  8
     |    |      |  6
+    |    |      |  8
+    |    |      |  8
+    |    |      |  8
+    |    |      |  8
+    |    |      |  8
+    |    |      |  8
  10 | 10 | 0010 | 10
-    |    |      |  2
-    |    |      |  6
+ 10 | 10 | 0010 | 10
+    |    |      |  8
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
+ 10 | 10 | 0010 | 10
 (48 rows)
 
 -- anti join--
@@ -651,21 +652,21 @@ DROP TABLE q2;
 DROP TABLE q3;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-                                  QUERY PLAN
+                                  QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Sort
    Sort Key: a.a, d.a
    ->  Nested Loop
          ->  YB Batched Nested Loop Join
-               Join Filter: (a.a = b.a)
+               Join Filter: (a.a = c.a)
                ->  YB Batched Nested Loop Join
-                     Join Filter: (a.a = c.a)
+                     Join Filter: (a.a = b.a)
                      ->  Index Scan using p1_b_idx on p1 a
                            Index Cond: (b = 10)
-                     ->  Index Scan using p3_pkey on p3 c
+                     ->  Index Scan using p2_pkey on p2 b
                            Index Cond: (a = ANY (ARRAY[a.a, $1, $2, ..., $9]))
-               ->  Index Scan using p2_pkey on p2 b
-                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, ..., $19]))
+               ->  Index Scan using p3_pkey on p3 c
+                     Index Cond: (a = ANY (ARRAY[b.a, $11, $12, ..., $19]))
          ->  Index Scan using p4_pkey on p4 d
                Index Cond: (b = 10)
 (15 rows)
@@ -930,8 +931,8 @@ create index q3_range on q3(a asc);
  Nested Loop Left Join
    ->  Index Scan using q1_pkey on q1 p1
    ->  Nested Loop
+         Join Filter: (p3.a <= p1.c1)
          ->  Index Only Scan using q3_range on q3 p3
-               Index Cond: (a <= p1.c1)
          ->  Index Scan using q2_pkey on q2 p2
                Index Cond: (c1 = p1.c1)
 (7 rows)

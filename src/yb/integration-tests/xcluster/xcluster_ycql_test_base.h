@@ -25,7 +25,6 @@ using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 using YBClusters = std::vector<XClusterTestBase::Cluster*>;
 
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
-const std::string kDatabaseName = "yugabyte";
 
 class XClusterYcqlTestBase : public XClusterTestBase {
  public:
@@ -68,14 +67,14 @@ class XClusterYcqlTestBase : public XClusterTestBase {
   client::YBSchema* GetSchema() { return &schema_; }
 
   Result<std::unique_ptr<Cluster>> AddCluster(
-      YBClusters* clusters, const std::string& cluster_id, bool is_producer,
+      YBClusters* clusters, uint32 cluster_id, bool is_producer,
       uint32_t num_tservers = 1);
 
   Status CreateAdditionalClusterTables(
       YBClient* client, YBTables* tables, uint32_t num_tablets_per_table, size_t num_tables);
 
   Result<std::unique_ptr<XClusterTestBase::Cluster>> AddClusterWithTables(
-      YBClusters* clusters, YBTables* tables, const std::string& cluster_id, size_t num_tables,
+      YBClusters* clusters, YBTables* tables, uint32 cluster_id, size_t num_tables,
       uint32_t num_tablets_per_table, bool is_producer, uint32_t num_tservers = 1);
 
  private:

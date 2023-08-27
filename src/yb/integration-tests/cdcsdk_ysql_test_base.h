@@ -124,6 +124,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
+DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 
 namespace yb {
 
@@ -544,6 +545,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void AssertSafeTimeAsExpectedInTabletPeers(
       const TabletId& tablet_id, const HybridTime expected_safe_time);
+
+  Status WaitForGetChangesToFetchRecords(
+      GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
+      const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
+      const double& timeout_secs = 5);
 };
 
 }  // namespace cdc

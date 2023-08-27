@@ -72,7 +72,7 @@
 #include "yb/util/flags.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
-METRIC_DECLARE_histogram(rpc_incoming_queue_time);
+METRIC_DECLARE_event_stats(rpc_incoming_queue_time);
 METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
@@ -685,6 +685,11 @@ Result<HistogramPtr> GetHistogram(
   return down_cast<Histogram*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
 }
 
+Result<EventStatsPtr> GetEventStats(
+    const MetricEntityPtr& metric_entity, const EventStatsPrototype& prototype) {
+  return down_cast<EventStats*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
+}
+
 Result<CounterPtr> GetCounter(
     const MetricEntityPtr& metric_entity, const CounterPrototype& prototype) {
   return down_cast<Counter*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
@@ -716,18 +721,18 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   auto latency_histogram = ASSERT_RESULT(GetHistogram(
       metric_entity(), METRIC_handler_latency_yb_rpc_test_CalculatorService_Sleep));
 
-  LOG(INFO) << "Sleep() min lat: " << latency_histogram->MinValueForTests();
-  LOG(INFO) << "Sleep() mean lat: " << latency_histogram->MeanValueForTests();
-  LOG(INFO) << "Sleep() max lat: " << latency_histogram->MaxValueForTests();
+  LOG(INFO) << "Sleep() min lat: " << latency_histogram->MinValue();
+  LOG(INFO) << "Sleep() mean lat: " << latency_histogram->MeanValue();
+  LOG(INFO) << "Sleep() max lat: " << latency_histogram->MaxValue();
   LOG(INFO) << "Sleep() #calls: " << latency_histogram->TotalCount();
 
   ASSERT_EQ(1, latency_histogram->TotalCount());
-  ASSERT_GE(latency_histogram->MaxValueForTests(), sleep_micros);
-  ASSERT_TRUE(latency_histogram->MinValueForTests() == latency_histogram->MaxValueForTests());
+  ASSERT_GE(latency_histogram->MaxValue(), sleep_micros);
+  ASSERT_TRUE(latency_histogram->MinValue() == latency_histogram->MaxValue());
 
   // TODO: Implement an incoming queue latency test.
   // For now we just assert that the metric exists.
-  ASSERT_OK(GetHistogram(metric_entity(), METRIC_rpc_incoming_queue_time));
+  ASSERT_OK(GetEventStats(metric_entity(), METRIC_rpc_incoming_queue_time));
 }
 
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {

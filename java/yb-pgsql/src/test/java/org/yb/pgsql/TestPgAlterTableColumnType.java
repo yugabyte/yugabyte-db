@@ -283,4 +283,64 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       assertQuery(statement, "SELECT * FROM test_table", new Row());
     }
   }
+
+  @Test
+  public void testSplitOptions() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx1 ON test(c1) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx2 ON test(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx3 ON test(c2 ASC) INCLUDE(c1)"
+        + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("CREATE INDEX idx4 ON test(c1 ASC) SPLIT AT VALUES (('h'))");
+      statement.execute("ALTER TABLE test ALTER c1 TYPE int USING length(c1)");
+      // Hash split options on the table should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('test'::regclass)", new Row(5, 1));
+      // Hash split options on the indexes should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx1'::regclass)", new Row(5, 1));
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx2'::regclass)", new Row(5, 1));
+      // Range split options on an index should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx4'::regclass)",
+          new Row(""));
+
+      statement.execute("CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))"
+      + " SPLIT AT VALUES (('h', 20))");
+      statement.execute("ALTER TABLE test2 ALTER c1 TYPE int USING length(c1)");
+      statement.execute("CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))"
+      + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("ALTER TABLE test3 ALTER c1 TYPE int USING length(c1)");
+      // Range split options on the table should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test2'::regclass)",
+          new Row(""));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+    }
+  }
+
+  @Test
+  public void testMultipleRewrites() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (a float, b varchar(10))");
+      statement.execute("INSERT INTO test VALUES (1.0, 'abc'), (2.0, 'xyz')");
+      // Test multiple ALTER COLUMN TYPE subcommands.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE text USING a::text,"
+        + " ALTER COLUMN b TYPE varchar(5);");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+      // Test multiple ALTER COLUMN TYPE subcommands with an ADD PRIMARY KEY subcommand.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE varchar(3),"
+        + " ALTER COLUMN b TYPE varchar(4), ADD PRIMARY KEY (b)");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+    }
+  }
 }

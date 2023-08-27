@@ -713,6 +713,7 @@ components:
         disk_size_used_gb: 5.637376656633329
         num_cores: 7
         memory_mb: 1.4658129805029452
+        ram_provisioned_gb: 9.301444243932576
         cpu_usage: 2.3021358869347655
         disk_size_gb: 5.962133916683182
       properties:
@@ -740,10 +741,16 @@ components:
           default: 0
           description: The number of CPU cores per node
           type: integer
+        ram_provisioned_gb:
+          default: 0
+          description: The total size of provisioned ram (GB)
+          format: double
+          type: number
       required:
       - disk_size_gb
       - memory_mb
       - num_cores
+      - ram_provisioned_gb
       title: Cluster Node Info
       type: object
     ClusterInfo:
@@ -754,10 +761,11 @@ components:
           disk_size_used_gb: 5.637376656633329
           num_cores: 7
           memory_mb: 1.4658129805029452
+          ram_provisioned_gb: 9.301444243932576
           cpu_usage: 2.3021358869347655
           disk_size_gb: 5.962133916683182
         is_production: false
-        version: 9
+        version: 3
         num_nodes: 2
       properties:
         num_nodes:
@@ -795,7 +803,7 @@ components:
       example:
         cloud_info:
           region: us-west2
-        num_nodes: 9
+        num_nodes: 5
       properties:
         cloud_info:
           $ref: '#/components/schemas/CloudInfo'
@@ -815,7 +823,7 @@ components:
         placement_info:
           cloud_info:
             region: us-west2
-          num_nodes: 9
+          num_nodes: 5
       properties:
         placement_info:
           $ref: '#/components/schemas/PlacementInfo'
@@ -844,11 +852,11 @@ components:
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 9
+            num_nodes: 5
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 9
+            num_nodes: 5
         name: name
         cloud_info:
           region: us-west2
@@ -861,10 +869,11 @@ components:
             disk_size_used_gb: 5.637376656633329
             num_cores: 7
             memory_mb: 1.4658129805029452
+            ram_provisioned_gb: 9.301444243932576
             cpu_usage: 2.3021358869347655
             disk_size_gb: 5.962133916683182
           is_production: false
-          version: 9
+          version: 3
           num_nodes: 2
       properties:
         name:
@@ -945,11 +954,11 @@ components:
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 9
+              num_nodes: 5
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 9
+              num_nodes: 5
           name: name
           cloud_info:
             region: us-west2
@@ -962,10 +971,11 @@ components:
               disk_size_used_gb: 5.637376656633329
               num_cores: 7
               memory_mb: 1.4658129805029452
+              ram_provisioned_gb: 9.301444243932576
               cpu_usage: 2.3021358869347655
               disk_size_gb: 5.962133916683182
             is_production: false
-            version: 9
+            version: 3
             num_nodes: 2
         info:
           metadata:
@@ -1967,11 +1977,11 @@ components:
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 9
+                num_nodes: 5
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 9
+                num_nodes: 5
             name: name
             cloud_info:
               region: us-west2
@@ -1984,10 +1994,11 @@ components:
                 disk_size_used_gb: 5.637376656633329
                 num_cores: 7
                 memory_mb: 1.4658129805029452
+                ram_provisioned_gb: 9.301444243932576
                 cpu_usage: 2.3021358869347655
                 disk_size_gb: 5.962133916683182
               is_production: false
-              version: 9
+              version: 3
               num_nodes: 2
           info:
             metadata:
@@ -2132,7 +2143,16 @@ components:
       type: object
     Cluster_table_list_response:
       example:
-        data:
+        tables:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        indexes:
         - keyspace: keyspace
           size_bytes: 0
           name: name
@@ -2142,7 +2162,15 @@ components:
           name: name
           uuid: uuid
       properties:
-        data:
+        tables:
+          description: List of cluster tables
+          items:
+            $ref: '#/components/schemas/ClusterTable'
+          nullable: false
+          title: Cluster Table Data
+          type: array
+          uniqueItems: true
+        indexes:
           description: List of cluster tables
           items:
             $ref: '#/components/schemas/ClusterTable'
@@ -2151,7 +2179,8 @@ components:
           type: array
           uniqueItems: true
       required:
-      - data
+      - indexes
+      - tables
       title: Cluster table list response
       type: object
     Health_Check_Response:

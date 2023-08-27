@@ -17,7 +17,6 @@
 
 namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
-const std::string kDatabaseName = "yugabyte";
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
@@ -27,7 +26,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
-  static Result<std::string> GetNamespaceId(YBClient* client);
+  Result<std::string> GetNamespaceId(YBClient* client);
   Result<std::string> GetUniverseId(Cluster* cluster);
 
   Result<client::YBTableName> CreateYsqlTable(
@@ -41,9 +40,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const ColocationId colocation_id = 0,
       const bool ranged_partitioned = false);
 
-  Status CreateYsqlTable(
+  Result<client::YBTableName> CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-      std::vector<client::YBTableName>* table_names,
       const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
       const bool ranged_partitioned = false);
 

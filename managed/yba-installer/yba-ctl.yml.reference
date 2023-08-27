@@ -144,6 +144,7 @@ postgres:
    # Cannot be modified after installation
    install:
       enabled: true # yba-ctl will set up its own postgres
+      username: postgres # user to connect to yugaware db
       port: 5432
       restartSeconds: 10 # restart interval on exit
       locale: en_US.UTF8 # Locale for initdb
@@ -168,7 +169,8 @@ postgres:
 
 
 # Config parameters for Prometheus
-# Format for specifying timing information can be found https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
+# Format for specifying timing information can be found at
+# https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
 # ================================
 
 prometheus:
