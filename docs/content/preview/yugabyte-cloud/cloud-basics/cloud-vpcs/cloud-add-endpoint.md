@@ -12,7 +12,20 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service.
+A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a Virtual Private Cloud (VPC) with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service.
+
+![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
+
+## Overview
+
+While cloud providers refer to the components of a private link service in different ways, these components serve the same purposes.
+
+| YBM | AWS&nbsp;PrivateLink | Azure&nbsp;Private&nbsp;Link | Description |
+| :--- | :--- | :--- | :--- |
+| VPC | VPC | VNet | Secure virtual network created on a cloud provider. |
+| PSE | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | [Private Link service](https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview) | The endpoints on your cluster that you make available to the private link. |
+| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) | The endpoints on the application VPC corresponding to the PSEs on your cluster.
+| Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) | Cloud provider account with permissions to manage endpoints. |
 
 Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 
@@ -24,17 +37,6 @@ Setting up a private link to connect your cluster to your application VPC involv
     For Azure, a security principal is a subscription ID of the service you want to have access.
 
 1. On the cloud provider, create an interface VPC endpoint (AWS) or a private endpoint (Azure) on the VPC (VNet) hosting your application. You create an endpoint for each region in your cluster.
-
-![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
-
-Each provider refers to the elements of a private link service in different ways.
-
-| | AWS PrivateLink | Azure Private Link|
-| :--- | :--- | :--- |
-| Private service endpoint | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | [Private Link service](https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview) |
-| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) |
-| Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) |
-| Virtual Private Cloud (VPC) | VPC | VNet |
 
 ## Limitations
 
