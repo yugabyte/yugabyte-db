@@ -765,22 +765,6 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
   RETURN_NOT_OK(GetRegistration(&reg));
   string http_addr_host = reg.http_addresses(0).host();
 
-  // RPCs in Progress.
-  DisplayIconTile(output, "fa-tasks", "TServer Live Ops", "/rpcz");
-  // YCQL RPCs in Progress.
-  string cass_url;
-  RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
-      http_addr_host, &cass_url));
-  DisplayIconTile(output, "fa-tasks", "YCQL Live Ops", cass_url);
-
-  // YEDIS RPCs in Progress.
-  string redis_url;
-  RETURN_NOT_OK(GetDynamicUrlTile(
-      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port,
-      http_addr_host,  &redis_url));
-  DisplayIconTile(output, "fa-tasks", "YEDIS Live Ops", redis_url);
-
   // YSQL RPCs in Progress.
   string sql_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
@@ -795,12 +779,29 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
       http_addr_host, &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
 
+  // YCQL RPCs in Progress.
+  string cass_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/rpcz", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cass_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL Live Ops", cass_url);
+
   // YCQL All Ops
   string cql_all_url;
   RETURN_NOT_OK(GetDynamicUrlTile(
       "/statements", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
       http_addr_host, &cql_all_url));
   DisplayIconTile(output, "fa-tasks", "YCQL All Ops", cql_all_url);
+
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "TServer Live Ops", "/rpcz");
+
+  // YEDIS RPCs in Progress.
+  string redis_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/rpcz", FLAGS_redis_proxy_bind_address, FLAGS_redis_proxy_webserver_port,
+      http_addr_host,  &redis_url));
+  DisplayIconTile(output, "fa-tasks", "YEDIS Live Ops", redis_url);
 
   return Status::OK();
 }

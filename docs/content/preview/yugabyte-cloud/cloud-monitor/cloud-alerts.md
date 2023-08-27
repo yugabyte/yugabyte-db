@@ -185,7 +185,7 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Managed clusters support [10 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).

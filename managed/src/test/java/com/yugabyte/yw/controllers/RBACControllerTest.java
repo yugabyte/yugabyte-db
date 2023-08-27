@@ -9,6 +9,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -87,7 +88,7 @@ public class RBACControllerTest extends FakeDBApplication {
       uri =
           String.format(
               "/api/customers/%s/rbac/permissions?resourceType=%s",
-              customerUUID.toString(), resourceType);
+              customerUUID.toString(), resourceType.toLowerCase());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
@@ -99,7 +100,8 @@ public class RBACControllerTest extends FakeDBApplication {
     } else {
       uri =
           String.format(
-              "/api/customers/%s/rbac/role?roleType=%s", customerUUID.toString(), roleType);
+              "/api/customers/%s/rbac/role?roleType=%s",
+              customerUUID.toString(), roleType.toLowerCase());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
@@ -411,6 +413,23 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson));
     assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testEditInvalidCustomRole() throws IOException {
+    // Try to edit role that doesn't exist.
+    // Filling the JSON object to be passed in the request body
+    // We are not allowed to edit a system role through the API.
+    String createRoleRequestBody =
+        "{"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "]}";
+    JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
+    Result result =
+        assertPlatformException(() -> editRole(customer.getUuid(), UUID.randomUUID(), bodyJson));
+    assertEquals(NOT_FOUND, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
 

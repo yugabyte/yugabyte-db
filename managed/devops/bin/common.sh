@@ -94,7 +94,8 @@ readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-36-cp36m' 'manylinux2014_x86_
 readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m' \
                          'macosx-10.10-x86_64-cp-38-cp38' 'macosx-10.10-x86_64-cp-39-cp39' \
                          'macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
-DOCKER_IMAGE_NAME="yb-anywhere-pex-builder"
+DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"
+DOCKER_VENV_IMAGE_NAME="yba-devops-venv-builder"
 PYTHON_EXECUTABLE=""
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
@@ -347,7 +348,6 @@ activate_virtualenv() {
 }
 
 create_pymodules_package() {
-  activate_virtualenv
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
   chmod 777 "$YB_PYTHON_MODULES_DIR"

@@ -4281,6 +4281,8 @@ class ControlScript(object):
                     has_errors = True
 
             if args.fault_tolerance is not None:
+                if args.fault_tolerance == "cloud":
+                    Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
                 if args.fault_tolerance.lower() in START_FAULT_TOLERANCE_CHOICES:
                     self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
                 else:

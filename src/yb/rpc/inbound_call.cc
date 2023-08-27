@@ -88,7 +88,7 @@ InboundCall::~InboundCall() {
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
