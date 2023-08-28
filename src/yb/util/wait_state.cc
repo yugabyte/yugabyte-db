@@ -14,8 +14,11 @@
 #include "yb/util/wait_state.h"
 
 #include <arpa/inet.h>
+#include <unordered_map>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 using yb::util::WaitStateCode;
@@ -54,6 +57,9 @@ void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
 
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
+#ifndef NDEBUG
+  , thread_id_(0)
+#endif
 #ifdef TRACK_WAIT_HISTORY
   , num_updates_(0) 
 #endif 
@@ -83,6 +89,7 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
   if (!ret) {
     return;
   }
+  check_and_update_thread_id(prev, c);
   VTRACE(0, "cas-ed $0 -> $1", util::ToString(prev), util::ToString(c));
   if (freeze_) {
     // See comments in ::set_state()
@@ -105,6 +112,7 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
 }
 
 void WaitStateInfo::set_state(WaitStateCode c) {
+  check_and_update_thread_id(code_.load(), c);
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   if (freeze_) {
     // If this is the first time we are calling set_state after freeze() was called,
@@ -192,6 +200,61 @@ void WaitStateInfo::UpdateAuxInfo(const AUHAuxInfo& aux) {
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
   threadlocal_wait_state_ = wait_state;
 }
+
+#ifndef NDEBUG
+simple_spinlock WaitStateInfo::does_io_lock_;
+simple_spinlock WaitStateInfo::does_wait_lock_;
+std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_io(200);
+std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_wait(200);
+
+
+void WaitStateInfo::AssertIOAllowed() {
+  auto wait_state = CurrentWaitState();
+  if (wait_state) {
+    auto state = wait_state->get_state();
+    bool inserted = false;
+    {
+      std::lock_guard<simple_spinlock> l(does_io_lock_);
+      inserted = does_io.try_emplace(state, true).second;
+    }
+    LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
+    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
+  }
+}
+
+void WaitStateInfo::AssertWaitAllowed() {
+  auto wait_state = CurrentWaitState();
+  if (wait_state) {
+    auto state = wait_state->get_state();
+    bool inserted = false;
+    {
+      std::lock_guard<simple_spinlock> l(does_wait_lock_);
+      inserted = does_wait.try_emplace(state, true).second;
+    }
+    LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
+    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
+  }
+}
+
+// Isn't really using locks to update thread_name_. But I think that's ok.
+void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode next) {
+  auto tid = Thread::CurrentThreadId();
+  if (tid != thread_id_.load()) {
+    auto cur_thread_name = Thread::current_thread()->name();
+    VLOG(1) << "Setting state to " << util::ToString(next) << " on " << cur_thread_name
+            << " was previously " << util::ToString(prev) << " set on " << thread_name_;
+    thread_name_ = std::move(cur_thread_name);
+    thread_id_ = tid;
+  }
+}
+
+#else
+void WaitStateInfo::AssertIOAllowed() {}
+
+void WaitStateInfo::AssertWaitAllowed() {}
+
+void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode next) {}
+#endif // NDEBUG
 
 ScopedWaitState::ScopedWaitState(WaitStateInfoPtr wait_state) {
   prev_state_ = WaitStateInfo::CurrentWaitState();
