@@ -1785,7 +1785,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
     auto exec_context = pair.second;
     session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
-    SET_WAIT_STATUS(util::WaitStateCode::FlushAsync);
+    SET_WAIT_STATUS(util::WaitStateCode::CQLFlushAsync);
     session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
         FlushAsyncDone(flush_status, exec_context);
       });
@@ -1797,7 +1797,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
 // Any update on data structures shared in Executor should either be protected by a mutex or
 // deferred to ProcessAsyncResults() that will be invoked exclusively.
 void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* exec_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::FlushAsyncDone);
+  SET_WAIT_STATUS(util::WaitStateCode::CQLFlushAsyncDone);
   TRACE("Flush Async Done");
   // Process FlushAsync status for either transactional session in an ExecContext, or the
   // non-transactional session in the Executor for other ExecContexts with no transactional session.
