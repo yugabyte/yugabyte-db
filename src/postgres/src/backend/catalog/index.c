@@ -3342,7 +3342,6 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 	/* YB_TODO(neil@yugabyte)
 	 * - Check for the value of the new flag "progress".
 	 */
-	Assert(0);
 	return table_rel->rd_tableam->index_build_range_scan(table_rel,
 														 index_rel,
 														 index_info,

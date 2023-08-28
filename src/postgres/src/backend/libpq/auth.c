@@ -51,6 +51,9 @@
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+/* Yugabyte includes */
+#include "catalog/pg_authid.h"
+
 /*----------------------------------------------------------------
  * Global authentication functions
  *----------------------------------------------------------------
@@ -714,9 +717,6 @@ ClientAuthentication(Port *port)
 	if (ClientAuthentication_hook)
 		(*ClientAuthentication_hook) (port, status);
 
-
-#ifdef YB_TODO
-	/* YB_TODO(neil) Rewrite this. OID is no longer a special column */
 	/*
 	 * If conditions are met, update the role's profile entry.  Specific
 	 * authentication methods are isolated from profile handling.
@@ -732,7 +732,7 @@ ClientAuthentication(Port *port)
 		roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(port->user_name));
 		if (HeapTupleIsValid(roleTuple))
 		{
-			roleid = HeapTupleGetOid(roleTuple);
+			roleid = ((Form_pg_authid) GETSTRUCT(roleTuple))->oid;
 			profileTuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 			if (HeapTupleIsValid(profileTuple))
 			{
@@ -760,7 +760,6 @@ ClientAuthentication(Port *port)
 		}
 		return;
 	}
-#endif
 
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);

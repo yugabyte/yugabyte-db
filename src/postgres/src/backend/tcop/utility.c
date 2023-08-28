@@ -413,6 +413,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 				return 0;		/* silence stupider compilers */
 			}
 
+		case T_BackfillIndexStmt:
 		case T_CreateTableGroupStmt:
 		case T_YbCreateProfileStmt:
 		case T_YbDropProfileStmt:
