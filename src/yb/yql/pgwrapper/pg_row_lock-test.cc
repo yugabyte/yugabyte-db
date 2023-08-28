@@ -18,7 +18,6 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_deadlock_detection);
@@ -133,10 +132,12 @@ void PgRowLockTest::TestStmtBeforeRowLock(
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION && statement == TestStatement::kDelete) {
     ASSERT_NOK(result);
-    const auto& status = result.status();
-    ASSERT_TRUE(status.IsNetworkError()) << status;
-    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
-    ASSERT_OK(read_conn.RollbackTransaction());
+    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
+    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
+        << result.status();
+    ASSERT_STR_CONTAINS(result.status().ToString(),
+                        "could not serialize access due to concurrent update");
+    ASSERT_OK(read_conn.Execute("ABORT"));
   } else {
     ASSERT_OK(result);
     // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for

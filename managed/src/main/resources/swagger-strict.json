@@ -7675,25 +7675,12 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
-    "Permission" : {
-      "properties" : {
-        "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
-          "type" : "string"
-        },
-        "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
     "PermissionDetails" : {
       "properties" : {
         "permissionList" : {
           "description" : "Set of permissions",
           "items" : {
-            "$ref" : "#/definitions/Permission"
+            "$ref" : "#/definitions/PermissionInfoIdentifier"
           },
           "type" : "array",
           "uniqueItems" : true
@@ -7703,25 +7690,35 @@
     },
     "PermissionInfo" : {
       "properties" : {
-        "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
-          "type" : "string"
-        },
         "description" : {
           "type" : "string"
         },
-        "permissionValidOnResource" : {
-          "type" : "boolean"
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME" ],
+          "type" : "string"
         },
-        "prerequisitePermissions" : {
+        "prerequisite_permissions" : {
           "items" : {
-            "$ref" : "#/definitions/Permission"
+            "$ref" : "#/definitions/PermissionInfoIdentifier"
           },
           "type" : "array",
           "uniqueItems" : true
         },
-        "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "PermissionInfoIdentifier" : {
+      "properties" : {
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME" ],
+          "type" : "string"
+        },
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
           "type" : "string"
         }
       },
@@ -8595,7 +8592,7 @@
         },
         "resourceType" : {
           "description" : "Resource Type",
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
           "type" : "string"
         },
         "resourceUUIDSet" : {
@@ -19492,7 +19489,7 @@
     "/api/v1/customers/{cUUID}/rbac/role_binding/{userUUID}" : {
       "post" : {
         "description" : "",
-        "operationId" : "setRoleBinding",
+        "operationId" : "editRoleBinding",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -19529,7 +19526,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set the role bindings of a user",
+        "summary" : "Edit the role bindings of a user",
         "tags" : [ "RBAC management" ]
       }
     },

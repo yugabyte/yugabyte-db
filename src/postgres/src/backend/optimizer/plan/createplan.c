@@ -207,8 +207,7 @@ static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir, double estimated_num_nexts,
-				   double estimated_num_seeks);
+				   ScanDirection indexscandir);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig);
@@ -3817,9 +3816,7 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexquals,
 												fixed_indexorderbys,
 												best_path->indexinfo->indextlist,
-												best_path->indexscandir,
-												best_path->estimated_num_nexts,
-												best_path->estimated_num_seeks);
+												best_path->indexscandir);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -6464,9 +6461,7 @@ make_indexonlyscan(List *qptlist,
 				   List *indexqual,
 				   List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir,
-				   double estimated_num_nexts,
-				   double estimated_num_seeks)
+				   ScanDirection indexscandir)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6483,8 +6478,6 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
 
 	return node;
 }

@@ -19,5 +19,4 @@ type Component interface {
 	Restart() error
 	Install() error
 	MigrateFromReplicated() error
-	FinishReplicatedMigrate() error
 }

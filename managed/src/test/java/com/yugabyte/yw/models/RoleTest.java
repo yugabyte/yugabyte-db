@@ -8,9 +8,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.rbac.Permission;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import java.util.Arrays;
@@ -24,8 +24,10 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class RoleTest extends FakeDBApplication {
 
   private Customer customer;
-  public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
-  public Permission permission2 = new Permission(ResourceType.DEFAULT, Action.CREATE);
+  public PermissionInfoIdentifier permission1 =
+      new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE);
+  public PermissionInfoIdentifier permission2 =
+      new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.CREATE);
 
   @Before
   public void setUp() {
@@ -45,8 +47,8 @@ public class RoleTest extends FakeDBApplication {
     assertEquals("FakeRole1", role.getName());
     assertNotNull(role.getCreatedOn());
     assertEquals(1, role.getPermissionDetails().getPermissionList().size());
-    for (Permission info : role.getPermissionDetails().getPermissionList()) {
-      assertTrue(info.getAction().equals(Action.CREATE));
+    for (PermissionInfoIdentifier info : role.getPermissionDetails().getPermissionList()) {
+      assertTrue(info.getPermission().equals(Permission.CREATE));
       assertTrue(info.getResourceType().equals(ResourceType.UNIVERSE));
     }
   }

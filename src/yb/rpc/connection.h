@@ -155,11 +155,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Safe to be called from other threads.
   std::string ToString() const;
 
-  // Dump the connection state for provided call id. This includes the information realted to
-  // connection shutdown time, and whether the call id is present in the active_calls_ or not.
-  // call_ptr is used only for logging to correlate with OutboundCall trace.
-  void QueueDumpConnectionState(int32_t call_id, const void* call_ptr) const;
-
   Direction direction() const { return direction_; }
 
   // Queue a call response back to the client on the server side.
@@ -230,8 +225,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   StreamReadBuffer& ReadBuffer() override;
 
   void CleanupExpirationQueue(CoarseTimePoint now) ON_REACTOR_THREAD;
-  // call_ptr is used only for logging to correlate with OutboundCall trace.
-  void DumpConnectionState(int32_t call_id, const void* call_ptr) const ON_REACTOR_THREAD;
 
   std::string LogPrefix() const;
 
@@ -306,7 +299,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_ GUARDED_BY(outbound_data_queue_mtx_);
-  std::atomic<CoarseTimePoint> shutdown_time_{CoarseTimePoint::min()};
 
   std::shared_ptr<ReactorTask> process_response_queue_task_ GUARDED_BY(outbound_data_queue_mtx_);
 
@@ -315,14 +307,9 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // ----------------------------------------------------------------------------------------------
 
   std::atomic<uint64_t> responded_call_count_{0};
-  std::atomic<size_t> active_calls_during_shutdown_{0};
-  std::atomic<size_t> calls_queued_after_shutdown_{0};
-  std::atomic<size_t> responses_queued_after_shutdown_{0};
 
   // The last time we read or wrote from the socket.
-  std::atomic<CoarseTimePoint> last_activity_time_{CoarseTimePoint::min()};
-
-  std::atomic<bool> queued_destroy_connection_{false};
+  std::atomic<CoarseTimePoint> last_activity_time_;
 };
 
 }  // namespace rpc

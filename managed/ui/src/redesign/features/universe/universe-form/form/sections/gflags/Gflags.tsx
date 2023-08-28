@@ -73,7 +73,7 @@ export const GFlags: FC = () => {
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
       <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
-      {!isPrimary && enableRRGflags && (
+      {!isPrimary && enableRRGflags && provider?.code !== CloudType.kubernetes && (
         <Box className={gflagClasses.inheritFlagsContainer}>
           <Box flexShrink={1}>
             <YBToggleField

@@ -72,8 +72,6 @@ struct od_client {
 	int ldap_storage_password_len;
 	char *ldap_auth_dn;
 #endif
-
-	uint64_t client_id;
 };
 
 static const size_t OD_CLIENT_DEFAULT_HASHMAP_SZ = 420;
@@ -125,7 +123,6 @@ static inline void od_client_init(od_client_t *client)
 	od_list_init(&client->link);
 
 	client->prep_stmt_ids = NULL;
-	client->client_id = 0;
 }
 
 static inline od_client_t *od_client_allocate(void)

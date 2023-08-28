@@ -20,12 +20,10 @@
 #include "yb/util/pg_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
-#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(start_pgsql_proxy);
 DECLARE_bool(enable_ysql_conn_mgr);
-DECLARE_bool(enable_ysql_conn_mgr_stats);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 3600,
@@ -56,9 +54,6 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, true,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
-
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 10,
-  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
 
 namespace {
 
@@ -95,8 +90,7 @@ DEFINE_validator(ysql_conn_mgr_max_client_connections, &ValidateMaxClientConn);
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
 
-YsqlConnMgrWrapper::YsqlConnMgrWrapper(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+YsqlConnMgrWrapper::YsqlConnMgrWrapper(const YsqlConnMgrConf& conf) : conf_(std::move(conf)) {}
 
 std::string YsqlConnMgrWrapper::GetYsqlConnMgrExecutablePath() {
   return JoinPathSegments(yb::env_util::GetRootDir("bin"), "bin", "odyssey");
@@ -125,28 +119,17 @@ Status YsqlConnMgrWrapper::Start() {
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
-  if (FLAGS_enable_ysql_conn_mgr_stats) {
-    if (stat_shm_key_ <= 0) return STATUS(InternalError, "Invalid stats shared memory key.");
-
-    LOG(INFO) << "Using shared memory segment with key " << stat_shm_key_
-              << "for collecting Ysql Connection Manager stats";
-
-    proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, std::to_string(stat_shm_key_));
-  }
-
   RETURN_NOT_OK(proc_->Start());
 
   LOG(INFO) << "Ysql Connection Manager process running as pid " << proc_->pid();
-
-
   return Status::OK();
 }
 
-YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf)
+    : conf_(std::move(conf)) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
-  return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
+  return std::make_shared<YsqlConnMgrWrapper>(conf_);
 }
 
 }  // namespace ysql_conn_mgr_wrapper

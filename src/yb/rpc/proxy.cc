@@ -169,11 +169,6 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
     LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
   }
 
-  // Propagate the test only flag to OutboundCall.
-  if (controller->TEST_disable_outbound_call_response_processing) {
-    call->TEST_ignore_response();
-  }
-
   return true;
 }
 

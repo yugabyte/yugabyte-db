@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -57,18 +56,14 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
 
     if (configuration.getTemplate() == AlertTemplate.NODE_DISK_USAGE) {
       UUID universeUuid = UUID.fromString(definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
-      Optional<Universe> universe = Universe.maybeGet(universeUuid);
-      universe.ifPresent(
-          value ->
-              definitionLabels.put("mount_points", MetricQueryHelper.getDataMountPoints(value)));
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      definitionLabels.put("mount_points", MetricQueryHelper.getDataMountPoints(universe));
     }
     if (configuration.getTemplate() == AlertTemplate.NODE_SYSTEM_DISK_USAGE) {
       UUID universeUuid = UUID.fromString(definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
-      Optional<Universe> universe = Universe.maybeGet(universeUuid);
-      universe.ifPresent(
-          value ->
-              definitionLabels.put(
-                  "system_mount_points", MetricQueryHelper.getOtherMountPoints(confGetter, value)));
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      definitionLabels.put(
+          "system_mount_points", MetricQueryHelper.getOtherMountPoints(confGetter, universe));
     }
 
     AlertConfigurationLabelProvider labelProvider =

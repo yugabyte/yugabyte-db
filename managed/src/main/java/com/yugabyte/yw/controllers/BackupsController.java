@@ -25,7 +25,6 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
@@ -68,7 +67,6 @@ import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.CommonTypes;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Http;
@@ -346,21 +344,7 @@ public class BackupsController extends AuthenticatedController {
     // Validate universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
-    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     taskParams.customerUUID = customerUUID;
-
-    if (taskParams.backupType != null) {
-      if (taskParams.backupType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)
-          && !primaryClusterUserIntent.enableYSQL) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot take backups on YSQL tables if API is disabled");
-      } else if (taskParams.backupType.equals(CommonTypes.TableType.YQL_TABLE_TYPE)
-          && !primaryClusterUserIntent.enableYCQL) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot take backups on YCQL tables if API is disabled");
-      }
-    }
 
     if (taskParams.keyspaceTableList != null) {
       for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {

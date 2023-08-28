@@ -68,7 +68,6 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::future;
 using std::pair;
@@ -1451,7 +1450,9 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   ASSERT_EQ(PQntuples(res.get()), 1);
 
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
-  ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
+  ASSERT_FALSE(status.ok());
+  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());

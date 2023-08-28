@@ -15,10 +15,6 @@
 
 #include <iostream>
 
-#if YB_ABSL_ENABLED
-#include "absl/debugging/symbolize.h"
-#endif
-
 #include "yb/util/init.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
@@ -33,6 +29,14 @@
 #include "yb/consensus/consensus_queue.h"
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+
+// Import the internal symbol for the Abseil symbolizer (required for pprof endpoints when
+// YB_GOOGLE_TCMALLOC is enabled).
+#if YB_GOOGLE_TCMALLOC
+namespace absl {
+void InitializeSymbolizer(const char* argv0);
+}
+#endif
 
 namespace yb {
 
@@ -54,8 +58,7 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
-#if YB_ABSL_ENABLED
-  // Must be called before installing a failure signal handler (in InitYB).
+#if YB_GOOGLE_TCMALLOC
   absl::InitializeSymbolizer((*argv)[0]);
 #endif
 

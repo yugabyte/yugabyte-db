@@ -115,13 +115,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
-      if (
-        fieldValue &&
-        deviceInfo &&
-        !isEphemeralAwsStorageInstance(instance) &&
-        isEditMode &&
-        provider.code !== CloudType.onprem
-      ) {
+      if (fieldValue && deviceInfo && !isEphemeralAwsStorageInstance(instance) && isEditMode) {
         deviceInfo.volumeSize = fieldValue.volumeSize;
         deviceInfo.numVolumes = fieldValue.numVolumes;
       }

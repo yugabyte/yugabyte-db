@@ -9,42 +9,6 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
-#define YB_SESSION_PARAMETER_HANDLED TRUE
-
-/*
- * Set the client context on a given server connection.
- * This 'server' should be attached to 'client' (given as input parameters).
- * If there is any error, it returns -1, else number of packets to be ignored
- * that are comming from the server connection.
- */
-int yb_set_client_id(od_client_t *client, od_server_t *server)
-{
-	od_instance_t *instance = client->global->instance;
-	od_route_t *route = client->route;
-	machine_msg_t *msg;
-
-	/* Create the 'SET SESSION PARAMETER' packet. */
-	msg = kiwi_fe_write_set_client_id(NULL, client->client_id);
-	int rc = 0;
-
-	/* Send `SET SESSION PARAMETER` packet. */
-	rc = od_write(&server->io, msg);
-	if (rc == -1) {
-		od_debug(&instance->logger, "set client_id", client, server,
-			 "Unable to send `SET SESSION PARAMETER` packet");
-		return -1;
-	} else {
-		od_debug(&instance->logger, "set client_id", client, server,
-			 "Sent `SET SESSION PARAMETER` packet");
-	}
-
-	/* 
-	 * Ony a 'READYFORQUERY' packet is expected from the server so we
-	 * need to ignore only one packet.
-	 */
-	return 1;
-}
-
 int od_deploy(od_client_t *client, char *context)
 {
 	od_instance_t *instance = client->global->instance;
@@ -55,7 +19,6 @@ int od_deploy(od_client_t *client, char *context)
 		return 0;
 	}
 
-#if YB_SESSION_PARAMETER_HANDLED != TRUE
 	/* compare and set options which are differs from server */
 	int query_count;
 	query_count = 0;
@@ -88,10 +51,4 @@ int od_deploy(od_client_t *client, char *context)
 	}
 
 	return query_count;
-
-#else
-	
-	return yb_set_client_id(client, server);
-
-#endif
 }

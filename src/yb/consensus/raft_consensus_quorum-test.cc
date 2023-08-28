@@ -162,9 +162,10 @@ class RaftConsensusQuorumTest : public YBTest {
 
       string peer_uuid = Substitute("peer-$0", i);
 
+      std::unique_ptr<ConsensusMetadata> cmeta;
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
-      std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
-          fs_managers_[i], kTestTablet, peer_uuid, config_, kMinimumTerm));
+      ASSERT_OK(ConsensusMetadata::Create(fs_managers_[i], kTestTablet, peer_uuid, config_,
+                                         kMinimumTerm, &cmeta));
 
       RaftPeerPB local_peer_pb;
       ASSERT_OK(GetRaftConfigMember(config_, peer_uuid, &local_peer_pb));

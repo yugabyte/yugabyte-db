@@ -32,7 +32,8 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tools.h"
 
-namespace yb::pggate {
+namespace yb {
+namespace pggate {
 
 //--------------------------------------------------------------------------------------------------
 // DML_READ
@@ -145,7 +146,8 @@ class PgDmlRead : public PgDml {
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
-  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
+  bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
+  bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   Result<dockv::DocKey> EncodeRowKeyForBound(
@@ -156,4 +158,5 @@ class PgDmlRead : public PgDml {
   PgDocOp::SharedPtr original_doc_op_;
 };
 
-}  // namespace yb::pggate
+}  // namespace pggate
+}  // namespace yb

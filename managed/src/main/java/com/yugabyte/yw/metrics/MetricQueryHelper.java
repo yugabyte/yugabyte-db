@@ -398,16 +398,18 @@ public class MetricQueryHelper {
         Map<String, String> queryParams = params;
         queryParams.put("queryKey", metricSettings.getMetric());
 
-        Map<String, String> metricAdditionalFilters =
-            filterOverrides.getOrDefault(metricSettings.getMetric(), new HashMap<>());
-        metricAdditionalFilters.putAll(additionalFilters);
+        Map<String, String> specificFilters =
+            filterOverrides.getOrDefault(metricSettings.getMetric(), null);
+        if (specificFilters != null) {
+          additionalFilters.putAll(specificFilters);
+        }
 
         Callable<JsonNode> callable =
             new MetricQueryExecutor(
                 metricUrlProvider,
                 apiHelper,
                 queryParams,
-                metricAdditionalFilters,
+                additionalFilters,
                 metricSettings,
                 isRecharts);
         Future<JsonNode> future = threadPool.submit(callable);

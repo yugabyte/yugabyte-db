@@ -159,9 +159,13 @@ class TabletPeerTest : public YBTabletTest {
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-    std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
-        tablet()->metadata()->fs_manager(), tablet()->tablet_id(),
-        tablet()->metadata()->fs_manager()->uuid(), config, consensus::kMinimumTerm));
+    std::unique_ptr<ConsensusMetadata> cmeta;
+    ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
+                                        tablet()->tablet_id(),
+                                        tablet()->metadata()->fs_manager()->uuid(),
+                                        config,
+                                        consensus::kMinimumTerm,
+                                        &cmeta));
 
     ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()

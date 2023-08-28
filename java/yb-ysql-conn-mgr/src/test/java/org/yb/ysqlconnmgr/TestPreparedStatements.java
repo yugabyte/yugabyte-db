@@ -51,7 +51,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
 
     try {
       // Create the test table
-      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
+      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect()
           .createStatement().execute(
               "CREATE TABLE IF NOT EXISTS TEST_TABLE_INSERT (id SERIAL PRIMARY KEY, name TEXT)");
 
@@ -95,7 +95,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
 
     try {
       // Create the test table
-      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
+      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect()
           .createStatement().execute(
               "CREATE TABLE IF NOT EXISTS TEST_TABLE_UPDATE (id SERIAL PRIMARY KEY, name TEXT)");
 
@@ -144,7 +144,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
 
     try {
       // Create the test table
-      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT).connect()
+      getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect()
           .createStatement().execute(
               "CREATE TABLE IF NOT EXISTS TEST_TABLE_DELETE (id SERIAL PRIMARY KEY, name TEXT)");
 

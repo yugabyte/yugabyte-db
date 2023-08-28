@@ -306,9 +306,9 @@ export default class MetricsPanel extends Component {
       numButtonsInDropdown = 1;
       if (operations.length === 3) {
         numButtonsInDropdown = 2;
-      } else if (operations.length > 3 && operations.length < 6) {
+      } else if (operations.length > 3 && operations.length <= 6) {
         numButtonsInDropdown = 3;
-      } else if (operations.length >= 6) {
+      } else if (operations.length >= 7) {
         numButtonsInDropdown = 4;
       }
       showDropdown = true;

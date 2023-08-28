@@ -491,17 +491,8 @@ SocketBackend(StringInfo inBuf)
 		case 'A': /* Auth Passthrough Request */
 
 			if (!YbIsClientYsqlConnMgr())
-				ereport(FATAL,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("invalid frontend message type %d", qtype)));
-			break;
-
-		case 's': /* SET SESSION PARAMETER */
-
-			if (!YbIsClientYsqlConnMgr())
-				ereport(FATAL,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("invalid frontend message type %d", qtype)));
+				ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("invalid frontend message type %d", qtype)));
 			break;
 
 		default:
@@ -5874,27 +5865,9 @@ PostgresMain(int argc, char *argv[],
 				}
 				else
 				{
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d",
-									firstchar)));
-				}
-				break;
-
-			case 's': /* SET SESSION PARAMETER */
-				if (YbIsClientYsqlConnMgr())
-				{
-					start_xact_command();
-					YbHandleSetSessionParam(pq_getmsgint(&input_message, 4));
-					finish_xact_command();
-					send_ready_for_query = true;
-				}
-				else
-				{
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d",
-								firstchar)));
+					ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+									errmsg("invalid frontend message type %d",
+										   firstchar)));
 				}
 				break;
 

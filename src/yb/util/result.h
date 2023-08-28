@@ -383,8 +383,8 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define VERIFY_RESULT_REF(expr) \
   VERIFY_RESULT(expr).get()
 
-// If expr's result is not ok, returns the error status prepended with provided message.
-// If expr's result is ok returns wrapped value.
+  // Returns if result is not ok, prepending status with provided message,
+// extracts result value is case of success.
 #define VERIFY_RESULT_PREPEND(expr, message) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_PREPEND(__result, message))
 

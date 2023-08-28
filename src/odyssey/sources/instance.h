@@ -7,8 +7,6 @@
  * Scalable PostgreSQL connection pooler.
  */
 
-#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
-
 typedef struct od_instance od_instance_t;
 typedef struct timeval od_timeval_t;
 
@@ -20,7 +18,6 @@ struct od_instance {
 	od_config_t config;
 	char *orig_argv_ptr;
 	int64_t shutdown_worker_id;
-	struct ConnectionStats *yb_stats; 
 };
 
 void od_instance_init(od_instance_t *);

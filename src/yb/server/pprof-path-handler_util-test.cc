@@ -31,7 +31,7 @@ DECLARE_string(vmodule);
 
 namespace yb {
 
-#if YB_TCMALLOC_ENABLED
+#if YB_GOOGLE_TCMALLOC
 
 class SamplingProfilerTest : public YBTest {
  public:
@@ -49,6 +49,11 @@ std::unique_ptr<char[]> AllocArrayOfSize(int64_t alloc_size) {
   return alloc;
 }
 
+std::vector<Sample> GetStacksFromHeapSnapshot(HeapSnapshotType snapshot_type) {
+  auto current_profile = GetHeapSnapshot(snapshot_type);
+  return AggregateAndSortProfile(current_profile, false /* only_growth */);
+}
+
 int GetNumAllocsOfSizeAtLeast(int64_t size, const std::vector<Sample>& stacks) {
   int val = 0;
   for (const auto& stack : stacks) {
@@ -57,33 +62,6 @@ int GetNumAllocsOfSizeAtLeast(int64_t size, const std::vector<Sample>& stacks) {
     }
   }
   return val;
-}
-
-#if YB_GPERFTOOLS_TCMALLOC
-TEST_F(SamplingProfilerTest, HeapSnapshot) {
-  // Gperftools TCMalloc's bytes_until_sample is set upon initialization to approximately 16 MB.
-  // Setting the sampling rate below only affects the samples after the first bytes_until_sample
-  // bytes are allocated.
-  MallocExtension::instance()->SetProfileSamplingRate(1);
-  // 220 MB will be sampled with probablility > 99.9999%.
-  const int64_t alloc_size = 220_MB;
-  {
-    // Make a large allocation. We expect to find it in the heap snapshot.
-    std::unique_ptr<char[]> big_alloc = AllocArrayOfSize(alloc_size);
-
-    auto stacks = GetAggregateAndSortHeapSnapshot(SampleOrder::kCount);
-    ASSERT_EQ(GetNumAllocsOfSizeAtLeast(alloc_size, stacks), 1);
-  }
-  // After the deallocation, the stack should no longer be found in the heap snapshot.
-  auto stacks = GetAggregateAndSortHeapSnapshot(SampleOrder::kCount);
-  ASSERT_EQ(GetNumAllocsOfSizeAtLeast(alloc_size, stacks), 0);
-}
-#endif
-
-#if YB_GOOGLE_TCMALLOC
-std::vector<Sample> GetStacksFromHeapSnapshot(HeapSnapshotType snapshot_type) {
-  auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(current_profile, false /* only_growth */, SampleOrder::kCount);
 }
 
 TEST_F(SamplingProfilerTest, HeapSnapshot) {
@@ -132,18 +110,16 @@ TEST_F(SamplingProfilerTest, AllocationProfile) {
   auto profile = std::move(token).Stop();
 
   // The stack for both allocations is the same so they are aggregated into one.
-  auto stacks = AggregateAndSortProfile(profile, false /* only_growth */, SampleOrder::kBytes);
+  auto stacks = AggregateAndSortProfile(profile, false /* only_growth */);
   ASSERT_EQ(GetNumAllocsOfSizeAtLeast(alloc_size, stacks), 1);
   ASSERT_GE(stacks[0].second.bytes, alloc_size * 2);
 
   // We only expect to find the non-deallocated allocation here.
-  stacks = AggregateAndSortProfile(profile, true /* only_growth */, SampleOrder::kBytes);
+  stacks = AggregateAndSortProfile(profile, true /* only_growth */);
   ASSERT_EQ(GetNumAllocsOfSizeAtLeast(alloc_size, stacks), 1);
   ASSERT_GE(stacks[0].second.bytes, alloc_size);
 }
 
 #endif // YB_GOOGLE_TCMALLOC
-
-#endif // YB_TCMALLOC_ENABLED
 
 } // namespace yb

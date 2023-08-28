@@ -337,9 +337,7 @@ Status PgTxnManager::RestartTransaction() {
   return Status::OK();
 }
 
-// This is called at the start of each statement in READ COMMITTED isolation level. Note that this
-// might also be called at the start of a new retry of the statement done via
-// yb_attempt_to_restart_on_error() (e.g., in case of a retry on kConflict error).
+/* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
   RSTATUS_DCHECK(
       !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
@@ -357,10 +355,6 @@ Status PgTxnManager::ResetTransactionReadPoint() {
 Status PgTxnManager::RestartReadPoint() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
   return Status::OK();
-}
-
-bool PgTxnManager::IsRestartReadPointRequested() {
-  return read_time_manipulation_ == tserver::ReadTimeManipulation::RESTART;
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {

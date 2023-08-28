@@ -55,8 +55,6 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
-		GetBaseInstall(),
-		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
@@ -64,19 +62,15 @@ func createInstallDirs() {
 	}
 
 	for _, dir := range createDirs {
-		_, err := os.Stat(dir)
-		if os.IsNotExist(err) {
-			if err := MkdirAll(dir, DirMode); err != nil {
-				log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
-			}
+		if err := MkdirAll(dir, os.ModePerm); err != nil {
+			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
 		// Only change ownership for root installs.
 		if HasSudoAccess() {
-			serviceuser := viper.GetString("service_username")
-			err := Chown(dir, serviceuser, serviceuser, true)
+			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
 			if err != nil {
 				log.Fatal("failed to change ownership of " + dir + " to " +
-					serviceuser + ": " + err.Error())
+					viper.GetString("service_username") + ": " + err.Error())
 			}
 		}
 	}
@@ -91,7 +85,7 @@ func createUpgradeDirs() {
 	}
 
 	for _, dir := range createDirs {
-		if err := MkdirAll(dir, DirMode); err != nil {
+		if err := MkdirAll(dir, os.ModePerm); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
 		if HasSudoAccess() {
@@ -354,7 +348,7 @@ func generateSelfSignedCerts() (string, string) {
 	caCertPath := filepath.Join(certsDir, "ca_cert.pem")
 	caKeyPath := filepath.Join(certsDir, "ca_key.pem")
 
-	err := MkdirAll(certsDir, DirMode)
+	err := MkdirAll(certsDir, os.ModePerm)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
 	}

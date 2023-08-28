@@ -13,13 +13,11 @@
 
 #include "yb/docdb/pgsql_operation.h"
 
-#include <algorithm>
 #include <functional>
 #include <limits>
 #include <string>
 #include <unordered_set>
 #include <variant>
-#include <utility>
 #include <vector>
 
 #include "yb/common/common.pb.h"
@@ -47,8 +45,6 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/gutil/macros.h"
 
 #include "yb/qlexpr/ql_expr_util.h"
 
@@ -133,86 +129,11 @@ bool ShouldYsqlPackRow(bool is_colocated) {
 
 namespace {
 
-class DocKeyColumnPathBuilder {
- public:
-  DocKeyColumnPathBuilder(dockv::KeyBytes* buffer, Slice encoded_doc_key)
-      : buffer_(*buffer), encoded_doc_key_length_(encoded_doc_key.size()) {
-      DCHECK(buffer_.empty());
-      buffer_.AppendRawBytes(encoded_doc_key);
-  }
-
-  [[nodiscard]] Slice Build(ColumnIdRep column_id) {
-    return Build(dockv::KeyEntryType::kColumnId, column_id);
-  }
-
-  [[nodiscard]] Slice Build(dockv::SystemColumnIds column_id) {
-    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
-  }
-
- private:
-  [[nodiscard]] Slice Build(dockv::KeyEntryType key_entry_type, ColumnIdRep column_id) {
-    buffer_.Truncate(encoded_doc_key_length_);
-    buffer_.AppendKeyEntryType(key_entry_type);
-    buffer_.AppendColumnId(ColumnId(column_id));
-    return buffer_.AsSlice();
-  }
-
-  dockv::KeyBytes& buffer_;
-  const size_t encoded_doc_key_length_;
-
-  DISALLOW_COPY_AND_ASSIGN(DocKeyColumnPathBuilder);
-};
-
-class DocKeyColumnPathBuilderHolder {
- public:
-  template<class... Args>
-  explicit DocKeyColumnPathBuilderHolder(Args&&... args)
-      : builder_(&buffer_, std::forward<Args>(args)...) {}
-
-  [[nodiscard]] DocKeyColumnPathBuilder& builder() { return builder_; }
-
- private:
-  dockv::KeyBytes buffer_;
-  DocKeyColumnPathBuilder builder_;
-};
-
-YB_STRONGLY_TYPED_BOOL(KeyOnlyRequested);
-
-class IntentInserter {
- public:
-  explicit IntentInserter(LWKeyValueWriteBatchPB* out)
-      : out_(*out) {}
-
-  void Add(Slice encoded_key, KeyOnlyRequested key_only_requested) {
-    if (!key_only_requested) {
-      Add(encoded_key);
-      return;
-    }
-    auto& buf = buffer();
-    buf.Clear();
-    DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
-    Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
-  }
-
- private:
-  [[nodiscard]] dockv::KeyBytes& buffer() {
-    if (!buffer_) {
-      buffer_.emplace();
-    }
-    return *buffer_;
-  }
-
-  void Add(Slice encoded_key) {
-    auto& pair = *out_.add_read_pairs();
-    pair.dup_key(encoded_key);
-    pair.dup_value(Slice(&dockv::ValueEntryTypeAsChar::kNullLow, 1));
-  }
-
-  std::optional<dockv::KeyBytes> buffer_;
-  LWKeyValueWriteBatchPB& out_;
-
-  DISALLOW_COPY_AND_ASSIGN(IntentInserter);
-};
+void AddIntent(Slice encoded_key, LWKeyValueWriteBatchPB *out) {
+  auto* pair = out->add_read_pairs();
+  pair->dup_key(encoded_key);
+  pair->dup_value(Slice(&dockv::ValueEntryTypeAsChar::kNullLow, 1));
+}
 
 class DocKeyAccessor {
  public:
@@ -586,6 +507,35 @@ Result<FetchResult> FetchTableRow(
   return fetch_result;
 }
 
+class DocKeyColumnPathBuilder {
+ public:
+  explicit DocKeyColumnPathBuilder(const RefCntPrefix& doc_key)
+      : doc_key_(doc_key.as_slice()) {
+  }
+
+  RefCntPrefix Build(dockv::SystemColumnIds column_id) {
+    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
+  }
+
+  RefCntPrefix Build(ColumnIdRep column_id) {
+    return Build(dockv::KeyEntryType::kColumnId, column_id);
+  }
+
+ private:
+  RefCntPrefix Build(dockv::KeyEntryType key_entry_type, ColumnIdRep column_id) {
+    buffer_.Clear();
+    buffer_.AppendKeyEntryType(key_entry_type);
+    buffer_.AppendColumnId(ColumnId(column_id));
+    RefCntBuffer path(doc_key_.size() + buffer_.size());
+    doc_key_.CopyTo(path.data());
+    buffer_.AsSlice().CopyTo(path.data() + doc_key_.size());
+    return path;
+  }
+
+  Slice doc_key_;
+  dockv::KeyBytes buffer_;
+};
+
 struct RowPackerData {
   SchemaVersion schema_version;
   const dockv::SchemaPacking& packing;
@@ -653,30 +603,6 @@ void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* bu
   char encoded_rows[sizeof(uint64_t)];
   NetworkByteOrder::Store64(encoded_rows, result_rows);
   CHECK_OK(buffer->Write(pos, encoded_rows, sizeof(encoded_rows)));
-}
-
-[[nodiscard]] inline bool IsNonKeyColumn(const Schema& schema, int32_t column_id) {
-  return !schema.is_key_column(ColumnId(column_id));
-}
-
-template<class Container, class Functor>
-[[nodiscard]] inline bool Find(const Container& c, const Functor& f) {
-  auto end = std::end(c);
-  return std::find_if(std::begin(c), end, f) != end;
-}
-
-// Note: function return true in case request reads only key columns.
-// Such kind of request is used for explicit row locking via separate RPC from postgres.
-[[nodiscard]] bool IsOnlyKeyColumnsRequested(const Schema& schema, const PgsqlReadRequestPB& req) {
-  if (!req.col_refs().empty()) {
-    return !Find(
-        req.col_refs(),
-        [&schema](const PgsqlColRefPB& col) { return IsNonKeyColumn(schema, col.column_id()); });
-  }
-
-  return !Find(
-      req.column_refs().ids(),
-      [&schema](int32_t col_id) { return IsNonKeyColumn(schema, col_id); });
 }
 
 } // namespace
@@ -1437,8 +1363,8 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
           }
         }
         if (!has_expression) {
-          DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
-          paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
+          DocKeyColumnPathBuilder builder(encoded_doc_key_);
+          paths->push_back(builder.Build(dockv::SystemColumnIds::kLivenessColumn));
           return Status::OK();
         }
       }
@@ -1454,10 +1380,9 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         break;
       }
 
-      DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
-      auto& builder = holder.builder();
+      DocKeyColumnPathBuilder builder(encoded_doc_key_);
       for (const auto& column_value : column_values) {
-        paths->emplace_back(builder.Build(column_value.column_id()));
+        paths->push_back(builder.Build(column_value.column_id()));
       }
       return Status::OK();
     }
@@ -1991,33 +1916,18 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
-  const auto has_row_mark = IsValidRowMarkType(
-      request_.has_row_mark_type() ? request_.row_mark_type() : ROW_MARK_ABSENT);
-  if (has_row_mark) {
-    RSTATUS_DCHECK(request_.has_wait_policy(), IllegalState, "wait policy is expected");
+  if (request_.has_row_mark_type() && IsValidRowMarkType(request_.row_mark_type())) {
+    DCHECK(request_.has_wait_policy());
     out->set_wait_policy(request_.wait_policy());
   }
 
-  IntentInserter inserter(out);
-  const auto has_batch_arguments = !request_.batch_arguments().empty();
-
   DocKeyAccessor accessor(schema);
-  if (!(has_batch_arguments || request_.has_ybctid_column_value())) {
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request_)), KeyOnlyRequested::kFalse);
-    return Status::OK();
-  }
-
-  // TODO(dmitry): the '!has_row_mark' requirement will be removed in context of fix for #16212.
-  const KeyOnlyRequested key_only_requested{
-      !has_row_mark && IsOnlyKeyColumnsRequested(schema, request_)};
-  for (const auto& batch_argument : request_.batch_arguments()) {
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), key_only_requested);
-  }
-  if (!has_batch_arguments) {
-    DCHECK(request_.has_ybctid_column_value());
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(request_.ybctid_column_value())), key_only_requested);
+  if (!request_.batch_arguments().empty()) {
+    for (const auto& batch_argument : request_.batch_arguments()) {
+      AddIntent(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), out);
+    }
+  } else {
+    AddIntent(VERIFY_RESULT(accessor.GetEncoded(request_)), out);
   }
   return Status::OK();
 }

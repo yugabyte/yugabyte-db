@@ -629,6 +629,10 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
+  // Memory trackers.
+  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
+  // Total memory.
+  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
   // Metrics.
   DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics?reset_histograms=false");
   // Threads.
@@ -637,22 +641,6 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
-}
-
-void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
-  // Memory trackers.
-  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
-  // Total memory.
-  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
-  // Heap snapshot.
-  DisplayIconTile(output, "fa-camera", "Heap Snapshot",
-      "/pprof/heap_snapshot?peak_heap=false&order_by=count");
-#if YB_GOOGLE_TCMALLOC
-  // Heap profile. Set the defaults very conservatively to avoid adverse affects to DB when a user
-  // clicks this endpoint without thinking.
-  DisplayIconTile(output, "fa-pencil-square-o", "Heap Profile",
-      "/pprof/heap?only_growth=false&seconds=1&sample_freq_bytes=10000000&order_by=count");
-#endif
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -670,12 +658,6 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "<h2> General Info </h2>";
   DisplayGeneralInfoIcons(output);
   *output << "</div> <!-- row -->\n";
-
-  *output << "<h2> Memory </h2>";
-  *output << "<div class='row debug-tiles'>\n";
-  DisplayMemoryIcons(output);
-  *output << "</div> <!-- row -->\n";
-
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
   RETURN_NOT_OK(DisplayRpcIcons(output));

@@ -8,9 +8,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.rbac.Permission;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -46,9 +46,9 @@ public class RoleBindingTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
-                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
-                    new Permission(ResourceType.UNIVERSE, Action.READ),
-                    new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE),
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.READ),
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.UPDATE))));
     ResourceDefinition rd1 =
         ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
     rg1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
@@ -70,14 +70,15 @@ public class RoleBindingTest extends FakeDBApplication {
     assertEquals(1, roleBinding.getResourceGroup().getResourceDefinitionSet().size());
     assertTrue(roleBinding.getRole().getRoleUUID().equals(role.getRoleUUID()));
     assertTrue(roleBinding.getRole().getRoleType().equals(role.getRoleType()));
-    Set<Action> permissions =
+    Set<Permission> permissions =
         roleBinding.getRole().getPermissionDetails().getPermissionList().stream()
-            .map(i -> i.getAction())
+            .map(i -> i.getPermission())
             .collect(Collectors.toSet());
-    assertTrue(permissions.contains(Action.CREATE));
-    assertTrue(permissions.contains(Action.READ));
-    assertTrue(permissions.contains(Action.UPDATE));
-    for (Permission info : roleBinding.getRole().getPermissionDetails().getPermissionList()) {
+    assertTrue(permissions.contains(Permission.CREATE));
+    assertTrue(permissions.contains(Permission.READ));
+    assertTrue(permissions.contains(Permission.UPDATE));
+    for (PermissionInfoIdentifier info :
+        roleBinding.getRole().getPermissionDetails().getPermissionList()) {
       assertTrue(info.getResourceType().equals(ResourceType.UNIVERSE));
     }
     for (ResourceDefinition definition :
@@ -95,8 +96,8 @@ public class RoleBindingTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
-                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
-                    new Permission(ResourceType.UNIVERSE, Action.READ))));
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE),
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.READ))));
     roleBinding.edit(role2, rg1);
     assertNotNull(roleBinding.getUuid());
     assertNotNull(roleBinding.getCreateTime());
@@ -105,11 +106,12 @@ public class RoleBindingTest extends FakeDBApplication {
     assertTrue(roleBinding.getRole().getRoleType().equals(role2.getRoleType()));
     permissions =
         roleBinding.getRole().getPermissionDetails().getPermissionList().stream()
-            .map(i -> i.getAction())
+            .map(i -> i.getPermission())
             .collect(Collectors.toSet());
-    assertTrue(permissions.contains(Action.CREATE));
-    assertTrue(permissions.contains(Action.READ));
-    for (Permission info : roleBinding.getRole().getPermissionDetails().getPermissionList()) {
+    assertTrue(permissions.contains(Permission.CREATE));
+    assertTrue(permissions.contains(Permission.READ));
+    for (PermissionInfoIdentifier info :
+        roleBinding.getRole().getPermissionDetails().getPermissionList()) {
       assertTrue(info.getResourceType().equals(ResourceType.UNIVERSE));
     }
     for (ResourceDefinition definition :

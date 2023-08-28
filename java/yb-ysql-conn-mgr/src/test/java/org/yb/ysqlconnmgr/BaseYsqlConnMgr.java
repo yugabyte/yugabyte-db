@@ -13,7 +13,6 @@
 
 package org.yb.ysqlconnmgr;
 
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,12 +58,5 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         },
         600000);
     LOG.info("initdb has completed successfully on master");
-  }
-
-  @AfterClass
-  public static void waitForProperShutdown() throws InterruptedException {
-    // Wait for 1 sec before stoping the miniCluster so that Ysql Connection Manger can clean the
-    // shared memory.
-    Thread.sleep(1000);
   }
 }

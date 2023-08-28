@@ -1,5 +1,3 @@
-// Copyright (c) Yugabyte, Inc.
-
 package com.yugabyte.yw.models.rbac;
 
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -16,10 +14,12 @@ import lombok.ToString;
 
 @Getter
 @Setter
-@AllArgsConstructor
 @NoArgsConstructor
-@ToString
 public class ResourceGroup {
+
+  public ResourceGroup(Set<ResourceDefinition> resourceDefinitionSet) {
+    this.resourceDefinitionSet = resourceDefinitionSet;
+  }
 
   @Builder
   @NoArgsConstructor
@@ -40,15 +40,5 @@ public class ResourceGroup {
     private Set<UUID> resourceUUIDSet = new HashSet<>();
   }
 
-  private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
-
-  public static ResourceGroup getSystemDefaultResourceGroup() {
-    ResourceGroup defaultResourceGroup = new ResourceGroup();
-    for (ResourceType resourceType : ResourceType.values()) {
-      ResourceDefinition resourceDefinition =
-          ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
-      defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
-    }
-    return defaultResourceGroup;
-  }
+  private Set<ResourceDefinition> resourceDefinitionSet;
 }

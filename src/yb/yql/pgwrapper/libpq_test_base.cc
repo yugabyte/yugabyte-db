@@ -18,7 +18,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 

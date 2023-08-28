@@ -1063,7 +1063,6 @@ class AzureCloudAdmin():
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
-            logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)

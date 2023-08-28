@@ -84,16 +84,18 @@ PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
 
 } // anonymous namespace
 
-Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* fs_manager,
+Status ConsensusMetadata::Create(FsManager* fs_manager,
                                  const string& tablet_id,
                                  const std::string& peer_uuid,
                                  const RaftConfigPB& config,
-                                 int64_t current_term) {
+                                 int64_t current_term,
+                                 std::unique_ptr<ConsensusMetadata>* cmeta_out) {
   std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
   cmeta->set_committed_config(config);
   cmeta->set_current_term(current_term);
   RETURN_NOT_OK(cmeta->Flush());
-  return cmeta;
+  cmeta_out->swap(cmeta);
+  return Status::OK();
 }
 
 Status ConsensusMetadata::Load(FsManager* fs_manager,

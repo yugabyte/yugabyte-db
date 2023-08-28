@@ -1178,8 +1178,7 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
-          expected_before_image_records.key);
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
         if (validate_old_tuple) {
           if (validate_third_column) {
             ASSERT_EQ(record.row_message().old_tuple_size(), 3);

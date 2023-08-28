@@ -1,11 +1,9 @@
-// Copyright (c) Yugabyte, Inc.
-
 package com.yugabyte.yw.common.rbac;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import java.io.File;
 import java.util.HashSet;
@@ -50,11 +48,11 @@ public class PermissionUtilTest {
     // All objects in a file should have unique permission.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique permissions on : " + resourceType.toString());
-      HashSet<Action> allPermissionsInFile = new HashSet<Action>();
+      HashSet<Permission> allPermissionsInFile = new HashSet<Permission>();
       List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
-        assertFalse(allPermissionsInFile.contains(permissionInfo.getAction()));
-        allPermissionsInFile.add(permissionInfo.getAction());
+        assertFalse(allPermissionsInFile.contains(permissionInfo.getPermission()));
+        allPermissionsInFile.add(permissionInfo.getPermission());
       }
     }
   }
@@ -67,10 +65,12 @@ public class PermissionUtilTest {
       List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         // For each PermissionInfo object, traverse the list of prerequisite permissions.
-        HashSet<Permission> allPrerequisitePermissionsInFile = new HashSet<Permission>();
-        for (Permission permission : permissionInfo.getPrerequisitePermissions()) {
-          assertFalse(allPrerequisitePermissionsInFile.contains(permission));
-          allPrerequisitePermissionsInFile.add(permission);
+        HashSet<PermissionInfoIdentifier> allPrerequisitePermissionsInFile =
+            new HashSet<PermissionInfoIdentifier>();
+        for (PermissionInfoIdentifier permissionInfoIdentifier :
+            permissionInfo.getPrerequisitePermissions()) {
+          assertFalse(allPrerequisitePermissionsInFile.contains(permissionInfoIdentifier));
+          allPrerequisitePermissionsInFile.add(permissionInfoIdentifier);
         }
       }
     }

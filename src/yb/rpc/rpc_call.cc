@@ -19,7 +19,7 @@
 namespace yb {
 namespace rpc {
 
-void RpcCall::Transferred(const Status& status, const ConnectionPtr& conn) {
+void RpcCall::Transferred(const Status& status, Connection* conn) {
   if (state_ != TransferState::PENDING) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " executed more than once on call "
                 << static_cast<void*>(this) << ", current state: "

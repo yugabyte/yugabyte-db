@@ -379,13 +379,9 @@ GetTransactionSnapshot(void)
 	 */
 	if (IsYBReadCommitted() && YBGetDdlNestingLevel() == 0)
 	{
+		elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
 		HandleYBStatus(YBCPgFlushBufferedOperations());
-		/* If this is a retry for a kReadRestart error, avoid resetting the read point */
-		if (!YBCIsRestartReadPointRequested())
-		{
-			elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
-			HandleYBStatus(YBCPgResetTransactionReadPoint());
-		}
+		HandleYBStatus(YBCPgResetTransactionReadPoint());
 	}
 
 	return CurrentSnapshot;

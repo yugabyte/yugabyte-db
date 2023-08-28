@@ -101,9 +101,8 @@ message CDCErrorPB {
 
 enum CDCRecordType {
   CHANGE = 1;
+  AFTER = 2;
   ALL = 3;
-  FULL_ROW_NEW_IMAGE = 4;
-  MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
 }
 
 enum CDCRecordFormat {

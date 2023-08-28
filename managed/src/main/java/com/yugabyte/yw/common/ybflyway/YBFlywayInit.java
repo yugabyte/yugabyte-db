@@ -18,13 +18,11 @@ package com.yugabyte.yw.common.ybflyway;
 import com.typesafe.config.Config;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.play.Flyways;
 import play.api.Environment;
 import play.core.WebCommands;
 import scala.collection.JavaConverters;
 
-@Slf4j
 @Singleton
 public class YBFlywayInit {
 
@@ -39,12 +37,7 @@ public class YBFlywayInit {
         return;
       }
       if (flyways.config(dbName).auto()) {
-        try {
-          flyways.migrate(dbName);
-        } catch (Exception e) {
-          log.error("migration failed: ", e);
-          throw e;
-        }
+        flyways.migrate(dbName);
       }
     }
   }

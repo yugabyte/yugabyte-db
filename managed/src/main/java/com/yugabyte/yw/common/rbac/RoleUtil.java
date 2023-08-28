@@ -1,11 +1,8 @@
-// Copyright (c) Yugabyte, Inc.
-
 package com.yugabyte.yw.common.rbac;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import java.util.Set;
@@ -27,7 +24,7 @@ public class RoleUtil {
       String name,
       String description,
       RoleType roleType,
-      Set<Permission> permissionList)
+      Set<PermissionInfoIdentifier> permissionList)
       throws PlatformServiceException {
     permissionUtil.validatePermissionList(permissionList);
     log.info(
@@ -40,7 +37,10 @@ public class RoleUtil {
   }
 
   public Role editRole(
-      UUID customerUUID, UUID roleUUID, String description, Set<Permission> permissionList)
+      UUID customerUUID,
+      UUID roleUUID,
+      String description,
+      Set<PermissionInfoIdentifier> permissionList)
       throws PlatformServiceException {
     Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     permissionUtil.validatePermissionList(permissionList);
@@ -60,27 +60,5 @@ public class RoleUtil {
     log.info(
         "Deleting {} Role ('{}':'{}').", role.getRoleType(), role.getName(), role.getRoleUUID());
     role.delete();
-  }
-
-  /**
-   * If for some reason (migration failure, accidental deletion, etc.) the built in role already
-   * doesn't exist, we can just create a new one.
-   *
-   * @param customerUUID
-   * @param systemUserRole
-   * @return
-   */
-  public Role getOrCreateSystemDefaultRole(UUID customerUUID, Users.Role systemUserRole) {
-    Role role = Role.get(customerUUID, systemUserRole.name());
-    if (role == null) {
-      role =
-          createRole(
-              customerUUID,
-              systemUserRole.name(),
-              "System defined built-in role.",
-              RoleType.System,
-              permissionUtil.getSystemRolePermissions(systemUserRole));
-    }
-    return role;
   }
 }

@@ -38,7 +38,6 @@
 #include <rapidjson/prettywriter.h>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/escaping.h"
 
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
@@ -146,21 +145,10 @@ class JsonWriterImpl : public JsonWriterIf {
   void StartArray() override;
   void EndArray() override;
 
- protected:
+ private:
   UTF8StringStreamBuffer stream_;
   T writer_;
- private:
   DISALLOW_COPY_AND_ASSIGN(JsonWriterImpl);
-};
-
-template<class T>
-class EscapedJsonWriterImpl : public JsonWriterImpl<T> {
- public:
-  explicit EscapedJsonWriterImpl(stringstream* out) : JsonWriterImpl<T>(out) {}
-
-  void String(const char* str, size_t length) override;
-  void String(const char* str) override;
-  void String(const std::string& str) override;
 };
 
 //
@@ -177,12 +165,6 @@ JsonWriter::JsonWriter(stringstream* out, Mode m) {
       break;
     case COMPACT:
       impl_.reset(new JsonWriterImpl<CompactWriterClass>(DCHECK_NOTNULL(out)));
-      break;
-    case PRETTY_ESCAPE_STR:
-      impl_.reset(new EscapedJsonWriterImpl<PrettyWriterClass>(DCHECK_NOTNULL(out)));
-      break;
-    case COMPACT_ESCAPE_STR:
-      impl_.reset(new EscapedJsonWriterImpl<CompactWriterClass>(DCHECK_NOTNULL(out)));
       break;
   }
 }
@@ -390,26 +372,5 @@ template<class T>
 void JsonWriterImpl<T>::StartArray() { writer_.StartArray(); }
 template<class T>
 void JsonWriterImpl<T>::EndArray() { writer_.EndArray(); }
-
-//
-// EscapedJsonWriterImpl: implementation with escaping non-printable characters in strings.
-//
-
-template<class T>
-void EscapedJsonWriterImpl<T>::String(const string& str) {
-  const string escaped = CHexEscape(str);
-  JsonWriterImpl<T>::writer_.String(
-      escaped.c_str(), narrow_cast<rapidjson::SizeType>(escaped.length()));
-}
-
-template<class T>
-void EscapedJsonWriterImpl<T>::String(const char* str, size_t length) {
-  String(string(str, length));
-}
-
-template<class T>
-void EscapedJsonWriterImpl<T>::String(const char* str) {
-  String(string(str));
-}
 
 } // namespace yb

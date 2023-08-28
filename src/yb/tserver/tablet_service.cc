@@ -2385,12 +2385,8 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  if (!resp->has_error()) {
-    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " failed. Resp code="
-              << TabletServerErrorPB::Code_Name(resp->error().code());
-  } else {
-    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " succeeded";
-  }
+  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
+            << TabletServerErrorPB::Code_Name(resp->error().code());
   scope.CheckStatus(s, resp);
 }
 

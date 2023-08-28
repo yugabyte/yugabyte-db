@@ -93,9 +93,9 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
   req->clear_backfill_spec();
 
   if (paging_state.has_read_time()) {
-    auto paging_read_hybrid_time = ReadHybridTime::FromPB(paging_state.read_time());
-    VLOG(4) << "Setting read time for next request: " << paging_read_hybrid_time;
-    read_op->set_read_time(paging_read_hybrid_time);
+    VLOG(4) << "Setting read time for next request: "
+            << paging_state.read_time().ShortDebugString();
+    read_op->set_read_time(ReadHybridTime::FromPB(paging_state.read_time()));
   }
 
   // Setup backfill_spec for the next request.

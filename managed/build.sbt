@@ -161,7 +161,6 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
-  "net.minidev" % "json-smart" % "2.5.0",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -478,7 +477,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.62-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b9"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

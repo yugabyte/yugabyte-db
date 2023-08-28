@@ -35,7 +35,6 @@ DECLARE_uint32(ysql_conn_mgr_idle_time);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_uint32(ysql_conn_mgr_num_workers);
-DECLARE_uint32(ysql_conn_mgr_stats_interval);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -124,8 +123,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%application_name_add_host%}", BoolToString(application_name_add_host_)},
-    {"{%log_debug%}", BoolToString(log_debug_)},
-    {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)}};
+    {"{%log_debug%}", BoolToString(log_debug_)}};
 
   // Create a config file.
   WriteConfig(conf_file_path, ysql_conn_mgr_configs);

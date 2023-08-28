@@ -32,8 +32,6 @@
 
 #include "yb/rpc/connection.h"
 
-#include <atomic>
-#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -49,7 +47,6 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -124,16 +121,7 @@ std::string Connection::ReasonNotIdle() const {
   return reason;
 }
 
-void Connection::Shutdown(const Status& provided_status) {
-  if (provided_status.ok()) {
-    LOG_WITH_PREFIX(DFATAL)
-        << "Connection shutdown called with an OK status, replacing with an error:\n"
-        << GetStackTrace();
-  }
-  const Status status =
-      provided_status.ok()
-          ? STATUS_FORMAT(RuntimeError, "Connection shutdown called with OK status")
-          : provided_status;
+void Connection::Shutdown(const Status& status) {
   {
     std::vector<OutboundDataPtr> outbound_data_being_processed;
     {
@@ -143,11 +131,8 @@ void Connection::Shutdown(const Status& provided_status) {
       shutdown_status_ = status;
     }
 
-    shutdown_time_.store(reactor_->cur_time(), std::memory_order_release);
-
-    auto self = shared_from_this();
     for (auto& call : outbound_data_being_processed) {
-      call->Transferred(status, self);
+      call->Transferred(status, this);
     }
   }
 
@@ -155,7 +140,6 @@ void Connection::Shutdown(const Status& provided_status) {
   stream_->Shutdown(status);
 
   // Clear any calls which have been sent and were awaiting a response.
-  active_calls_during_shutdown_.store(active_calls_.size(), std::memory_order_release);
   for (auto& v : active_calls_) {
     if (v.call && !v.call->IsFinished()) {
       v.call->SetFailed(status);
@@ -173,19 +157,16 @@ void Connection::OutboundQueued() {
   auto status = stream_->TryWrite();
   if (!status.ok()) {
     VLOG_WITH_PREFIX(1) << "Write failed: " << status;
-
-    if (!queued_destroy_connection_.exchange(true, std::memory_order_acq_rel)) {
-      // Even though we are already on the reactor thread, try to schedule a task so that it
-      // would run later than all other already scheduled tasks, to preserve historical
-      // behavior.
-      auto scheduling_status = reactor_->ScheduleReactorTask(MakeFunctorReactorTask(
-          std::bind(&Reactor::DestroyConnection, reactor_, this, status), shared_from_this(),
-          SOURCE_LOCATION()));
-      if (!scheduling_status.ok()) {
-        LOG(WARNING) << "Failed to schedule DestroyConnection: " << scheduling_status
-                     << "on reactor, destroying connection immediately";
-        reactor_->DestroyConnection(this, status);
-      }
+    // Even though we are already on the reactor thread, try to schedule a task so that it would run
+    // later than all other already scheduled tasks, to preserve historical behavior.
+    auto scheduling_status = reactor_->ScheduleReactorTask(
+        MakeFunctorReactorTask(
+            std::bind(&Reactor::DestroyConnection, reactor_, this, status),
+            shared_from_this(), SOURCE_LOCATION()));
+    if (!scheduling_status.ok()) {
+      LOG(WARNING) << "Failed to schedule DestroyConnection: " << scheduling_status
+                   << "on reactor, destroying connection immediately";
+      reactor_->DestroyConnection(this, status);
     }
   }
 }
@@ -299,8 +280,7 @@ size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch
     YB_LOG_EVERY_N_SECS(INFO, 5) << "Connection::DoQueueOutboundData data: "
                                  << AsString(outbound_data) << " shutdown_status_: "
                                  << shutdown_status;
-    outbound_data->Transferred(shutdown_status, shared_from_this());
-    calls_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
+    outbound_data->Transferred(shutdown_status, this);
     return std::numeric_limits<size_t>::max();
   }
 
@@ -392,51 +372,6 @@ std::string Connection::ToString() const {
   FATAL_INVALID_ENUM_VALUE(Direction, direction_);
 }
 
-void Connection::QueueDumpConnectionState(int32_t call_id, const void* call_ptr) const {
-  auto task = MakeFunctorReactorTask(
-      std::bind(&Connection::DumpConnectionState, this, call_id, call_ptr), shared_from_this(),
-      SOURCE_LOCATION());
-  auto scheduling_status = reactor_->ScheduleReactorTask(task);
-  LOG_IF_WITH_PREFIX(DFATAL, !scheduling_status.ok())
-      << "Failed to schedule call to dump connection state: " << scheduling_status;
-}
-
-void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) const {
-  auto earliest_expiry = active_calls_.empty()
-                             ? CoarseTimePoint()
-                             : active_calls_.get<ExpirationTag>().begin()->expires_at;
-  auto found_call_id = active_calls_.find(call_id) != active_calls_.end();
-  LOG_WITH_PREFIX(INFO) << Format(
-      "LastActivityTime: $0, "
-      "ActiveCalls stats: { "
-      "during shutdown: $1, "
-      "current size: $2, "
-      "earliest expiry: $3, "
-      "}, "
-      "OutboundCall: { "
-      "ptr: $4, "
-      "call id: $5, "
-      "is active: $6 "
-      "}, "
-      "Shutdown status: $7, "
-      "Shutdown time: $8, "
-      "Queue attempts after shutdown: { "
-      "calls: $9, "
-      "responses: $10 "
-      "}",
-      /* $0 */ last_activity_time(),
-      /* $1 */ active_calls_during_shutdown_.load(std::memory_order_acquire),
-      /* $2 */ active_calls_.size(),
-      /* $3 */ earliest_expiry,
-      /* $4 */ call_ptr,
-      /* $5 */ call_id,
-      /* $6 */ found_call_id,
-      /* $7 */ shutdown_status_,
-      /* $8 */ shutdown_time_,
-      /* $9 */ calls_queued_after_shutdown_.load(std::memory_order_acquire),
-      /* $10 */ responses_queued_after_shutdown_.load(std::memory_order_acquire));
-}
-
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcConnectionPB* resp) {
   resp->set_remote_ip(yb::ToString(remote()));
@@ -494,7 +429,6 @@ Status Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
           std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
           SOURCE_LOCATION());
       outbound_data_queue_lock.unlock();
-      responses_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
       auto scheduling_status = reactor_->ScheduleReactorTask(task, true /* even_if_not_running */);
       LOG_IF_WITH_PREFIX(DFATAL, !scheduling_status.ok())
           << "Failed to schedule OutboundData::Transferred: " << scheduling_status;
@@ -586,13 +520,11 @@ void Connection::UpdateLastWrite() {
 }
 
 void Connection::Transferred(const OutboundDataPtr& data, const Status& status) {
-  data->Transferred(status, shared_from_this());
+  data->Transferred(status, this);
 }
 
 void Connection::Destroy(const Status& status) {
-  if (!queued_destroy_connection_.exchange(true, std::memory_order_acq_rel)) {
-    reactor_->DestroyConnection(this, status);
-  }
+  reactor_->DestroyConnection(this, status);
 }
 
 std::string Connection::LogPrefix() const {

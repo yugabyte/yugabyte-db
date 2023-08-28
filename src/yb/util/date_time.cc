@@ -222,10 +222,6 @@ Timestamp DateTime::TimestampNow() {
   return ToTimestamp(local_microsec_clock::local_time(kUtcTimezone));
 }
 
-string DateTime::SystemTimezone() {
-  return GetSystemTimezone();
-}
-
 //------------------------------------------------------------------------------------------------
 Result<uint32_t> DateTime::DateFromString(const std::string_view& str) {
   // Regex for date format "yyyy-mm-dd"

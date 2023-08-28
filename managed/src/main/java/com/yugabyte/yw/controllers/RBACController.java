@@ -3,7 +3,6 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
@@ -15,9 +14,8 @@ import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
-import com.yugabyte.yw.forms.rbac.RoleBindingFormData;
-import com.yugabyte.yw.forms.rbac.RoleFormData;
+import com.yugabyte.yw.forms.RoleBindingFormData;
+import com.yugabyte.yw.forms.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -35,7 +33,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
@@ -78,12 +75,11 @@ public class RBACController extends AuthenticatedController {
       UUID customerUUID,
       @ApiParam(value = "Optional resource type to filter permission list") String resourceType) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     List<PermissionInfo> permissionInfoList = Collections.emptyList();
-    ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
-    if (resourceTypeEnum != null) {
-      permissionInfoList = permissionUtil.getAllPermissionInfo(resourceTypeEnum);
+    if (EnumUtils.isValidEnum(ResourceType.class, resourceType)) {
+      permissionInfoList = permissionUtil.getAllPermissionInfo(ResourceType.valueOf(resourceType));
     } else {
       permissionInfoList = permissionUtil.getAllPermissionInfo();
     }
@@ -100,7 +96,7 @@ public class RBACController extends AuthenticatedController {
   @ApiOperation(value = "Get a role's information", nickname = "getRole", response = Role.class)
   public Result getRole(UUID customerUUID, UUID roleUUID) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     return PlatformResults.withData(role);
   }
@@ -122,13 +118,12 @@ public class RBACController extends AuthenticatedController {
       UUID customerUUID,
       @ApiParam(value = "Optional role type to filter roles list") String roleType) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    // Get all roles for the customer if 'roleType' is not a valid case insensitive enum
+    // Get all roles for the customer if 'roleType' is not a valid enum
     List<Role> roleList = Collections.emptyList();
-    RoleType roleTypeEnum = EnumUtils.getEnumIgnoreCase(RoleType.class, roleType);
-    if (roleTypeEnum != null) {
-      roleList = Role.getAll(customerUUID, roleTypeEnum);
+    if (EnumUtils.isValidEnum(RoleType.class, roleType)) {
+      roleList = Role.getAll(customerUUID, RoleType.valueOf(roleType));
     } else {
       roleList = Role.getAll(customerUUID);
     }
@@ -145,30 +140,16 @@ public class RBACController extends AuthenticatedController {
   @ApiOperation(value = "Create a custom role", nickname = "createRole", response = Role.class)
   public Result createRole(UUID customerUUID, Http.Request request) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
     RoleFormData roleFormData =
         formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
 
-    // Ensure that the given role name is not blank.
-    if (roleFormData.name == null || roleFormData.name.isBlank()) {
-      String errorMsg = "Role name cannot be blank: " + roleFormData.name;
-      log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
-    }
-
     // Check if role with given name for that customer already exists.
     if (Role.get(customerUUID, roleFormData.name) != null) {
       String errorMsg = "Role with given name already exists: " + roleFormData.name;
-      log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
-    }
-
-    // Ensure that the given permission list is not empty.
-    if (roleFormData.permissionList == null || roleFormData.permissionList.isEmpty()) {
-      String errorMsg = "Permission list cannot be empty.";
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -202,7 +183,7 @@ public class RBACController extends AuthenticatedController {
   @ApiOperation(value = "Edit a custom role", nickname = "editRole", response = Role.class)
   public Result editRole(UUID customerUUID, UUID roleUUID, Http.Request request) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
@@ -216,26 +197,12 @@ public class RBACController extends AuthenticatedController {
           String.format(
               "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
-      throw new PlatformServiceException(NOT_FOUND, errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
     // Ensure we are not modifying system defined roles.
     if (RoleType.System.equals(role.getRoleType())) {
       String errorMsg = "Cannot modify System Role with given UUID: " + roleUUID;
-      log.error(errorMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
-    }
-
-    if (roleFormData.name != null) {
-      log.warn("Editing the role name is not supported, skipping this operation.");
-    }
-
-    if (roleFormData.permissionList == null) {
-      log.warn("Permission list not given, using the previous permission list itself.");
-      roleFormData.permissionList =
-          Role.get(customerUUID, roleUUID).getPermissionDetails().getPermissionList();
-    } else if (roleFormData.permissionList.isEmpty()) {
-      String errorMsg = "Given permission list cannot be empty.";
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -269,7 +236,7 @@ public class RBACController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result deleteRole(UUID customerUUID, UUID roleUUID, Http.Request request) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Check if role with given UUID exists.
     Role role = Role.get(customerUUID, roleUUID);
@@ -278,7 +245,7 @@ public class RBACController extends AuthenticatedController {
           String.format(
               "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
-      throw new PlatformServiceException(NOT_FOUND, errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
     // Ensure we are not deleting system defined roles.
@@ -307,7 +274,7 @@ public class RBACController extends AuthenticatedController {
       UUID customerUUID,
       @ApiParam(value = "Optional user UUID to filter role binding map") UUID userUUID) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     Map<UUID, List<RoleBinding>> roleBindingMap = new HashMap<>();
     if (userUUID != null) {
@@ -326,22 +293,22 @@ public class RBACController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Set the role bindings of a user",
-      nickname = "setRoleBinding",
+      value = "Edit the role bindings of a user",
+      nickname = "editRoleBinding",
       response = RoleBinding.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "RoleBindingFormData",
           value = "set role bindings form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.rbac.RoleBindingFormData",
+          dataType = "com.yugabyte.yw.forms.RoleBindingFormData",
           required = true))
   public Result setRoleBindings(UUID customerUUID, UUID userUUID, Http.Request request) {
     // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Check if user UUID exists within the above customer
-    Users.getOrBadRequest(customerUUID, userUUID);
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
 
     // Parse request body.
     JsonNode requestBody = request.body().asJson();
@@ -366,30 +333,5 @@ public class RBACController extends AuthenticatedController {
             Audit.ActionType.Edit,
             Json.toJson(roleBindingFormData));
     return PlatformResults.withData(createdRoleBindings);
-  }
-
-  @ApiOperation(
-      value = "UI_ONLY",
-      nickname = "getUserResourcePermissions",
-      response = ResourcePermissionData.class,
-      responseContainer = "Set",
-      hidden = true,
-      notes = "Get all the resource permissions that a user has.")
-  public Result getUserResourcePermissions(
-      UUID customerUUID,
-      UUID userUUID,
-      @ApiParam(value = "Optional resource type to filter resource permission list")
-          String resourceType) {
-    // Check if customer exists.
-    Customer.getOrBadRequest(customerUUID);
-
-    // Check if user UUID exists within the above customer
-    Users.getOrBadRequest(customerUUID, userUUID);
-
-    // Filters for the given resource type if given, else returns all permissions for user.
-    ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
-    Set<ResourcePermissionData> userResourcePermissions =
-        roleBindingUtil.getUserResourcePermissions(customerUUID, userUUID, resourceTypeEnum);
-    return PlatformResults.withData(userResourcePermissions);
   }
 }

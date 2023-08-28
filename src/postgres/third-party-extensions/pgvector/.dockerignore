@@ -1,8 +1,0 @@
-/.git/
-/dist/
-/results/
-/tmp_check/
-/sql/vector--?.?.?.sql
-regression.*
-*.o
-*.so

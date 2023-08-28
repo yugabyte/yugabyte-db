@@ -66,15 +66,11 @@ class JsonWriter {
     // Pretty-print the JSON, with nice indentation, newlines, etc.
     PRETTY,
     // Print the JSON as compactly as possible.
-    COMPACT,
-    // Use PRETTY/COMPACT mode, but escape in C-style non-printable characters
-    // in strings. See CHexEscape() for details.
-    PRETTY_ESCAPE_STR,
-    COMPACT_ESCAPE_STR
+    COMPACT
   };
 
   JsonWriter(std::stringstream* out, Mode mode);
-  virtual ~JsonWriter();
+  ~JsonWriter();
 
   void Null();
   void Bool(bool b);
@@ -101,14 +97,13 @@ class JsonWriter {
   static std::string ToJson(const google::protobuf::Message& pb,
                             Mode mode);
 
- protected:
+ private:
   void ProtobufField(const google::protobuf::Message& pb,
                      const google::protobuf::FieldDescriptor* field);
-  virtual void ProtobufRepeatedField(const google::protobuf::Message& pb,
-                                     const google::protobuf::FieldDescriptor* field,
-                                     int index);
+  void ProtobufRepeatedField(const google::protobuf::Message& pb,
+                             const google::protobuf::FieldDescriptor* field,
+                             int index);
 
- private:
   std::unique_ptr<JsonWriterIf> impl_;
   DISALLOW_COPY_AND_ASSIGN(JsonWriter);
 };

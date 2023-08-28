@@ -1,5 +1,3 @@
-// Copyright (c) Yugabyte, Inc.
-
 package com.yugabyte.yw.common.rbac;
 
 import static org.junit.Assert.assertEquals;
@@ -9,7 +7,7 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -37,7 +35,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
   @Before
   public void setup() {
-    roleBindingUtil = new RoleBindingUtil(null);
+    roleBindingUtil = new RoleBindingUtil();
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     user = ModelFactory.testUser(customer);
     role =
@@ -48,9 +46,9 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
-                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
-                    new Permission(ResourceType.UNIVERSE, Action.READ),
-                    new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE),
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.READ),
+                    new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.UPDATE))));
   }
 
   @Test
@@ -132,9 +130,9 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
-                    new Permission(ResourceType.DEFAULT, Action.CREATE),
-                    new Permission(ResourceType.DEFAULT, Action.READ),
-                    new Permission(ResourceType.DEFAULT, Action.UPDATE))));
+                    new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.CREATE),
+                    new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.READ),
+                    new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.UPDATE))));
 
     ResourceDefinition rd3 =
         ResourceDefinition.builder().resourceType(ResourceType.DEFAULT).allowAll(true).build();

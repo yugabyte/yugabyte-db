@@ -143,7 +143,4 @@ SetFlagResult SetFlag(
 // Validate that the given flag is a valid percentage value (0-100).
 bool ValidatePercentageFlag(const char* flag_name, int value);
 
-// Check if SetUsageMessage() was called. Useful for tools.
-bool IsUsageMessageSet();
-
 } // namespace yb

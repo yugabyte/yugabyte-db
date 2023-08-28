@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.CustomerTask.TargetType;
 import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
@@ -28,7 +29,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -487,6 +488,7 @@ public class CustomerTaskManager {
     taskParams.setErrorString(null);
 
     UUID targetUUID;
+    String targetName;
     if (taskParams instanceof UniverseTaskParams) {
       targetUUID = ((UniverseTaskParams) taskParams).getUniverseUUID();
       Universe universe = Universe.getOrBadRequest(targetUUID);
@@ -495,8 +497,11 @@ public class CustomerTaskManager {
         String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
+      targetName = universe.getName();
     } else if (taskParams instanceof IProviderTaskParams) {
       targetUUID = ((IProviderTaskParams) taskParams).getProviderUUID();
+      Provider provider = Provider.getOrBadRequest(targetUUID);
+      targetName = provider.getName();
       // Parallel execution is guarded by ProviderEditRestrictionManager
       CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(targetUUID);
       if (lastTask == null || !lastTask.getId().equals(customerTask.getId())) {
@@ -510,7 +515,7 @@ public class CustomerTaskManager {
     LOG.info(
         "Submitted retry task to universe for {}:{}, task uuid = {}.",
         targetUUID,
-        customerTask.getTargetName(),
+        targetName,
         newTaskUUID);
     return CustomerTask.create(
         customer,
@@ -518,6 +523,6 @@ public class CustomerTaskManager {
         newTaskUUID,
         customerTask.getTargetType(),
         customerTask.getType(),
-        customerTask.getTargetName());
+        targetName);
   }
 }

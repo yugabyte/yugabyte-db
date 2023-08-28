@@ -832,10 +832,10 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
-  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
-      ConsensusMetadata::Create(
-          fs_manager_, tablet_id, fs_manager_->uuid(), config, consensus::kMinimumTerm),
-      "Unable to create new ConsensusMeta for tablet " + tablet_id);
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
+                                                  config, consensus::kMinimumTerm, &cmeta),
+                        "Unable to create new ConsensusMeta for tablet " + tablet_id);
   TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
@@ -1051,9 +1051,10 @@ Status TSTabletManager::ApplyTabletSplit(
     }
   });
 
-  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
+  std::unique_ptr<ConsensusMetadata> cmeta;
+  RETURN_NOT_OK(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term));
+      split_op_id.term, &cmeta));
   if (request->has_split_parent_leader_uuid()) {
     cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
     LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();

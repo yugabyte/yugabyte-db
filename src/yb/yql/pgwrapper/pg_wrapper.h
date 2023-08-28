@@ -94,7 +94,6 @@ class PgWrapper : public ProcessWrapper {
   static Status InitDbForYSQL(
       const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd);
 
-  Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
  private:
   static std::string GetPostgresExecutablePath();
   static std::string GetPostgresSuppressionsPath();
@@ -105,7 +104,6 @@ class PgWrapper : public ProcessWrapper {
   // Set common environment for a child process (initdb or postgres itself).
   void SetCommonEnv(Subprocess* proc, bool yb_enabled);
   PgProcessConf conf_;
-  key_t ysql_conn_mgr_stats_shmem_key_;
 };
 
 // Keeps a PostgreSQL process running in the background, and restarts it in case it crashes.
@@ -123,9 +121,6 @@ class PgSupervisor : public ProcessSupervisor {
   Status UpdateAndReloadConfig();
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
 
-  // Get the shared memory key to be used by ysql connection manager to publish stats
-  key_t GetYsqlConnManagerStatsShmkey();
-
  private:
   Status CleanupOldServerUnlocked();
   Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
@@ -136,7 +131,6 @@ class PgSupervisor : public ProcessSupervisor {
   std::vector<FlagCallbackRegistration> flag_callbacks_ GUARDED_BY(mtx_);
   void PrepareForStop() REQUIRES(mtx_) override;
   Status PrepareForStart() REQUIRES(mtx_) override;
-  key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
   std::string GetProcessName() override {
     return "PostgreSQL";

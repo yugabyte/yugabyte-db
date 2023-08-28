@@ -1,8 +1,6 @@
-// Copyright (c) Yugabyte, Inc.
-
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import lombok.AllArgsConstructor;
@@ -14,5 +12,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class PermissionDetails {
   @ApiModelProperty(value = "Set of permissions")
-  Set<Permission> permissionList;
+  Set<PermissionInfoIdentifier> permissionList;
 }

@@ -1671,9 +1671,7 @@ Status create_change_data_stream_action(
   if (args.size() > 2) {
     ToUpperCase(args[2], &uppercase_record_type);
     if (uppercase_record_type != yb::ToString("ALL") &&
-        uppercase_record_type != yb::ToString("CHANGE") &&
-        uppercase_record_type != yb::ToString("FULL_ROW_NEW_IMAGE") &&
-        uppercase_record_type != yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+        uppercase_record_type != yb::ToString("CHANGE")) {
       return ClusterAdminCli::kInvalidArguments;
     }
     record_type = uppercase_record_type;

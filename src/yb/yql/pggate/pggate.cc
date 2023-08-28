@@ -1883,10 +1883,6 @@ Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint();
 }
 
-bool PgApiImpl::IsRestartReadPointRequested() {
-  return pg_txn_manager_->IsRestartReadPointRequested();
-}
-
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
