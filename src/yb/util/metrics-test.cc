@@ -293,8 +293,8 @@ TEST_F(MetricsTest, AggregationTest) {
     for (const auto& tablet : tablets) {
       ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, entity_options, opts));
     }
-    DoAggregationCheck(writer, "", METRIC_test_sum_gauge.name(), 34, {});
-    DoAggregationCheck(writer, "", METRIC_test_max_gauge.name(), 10, {});
+    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, {});
+    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, {});
   }
 }
 
@@ -541,6 +541,7 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
   attr[LABLE_1] = LABLE_1_VAL;
   attr["stream_id"] = "stream_1";
   attr["table_id"] = "table_1";
+  attr["metric_type"] = "cdc";
 
   ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 1u, AggregationFunction::kMax));
   ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 2u, AggregationFunction::kMax));
