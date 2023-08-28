@@ -1153,6 +1153,14 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Colocation flags
+
+##### --ysql_colocate_database_by_default
+
+When set to true at cluster creation time, your cluster will have colocation enabled for all the databases.
+
+Default: `false`
+
 ## PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
@@ -1227,6 +1235,8 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+
 
 ## Admin UI
 

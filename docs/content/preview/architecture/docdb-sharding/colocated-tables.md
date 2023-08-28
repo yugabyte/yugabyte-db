@@ -63,7 +63,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-A cluster can be configured to have colocation enabled for all the databases in the cluster at creation time. To do so set the following T-Server flag to true at the time of cluster creation as follows.
+A cluster can be configured to have colocation enabled for all the databases in the cluster at creation time. To do so, set the following YB-TServer [flag](../../../reference/configuration/yb-tserver/#ysql-colocate-database-by-default) to true at the time of cluster creation as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
@@ -186,7 +186,7 @@ To set up xCluster for colocated tables, do the following:
     For example:
 
     ```sh
-    ./yb-admin -master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid  
+    ./yb-admin -master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid
     ```
 
     ```output
