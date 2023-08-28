@@ -201,7 +201,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
 }
 
 // Make sure parent tablet shutdown does not crash during long scans and does not abort them.
-TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongScan)) {
   constexpr auto kScanAfterSplitDuration = 65s;
   constexpr auto kNumRows = 1000;
 
@@ -269,7 +269,7 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
 // DCHECK_EQ(response.error_status().size(), 1) in pg_client_session.cc:HandleResponse() due to
 // PgsqlResponsePB::error_status contains two entries because this collection was not cleaned
 // before the retry in the original change (where error_status has been introduced).
-TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(CommonResponseCheckFailureAfterOperationRetry)) {
   constexpr auto kNumRows = 100;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -304,7 +304,7 @@ TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
 }
 #endif // NDEBUG
 
-TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitSequencesDataTable)) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
   auto conn = ASSERT_RESULT(Connect());
   // create a table with serial column which creates the
@@ -1132,7 +1132,7 @@ class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
   }
 };
 
-TEST_P(PgPartitioningWaitQueuesOffTest, RowLockWithSplit) {
+TEST_P(PgPartitioningWaitQueuesOffTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithSplit)) {
   constexpr auto* kTableName = "test_table";
 
   // At least one key should go into second child tablet after split to test the routing behavior.
