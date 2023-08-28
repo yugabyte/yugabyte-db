@@ -289,8 +289,8 @@ TEST_F(MetricsTest, AggregationTest) {
     for (const auto& tablet : tablets) {
       ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, {"*"}, opts));
     }
-    DoAggregationCheck(writer, "", METRIC_test_sum_gauge.name(), 34, {});
-    DoAggregationCheck(writer, "", METRIC_test_max_gauge.name(), 10, {});
+    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, {});
+    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, {});
   }
 }
 
