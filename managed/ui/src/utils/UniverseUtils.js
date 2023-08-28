@@ -139,17 +139,17 @@ export function isKubernetesUniverse(currentUniverse) {
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
     getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
-    'kubernetes'
+      'kubernetes'
   );
 }
 
 export const isYbcEnabledUniverse = (universeDetails) => {
   return universeDetails?.enableYbc;
-}
+};
 
 export const isYbcInstalledInUniverse = (universeDetails) => {
-  return universeDetails?.ybcInstalled
-}
+  return universeDetails?.ybcInstalled;
+};
 
 /**
  * Returns an array of unique regions in the universe
@@ -174,7 +174,11 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
+  return (
+    isUniverseType(universe, 'aws') ||
+    isUniverseType(universe, 'gcp') ||
+    isUniverseType(universe, 'azu')
+  );
 };
 
 // Reads file and passes content into Promise.resolve
@@ -196,4 +200,12 @@ export const readUploadedFile = (inputFile, isRequired) => {
 
 export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
   return `${BASE_URL}/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
+};
+
+export const optimizeVersion = (version) => {
+  if (parseInt(version[version.length - 1], 10) === 0) {
+    return optimizeVersion(version.slice(0, version.length - 1));
+  } else {
+    return version.join('.');
+  }
 };
