@@ -56,6 +56,9 @@ update t2 set name = 'Jane' where id = 1;
 
 select * from t2;
 
+-- CREATE INDEX
+CREATE INDEX myidx on t2(name);
+
 -- Insert with on conflict
 insert into t2 values (1, 'foo') on conflict ON CONSTRAINT t2_pkey do update set id = t2.id+1;
 

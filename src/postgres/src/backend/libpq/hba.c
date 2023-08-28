@@ -75,8 +75,6 @@ typedef struct check_network_data
 static List *parsed_hba_lines = NIL;
 static MemoryContext parsed_hba_context = NULL;
 
-#ifdef YB_TODO
-/* YB_TODO(neil) Need to redo JasonK code. It's not merge-able */
 /*
  * The following character array contains the additional hardcoded HBA config
  * lines that are set internally.  These lines take priority over user defined
@@ -86,7 +84,6 @@ static const char *const HardcodedHbaLines[] =
 {
 	"local all postgres yb-tserver-key",
 };
-#endif
 
 /*
  * pre-parsed content of ident mapping file: list of IdentLine structs.
@@ -128,13 +125,10 @@ static const char *const UserAuthName[] =
 
 static List *tokenize_inc_file(List *tokens, const char *outer_filename,
 							   const char *inc_filename, int elevel, char **err_msg);
-static void tokenize_hardcoded(List **tok_lines_all, int elevel);
-#ifdef YB_TODO
-/* YB_TODO(neil) Need to change JasonK code. It's not merge-able. */
-static TokenizedLine *tokenize_line(const char *filename, int elevel,
-									int line_number, char *rawline,
-									char *err_msg);
-#endif
+static void yb_tokenize_hardcoded(List **tok_lines_all, int elevel);
+static TokenizedAuthLine *yb_tokenize_line(const char *filename, int elevel,
+										   int line_number, char *rawline,
+										   char *err_msg);
 static bool parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							   int elevel, char **err_msg);
 
@@ -463,16 +457,6 @@ tokenize_inc_file(List *tokens,
  * Return value is a memory context which contains all memory allocated by
  * this function (it's a child of caller's context).
  */
-#ifdef YB_TODO
-/*
- * YB_TODO(jasonk@yugabyte)
- * This is Postgres version for PG13.
- * - Please do not factor postgres existing functions. It makes it extremely difficult to merge.
- * - Write your own version if you want, but leave postgres version alone.
- * - Keep in mind that code-merging people are not supposed to learn your projects line-by-line
- *   and logically resolve conflicts.
- */
-#endif
 MemoryContext
 tokenize_auth_file(const char *filename, FILE *file, List **tok_lines,
 				   int elevel)
@@ -482,7 +466,7 @@ tokenize_auth_file(const char *filename, FILE *file, List **tok_lines,
 	MemoryContext linecxt;
 	MemoryContext oldcxt;
 
-	linecxt = AllocSetContextCreate(CurrentMemoryContext,
+	linecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									"tokenize_auth_file",
 									ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(linecxt);
@@ -575,108 +559,20 @@ tokenize_auth_file(const char *filename, FILE *file, List **tok_lines,
 	return linecxt;
 }
 
-#ifdef YB_TODO
-/*
- * YB_TODO(jasonk@yugabyte) Need to verify if merging code is correct.
- * - Please do not factor postgres existing functions. It makes it extremely difficult to merge.
- * - Write your own version if you want, but leave postgres version alone.
- * - Keep in mind that code-merging people are not supposed to review and learn your projects or
- *   entire team's projects line-by-line and logically resolve conflicts.
- */
-static MemoryContext
-tokenize_file_jasonk_version(const char *filename, FILE *file, List **tok_lines, int elevel)
-{
-	int			line_number = 1;
-	StringInfoData buf;
-	MemoryContext linecxt;
-	MemoryContext oldcxt;
-
-	linecxt = AllocSetContextCreate(GetCurrentMemoryContext(),
-									"tokenize_file",
-									ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(linecxt);
-
-	initStringInfo(&buf);
-
-	*tok_lines = NIL;
-
-	while (!feof(file) && !ferror(file))
-	{
-		char	   *err_msg = NULL;
-		int			last_backslash_buflen = 0;
-		int			continuations = 0;
-		TokenizedLine *tok_line;
-
-		/* Collect the next input line, handling backslash continuations */
-		resetStringInfo(&buf);
-
-		while (pg_get_line_append(file, &buf))
-		{
-			/* Strip trailing newline, including \r in case we're on Windows */
-			buf.len = pg_strip_crlf(buf.data);
-
-			/*
-			 * Check for backslash continuation.  The backslash must be after
-			 * the last place we found a continuation, else two backslashes
-			 * followed by two \n's would behave surprisingly.
-			 */
-			if (buf.len > last_backslash_buflen &&
-				buf.data[buf.len - 1] == '\\')
-			{
-				/* Continuation, so strip it and keep reading */
-				buf.data[--buf.len] = '\0';
-				last_backslash_buflen = buf.len;
-				continuations++;
-				continue;
-			}
-
-			/* Nope, so we have the whole line */
-			break;
-		}
-
-		if (ferror(file))
-		{
-			/* I/O error! */
-			int			save_errno = errno;
-
-			ereport(elevel,
-					(errcode_for_file_access(),
-					 errmsg("could not read file \"%s\": %m", filename)));
-			err_msg = psprintf("could not read file \"%s\": %s",
-							   filename, strerror(save_errno));
-			break;
-		}
-
-		tok_line = tokenize_line(filename,
-								 elevel,
-								 line_number,
-								 buf.data,
-								 err_msg);
-		if (tok_line != NULL)
-			*tok_lines = lappend(*tok_lines, tok_line);
-
-		line_number++;
-	}
-
-	MemoryContextSwitchTo(oldcxt);
-
-	return linecxt;
-}
-
 /*
  * Tokenize the hardcoded configuration lines.
  *
- * The output is a list of TokenizedLine structs; see struct definition above.
+ * The output is a list of TokenizedAuthLine structs; see struct definition above.
  *
  * tok_lines: receives output list
  * elevel: message logging level
  *
  * Errors are reported by logging messages at ereport level elevel and by
- * adding TokenizedLine structs containing non-null err_msg fields to the
+ * adding TokenizedAuthLine structs containing non-null err_msg fields to the
  * output list.
  */
 static void
-tokenize_hardcoded(List **tok_lines, int elevel)
+yb_tokenize_hardcoded(List **tok_lines, int elevel)
 {
 	int			line_number = -1;
 
@@ -685,13 +581,11 @@ tokenize_hardcoded(List **tok_lines, int elevel)
 	for (int i = 0; i < sizeof(HardcodedHbaLines) / sizeof(char *); ++i)
 	{
 		char	   *err_msg = NULL;
-		TokenizedLine *tok_line;
+		TokenizedAuthLine *tok_line;
 
-		tok_line = tokenize_line("(hardcoded: no filename)" /* filename */,
-								 elevel,
-								 line_number,
-								 pstrdup(HardcodedHbaLines[i]),
-								 err_msg);
+		tok_line = yb_tokenize_line("(hardcoded: no filename)" /* filename */,
+									elevel, line_number,
+									pstrdup(HardcodedHbaLines[i]), err_msg);
 		if (tok_line != NULL)
 			*tok_lines = lappend(*tok_lines, tok_line);
 
@@ -702,7 +596,7 @@ tokenize_hardcoded(List **tok_lines, int elevel)
 /*
  * Tokenize the given line.
  *
- * The output is a TokenizedLine struct.
+ * The output is a TokenizedAuthLine struct.
  *
  * filename: the absolute path to the target file
  * elevel: message logging level
@@ -711,12 +605,12 @@ tokenize_hardcoded(List **tok_lines, int elevel)
  * err_msg: error message (inherit it, set it, or leave it null)
  *
  * Errors are reported by logging messages at ereport level elevel and by
- * putting a non-null err_msg in the TokenizedLine struct.
+ * putting a non-null err_msg in the TokenizedAuthLine struct.
  *
  * Return value is a palloc'd tokenized line.
  */
-static TokenizedLine *
-tokenize_line(const char *filename,
+static TokenizedAuthLine *
+yb_tokenize_line(const char *filename,
 			  int elevel,
 			  int line_number,
 			  char *rawline,
@@ -731,9 +625,7 @@ tokenize_line(const char *filename,
 				 errmsg("line is null")));
 
 	/* Strip trailing linebreak from rawline */
-	lineptr = rawline + strlen(rawline) - 1;
-	while (lineptr >= rawline && (*lineptr == '\n' || *lineptr == '\r'))
-		*lineptr-- = '\0';
+	pg_strip_crlf(rawline);
 
 	/* Parse fields */
 	lineptr = rawline;
@@ -751,9 +643,9 @@ tokenize_line(const char *filename,
 	/* Reached EOL; emit line unless it's boring */
 	if (current_line != NIL || err_msg != NULL)
 	{
-		TokenizedLine *tok_line;
+		TokenizedAuthLine *tok_line;
 
-		tok_line = (TokenizedLine *) palloc(sizeof(TokenizedLine));
+		tok_line = (TokenizedAuthLine *) palloc(sizeof(TokenizedAuthLine));
 		tok_line->fields = current_line;
 		tok_line->line_num = line_number;
 		tok_line->raw_line = pstrdup(rawline);
@@ -762,8 +654,6 @@ tokenize_line(const char *filename,
 	}
 	return NULL;
 }
-
-#endif
 
 /*
  * Does user belong to role?
@@ -2507,10 +2397,7 @@ load_hba(void)
 	List	   *hba_lines_hardcoded = NIL;
 
 	oldcxt = MemoryContextSwitchTo(linecxt);
-#ifdef YB_TODO
-	/* YB_TODO(neil) Need to change JasonK code. It's not merge-able */
-	tokenize_hardcoded(&hba_lines_hardcoded, LOG);
-#endif
+	yb_tokenize_hardcoded(&hba_lines_hardcoded, LOG);
 	hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
 	MemoryContextSwitchTo(oldcxt);
 
