@@ -16,15 +16,20 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
+| YBA Installer | yba-ctl CLI | You can't use Docker containers. |
 | Replicated | Docker containers | You're able to use Docker containers. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
 Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
 
   <li>
     <a href="../default/" class="nav-link">
@@ -34,11 +39,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -67,7 +67,7 @@ Before installing YugabyteDB Anywhere, verify that you have the following:
 
 In addition, ensure the following:
 
-- The nodes can pull container images from the [quay.io](https://quay.io/) container registry. If the nodes cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+- The nodes can pull container images from the [quay.io](https://quay.io/) container registry. If the nodes cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](../../prepare-environment/kubernetes#specify-ulimit-and-remember-the-location-of-core-dumps).
 - You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../../prepare-environment/kubernetes#install-kube-state-metrics).
 - A load balancer controller is available in your Kubernetes cluster.
