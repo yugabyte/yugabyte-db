@@ -1238,6 +1238,8 @@ spec:
                 type: array
                 items:
                   type: string
+              resourceUUID:
+                type: string
 
     subresources:
       status: {}
