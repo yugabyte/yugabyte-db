@@ -54,7 +54,7 @@ const CompletionComponent = (theme: Theme) => (completionPercentage: number) => 
 interface MigrationProps {
   heading: string;
   migration: Migration;
-  phase: number;
+  step: number;
 }
 
 export const MigrationData: FC<MigrationProps> = ({ heading }) => {

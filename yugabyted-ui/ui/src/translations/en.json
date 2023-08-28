@@ -824,6 +824,7 @@
         "database": "Database",
         "schema": "Schema",
         "complexity": "Complexity",
+        "sourceDB": "Source DB",
         "startedOn": "Started On",
         "tableName":"Table Name",
         "status": "Status",
@@ -842,7 +843,9 @@
         "notStarted": "Not started yet",
         "noMigrations": "No migrations available",
         "getStarted": "Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.",
-        "learnMore": "Learn more"
+        "learnMore": "Learn more",
+        "analyzeSchemaPending": "Analyze schema pending",
+        "analyzeSchemaPendingDesc": "Run the analyze schema command to assess the migration"
       },
       "maintenance": {
         "maintenanceTitle": "Scheduled Maintenance",

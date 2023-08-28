@@ -91,7 +91,7 @@ export const MainLayout: FC = () => {
               <Route path={'/databases'} component={DatabasesRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
               <Route path={'/alerts'} component={AlertsRouting} />
-              <Route path={'/migration'} component={MigrationRouting} />
+              <Route path={'/migrations'} component={MigrationRouting} />
               <Route path={'/'} component={ClusterRouting} />
               {/* <Route exact path={'/'} render={() => {
                     return (

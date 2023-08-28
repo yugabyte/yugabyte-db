@@ -2,7 +2,7 @@ import React, { FC } from "react";
 import { Box, Divider, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
 import { MigrationTiles } from "./MigrationTiles";
-import { MigrationPhase } from "./MigrationPhase";
+import { MigrationStep } from "./MigrationStep";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -19,10 +19,18 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({ steps = [""], migr
   const theme = useTheme();
   const classes = useStyles();
 
-  const [selectedPhase, setSelectedPhase] = React.useState<number>(migration.migration_phase);
+  const [selectedStep, setSelectedStep] = React.useState<number>(migration.current_step);
   React.useEffect(() => {
-    setSelectedPhase(migration.migration_phase);
-  }, [migration.migration_phase]);
+    setSelectedStep(
+      migration.migration_phase === 0
+        ? 1
+        : migration.migration_phase === 1
+        ? 0
+        : migration.migration_phase <= 4
+        ? 2
+        : 3
+    );
+  }, [migration]);
 
   return (
     <Box mt={1}>
@@ -32,19 +40,19 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({ steps = [""], migr
             {migration.migration_name}
           </Typography>
           <Box display="flex" gridGap={theme.spacing(5)}>
-            <Box width={300}>
+            <Box width={300} flexShrink={0}>
               <MigrationTiles
                 steps={steps}
-                currentStep={selectedPhase}
-                onStepChange={setSelectedPhase}
-                runningStep={migration.migration_phase}
+                currentStep={selectedStep}
+                onStepChange={setSelectedStep}
+                phase={migration.migration_phase}
               />
             </Box>
             <Box>
               <Divider orientation="vertical" />
             </Box>
             <Box flex={1}>
-              <MigrationPhase steps={steps} migration={migration} phase={selectedPhase} />
+              <MigrationStep steps={steps} migration={migration} step={selectedStep} />
             </Box>
           </Box>
         </Box>

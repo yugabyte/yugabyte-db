@@ -173,7 +173,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
   const { data: alerts } = useAlerts("");
 
   // const { data: runtimeConfig } = useRuntimeConfig();
- 
+
   //   //Alerts Policy - Hide Alerting bell icon on sidebar
   //   const ALERTS_FLAG_PATH = 'ybcloud.conf.alerts.enabled';
   //   const { data: alertsFeatGlobal } = useGetAppConfigQuery({
@@ -320,11 +320,11 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </div>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/migration`}
-          isActive={(_, location) => /^\/migration/.test(location.pathname)}
+          to={`/migrations`}
+          isActive={(_, location) => /^\/migrations/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkMigration"
+          data-testid="SidebarLinkMigrations"
         >
           <MigrateIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>

@@ -70,7 +70,7 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationTilesProps {
   steps: string[];
   currentStep?: number;
-  runningStep?: number;
+  phase?: number;
   onStepChange?: (step: number) => void;
 }
 
@@ -78,44 +78,97 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   steps,
   onStepChange,
   currentStep,
-  runningStep,
+  phase,
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
 
   return (
     <Box className={classes.wrapper}>
-      {/* <Typography variant="h4" className={classes.heading}>
-        {t('clusterDetail.voyager.phases')}
-      </Typography> */}
       {steps.map((step, index) => {
-        const notStarted = runningStep != null && index > runningStep;
+        let disabled = false;
+        let notStarted = false;
+        let completed = false;
+        let running = false;
+
+        if (phase != null) {
+          // Export schema phase
+          if (phase === 0) {
+            if (index >= 2) {
+              // Everything except first two steps will be pending and disabled
+              notStarted = true;
+              disabled = true;
+            } else if (index === 0) {
+              // Plan and assess will be pending
+              notStarted = true;
+            } else {
+              // Migrate schema will be running
+              running = true;
+            }
+          }
+
+          // Analyze schema phase
+          else if (phase === 1) {
+            if (index >= 2) {
+              // Everything except first two steps will be pending and disabled
+              disabled = true;
+              notStarted = true;
+            } else if (index === 0) {
+              // Plan and assess will be running
+              running = true;
+            } else {
+              // Migrate schema will be completed
+              completed = true;
+            }
+          }
+
+          // Export data, import schema and import data phase
+          else if (phase <= 4) {
+            if (index <= 1) {
+              // Plan and assess and migrate schema will be completed
+              completed = true;
+            } else if (index === 2) {
+              // Migrate data will be running
+              running = true;
+            } else {
+              // Verify will be pending and disabled
+              disabled = true;
+              notStarted = true;
+            }
+          }
+
+          // Verify phase
+          else {
+            // Everything will be completed
+            completed = true;
+          }
+        }
+
+        /* const disabled = phase != null && index > phase;
+        const notStarted = phase != null && index > phase; */
+
         return (
-          <Card className={clsx(classes.card, notStarted && classes.disabledCard)}>
+          <Card key={step} className={clsx(classes.card, disabled && classes.disabledCard)}>
             <CardActionArea
               className={clsx(classes.cardActionArea, currentStep === index && classes.selected)}
-              disabled={notStarted}
+              disabled={disabled}
               onClick={() => onStepChange && onStepChange(index)}
             >
-              {notStarted && <Box className={classes.disabledOverlay} />}
+              {disabled && <Box className={classes.disabledOverlay} />}
               <Box display="flex" alignItems="center" gridGap={10}>
                 {/* <span className={classes.icon}>{(index + 1).toString()}</span> */}
-                <Typography variant="h5" color={notStarted ? "textSecondary" : undefined}>
-                  {step}
-                </Typography>
+                <Typography variant="h5">{step}</Typography>
                 <Box ml={-1}>
                   <YBTooltip title={step} />
                 </Box>
               </Box>
-              {runningStep != null && (index < runningStep || runningStep === steps.length - 1) && (
+              {completed && (
                 <YBBadge
                   variant={BadgeVariant.Success}
                   text={t("clusterDetail.voyager.complete")}
                 />
               )}
-              {runningStep != null && runningStep === index && runningStep !== steps.length - 1 && (
-                <YBBadge variant={BadgeVariant.InProgress} />
-              )}
+              {running && <YBBadge variant={BadgeVariant.InProgress} />}
 
               {notStarted && (
                 <Box mt={0.8} mb={0.4} className={classes.notStarted}>

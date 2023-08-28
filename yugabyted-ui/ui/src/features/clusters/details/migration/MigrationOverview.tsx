@@ -56,45 +56,77 @@ const migrationDataList = [
     migration_uuid: "cb1cdd55-3a91-11ee-89b8-42010a9601e6",
     migration_name: "Migration Name1",
     migration_phase: 0,
+    invocation_sequence: 0,
+    complexity: "",
+    source_dbVersion: "Oracle 18c",
     database_name: "database1",
     schema_name: "yugabyted",
     status: "In progress",
-    complexity: "",
     invocation_timestamp: "11/07/2022, 09:55",
   },
   {
     migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
     migration_name: "Migration Name2",
     migration_phase: 1,
+    invocation_sequence: 1,
+    complexity: "Easy",
+    source_dbVersion: "PostgreSQL 13.3",
     database_name: "database2",
     schema_name: "yugabyted",
     status: "In progress",
-    complexity: "Easy",
     invocation_timestamp: "11/07/2022, 09:55",
   },
   {
     migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
     migration_name: "Migration Name3",
     migration_phase: 2,
+    invocation_sequence: 1,
+    complexity: "Medium",
+    source_dbVersion: "MySQL 8.0.25",
     database_name: "database3",
     schema_name: "yugabyted",
     status: "In progress",
+    invocation_timestamp: "11/07/2022, 09:55",
+  },
+  {
+    migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
+    migration_name: "Migration Name4",
+    migration_phase: 3,
+    invocation_sequence: 1,
     complexity: "Medium",
+    source_dbVersion: "MySQL 8.0.25",
+    database_name: "database4",
+    schema_name: "yugabyted",
+    status: "In progress",
+    invocation_timestamp: "11/07/2022, 09:55",
+  },
+  {
+    migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
+    migration_name: "Migration Name5",
+    migration_phase: 4,
+    invocation_sequence: 1,
+    complexity: "Medium",
+    source_dbVersion: "MySQL 8.0.25",
+    database_name: "database5",
+    schema_name: "yugabyted",
+    status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
   {
     migration_uuid: "de3cdd86-3a91-11ee-89b8-42010a9601de",
-    migration_name: "Migration Name4",
-    migration_phase: 3,
-    database_name: "database4",
+    migration_name: "Migration Name6",
+    migration_phase: 5,
+    invocation_sequence: 2,
+    complexity: "Hard",
+    source_dbVersion: "Oracle 19c",
+    database_name: "database6",
     schema_name: "yugabyted",
     status: "Completed",
-    complexity: "Hard",
     invocation_timestamp: "11/07/2022, 09:55",
   },
 ];
 
-export type Migration = (typeof migrationDataList)[number] & { current_phase: string };
+export type Migration = (typeof migrationDataList)[number] & { current_step: number };
 
 interface MigrationOverviewProps {}
 
@@ -112,7 +144,10 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const migrationData = migrationDataList.map((data) => {
     return {
       ...data,
-      current_phase: migrationSteps[data.migration_phase],
+      // Phase 0, 1    === Plan and Assess & Migrate Schema                         pages active
+      // Phase 2, 3, 4 === Plan and Assess & Migrate Schema & Migrate Data          pages active
+      // Phase 5       === Plan and Assess & Migrate Schema & Migrate Data & Verify pages active
+      current_step: data.migration_phase <= 1 ? 1 : data.migration_phase <= 4 ? 2 : 3,
     };
   });
 

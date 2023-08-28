@@ -6,6 +6,7 @@ import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
+import { migrationPhases } from "./migration";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -105,9 +106,18 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       },
     },
     {
-      name: "current_phase",
+      name: "source_dbVersion",
+      label: t("clusterDetail.voyager.sourceDB"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", maxWidth: 100 } }),
+      },
+    },
+    {
+      name: "migration_phase",
       label: t("clusterDetail.voyager.phase"),
       options: {
+        customBodyRender: (phase: number) => migrationPhases[phase],
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
