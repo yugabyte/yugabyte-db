@@ -38,7 +38,7 @@ const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexi
       ? classes.easyComp
       : undefined;
 
-  return <Box className={className}>{complexity || "Not assessed yet"}</Box>;
+  return <Box className={className}>{complexity || "N/A"}</Box>;
 };
 
 const StatusComponent = () => (status: string) => {

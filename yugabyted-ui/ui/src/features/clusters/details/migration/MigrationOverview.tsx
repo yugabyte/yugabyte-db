@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { YBDropdown } from "@app/components";
 import { MigrationList } from "./MigrationList";
 import TriangleDownIcon from "@app/assets/caret-down.svg";
-import { MigrationData as MigrationSteps } from "./MigrationSteps";
-import { MigrationPhase } from "./MigrationPhase";
+import { MigrationDetails } from "./MigrationDetails";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -57,7 +56,7 @@ const migrationDataList = [
     migration_uuid: "cb1cdd55-3a91-11ee-89b8-42010a9601e6",
     migration_name: "Migration Name1",
     migration_phase: 0,
-    database_name: "DMS",
+    database_name: "database1",
     schema_name: "yugabyted",
     status: "In progress",
     complexity: "",
@@ -67,7 +66,7 @@ const migrationDataList = [
     migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
     migration_name: "Migration Name2",
     migration_phase: 1,
-    database_name: "DMS",
+    database_name: "database2",
     schema_name: "yugabyted",
     status: "In progress",
     complexity: "Easy",
@@ -77,7 +76,7 @@ const migrationDataList = [
     migration_uuid: "231cdd15-3a91-11ee-89b8-42010a9601e4",
     migration_name: "Migration Name3",
     migration_phase: 2,
-    database_name: "DMS",
+    database_name: "database3",
     schema_name: "yugabyted",
     status: "In progress",
     complexity: "Medium",
@@ -87,7 +86,7 @@ const migrationDataList = [
     migration_uuid: "de3cdd86-3a91-11ee-89b8-42010a9601de",
     migration_name: "Migration Name4",
     migration_phase: 3,
-    database_name: "DMS",
+    database_name: "database4",
     schema_name: "yugabyted",
     status: "Completed",
     complexity: "Hard",
@@ -118,7 +117,6 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   });
 
   const [selectedMigration, setSelectedMigration] = React.useState<Migration>();
-  const [selectedPhase, setSelectedPhase] = React.useState<number>();
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
@@ -129,14 +127,13 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
               className={classes.link}
               onClick={() => {
                 setSelectedMigration(undefined);
-                setSelectedPhase(undefined);
               }}
             >
               <Typography variant="body2" color="primary">
                 {t("clusterDetail.voyager.migrations")}
               </Typography>
             </Link>
-            {selectedMigration && selectedPhase == null && (
+            {selectedMigration && (
               <YBDropdown
                 origin={
                   <Box display="flex" alignItems="center" className={classes.dropdownContent}>
@@ -164,69 +161,14 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                 </Box>
               </YBDropdown>
             )}
-            {selectedMigration && selectedPhase != null && (
-              <Link
-                className={classes.link}
-                onClick={() => {
-                  setSelectedPhase(undefined);
-                }}
-              >
-                <Typography variant="body2" color="primary">
-                  {selectedMigration.migration_name}
-                </Typography>
-              </Link>
-            )}
-            {selectedPhase != null && (
-              <YBDropdown
-                origin={
-                  <Box display="flex" alignItems="center" className={classes.dropdownContent}>
-                    {migrationSteps[selectedPhase]}
-                    <TriangleDownIcon />
-                  </Box>
-                }
-                position={"bottom"}
-                growDirection={"right"}
-                className={classes.dropdown}
-              >
-                <Box className={classes.dropdownHeader}>
-                  {t("clusterDetail.voyager.migrationPhases")}
-                </Box>
-                <Box display="flex" flexDirection="column" minWidth="150px">
-                  {migrationSteps.map((step, index) => (
-                    <MenuItem
-                      key={step}
-                      selected={selectedPhase === index}
-                      onClick={() => setSelectedPhase(index)}
-                      disabled={index > selectedMigration.migration_phase}
-                    >
-                      {step}
-                    </MenuItem>
-                  ))}
-                </Box>
-              </YBDropdown>
-            )}
           </Breadcrumbs>
         )}
       </Box>
 
-      {!selectedMigration && (
+      {!selectedMigration ? (
         <MigrationList migrationData={migrationData} onSelectMigration={setSelectedMigration} />
-      )}
-
-      {selectedMigration && selectedPhase == null && (
-        <MigrationSteps
-          steps={migrationSteps}
-          migration={selectedMigration}
-          onSelectPhase={setSelectedPhase}
-        />
-      )}
-
-      {selectedMigration && selectedPhase != null && (
-        <MigrationPhase
-          steps={migrationSteps}
-          migration={selectedMigration}
-          phase={selectedPhase}
-        />
+      ) : (
+        <MigrationDetails steps={migrationSteps} migration={selectedMigration} />
       )}
     </Box>
   );

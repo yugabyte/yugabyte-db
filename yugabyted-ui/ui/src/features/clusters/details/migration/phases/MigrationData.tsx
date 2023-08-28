@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, makeStyles, Paper, Theme, Typography, useTheme } from "@material-ui/core";
+import { Box, makeStyles, Theme, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../MigrationOverview";
 import { STATUS_TYPES, YBAccordion, YBProgress, YBStatus, YBTable } from "@app/components";
@@ -137,64 +137,62 @@ export const MigrationData: FC<MigrationProps> = ({ heading }) => {
   ];
 
   return (
-    <Paper>
-      <Box p={4}>
-        <Typography variant="h4" className={classes.heading}>
-          {heading}
-        </Typography>
-        <Box>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-            <Typography variant="body1">
-              {t("clusterDetail.voyager.percentCompleted", { percent: totalProgress })}
-            </Typography>
-            <Box>{t("clusterDetail.voyager.elapsedTime")}: 30 minutes</Box>
-          </Box>
-          <YBProgress value={totalProgress} />
+    <Box>
+      <Typography variant="h4" className={classes.heading}>
+        {heading}
+      </Typography>
+      <Box>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+          <Typography variant="body1">
+            {t("clusterDetail.voyager.percentCompleted", { percent: totalProgress })}
+          </Typography>
+          <Box>{t("clusterDetail.voyager.elapsedTime")}: 30 minutes</Box>
         </Box>
-        <Box mt={6} display="flex" gridGap={theme.spacing(2)} flexDirection="column">
-          <YBAccordion
-            titleContent={
-              <AccordionTitleComponent
-                title={t("clusterDetail.voyager.exportData")}
-                status={STATUS_TYPES.SUCCESS}
-              />
-            }
-            defaultExpanded
-          >
-            <Box mt={2} flex={1}>
-              <YBTable
-                data={migrationProgressData}
-                columns={migrationExportColumns}
-                options={{
-                  pagination: true,
-                }}
-                withBorder={false}
-              />
-            </Box>
-          </YBAccordion>
-          <YBAccordion
-            titleContent={
-              <AccordionTitleComponent
-                title={t("clusterDetail.voyager.importData")}
-                status={STATUS_TYPES.IN_PROGRESS}
-              />
-            }
-            defaultExpanded
-          >
-            <Box mt={2} flex={1}>
-              <YBTable
-                data={migrationProgressData}
-                columns={migrationImportColumns}
-                options={{
-                  pagination: true,
-                }}
-                withBorder={false}
-              />
-            </Box>
-          </YBAccordion>
-        </Box>
+        <YBProgress value={totalProgress} />
       </Box>
-    </Paper>
+      <Box mt={6} display="flex" gridGap={theme.spacing(2)} flexDirection="column">
+        <YBAccordion
+          titleContent={
+            <AccordionTitleComponent
+              title={t("clusterDetail.voyager.exportData")}
+              status={STATUS_TYPES.SUCCESS}
+            />
+          }
+          defaultExpanded
+        >
+          <Box mt={2} flex={1}>
+            <YBTable
+              data={migrationProgressData}
+              columns={migrationExportColumns}
+              options={{
+                pagination: true,
+              }}
+              withBorder={false}
+            />
+          </Box>
+        </YBAccordion>
+        <YBAccordion
+          titleContent={
+            <AccordionTitleComponent
+              title={t("clusterDetail.voyager.importData")}
+              status={STATUS_TYPES.IN_PROGRESS}
+            />
+          }
+          defaultExpanded
+        >
+          <Box mt={2} flex={1}>
+            <YBTable
+              data={migrationProgressData}
+              columns={migrationImportColumns}
+              options={{
+                pagination: true,
+              }}
+              withBorder={false}
+            />
+          </Box>
+        </YBAccordion>
+      </Box>
+    </Box>
   );
 };
 

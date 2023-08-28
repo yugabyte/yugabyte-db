@@ -2,7 +2,7 @@ import React, { FC } from "react";
 import { Box } from "@material-ui/core";
 import type { Migration } from "./MigrationOverview";
 import { MigrationData } from "./phases/MigrationData";
-import { MigrationAnalyze } from "./phases/MigrationAnalyze";
+import { MigrationPlanAssess } from "./phases/MigrationPlanAssess";
 import { MigrationSchema } from "./phases/MigrationSchema";
 import { MigrationVerify } from "./phases/MigrationVerify";
 
@@ -13,7 +13,7 @@ interface MigrationPhaseProps {
 }
 
 const phaseComponents = [
-  MigrationAnalyze,
+  MigrationPlanAssess,
   MigrationSchema,
   MigrationData,
   MigrationVerify,
