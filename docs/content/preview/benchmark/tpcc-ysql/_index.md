@@ -17,31 +17,41 @@ type: indexpage
 showRightNav: true
 ---
 
-## Overview
+[TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
-Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
+## Results Overview (v2.18.1)
 
-### Results at a glance (Amazon Web Services)
+All the nodes in the cluster were located in AWS-West in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
 
-| Warehouses| TPMC | Efficiency (approx) | Cluster Details |
-| :-------- |:---- | :------------------ | :-------------- |
-| 10    | 127      | 98.75%   | 3 nodes of type `c5d.large` (2 vCPUs) |
-| 100   | 1,271.77 | 98.89%   | 3 nodes of type `c5d.4xlarge` (16 vCPUs) |
-| 1,000  | 12563.07 | 97.90%   | 3 nodes of type `c5d.4xlarge` (16 vCPUs) |
-| 10,000 | 125163.2 | 97.35%   | 30 nodes of type `c5d.4xlarge` (16 vCPUs) |
+### Horizontal Scaling
 
-All the nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
+This data shows how YugabyteDB scales horizontally - Increased throughput with the same efficiency as the number of nodes in the cluster is increased.
 
-### Results at a glance (Microsoft Azure)
+| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type       |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :----------------------- |
+|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge<br>(8 vCPUs) |
+|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge<br>(8 vCPUs) |
+|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge<br>(8 vCPUs) |
+|       4000 | 51296.9  |     99.72     |   6   | 200         |     62.09 ms      | m6i.2xlarge<br>(8 vCPUs) |
 
-| Warehouses | TPMC | Efficiency (approx) | Cluster details |
-| :--------- | :--- | :-----------------: | :-------------- |
-| 50 | 639.4 | 99.44% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
-| 100 | 1,271.37 | 98.86% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
-| 1000 | 12,523.97 | 97.39% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
-| 2000 | 25,407.43 | 98.78% | 3 nodes of type `D16 v3` (16 vCPUs) with `P40` disks |
+### Vertical Scaling
 
-All nodes in the cluster were in the same zone. The benchmark VM was the same type as the nodes in the cluster, and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
+This data shows how YugabyteDB scales vertically - Increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
+
+| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type        |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
+|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large<br>(2 vCPUs)    |
+|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge<br>(4 vCPUs)   |
+|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge<br>(8 vCPUs)  |
+|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge<br>(16 vCPUs) |
+
+### 100K Warehouses
+
+| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type        |
+| ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
+|    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge<br>(36 vCPUs) |
+
+Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL.
 
 ## Prerequisites
 
