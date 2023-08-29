@@ -269,4 +269,20 @@ TEST(TestMonoTime, TestSubtractDelta) {
   ASSERT_EQ(start_copy + delta, start);
 }
 
+TEST(TestMonoTime, ToStringRelativeToNow) {
+  auto now = CoarseMonoClock::Now();
+
+  auto t = now + 2s;
+  ASSERT_EQ(Format("$0 (2.000s from now)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("2.000s from now", ToStringRelativeToNowOnly(t, now));
+
+  t = now;
+  ASSERT_EQ(Format("$0 (now)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("now", ToStringRelativeToNowOnly(t, now));
+
+  t = now - 2s;
+  ASSERT_EQ(Format("$0 (2.000s ago)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("2.000s ago", ToStringRelativeToNowOnly(t, now));
+}
+
 } // namespace yb

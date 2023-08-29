@@ -423,4 +423,24 @@ bool IsInitialized(CoarseTimePoint time_point) {
   return MonoDelta(time_point.time_since_epoch()).Initialized();
 }
 
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now) {
+  return Format("$0 ($1)", t, ToStringRelativeToNowOnly(t, now));
+}
+
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now) {
+  if (now)
+    return ToStringRelativeToNow(t, *now);
+  return ToString(t);
+}
+
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now) {
+  if (t < now) {
+    return Format("$0 ago", now - t);
+  }
+  if (t > now) {
+    return Format("$0 from now", t - now);
+  }
+  return Format("now");
+}
+
 } // namespace yb
