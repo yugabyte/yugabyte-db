@@ -11,28 +11,28 @@ menu:
 type: docs
 ---
 
-This section explores the topics of Keyspaces and Tables in YCQL using the command line shell
+This page explores keyspaces and tables in YCQL using the command line shell `ycqlsh`.
 `ycqlsh`.
 
 {{% explore-setup-single %}}
 
 ## YCQL shell
 
-Use the [ycqlsh shell](../../../admin/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because `ycqlsh` is derived from the Apache Cassandra shell `cqlsh` code base, most `cqlsh` commands work as is in `ycqlsh`. Unsupported commands are listed towards the end of this page.
+Use the [ycqlsh shell](../../../admin/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because `ycqlsh` is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/tools/cqlsh.html), most `cqlsh` commands work as is in `ycqlsh`. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
 
 Using `ycqlsh`, you can:
 
 - interactively enter YCQL DDL and DML and see the query results
 - input from a file or the command line
 - use tab completion to automatically complete commands
-- use a minimal command name as long as it can be distinguished from other commands (for example:
+- use a minimal command name as long as it can be distinguished from other commands (for example, `desc` instead of `DESCRIBE`)
   `desc` instead of `DESCRIBE`)
 
 `ycqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
 ### Connect to a node
 
-From the YugabyteDB home directory, connect to any node of the database cluster as shown below:
+From your YugabyteDB home directory, connect to any node of the database cluster as follows:
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.1
@@ -49,13 +49,13 @@ ycqlsh>
 
 ## Users
 
-By default, YugabyteDB has one admin user already created: `cassandra` (the recommended user). You can check this as follows:
+By default, YugabyteDB has one admin user already created: `cassandra` (the recommended user), and you can check the existing user as follows:
 
 ```sql
 ycqlsh> select * from system_auth.roles;
 ```
 
-This should output the following:
+You should see an output similar to the following:
 
 ```output
  role      | can_login | is_superuser | member_of | salted_hash
@@ -66,7 +66,7 @@ This should output the following:
 ## Keyspaces
 
 YCQL supports keyspaces, much like Apache Cassandra, with one caveat. Keyspaces in Apache Cassandra
-specify the replication properties for all tables in that keyspace. Replication configuration is defined at the Universe level in YugabyteDB.
+specify the replication properties for all tables in that keyspace. Replication configuration is defined at the [universe](../../../architecture/concepts/universe/) level in YugabyteDB.
 
 To create a new keyspace `testdb`, run the following statement:
 
@@ -74,7 +74,7 @@ To create a new keyspace `testdb`, run the following statement:
 ycqlsh> CREATE KEYSPACE testdb;
 ```
 
-To list all keyspaces, use the following command.
+To list all keyspaces, use the following command:
 
 ```sql
 ycqlsh> DESCRIBE KEYSPACES;
@@ -84,7 +84,7 @@ ycqlsh> DESCRIBE KEYSPACES;
 system_schema  system_auth  testdb  system
 ```
 
-To use a specific keyspace, use the following command.
+To use a specific keyspace, use the following command:
 
 ```sql
 ycqlsh> USE testdb;
@@ -96,7 +96,7 @@ You should see the following output:
 ycqlsh:testdb>
 ```
 
-To drop the keyspace we just created, use the `DROP` command.
+To drop the keyspace you just created, use the `DROP` command as follows:
 
 ```sql
 ycqlsh> DROP KEYSPACE testdb;
@@ -125,7 +125,7 @@ CREATE TABLE users (
   );
 ```
 
-To list all tables, use the following command.
+To list all tables, use the following command:
 
 ```sql
 ycqlsh> DESCRIBE TABLES;
@@ -154,7 +154,10 @@ CREATE TABLE testdb.users (
     AND transactions = {'enabled': 'false'};
 ```
 
-Please note that due to architectural differences, YugabyteDB does not support most of the Apache Cassandra table level properties.
+{{< note title="Note" >}}
+Due to architectural differences, YugabyteDB does _not_ support most of the Apache Cassandra table level properties.
+`default_time_to_live` is one of the supported properties and the `transactions` property is added by YugabyteDB. For more details, see [table properties](../../../api/ycql/ddl_create_table/#table-properties-1).
+{{< /note >}}
 `default_time_to_live` is one of the supported properties. YugabyteDB adds the
 `transactions` property. See [table properties](/preview/api/ycql/ddl_create_table/#table-properties-1) for more details.
 
