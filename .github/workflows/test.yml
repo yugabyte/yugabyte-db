@@ -2,20 +2,20 @@ name: regression test
 on:
   push:
     branches:
+      - PG16
       - PG15
       - PG14
       - PG13
       - PG12
       - PG11
-      - PG10
   pull_request:
     branches:
+      - PG16
       - PG15
       - PG14
       - PG13
       - PG12
       - PG11
-      - PG10
   schedule:
     # Runs at 00:00 UTC on every Sunday.
     - cron: "0 0 * * SUN"
@@ -37,7 +37,9 @@ jobs:
 
       - name: Set PATH and PG_VERSION
         run: |
-          if [ "${{ github.ref_name }}" == 'PG15' ]; then
+          if [ "${{ github.ref_name }}" == 'PG16' ]; then
+            echo "PG_VERSION=16" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == 'PG15' ]; then
             echo "PG_VERSION=15" >> $GITHUB_ENV
           elif [ "${{ github.ref_name }}" == 'PG14' ]; then
             echo "PG_VERSION=14" >> $GITHUB_ENV
@@ -47,8 +49,6 @@ jobs:
             echo "PG_VERSION=12" >> $GITHUB_ENV
           elif [ "${{ github.ref_name }}" == 'PG11' ]; then
             echo "PG_VERSION=11" >> $GITHUB_ENV
-          elif [ "${{ github.ref_name }}" == 'PG10' ]; then
-            echo "PG_VERSION=10" >> $GITHUB_ENV
           fi
 
       - name: Build PostgreSQL
