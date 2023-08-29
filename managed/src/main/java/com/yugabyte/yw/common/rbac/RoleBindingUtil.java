@@ -143,15 +143,15 @@ public class RoleBindingUtil {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
-    // Check that for DEFAULT resource types, 'allowAll' is false and only one resource UUID is
+    // Check that for OTHER resource types, 'allowAll' is false and only one resource UUID is
     // given, which is the customer UUID.
-    if (resourceDefinition.getResourceType().equals(ResourceType.DEFAULT)) {
+    if (resourceDefinition.getResourceType().equals(ResourceType.OTHER)) {
       if (resourceDefinition.isAllowAll()
           || !(resourceDefinition.getResourceUUIDSet().size() == 1)
           || (!resourceDefinition.getResourceUUIDSet().iterator().next().equals(customerUUID))) {
         String errMsg =
             String.format(
-                "For DEFAULT resource type, 'allowAll' must be false and "
+                "For OTHER resource type, 'allowAll' must be false and "
                     + "'resourceUUIDSet' should have only customerUUID in resourceDefinition: %s.",
                 resourceDefinition.toString());
         log.error(errMsg);

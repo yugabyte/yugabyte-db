@@ -136,15 +136,15 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
-                    new Permission(ResourceType.DEFAULT, Action.CREATE),
-                    new Permission(ResourceType.DEFAULT, Action.READ),
-                    new Permission(ResourceType.DEFAULT, Action.UPDATE))));
+                    new Permission(ResourceType.OTHER, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.UPDATE))));
 
     ResourceDefinition rd3 =
-        ResourceDefinition.builder().resourceType(ResourceType.DEFAULT).allowAll(true).build();
+        ResourceDefinition.builder().resourceType(ResourceType.OTHER).allowAll(true).build();
     ResourceDefinition rd4 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(resourceUUID1, resourceUUID2)))
             .build();
@@ -164,7 +164,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
         assertTrue(rd.getResourceUUIDSet().contains(resourceUUID1));
         assertTrue(rd.getResourceUUIDSet().contains(resourceUUID2));
       }
-      assertTrue(rd.getResourceType().equals(ResourceType.DEFAULT));
+      assertTrue(rd.getResourceType().equals(ResourceType.OTHER));
     }
     assertEquals(1, allowAllCount);
   }
@@ -221,7 +221,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     // filled.
     ResourceDefinition resourceDefinition1 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .allowAll(true)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(UUID.randomUUID())))
             .build();
@@ -230,10 +230,10 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
     // Assert that no exception is thrown if only 'resourceUUIDSet' is given for default resource
     // type with only customer UUID in the resource set.
-    // This is the only correct resource definition for DEFAULT resource types.
+    // This is the only correct resource definition for OTHER resource types.
     ResourceDefinition resourceDefinition2 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
             .build();
@@ -242,7 +242,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     // Assert that exception is thrown if 'allowAll' is true and 'resourceUUIDSet' is empty.
     ResourceDefinition resourceDefinition3 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .allowAll(true)
             .resourceUUIDSet(new HashSet<>())
             .build();
@@ -253,7 +253,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     // filled.
     ResourceDefinition resourceDefinition4 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>())
             .build();

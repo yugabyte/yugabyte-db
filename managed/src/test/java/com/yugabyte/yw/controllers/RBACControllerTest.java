@@ -63,8 +63,8 @@ public class RBACControllerTest extends FakeDBApplication {
   // Define test permissions to use later.
   public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
   public Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
-  public Permission permission3 = new Permission(ResourceType.DEFAULT, Action.DELETE);
-  public Permission permission4 = new Permission(ResourceType.DEFAULT, Action.READ);
+  public Permission permission3 = new Permission(ResourceType.OTHER, Action.DELETE);
+  public Permission permission4 = new Permission(ResourceType.OTHER, Action.READ);
 
   @Before
   public void setUp() {
@@ -154,7 +154,7 @@ public class RBACControllerTest extends FakeDBApplication {
 
   @Test
   public void testListDefaultPermissions() throws IOException {
-    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.DEFAULT.toString());
+    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.OTHER.toString());
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
@@ -162,8 +162,7 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(),
-        permissionUtil.getAllPermissionInfo(ResourceType.DEFAULT).size());
+        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
   }
 
   @Test
@@ -492,7 +491,7 @@ public class RBACControllerTest extends FakeDBApplication {
                 new HashSet<>(
                     Arrays.asList(
                         ResourceDefinition.builder()
-                            .resourceType(ResourceType.DEFAULT)
+                            .resourceType(ResourceType.OTHER)
                             .allowAll(true)
                             .build()))));
 
@@ -533,7 +532,7 @@ public class RBACControllerTest extends FakeDBApplication {
                 new HashSet<>(
                     Arrays.asList(
                         ResourceDefinition.builder()
-                            .resourceType(ResourceType.DEFAULT)
+                            .resourceType(ResourceType.OTHER)
                             .allowAll(true)
                             .build()))));
     RoleBinding roleBinding2 =
