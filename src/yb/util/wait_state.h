@@ -37,6 +37,11 @@
 #define SET_WAIT_STATUS(state) \
   SET_WAIT_STATUS_TO(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
+#define SET_WAIT_STATUS_TO_IF_AT(ptr, prev_state, state) \
+  if (ptr) ptr->set_state_if(prev_state, state)
+#define SET_WAIT_STATUS_IF_AT(prev_state, state) \
+  SET_WAIT_STATUS_TO_IF_AT(yb::util::WaitStateInfo::CurrentWaitState(), (prev_state), (state))
+
 // Note that we are not taking ownership or even shared ownership of the ptr.
 // The ptr should be live until this is done.
 #define ADOPT_WAIT_STATE(ptr) yb::util::WaitStateInfo::SetCurrentWaitState(ptr)
@@ -133,7 +138,7 @@ YB_DEFINE_ENUM_TYPE(
 
     // CQL Wait Events
     ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteWaitingForCB)
-    (CQLRead)(CQLWrite)
+    (CQLRead)(CQLWrite)(CQLHandling)(CQLHandlingDone)(CQLFlushAsync)(CQLFlushAsyncDone)
 
     ((RocksDB, YB_ROCKSDB))
        (BlockCacheLookupInCache)
@@ -285,6 +290,7 @@ class WaitStateInfo {
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
+  void set_state_if(WaitStateCode prev, WaitStateCode c);
   WaitStateCode get_state() const;
   WaitStateCode get_frozen_state() const;
 
