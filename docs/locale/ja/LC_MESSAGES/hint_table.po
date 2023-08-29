@@ -103,7 +103,7 @@ msgid ""
 "object and how they can affect planning. Scanning methods, join methods, "
 "joining order, row number correction, parallel query, and GUC setting. "
 "You will see the lists of hint phrases of each type in [Hint list"
-"](#hints-list)."
+"](#hint-list)."
 msgstr ""
 
 #: ../../hint_table.md:46 abe60e6b179e4a5c9da16bd602e3aa48
@@ -153,7 +153,7 @@ msgid ""
 "This hint \"Leading\" enforces the order of join on two or more tables. "
 "There are two ways of enforcing. One is enforcing specific order of "
 "joining but not restricting direction at each join level. Another enfoces"
-" join direction additionaly. Details are seen in the [hint list](#hints-"
+" join direction additionaly. Details are seen in the [hint list](#hint-"
 "list) table."
 msgstr ""
 

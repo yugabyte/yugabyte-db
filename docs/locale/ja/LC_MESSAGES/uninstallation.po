@@ -21,7 +21,7 @@ msgstr ""
 "Generated-By: Babel 2.12.1\n"
 
 #: ../../uninstallation.md:1 a1bcfa20fafc4bbea90bb31096e6d458
-msgid "Unistallation"
+msgid "Uninstallation"
 msgstr ""
 
 #: ../../uninstallation.md:3 7c118fae103f41e3b93ddf287d32db16
