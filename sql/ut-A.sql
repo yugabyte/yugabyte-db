@@ -1241,16 +1241,16 @@ CREATE INDEX ON s1.tpc(a);
 PREPARE p1 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ IndexScan(tpc) */PREPARE p2 AS SELECT * FROM s1.tpc WHERE a < 999;
 /*+ SeqScan(tpc) */PREPARE p3(int) AS SELECT * FROM s1.tpc WHERE a = $1;
-EXPLAIN EXECUTE p1;
-EXPLAIN EXECUTE p2;
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p1;
+EXPLAIN (COSTS false) EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p3(500);
 -- The DROP invalidates the plan caches
 DROP TABLE s1.tpc;
 CREATE TABLE s1.tpc AS SELECT a FROM generate_series(0, 999) a;
 CREATE INDEX ON s1.tpc(a);
-EXPLAIN EXECUTE p1;
-EXPLAIN EXECUTE p2;
-EXPLAIN EXECUTE p3(500);
+EXPLAIN (COSTS false) EXECUTE p1;
+EXPLAIN (COSTS false) EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p3(500);
 DEALLOCATE p1;
 DEALLOCATE p2;
 DEALLOCATE p3;
@@ -1262,4 +1262,4 @@ PREPARE test_query(numeric[]) AS
     (SELECT 1 AS x)
   SELECT t1.* FROM test t1, test t2
     WHERE t1.x = ANY($1) AND t1.x = t2.x;
-EXPLAIN EXECUTE test_query(array[1,2,3]);
+EXPLAIN (COSTS false) EXECUTE test_query(array[1,2,3]);
