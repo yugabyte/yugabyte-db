@@ -2842,6 +2842,7 @@ PgProcAuhNode* pg_collect_samples_proc(size_t *procCount)
 		}
 	}
 	LWLockRelease(ProcArrayLock);
+	
 	return head;	
 }
 
