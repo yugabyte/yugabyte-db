@@ -12,7 +12,6 @@ type: docs
 ---
 
 This page explores keyspaces and tables in YCQL using the command line shell `ycqlsh`.
-`ycqlsh`.
 
 {{% explore-setup-single %}}
 
@@ -26,7 +25,6 @@ Using `ycqlsh`, you can:
 - input from a file or the command line
 - use tab completion to automatically complete commands
 - use a minimal command name as long as it can be distinguished from other commands (for example, `desc` instead of `DESCRIBE`)
-  `desc` instead of `DESCRIBE`)
 
 `ycqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 
