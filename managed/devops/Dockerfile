@@ -20,7 +20,6 @@ RUN yum -y install postgresql-devel python3-devel gcc libcom_err.x86_64
 RUN yum -y install openldap-devel
 
 # Set up install script
-RUN ln -sf /usr/bin/python3 /usr/local/bin/python3
 RUN mkdir /devops
 COPY . /devops
 WORKDIR /devops

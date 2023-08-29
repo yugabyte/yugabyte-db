@@ -14,15 +14,17 @@ export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "${BASH_SOURCE%/*}"/bin/common.sh
 
+# Python modules build for yugabundle.
+cd "$yb_devops_home"
+rm -rf "$virtualenv_dir"
+docker build -t "$DOCKER_VENV_IMAGE_NAME" .
+docker run -v "$yb_devops_home:/devops" -u "$UID:$(id -g $UID)" "$DOCKER_VENV_IMAGE_NAME"
+rm -rf "$virtualenv_dir"
+
 # Use dynamic paths to shorten shebangs below 64 characters.
 bin/install_python_requirements.sh --use_dynamic_paths
 activate_virtualenv
 bin/install_ansible_requirements.sh --force
-
-# Python modules build for yugabundle.
-cd "$yb_devops_home"
-docker build -t "$DOCKER_VENV_IMAGE_NAME" .
-docker run -v "$yb_devops_home:/devops" -u "$UID:$(id -g $UID)" "$DOCKER_VENV_IMAGE_NAME"
 
 "$yb_devops_home"/yb_release.py "$@"
 rm -rf "$YB_PYTHON_MODULES_PACKAGE"
