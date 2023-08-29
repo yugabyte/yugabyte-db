@@ -131,7 +131,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             new HashSet<>(Arrays.asList(permission1, permission2)));
     rd1 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
             .build();
     rd2 = ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();

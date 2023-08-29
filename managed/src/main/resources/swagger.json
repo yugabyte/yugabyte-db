@@ -7700,7 +7700,7 @@
           "type" : "string"
         },
         "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         }
       },
@@ -7742,7 +7742,7 @@
           "uniqueItems" : true
         },
         "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         }
       },
@@ -8670,7 +8670,7 @@
         },
         "resourceType" : {
           "description" : "Resource Type",
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         },
         "resourceUUIDSet" : {
