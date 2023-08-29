@@ -34,6 +34,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -355,5 +356,16 @@ CoarseTimePoint ToCoarse(MonoTime monotime);
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 
 bool IsInitialized(CoarseTimePoint time_point);
+
+// Formats the given time point in the form "<time> (<relation_to_now>)" where <relation_to_now>
+// is either "<interval> from now" or "<interval> ago", depending on whether the given point in
+// time is before or after the current moment, passed in as "now".
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now);
+
+// The same as above but skips the relative part if `now` is not specified.
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now);
+
+// The same as above, but only returns the part in parentheses, without the parentheses.
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now);
 
 } // namespace yb

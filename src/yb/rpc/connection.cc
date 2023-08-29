@@ -206,7 +206,8 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
     auto current_last_activity_time = last_activity_time();
     deadline = current_last_activity_time + timeout;
-    DVLOG_WITH_PREFIX(5) << Format("now: $0, deadline: $1, timeout: $2", now, deadline, timeout);
+    DVLOG_WITH_PREFIX(5) << Format(
+        "now: $0, deadline: $1, timeout: $2", now, ToStringRelativeToNow(deadline, now), timeout);
     if (now > deadline) {
       auto passed = reactor_->cur_time() - current_last_activity_time;
       reactor_->DestroyConnection(
