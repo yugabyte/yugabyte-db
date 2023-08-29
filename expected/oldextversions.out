@@ -82,6 +82,15 @@ Objects in extension "pg_hint_plan"
  table hint_plan.hints
 (2 rows)
 
+ALTER EXTENSION pg_hint_plan UPDATE TO "1.3.9";
+\dx+ pg_hint_plan
+Objects in extension "pg_hint_plan"
+       Object description        
+---------------------------------
+ sequence hint_plan.hints_id_seq
+ table hint_plan.hints
+(2 rows)
+
 ALTER EXTENSION pg_hint_plan UPDATE TO "1.4";
 \dx+ pg_hint_plan
 Objects in extension "pg_hint_plan"
@@ -100,7 +109,25 @@ Objects in extension "pg_hint_plan"
  table hint_plan.hints
 (2 rows)
 
+ALTER EXTENSION pg_hint_plan UPDATE TO "1.4.2";
+\dx+ pg_hint_plan
+Objects in extension "pg_hint_plan"
+       Object description        
+---------------------------------
+ sequence hint_plan.hints_id_seq
+ table hint_plan.hints
+(2 rows)
+
 ALTER EXTENSION pg_hint_plan UPDATE TO "1.5";
+\dx+ pg_hint_plan
+Objects in extension "pg_hint_plan"
+       Object description        
+---------------------------------
+ sequence hint_plan.hints_id_seq
+ table hint_plan.hints
+(2 rows)
+
+ALTER EXTENSION pg_hint_plan UPDATE TO "1.5.1";
 \dx+ pg_hint_plan
 Objects in extension "pg_hint_plan"
        Object description        
