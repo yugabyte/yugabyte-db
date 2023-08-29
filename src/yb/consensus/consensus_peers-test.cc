@@ -50,7 +50,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -59,8 +58,6 @@
 using namespace std::chrono_literals;
 
 METRIC_DECLARE_entity(tablet);
-DECLARE_int32(stuck_peer_call_threshold_ms);
-DECLARE_bool(force_recover_from_stuck_peer_call);
 
 namespace yb {
 namespace consensus {
