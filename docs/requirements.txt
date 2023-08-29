@@ -42,7 +42,7 @@ myst-parser==0.19.0
     # via -r requirements.in
 packaging==23.0
     # via sphinx
-pygments==2.14.0
+pygments>=2.15.0
     # via sphinx
 pyyaml==6.0
     # via myst-parser
