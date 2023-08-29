@@ -45,10 +45,12 @@ class RpcCall : public OutboundData {
     return "";
   }
 
+  TransferState transfer_state() const { return transfer_state_.load(std::memory_order_acquire); }
+
  private:
   virtual void NotifyTransferred(const Status& status, const ConnectionPtr& conn) = 0;
 
-  TransferState state_ = TransferState::PENDING;
+  std::atomic<TransferState> transfer_state_{TransferState::PENDING};
 };
 
 }  // namespace rpc

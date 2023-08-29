@@ -45,8 +45,9 @@ bool DeadlineInfo::CheckAndSetDeadlinePassed() {
 }
 
 std::string DeadlineInfo::ToString() const {
+  auto now = CoarseMonoClock::now();
   return Format("{ now: $0 deadline: $1 counter: $2 }",
-                CoarseMonoClock::now(), deadline_, counter_);
+                now, ToStringRelativeToNow(deadline_, now), counter_);
 }
 
 void SimulateTimeoutIfTesting(CoarseTimePoint* deadline) {

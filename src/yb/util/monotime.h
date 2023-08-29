@@ -34,6 +34,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest_prod.h>
@@ -343,7 +344,27 @@ std::string ToString(CoarseMonoClock::TimePoint value);
 CoarseTimePoint ToCoarse(MonoTime monotime);
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 
+// Returns false if the given time point is the minimum possible value of CoarseTimePoint. The
+// implementation is consistent with MonoDelta's notion of being initialized, looking at the time
+// since epoch. Note that CoarseTimePoint::min() is not the default value of a CoarseTimePoint.
+// Its default value is a time point represented by zero, which may be an arbitrary point in time,
+// since CLOCK_MONOTONIC represents monotonic time since some unspecified starting point.
 bool IsInitialized(CoarseTimePoint time_point);
+
+// Returns true if the given time point is either the minimum or maximum possible value.
+bool IsExtremeValue(CoarseTimePoint time_point);
+
+// Formats the given time point in the form "<time> (<relation_to_now>)" where <relation_to_now>
+// is either "<interval> from now" or "<interval> ago", depending on whether the given point in
+// time is before or after the current moment, passed in as "now".
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now);
+
+// The same as above but skips the relative part if `now` is not specified.
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now);
+
+// Only returns the relation of t to now (the parenthesized part of the ToStringRelativeToNow
+// return value, without the parentheses).
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now);
 
 } // namespace yb
 

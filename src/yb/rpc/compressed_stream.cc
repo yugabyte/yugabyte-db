@@ -26,6 +26,7 @@
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -53,7 +54,8 @@ class Compressor {
 
   // Compress specified vector of input buffers into single output buffer.
   virtual Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) = 0;
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD = 0;
 
   // Decompress specified input slice to specified output buffer.
   virtual Result<ReadBufferFull> Decompress(StreamReadBuffer* inp, StreamReadBuffer* out) = 0;
@@ -177,7 +179,8 @@ class ZlibCompressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     RefCntBuffer output(deflateBound(&deflate_stream_, TotalLen(input)));
     deflate_stream_.avail_out = static_cast<unsigned int>(output.size());
     deflate_stream_.next_out = output.udata();
@@ -398,7 +401,8 @@ class SnappyCompressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     RangeSource<SmallRefCntBuffers::const_iterator> source(input.begin(), input.end());
     auto input_size = source.Available();
     bool stop = false;
@@ -685,7 +689,8 @@ class LZ4Compressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     // Increment iterator in loop body to be able to check whether it is last iteration or not.
     VLOG_WITH_FUNC(4) << "input: " << CollectionToString(input, [](const auto& buf) {
       return buf.size();
@@ -772,7 +777,7 @@ class CompressedRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  Status ProcessHeader() override {
+  Status ProcessHeader() ON_REACTOR_THREAD override {
     constexpr int kHeaderLen = 3;
 
     auto data = stream_->ReadBuffer().AppendedVecs();
@@ -797,13 +802,13 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->Established(RefinedStreamState::kDisabled);
   }
 
-  Status Send(OutboundDataPtr data) override {
+  Status Send(OutboundDataPtr data) ON_REACTOR_THREAD override {
     boost::container::small_vector<RefCntBuffer, 10> input;
     data->Serialize(&input);
     return compressor_->Compress(input, stream_, std::move(data));
   }
 
-  Status Handshake() override {
+  Status Handshake() ON_REACTOR_THREAD override {
     if (stream_->local_side() == LocalSide::kClient) {
       compressor_ = CreateOutboundCompressor(stream_->buffer_tracker());
       if (!compressor_) {

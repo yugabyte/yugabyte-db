@@ -1292,7 +1292,9 @@ int RedisServiceImplData::PublishToLocalClients(
     // Handle Monitor and Subscribe clients.
     for (auto connection : *clients) {
       DVLOG(3) << "Publishing to subscribed client " << connection->ToString();
-      connection->QueueOutboundData(out);
+      auto queuing_status = connection->QueueOutboundData(out);
+      LOG_IF(DFATAL, !queuing_status.ok())
+          << "Failed to queue outbound data: " << queuing_status;
       num_pushed_to++;
     }
   }
@@ -1308,7 +1310,9 @@ int RedisServiceImplData::PublishToLocalClients(
       OutboundDataPtr out = std::make_shared<yb::rpc::StringOutboundData>(
           PMessageFor(pattern, channel, message), "Publishing to Channel");
       for (auto remote : clients_subscribed_to_pattern) {
-        remote->QueueOutboundData(out);
+        auto queuing_status = remote->QueueOutboundData(out);
+        LOG_IF(DFATAL, !queuing_status.ok())
+            << "Failed to queue outbound data: " << queuing_status;
         num_pushed_to++;
       }
     }

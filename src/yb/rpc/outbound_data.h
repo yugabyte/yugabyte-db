@@ -31,6 +31,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 namespace yb {
 

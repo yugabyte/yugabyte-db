@@ -116,4 +116,9 @@
     } \
   } while (0)
 
-#endif // YB_UTIL_STATUS_FORMAT_H
+#define RSTATUS_DCHECK_NOTNULL(expr) \
+    RSTATUS_DCHECK((expr) != nullptr, \
+                   RuntimeError, \
+                   "$0 is null in $1", BOOST_PP_STRINGIZE(expr), __PRETTY_FUNCTION__)
+
+#endif  // YB_UTIL_STATUS_FORMAT_H

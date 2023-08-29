@@ -195,7 +195,7 @@ Status YBInboundConnectionContext::HandleCall(
     return Status::OK();
   }
 
-  reactor->messenger()->Handle(call, Queue::kTrue);
+  reactor->messenger().Handle(call, Queue::kTrue);
 
   return Status::OK();
 }
@@ -239,11 +239,19 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
         // for sending is still in queue due to RPC/networking issues, so no need to queue
         // another one.
         VLOG(4) << connection->ToString() << ": " << "Sending heartbeat, now: " << AsString(now)
-                << ", deadline: " << AsString(deadline)
+                << ", deadline: " << ToStringRelativeToNow(deadline, now)
                 << ", last_write_time_: " << AsString(last_write_time_)
                 << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
-        connection->QueueOutboundData(HeartbeatOutboundData::Instance());
-        last_heartbeat_sending_time_ = now;
+        auto queuing_status = connection->QueueOutboundData(HeartbeatOutboundData::Instance());
+        if (queuing_status.ok()) {
+          last_heartbeat_sending_time_ = now;
+        } else {
+          // Do not DFATAL here. This happens during shutdown and should not result in frequent
+          // log messages.
+          LOG(WARNING) << "Could not queue an inbound connection heartbeat message: "
+                       << queuing_status;
+          // We will try again at the next timer event.
+        }
       }
       timer_.Start(HeartbeatPeriod());
     } else {
@@ -531,8 +539,8 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   }
 }
 
-void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
-  connection->QueueOutboundData(ConnectionHeaderInstance());
+Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
+  return connection->QueueOutboundData(ConnectionHeaderInstance());
 }
 
 Result<ProcessCallsResult> YBOutboundConnectionContext::ProcessCalls(

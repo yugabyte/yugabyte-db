@@ -413,17 +413,18 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
     LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";
     return false;
   }
-  auto task_id = master_->messenger()->ScheduleOnReactor(
+  auto task_id_result = master_->messenger()->ScheduleOnReactor(
       std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
-      MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION(), master_->messenger());
-  VLOG_WITH_PREFIX_AND_FUNC(4) << "Task id: " << task_id;
-  reactor_task_id_.store(task_id, std::memory_order_release);
-
-  if (task_id == rpc::kInvalidTaskId) {
-    AbortTask(STATUS(Aborted, "Messenger closing"));
+      MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION());
+  if (!task_id_result.ok()) {
+    AbortTask(task_id_result.status());
     UnregisterAsyncTask();
     return false;
   }
+  auto task_id = *task_id_result;
+
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Task id: " << task_id;
+  reactor_task_id_.store(task_id, std::memory_order_release);
 
   return TransitionToWaitingState(MonitoredTaskState::kScheduling);
 }
