@@ -272,7 +272,7 @@ CreateSharedProcArray(void)
 }
 
 
-PGProcAUHEntryList proc_getter(volatile PGPROC *proc)
+PGProcAUHEntryList fetch_proc_entry(volatile PGPROC *proc)
 {
 	PGProcAUHEntryList procEntry;
 	int index = 0;
@@ -2836,13 +2836,13 @@ PgProcAuhNode* pg_collect_samples_proc(size_t *procCount)
 		volatile PGPROC *proc  = &allProcs[pgprocno];
 		if(proc != NULL && proc->pid != 0 && proc->wait_event_info != 0)
 		{
-			PGProcAUHEntryList entry = proc_getter(proc);
+			PGProcAUHEntryList entry = fetch_proc_entry(proc);
 			(*procCount)++;
 			insertNode(&head, entry);
 		}
 	}
 	LWLockRelease(ProcArrayLock);
-	
+
 	return head;	
 }
 
