@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			   od_stat_t *avg,
 #ifdef PROM_FOUND
@@ -20,6 +22,27 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 {
 	od_instance_t *instance = argv[0];
 	(void)current;
+
+	if (instance->yb_stats != NULL) {
+		uint8_t index = 0;
+		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
+			index = 1;
+		}
+
+		od_route_lock(route);
+		instance->yb_stats[index].active_clients = route->client_pool.count_active;
+		instance->yb_stats[index].queued_clients = route->client_pool.count_queue;
+		instance->yb_stats[index].idle_or_pending_clients = route->client_pool.count_pending;
+		instance->yb_stats[index].active_servers = route->server_pool.count_active;
+		instance->yb_stats[index].idle_servers = route->server_pool.count_idle;
+		instance->yb_stats[index].query_rate = avg->count_query;
+		instance->yb_stats[index].transaction_rate = avg->count_tx;
+		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;
+		od_route_unlock(route);
+	}
+
+	if(!instance->config.log_stats)
+		return 0;
 
 	struct {
 		int database_len;
@@ -153,7 +176,7 @@ static inline void od_cron_stat(od_cron_t *cron)
 
 	/* update stats per route and print info */
 	od_route_pool_stat_cb_t stat_cb;
-	if (!instance->config.log_stats) {
+	if (!instance->config.log_stats && instance->yb_stats == NULL) {
 		stat_cb = NULL;
 	} else {
 		stat_cb = od_cron_stat_cb;
