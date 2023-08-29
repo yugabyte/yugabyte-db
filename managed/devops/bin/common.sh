@@ -84,7 +84,7 @@ set_python_executable() {
 # Constants
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
-readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
+readonly PYTHON3_EXECUTABLES=('python3.8' 'python3' 'python3.7' 'python3.6')
 readonly PYTHON2_VERSIONS=('python2.7')
 readonly PYTHON3_VERSIONS=('python3.6' 'python3.7' 'python3.8' 'python3.9' 'python3.10' \
                            'python3.11')
@@ -92,7 +92,8 @@ readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-36-cp36m' 'manylinux2014_x86_
                          'manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39')
 readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-36-cp36m' 'macosx-10.10-x86_64-cp-37-cp37m', \
                          'macosx-10.10-x86_64-cp-38-cp38' 'macosx-10.10-x86_64-cp-39-cp39')
-DOCKER_IMAGE_NAME="yb-anywhere-pex-builder"
+DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"
+DOCKER_VENV_IMAGE_NAME="yba-devops-venv-builder"
 PYTHON_EXECUTABLE=""
 
 readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
@@ -345,7 +346,6 @@ activate_virtualenv() {
 }
 
 create_pymodules_package() {
-  activate_virtualenv
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
