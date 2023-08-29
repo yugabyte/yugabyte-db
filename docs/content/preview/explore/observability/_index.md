@@ -39,7 +39,7 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 
 ## Alerting and monitoring
 
-Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabytedDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/) which provide industry-standard alerting functionalities.
+Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabytedDB are exportable to third-party monitoring tools like [Prometheus](../prometheus-integration/) and [Grafana](../grafana-dashboard/) which provide industry-standard alerting functionalities.
 
 {{<note>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [Yugabytedb Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
