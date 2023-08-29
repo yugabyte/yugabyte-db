@@ -1,14 +1,16 @@
 ---
-title: Java Driver 4.6 for YCQL
+title: Java Driver 4.15 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Java application using YCQL 4.6 driver
+description: Connect a Java application using YCQL 4.15 driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
-  stable:
-    identifier: ycql-java-driver-4.6
+  preview:
+    identifier: ycql-java-driver-4.x
     parent: java-drivers
     weight: 500
+aliases:
+  - /preview/drivers-orms/java/ycql-4.6/
 type: docs
 ---
 
@@ -33,22 +35,22 @@ type: docs
     </a>
   </li>
   <li >
-    <a href="../ycql-4.6/" class="nav-link active">
+    <a href="../ycql-4.x/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.6)
+      YugabyteDB Java Driver for YCQL (4.15)
     </a>
   </li>
 </ul>
 
 ## Maven
 
-To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.6.0-yb-x/), add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x), add the following Maven dependency to your application:
 
 ```xml
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
+   <version>4.15.0-yb-1</version>
  </dependency>
 ```
 
@@ -87,7 +89,7 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-6</version>
+      <version>4.15.0-yb-1</version>
     </dependency>
   </dependencies>
 
