@@ -55,18 +55,17 @@ When the read replicas in a region fail, the application redirects its reads to 
 
 Notice how the application in `us-west` reads from the follower in `us-central` when the read replicas in `us-west` fail. The read latency is 40 ms, still much less than the original 60 ms.
 
-## Example Scenarios
+## Example scenario
 
-### Apps in multiple geographies
+### Applications in multiple geographies
 
-Let's say that you have apps in 3 geographies, say `us`, `eu` and `sg`. You could set up a [Global database](./global-database) that spans across the `3` geographies and set preferred leaders to one geography, where you have the most users (say `eu`). But this means that all the writes have to be replicated at least to one another geography (other than `eu`) apps. This would lead to increased write latency but apps in other geographies could use [Follower Reads](./follower-reads) to read slightly stale data with reduced latency.
+Suppose that you have applications in three geographies, say `us`, `eu` and `sg`. You could set up a [global database](../global-database) that spans across the three geographies and set preferred leaders to one geography, where you have the most users (say `eu`). But this means that all the application writes would have to be replicated to at least one other geography (other than `eu`). This could lead to increased write latency but applications in other geographies could use [follower reads](../follower-reads) to read slightly stale data with reduced latency.
 
-In this scenario, you could consider setting up your primary cluster in `eu`, so that all the replicas are also in `eu` and set up separate read replica clusters in `us` and `sg`. This would ensure low latency for writes as replication happens within the same geography and at the same time, data will be replicated quickly to the read replica clusters ensuring low read latency for users in `us` and `sg`.
+In this scenario, you could consider setting up your primary cluster in `eu`, so that all the replicas are also in `eu` and set up separate read replica clusters in `us` and `sg`. This would ensure low latency for writes as replication happens in the same geography and at the same time, data will be replicated quickly to the read replica clusters ensuring low read latency for users in `us` and `sg`.
 
 {{<note>}}
-Although this would involve more nodes than a simple RF3 Global Database, this would ensure low latency for both writes and stale reads.
+Although this would involve more nodes than a basic RF3 global database, it ensures low latency for both writes and stale reads.
 {{</note>}}
-
 
 ## Learn more
 
