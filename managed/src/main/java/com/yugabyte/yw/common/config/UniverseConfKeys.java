@@ -894,4 +894,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "replication streams to completely drain from the source to the target universe",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipBackupMetadataValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_metadata_validation",
+          ScopeType.UNIVERSE,
+          "Skip backup metadata validation",
+          "Skip backup metadata based validation during restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -165,7 +165,7 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
               + " does not support auto flags");
     }
     Set<String> xClusterUniverseAutoFlags =
-        gFlagsValidation.extractAutoFlags(xClusterUniverseSoftwareVersion, serverType.name())
+        gFlagsValidation.extractAutoFlags(xClusterUniverseSoftwareVersion, serverType)
             .autoFlagDetails.stream()
             .map(autoFlagDetails -> autoFlagDetails.name)
             .collect(Collectors.toSet());
