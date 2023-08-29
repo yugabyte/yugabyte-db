@@ -272,7 +272,7 @@ CreateSharedProcArray(void)
 }
 
 
-PGProcAUHEntryList proc_getter(volatile PGPROC *proc, int numprocs)
+PGProcAUHEntryList proc_getter(volatile PGPROC *proc)
 {
 	PGProcAUHEntryList procEntry;
 	int index = 0;
@@ -285,7 +285,6 @@ PGProcAUHEntryList proc_getter(volatile PGPROC *proc, int numprocs)
 	procEntry.client_node_host = proc->client_node_host;
 	procEntry.client_node_port = proc->client_node_port;
 	procEntry.queryid = proc->queryid;
-	procEntry.numprocs = numprocs;
 	return procEntry;
 }
 /*
@@ -2825,7 +2824,7 @@ void freeLinkedList(PgProcAuhNode *head) {
     }
 }
 
-PgProcAuhNode* pg_collect_samples_proc()
+PgProcAuhNode* pg_collect_samples_proc(size_t *procCount)
 {
 	ProcArrayStruct *arrayP = procArray;
 	PgProcAuhNode *head = NULL;
@@ -2837,7 +2836,8 @@ PgProcAuhNode* pg_collect_samples_proc()
 		volatile PGPROC *proc  = &allProcs[pgprocno];
 		if(proc != NULL && proc->pid != 0 && proc->wait_event_info != 0)
 		{
-			PGProcAUHEntryList entry = proc_getter(proc, procArray->numProcs);
+			PGProcAUHEntryList entry = proc_getter(proc);
+			(*procCount)++;
 			insertNode(&head, entry);
 		}
 	}

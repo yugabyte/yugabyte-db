@@ -99,7 +99,6 @@ typedef struct PGProcAUHEntryList
   uint32 client_node_host;
   uint16 client_node_port;
   int64	queryid;
-  int numprocs;
 } PGProcAUHEntryList;
 
 typedef struct PgProcAuhNode 

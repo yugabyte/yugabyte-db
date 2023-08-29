@@ -176,25 +176,24 @@ yb_auh_main(Datum main_arg) {
 
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
-  PgProcAuhNode *nodes_head = pg_collect_samples_proc();
+  size_t procCount = 0;
+  PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
   PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
-  if (nodes_head != NULL) {
-      PGProcAUHEntryList first_proc = nodes_head->data;
-      int procCount = first_proc.numprocs;
-      if (procCount != 0) {
-          sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
-      }
+  if (nodes_head != NULL && procCount != 0) 
+  {
+    sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
   }
-  while (current != NULL) {
+  while (current != NULL) 
+  {
     PGProcAUHEntryList proc = current->data;
-    if (random() < sample_rate * MAX_RANDOM_VALUE) {
-        auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
-                        proc.wait_event_info, "", proc.top_level_node_id,
-                        proc.client_node_host, proc.client_node_port,
-                        proc.queryid, auh_sample_time, sample_rate);
+    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    {
+      auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
+                      proc.wait_event_info, "", proc.top_level_node_id,
+                      proc.client_node_host, proc.client_node_port,
+                      proc.queryid, auh_sample_time, sample_rate);
     }
-    
     current = current->next;
   }
   freeLinkedList(nodes_head); 
