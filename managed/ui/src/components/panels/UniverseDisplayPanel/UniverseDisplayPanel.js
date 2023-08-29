@@ -15,7 +15,8 @@ import {
   getPrimaryCluster,
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodeCount
+  getUniverseNodeCount,
+  optimizeVersion
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
@@ -61,11 +62,9 @@ class UniverseDisplayItem extends Component {
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
     if (isFinite(pricePerHour)) {
-      costPerMonth = <YBCost
-        value={pricePerHour}
-        multiplier={'month'}
-        isPricingKnown={isPricingKnown}
-      />;
+      costPerMonth = (
+        <YBCost value={pricePerHour} multiplier={'month'} isPricingKnown={isPricingKnown} />
+      );
     }
     const universeCreationDate = universe.creationDate ? (
       <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
@@ -96,6 +95,13 @@ class UniverseDisplayItem extends Component {
               </DescriptionItem>
               <DescriptionItem title="Created">
                 <span>{universeCreationDate}</span>
+              </DescriptionItem>
+              <DescriptionItem title="Version">
+                <span>
+                  {optimizeVersion(
+                    primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
+                  )}
+                </span>
               </DescriptionItem>
             </div>
           </div>

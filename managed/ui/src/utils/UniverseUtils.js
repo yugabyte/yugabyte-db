@@ -143,7 +143,7 @@ export function isKubernetesUniverse(currentUniverse) {
 
 export const isYbcEnabledUniverse = (universeDetails) => {
   return universeDetails.enableYbc;
-}
+};
 
 /**
  * Returns an array of unique regions in the universe
@@ -196,4 +196,12 @@ export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) =>
     href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
   }
   return href;
+};
+
+export const optimizeVersion = (version) => {
+  if (parseInt(version[version.length - 1], 10) === 0) {
+    return optimizeVersion(version.slice(0, version.length - 1));
+  } else {
+    return version.join('.');
+  }
 };
