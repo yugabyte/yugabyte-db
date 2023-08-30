@@ -41,7 +41,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-        put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
       }
     };
 

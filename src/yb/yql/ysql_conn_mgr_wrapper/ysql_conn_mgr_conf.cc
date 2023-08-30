@@ -30,12 +30,14 @@
 DECLARE_bool(logtostderr);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
-DECLARE_uint32(ysql_conn_mgr_pool_size);
+DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
 DECLARE_uint32(ysql_conn_mgr_idle_time);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_uint32(ysql_conn_mgr_num_workers);
 DECLARE_uint32(ysql_conn_mgr_stats_interval);
+DECLARE_uint32(ysql_conn_mgr_min_conns_per_db);
+DECLARE_int32(ysql_max_connections);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -117,15 +119,15 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%global_pool_size%}", std::to_string(global_pool_size_)},
     {"{%num_resolver_threads%}", std::to_string(num_resolver_threads_)},
     {"{%num_worker_threads%}", get_num_workers(FLAGS_ysql_conn_mgr_num_workers)},
-    {"{%server_lifetime%}", std::to_string(server_lifetime_)},
-    {"{%ysql_conn_mgr_idle_time%}", std::to_string(FLAGS_ysql_conn_mgr_idle_time)},
+    {"{%pool_ttl%}", std::to_string(FLAGS_ysql_conn_mgr_idle_time)},
     {"{%ysql_conn_mgr_port%}", std::to_string(FLAGS_ysql_conn_mgr_port)},
     {"{%ysql_conn_mgr_max_client_connections%}",
      std::to_string(FLAGS_ysql_conn_mgr_max_client_connections)},
     {"{%ysql_port%}", std::to_string(postgres_address_.port())},
     {"{%application_name_add_host%}", BoolToString(application_name_add_host_)},
     {"{%log_debug%}", BoolToString(log_debug_)},
-    {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)}};
+    {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
+    {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)}};
 
   // Create a config file.
   WriteConfig(conf_file_path, ysql_conn_mgr_configs);
@@ -133,13 +135,9 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
 }
 
 void YsqlConnMgrConf::UpdateConfigFromGFlags() {
-  // Divide the pool between the global pool and control connection pool.
-  global_pool_size_ = FLAGS_ysql_conn_mgr_pool_size * 9 / 10;
-  control_connection_pool_size_ = (FLAGS_ysql_conn_mgr_pool_size) / 10;
-  if (control_connection_pool_size_ == 0) {
-    control_connection_pool_size_++;
-    global_pool_size_--;
-  }
+  // TODO: Set the value of max_global_server_conns as per the machine configuration.
+  global_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
+  control_connection_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
