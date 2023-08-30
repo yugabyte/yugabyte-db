@@ -92,8 +92,11 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       name: "schema_name",
       label: t("clusterDetail.voyager.schema"),
       options: {
+        customBodyRender: (schema: string[]) => schema.join(", "),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({
+          style: { padding: "8px 16px", maxWidth: 120, wordBreak: "break-word" },
+        }),
       },
     },
     {
@@ -110,7 +113,9 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       label: t("clusterDetail.voyager.sourceDB"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px", maxWidth: 100 } }),
+        setCellProps: () => ({
+          style: { padding: "8px 16px", maxWidth: 120, wordBreak: "break-word" },
+        }),
       },
     },
     {

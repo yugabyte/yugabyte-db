@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { Editor } from "@monaco-editor/react";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
+import { MigrationPhase } from "../migration";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -39,6 +40,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({ heading, migration }
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
+
+  const isRunning = migration.migration_phase === MigrationPhase["Export Schema"];
+  // const isComplete = migration.migration_phase > MigrationPhase["Export Schema"]; We don't need this as there is no pending state
+  // const isPending = false; Pending state will not be availble for this step
 
   const [value] = React.useState<string>(
     "CREATE VIEW Failing_Students AS\nSELECT S_NAME, Student_ID\nFROM STUDENT\nWHERE GPA > 40;"
@@ -81,8 +86,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({ heading, migration }
     ],
     []
   );
-
-  const isRunning = migration.migration_phase === 0;
 
   return (
     <Box>

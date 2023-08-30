@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { Migration } from "../MigrationOverview";
 import { ErrorRounded, InfoOutlined } from "@material-ui/icons";
 import { STATUS_TYPES, YBAccordion, YBStatus, YBTable } from "@app/components";
+import { MigrationPhase } from "../migration";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -43,6 +44,10 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, mig
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
+
+  const isRunning = migration.migration_phase === MigrationPhase["Analyze Schema"];
+  const isComplete = migration.migration_phase > MigrationPhase["Analyze Schema"];
+  const isPending = !isRunning && !isComplete;
 
   const complexityData = React.useMemo(
     () => [
@@ -132,21 +137,38 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, mig
         {heading}
       </Typography>
 
-      {migration.migration_phase === 0 && (
-        <Box display="flex" gridGap={4} alignItems="center">
-          <Box px={1}>
-            <YBStatus type={STATUS_TYPES.PENDING} size={16} />
-          </Box>
-          <Box display="flex" flexDirection="column">
-            <Typography variant="h5">{t("clusterDetail.voyager.analyzeSchemaPending")}</Typography>
-            <Typography variant="body2">
-              {t("clusterDetail.voyager.analyzeSchemaPendingDesc")}
-            </Typography>
-          </Box>
+      <Box display="flex" gridGap={4} alignItems="center">
+        <Box px={isPending ? 1 : 0}>
+          <YBStatus
+            type={
+              isRunning
+                ? STATUS_TYPES.IN_PROGRESS
+                : isComplete
+                ? STATUS_TYPES.SUCCESS
+                : STATUS_TYPES.PENDING
+            }
+            size={isPending ? 16 : 42}
+          />
         </Box>
-      )}
+        <Box display="flex" flexDirection="column">
+          <Typography variant="h5">
+            {isPending
+              ? t("clusterDetail.voyager.analyzeSchemaPending")
+              : isRunning
+              ? t("clusterDetail.voyager.analyzeSchemaRunning")
+              : t("clusterDetail.voyager.analyzeSchemaComplete")}
+          </Typography>
+          <Typography variant="body2">
+            {isPending
+              ? t("clusterDetail.voyager.analyzeSchemaPendingDesc")
+              : isRunning
+              ? t("clusterDetail.voyager.analyzeSchemaRunningDesc")
+              : t("clusterDetail.voyager.analyzeSchemaCompleteDesc")}
+          </Typography>
+        </Box>
+      </Box>
 
-      {migration.migration_phase > 0 && (
+      {isComplete && (
         <>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} mt={5}>
             <YBAccordion

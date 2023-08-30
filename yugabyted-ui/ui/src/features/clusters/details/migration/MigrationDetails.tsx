@@ -21,16 +21,8 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({ steps = [""], migr
 
   const [selectedStep, setSelectedStep] = React.useState<number>(migration.current_step);
   React.useEffect(() => {
-    setSelectedStep(
-      migration.migration_phase === 0
-        ? 1
-        : migration.migration_phase === 1
-        ? 0
-        : migration.migration_phase <= 4
-        ? 2
-        : 3
-    );
-  }, [migration]);
+    setSelectedStep(migration.current_step);
+  }, [migration.current_step]);
 
   return (
     <Box mt={1}>

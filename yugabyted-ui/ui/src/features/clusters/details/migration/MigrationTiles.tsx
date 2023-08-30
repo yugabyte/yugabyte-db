@@ -4,6 +4,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { YBTooltip } from "@app/components";
+import { MigrationPhase, MigrationStep } from "./migration";
 
 const useStyles = makeStyles((theme) => ({
   wrapper: {
@@ -91,14 +92,18 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
         let completed = false;
         let running = false;
 
+        // Phase 0, 1    === Plan and Assess & Migrate Schema                         steps active
+        // Phase 2, 3, 4 === Plan and Assess & Migrate Schema & Migrate Data          steps active
+        // Phase 5       === Plan and Assess & Migrate Schema & Migrate Data & Verify steps active
+
         if (phase != null) {
           // Export schema phase
-          if (phase === 0) {
-            if (index >= 2) {
+          if (phase === MigrationPhase["Export Schema"]) {
+            if (index >= MigrationStep["Migrate Data"]) {
               // Everything except first two steps will be pending and disabled
               notStarted = true;
               disabled = true;
-            } else if (index === 0) {
+            } else if (index === MigrationStep["Plan And Assess"]) {
               // Plan and assess will be pending
               notStarted = true;
             } else {
@@ -108,12 +113,12 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           }
 
           // Analyze schema phase
-          else if (phase === 1) {
-            if (index >= 2) {
+          else if (phase === MigrationPhase["Analyze Schema"]) {
+            if (index >= MigrationStep["Migrate Data"]) {
               // Everything except first two steps will be pending and disabled
               disabled = true;
               notStarted = true;
-            } else if (index === 0) {
+            } else if (index === MigrationStep["Plan And Assess"]) {
               // Plan and assess will be running
               running = true;
             } else {
@@ -123,11 +128,11 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           }
 
           // Export data, import schema and import data phase
-          else if (phase <= 4) {
-            if (index <= 1) {
+          else if (phase <= MigrationPhase["Import Data"]) {
+            if (index <= MigrationStep["Migrate Schema"]) {
               // Plan and assess and migrate schema will be completed
               completed = true;
-            } else if (index === 2) {
+            } else if (index === MigrationStep["Migrate Data"]) {
               // Migrate data will be running
               running = true;
             } else {
@@ -143,9 +148,6 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             completed = true;
           }
         }
-
-        /* const disabled = phase != null && index > phase;
-        const notStarted = phase != null && index > phase; */
 
         return (
           <Card key={step} className={clsx(classes.card, disabled && classes.disabledCard)}>

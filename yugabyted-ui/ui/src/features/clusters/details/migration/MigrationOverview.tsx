@@ -5,6 +5,7 @@ import { YBDropdown } from "@app/components";
 import { MigrationList } from "./MigrationList";
 import TriangleDownIcon from "@app/assets/caret-down.svg";
 import { MigrationDetails } from "./MigrationDetails";
+import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -60,7 +61,7 @@ const migrationDataList = [
     complexity: "",
     source_dbVersion: "Oracle 18c",
     database_name: "database1",
-    schema_name: "yugabyted",
+    schema_name: ["yugabyted"],
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -72,7 +73,7 @@ const migrationDataList = [
     complexity: "Easy",
     source_dbVersion: "PostgreSQL 13.3",
     database_name: "database2",
-    schema_name: "yugabyted",
+    schema_name: ["yugabyted"],
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -84,7 +85,7 @@ const migrationDataList = [
     complexity: "Medium",
     source_dbVersion: "MySQL 8.0.25",
     database_name: "database3",
-    schema_name: "yugabyted",
+    schema_name: ["yugabyted", "sales"],
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -96,7 +97,7 @@ const migrationDataList = [
     complexity: "Medium",
     source_dbVersion: "MySQL 8.0.25",
     database_name: "database4",
-    schema_name: "yugabyted",
+    schema_name: ["marketing"],
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -108,7 +109,7 @@ const migrationDataList = [
     complexity: "Medium",
     source_dbVersion: "MySQL 8.0.25",
     database_name: "database5",
-    schema_name: "yugabyted",
+    schema_name: ["yugabyted", "marketing", "sales"],
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -120,7 +121,7 @@ const migrationDataList = [
     complexity: "Hard",
     source_dbVersion: "Oracle 19c",
     database_name: "database6",
-    schema_name: "yugabyted",
+    schema_name: ["engineering"],
     status: "Completed",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -134,20 +135,17 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const migrationSteps = [
-    t("clusterDetail.voyager.planAndAssess"),
-    t("clusterDetail.voyager.migrateSchema"),
-    t("clusterDetail.voyager.migrateData"),
-    t("clusterDetail.voyager.verify"),
-  ];
-
   const migrationData = migrationDataList.map((data) => {
     return {
       ...data,
-      // Phase 0, 1    === Plan and Assess & Migrate Schema                         pages active
-      // Phase 2, 3, 4 === Plan and Assess & Migrate Schema & Migrate Data          pages active
-      // Phase 5       === Plan and Assess & Migrate Schema & Migrate Data & Verify pages active
-      current_step: data.migration_phase <= 1 ? 1 : data.migration_phase <= 4 ? 2 : 3,
+      current_step:
+        data.migration_phase === MigrationPhase["Export Schema"]
+          ? MigrationStep["Migrate Schema"]
+          : data.migration_phase === MigrationPhase["Analyze Schema"]
+          ? MigrationStep["Plan And Assess"]
+          : data.migration_phase <= MigrationPhase["Import Data"]
+          ? MigrationStep["Migrate Data"]
+          : MigrationStep["Verify"],
     };
   });
 
