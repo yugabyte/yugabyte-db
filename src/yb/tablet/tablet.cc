@@ -187,6 +187,9 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
+DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
+    "Whether to dump changed metrics in tracing.");
+
 DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, false,
     "Whether to return changed metrics for YSQL queries in RPC response.");
 
@@ -325,6 +328,16 @@ namespace {
 
 thread_local docdb::DocDBStatistics scoped_docdb_statistics;
 thread_local ScopedTabletMetrics scoped_tablet_metrics;
+
+void TraceScopedMetrics() {
+  std::stringstream ss;
+  ss << "Metric changes:\n";
+  size_t changes = scoped_docdb_statistics.Dump(&ss);
+  changes += scoped_tablet_metrics.Dump(&ss);
+  if (changes > 0) {
+    TRACE(ss.str());
+  }
+}
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -1622,6 +1635,9 @@ Status Tablet::HandlePgsqlReadRequest(
       subtransaction_metadata, result);
 
   if (statistics) {
+    if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
+      TraceScopedMetrics();
+    }
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
       scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
       scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);
