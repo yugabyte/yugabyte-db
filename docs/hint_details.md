@@ -44,7 +44,7 @@ underscores, commas and parentheses.  In the following example,
     preceding comments are not sent as a part of this query.
 
 
-```sql
+```plpgsql
 =# CREATE FUNCTION hints_func(integer) RETURNS integer AS $$
    DECLARE
      id  integer;

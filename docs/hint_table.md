@@ -144,7 +144,7 @@ the planner method configuration parameters.  When multiple hints change the
 same GUC, the last hint takes effect.
 [GUC parameters for `pg_hint_plan`](#guc-parameters-for-pg_hint_plan) are also
 settable by this hint but it may not work as expected.
-See [Restrictions](#restrictions) for details.
+See [Functional limitations](#functional-limitations) for details.
 
 ```sql
 =# /*+ Set(random_page_cost 2.0) */
