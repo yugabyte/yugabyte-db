@@ -2,7 +2,7 @@ import { FC, useEffect, useState } from 'react';
 import { FieldArray } from 'formik';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Box, makeStyles, InputAdornment, IconButton } from '@material-ui/core';
+import { Box, makeStyles, InputAdornment, IconButton, Divider } from '@material-ui/core';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { YBButton, YBInput } from '../../../redesign/components';
 import { TSERVER } from '../../../redesign/features/universe/universe-form/form/fields';
@@ -48,6 +48,14 @@ const useStyles = makeStyles((theme) => ({
   },
   editKeySetImage: {
     cursor: 'pointer'
+  },
+  divider: {
+    border: '1px',
+    marginTop: theme.spacing(2),
+    backgroundColor: '#E5E5E9'
+  },
+  iconButton: {
+    marginBottom: theme.spacing(3)
   }
 }));
 
@@ -392,6 +400,9 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   }}
                                 />
                                 <IconButton
+                                  className={
+                                    GFlagRows[index].errorMessageKey ? classes.iconButton : ''
+                                  }
                                   onClick={() => {
                                     removeItem(index);
                                   }}
@@ -445,6 +456,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   />
                                 </Box>
                               )}
+                              <Divider className={classes.divider} />
                             </Box>
                           </div>
                         )}
