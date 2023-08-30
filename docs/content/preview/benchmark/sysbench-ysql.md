@@ -71,7 +71,7 @@ Run the `run_sysbench.sh` shell script to load the data and run the various work
 ./run_sysbench.sh --ip <ip>
 ```
 
-This script runs all the 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k.
+This script runs all 8 workloads using 64 threads with the number of tables as 10 and the table size as 100k.
 
 If you want to run the benchmark with a different count of tables and tablesize, do the following:
 

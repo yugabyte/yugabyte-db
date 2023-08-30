@@ -77,7 +77,7 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 
 ### Configure DB connection parameters (optional)
 
-Workload configuration like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
+Workload configurations like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
 
 Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
@@ -89,7 +89,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 ### Other considerations
 
-**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from source to get the very latest changes.
+**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from the source to get the very latest changes.
 
 **Pre-compacting tables:** Pre-compact tables with the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
 
@@ -190,7 +190,7 @@ Once the database and tables are created, you can load the data from all ten cli
 | 9  | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=8001 --total-warehouses=10000 --loaderthreads 48 |
 | 10 | ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=9001 --total-warehouses=10000 --loaderthreads 48 |
 
-Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters, or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
+Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type `c5d.4xlarge` (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
 
 Once the loading is completed, execute the following command to enable the foreign keys that were disabled to aid the loading times:
 
