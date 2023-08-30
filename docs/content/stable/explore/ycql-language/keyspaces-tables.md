@@ -4,7 +4,7 @@ linkTitle: Keyspaces and tables
 description: Keyspaces and tables in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: explore-ycql-language-features-keyspaces-tables
     parent: explore-ycql-language
     weight: 60
@@ -175,7 +175,6 @@ ycqlsh> quit;
 | LIST ROLES        | select * from system_auth.roles                           |
 | SHOW SESSION      | Tracing from `ycqlsh` is not supported.                   |
 | TRACING           | Tracing from `ycqlsh` is not supported.                   |
-{.sno-1}
 
 
 ## Learn more
