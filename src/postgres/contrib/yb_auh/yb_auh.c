@@ -16,6 +16,7 @@
 
 #include "storage/ipc.h"
 #include "storage/latch.h"
+#include "storage/procarray.h"
 #include "storage/proc.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -89,8 +90,8 @@ static void auh_entry_store(TimestampTz auh_time,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate);
-static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs);
-static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs);
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -173,38 +174,40 @@ yb_auh_main(Datum main_arg) {
   proc_exit(0);
 }
 
-static void pg_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_procs)
+static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample)
 {
-  LWLockAcquire(ProcArrayLock, LW_SHARED);
-  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
-  int		procCount = ProcGlobal->allProcCount;
+  size_t procCount = 0;
+  PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
+  PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
-  if(procCount != 0)
-    sample_rate = (float)Min(sample_size_procs, procCount)/procCount;
-  for (int i = 0; i < procCount; i++)
+  if (nodes_head != NULL && procCount != 0) 
   {
-    PGPROC *proc = &ProcGlobal->allProcs[i];
-    if (proc != NULL && proc->pid != 0 && (random() < sample_rate * MAX_RANDOM_VALUE)){
-      auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
-                      proc->wait_event_info, "", proc->top_level_node_id,
-                      proc->client_node_host, proc->client_node_port,
-                      proc->queryid, auh_sample_time, sample_rate);
-    }
+    sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
   }
-  LWLockRelease(auh_entry_array_lock);
-  LWLockRelease(ProcArrayLock);
+  while (current != NULL) 
+  {
+    PGProcAUHEntryList proc = current->data;
+    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    {
+      auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
+                      proc.wait_event_info, "", proc.top_level_node_id,
+                      proc.client_node_host, proc.client_node_port,
+                      proc.queryid, auh_sample_time, sample_rate);
+    }
+    current = current->next;
+  }
+  freeLinkedList(nodes_head); 
 }
 
-static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_size_rpcs)
+static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
 {
   //TODO:
   YBCAUHDescriptor *rpcs = NULL;
   size_t numrpcs = 0;
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
-  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   float8 sample_rate= 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(sample_size_rpcs, numrpcs)/numrpcs;  
+    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
@@ -214,7 +217,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 sample_s
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
   }
-  LWLockRelease(auh_entry_array_lock);
 }
 
 void
@@ -293,6 +295,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_rate)
 {
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int inserted;
   if (!AUHEntryArray) { return; }
 
@@ -334,6 +337,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
+  LWLockRelease(auh_entry_array_lock); 
 }
 
 static void

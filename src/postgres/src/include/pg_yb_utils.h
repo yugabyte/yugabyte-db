@@ -91,6 +91,22 @@ extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
+typedef struct PGProcAUHEntryList
+{
+  uint64_t top_level_request_id[2];
+  uint32 wait_event_info;
+  uint64_t top_level_node_id[2];
+  uint32 client_node_host;
+  uint16 client_node_port;
+  int64	queryid;
+} PGProcAUHEntryList;
+
+typedef struct PgProcAuhNode 
+{
+  PGProcAUHEntryList data;
+  struct PgProcAuhNode *next;
+} PgProcAuhNode;
+
 typedef enum GeolocationDistance {
 	ZONE_LOCAL,
 	REGION_LOCAL,

@@ -18,7 +18,7 @@
 #include "storage/standby.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
-
+#include "pg_yb_utils.h"
 
 /*
  * These are to implement PROCARRAY_FLAGS_XXX
@@ -107,6 +107,10 @@ extern VirtualTransactionId *GetConflictingVirtualXIDs(TransactionId limitXmin, 
 extern pid_t CancelVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode);
 
 extern bool MinimumActiveBackends(int min);
+extern PGProcAUHEntryList fetch_proc_entry(volatile PGPROC *proc);
+extern void insertNode(PgProcAuhNode **head, PGProcAUHEntryList data); 
+extern void freeLinkedList(PgProcAuhNode *head);
+extern PgProcAuhNode* pg_collect_samples_proc(size_t *procCount);
 extern int	CountDBBackends(Oid databaseid);
 extern int	CountDBConnections(Oid databaseid);
 extern void CancelDBBackends(Oid databaseid, ProcSignalReason sigmode, bool conflictPending);

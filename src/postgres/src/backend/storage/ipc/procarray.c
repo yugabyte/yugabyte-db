@@ -271,6 +271,22 @@ CreateSharedProcArray(void)
 	LWLockRegisterTranche(LWTRANCHE_PROC, "proc");
 }
 
+
+PGProcAUHEntryList fetch_proc_entry(volatile PGPROC *proc)
+{
+	PGProcAUHEntryList procEntry;
+	int index = 0;
+	for (index = 0; index < 2; index++) 
+	{
+        procEntry.top_level_request_id[index] = proc->top_level_request_id[index];
+        procEntry.top_level_node_id[index] = proc->top_level_node_id[index];
+    }
+	procEntry.wait_event_info = proc->wait_event_info;
+	procEntry.client_node_host = proc->client_node_host;
+	procEntry.client_node_port = proc->client_node_port;
+	procEntry.queryid = proc->queryid;
+	return procEntry;
+}
 /*
  * Add the specified PGPROC to the shared array.
  */
@@ -2794,6 +2810,42 @@ MinimumActiveBackends(int min)
 	return count >= min;
 }
 
+void insertNode(PgProcAuhNode **head, PGProcAUHEntryList data) {
+    PgProcAuhNode *newNode = palloc(sizeof(PgProcAuhNode));
+    newNode->data = data;
+    newNode->next = *head;
+    *head = newNode;
+}
+void freeLinkedList(PgProcAuhNode *head) {
+    while (head != NULL) {
+        PgProcAuhNode *temp = head;
+        head = head->next;
+        pfree(temp);
+    }
+}
+
+PgProcAuhNode* pg_collect_samples_proc(size_t *procCount)
+{
+	ProcArrayStruct *arrayP = procArray;
+	PgProcAuhNode *head = NULL;
+	int			index;
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		int 		pgprocno = arrayP->pgprocnos[index];
+		volatile PGPROC *proc  = &allProcs[pgprocno];
+		if(proc != NULL && proc->pid != 0 && proc->wait_event_info != 0)
+		{
+			PGProcAUHEntryList entry = fetch_proc_entry(proc);
+			(*procCount)++;
+			insertNode(&head, entry);
+		}
+	}
+	LWLockRelease(ProcArrayLock);
+
+	return head;	
+}
+
 /*
  * CountDBBackends --- count backends that are using specified database
  */
@@ -2805,7 +2857,6 @@ CountDBBackends(Oid databaseid)
 	int			index;
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
-
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		int			pgprocno = arrayP->pgprocnos[index];
