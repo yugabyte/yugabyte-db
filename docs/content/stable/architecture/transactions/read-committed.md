@@ -1394,11 +1394,11 @@ commit;
 </tbody>
 </table>
 
-### Avoid deadlocks in Read Committed transactions
+### Avoid deadlocks in read committed transactions
 
-When wait queues are not enabled, that is, YB-TServer gflag `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` YSQL parameter. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` YSQL parameter in `ysql_pg_conf_csv` YB-TServer flag on cluster startup.
+When wait queues are not enabled, that is, YB-TServer GFlag `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` YSQL parameter. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` YSQL parameter in `ysql_pg_conf_csv` YB-TServer GFlag on cluster startup.
 
-When using wait queues, automatic deadlock detection and resolution can be enabled using YB-TServer gflag `enable_deadlock_detection=true`. It is strongly recommended to use this setting if using wait queues.
+When using wait queues, automatic deadlock detection and resolution can be enabled using YB-TServer GFlag `enable_deadlock_detection=true`. It is strongly recommended to use this setting when using wait queues.
 
 ```sql
 truncate table test;
@@ -1551,15 +1551,21 @@ commit;
 
 Read Committed interacts with the following feature:
 
-* Follower reads (integration in progress): When follower reads is enabled, the read point for each statement in a Read Committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms` (if the transaction or statement is known to be explicitly or implicitly read-only).
+* [Follower reads](../../../develop/build-global-apps/follower-reads/) (integration in progress): When follower reads is enabled, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms` (if the transaction or statement is known to be explicitly or implicitly read-only).
 
 ## Limitations
 
-* A `SET TRANSACTION ISOLATION LEVEL ...` statement immediately issued after `BEGIN;` or `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;` will fail if YB-Tserver gflag `yb_enable_read_committed_isolation=true`. The following error will be thrown: `ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction` (refer [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494)).
+* A `SET TRANSACTION ISOLATION LEVEL ...` statement immediately issued after `BEGIN;` or `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;` will fail if the YB-TServer GFlag `yb_enable_read_committed_isolation=true`, and the following error will be issued:
 
-* Read restart and serialization are not internally handled in Read Committed isolation if the query's response size exceeds the YB-TServer gflag `ysql_output_buffer_size` which has a default value of 256KB (refer [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+    ```output
+    ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+    ```
 
-* Non-transactional side-effects can occur more than once when a conflict/ read restart occurs in functions/ procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement until the error and re-attempt the whole client-issued statement. (refer [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
+    For more details, see [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494).
+
+* Read restart and serialization are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+
+* Non-transactional side-effects can occur more than once when a conflict or read restart occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement until the error and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
 
 ## Considerations
 
