@@ -242,14 +242,15 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<OpId> GetLastCheckpoint(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
-      const CDCRequestSource& request_source);
+      const CDCRequestSource& request_source, const bool ignore_unpolled_tablets = true);
 
   Result<uint64_t> GetSafeTime(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
   Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
       const CDCStreamId& stream_id, const TabletId& tablet_id, const client::YBSessionPtr& session,
-      const CDCRequestSource& request_source, const TableId& colocated_table_id = "");
+      const CDCRequestSource& request_source, const TableId& colocated_table_id = "",
+      const bool ignore_unpolled_tablets = true);
 
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);

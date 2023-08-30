@@ -961,14 +961,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx = 0, int64 index = 0, int64 term = 0, std::string key = "",
       int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "",
-      int64 safe_hybrid_time = -1, int32_t wal_segment_index = 0) {
+      int64 safe_hybrid_time = -1, int32_t wal_segment_index = 0,
+      const bool populate_checkpoint = true) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    if (populate_checkpoint) {
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    }
     change_req->set_wal_segment_index(wal_segment_index);
     if (!table_id.empty()) {
       change_req->set_table_id(table_id);
@@ -1442,14 +1445,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0) {
+      int wal_segment_index = 0,
+      const bool populate_checkpoint = true) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time,
-          wal_segment_index);
+          wal_segment_index, populate_checkpoint);
     } else {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time,
