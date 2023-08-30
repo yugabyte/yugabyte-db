@@ -39,7 +39,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-        put("ysql_conn_mgr_pool_size", Integer.toString(NUMBER_OF_CLIENTS / 5));
+        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(NUMBER_OF_CLIENTS / 5));
       }
     };
     builder.addCommonTServerFlags(additionalTserverFlags);
