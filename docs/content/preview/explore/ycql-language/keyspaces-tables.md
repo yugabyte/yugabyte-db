@@ -63,8 +63,11 @@ You should see an output similar to the following:
 
 ## Keyspaces
 
-YCQL supports keyspaces, much like Apache Cassandra, with one caveat. Keyspaces in Apache Cassandra
-specify the replication properties for all tables in that keyspace. Replication configuration is defined at the [universe](../../../architecture/concepts/universe/) level in YugabyteDB.
+A keyspace is a container for a set of tables that belong together somehow. If multiple applications are using a
+single database, the tables belonging to each application can be grouped into a separate keyspace.
+In Apache Cassandra, replication configuration is done at the keyspace level. So, all tables that
+require the same replication configuration may be grouped into a keyspace. This pattern does not
+apply to YugabyteDB because in YugabyteDB replication configuration is done at the [universe](../../../architecture/concepts/universe/) level.
 
 To create a new keyspace `testdb`, run the following statement:
 
@@ -174,4 +177,9 @@ ycqlsh> quit;
 | LIST ROLES        | select * from system_auth.roles                           |
 | SHOW SESSION      | Tracing from `ycqlsh` is not supported.                   |
 | TRACING           | Tracing from `ycqlsh` is not supported.                   |
-{.sno-1}
+
+
+## Learn more
+
+- [CREATE KEYSPACE](../../../api/ycql/ddl_create_keyspace)
+- [CREATE TABLE](../../../api/ycql/ddl_create_table)
