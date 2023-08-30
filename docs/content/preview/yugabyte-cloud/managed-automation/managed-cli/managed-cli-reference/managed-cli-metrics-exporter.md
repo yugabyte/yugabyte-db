@@ -50,11 +50,11 @@ Create an export configuration.
 | :--- | :--- |
 | --config-name | Required. Name for the export configuration. |
 | --type | Required. The third party tool to exported metrics to. Options: DATADOG. |
-| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key</li><li>site</li></ul>. |
+| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your datadog site parameters.</li></ul> |
 
 ### delete
 
-Delete a specified export configuration.
+Delete a specified export configuration. You can't delete configurations that are in use by a cluster.
 
 | Flag | Description |
 | :--- | :--- |
@@ -72,7 +72,7 @@ Pause the export of metrics from the specified cluster.
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster. |
 
-### remove
+### remove-from-cluster
 
 Remove the export configuration from the specified cluster.
 
@@ -96,4 +96,4 @@ Update an export configuration.
 | :--- | :--- |
 | --config-name | Required. Name for the export configuration. |
 | --type | Required. The third party tool to exported metrics to. Options: DATADOG. |
-| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key</li><li>site</li></ul>. |
+| --datadog-spec | Required for type DATADOG. The Datadog export details, provided as key-value pairs.<br>Arguments:<ul><li>api-key - your Datadog API key.</li><li>site - your datadog site parameters.</li></ul> |
