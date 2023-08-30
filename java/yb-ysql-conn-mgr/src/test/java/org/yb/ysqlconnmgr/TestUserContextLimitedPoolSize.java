@@ -19,37 +19,22 @@ import java.util.Map;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
-// Check that values from Gflags gets reflected in the Ysql Connection Manager config file.
-// TODO (janand) #18837: Use Parameterized test runner with TSERVER_FLAGS and EXPECTED_CONFIG_VALUES
-// as the parameter.
+// TODO (janand) #18837: Use Parameterized test runner with pool size as the parameter.
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
-public class TestGFlags extends TestDefaultConfig {
+public class TestUserContextLimitedPoolSize extends TestUserContext {
+  // TODO: Revert to 2 connections after bug fix DB-7395 lands.
+  private final int POOL_SIZE = 3;
 
-  private final Map<String, String> TSERVER_FLAGS = new HashMap() {
-    {
-      put("ysql_conn_mgr_max_client_connections", "1000");
-      put("ysql_conn_mgr_num_workers", "8");
-      put("ysql_conn_mgr_max_conns_per_db", "22");
-    }
-  };
-
-  private final Map<String, String> EXPECTED_CONFIG_VALUES = new HashMap() {
-    {
-      put("client_max", "1000");
-      put("pool_size", "22");
-      put("workers", "8");
-    }
-  };
-
-  // Add additional gflags for configuring the Ysql Connection Manager.
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-    builder.addCommonTServerFlags(TSERVER_FLAGS);
     super.customizeMiniClusterBuilder(builder);
+    Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
+      {
+        put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+      }
+    };
+
+    builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
-  @Override
-  protected Map<String, String> expectedConfig() {
-    return EXPECTED_CONFIG_VALUES;
-  }
 }
