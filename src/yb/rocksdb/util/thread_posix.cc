@@ -243,7 +243,12 @@ int ThreadPool::UnSchedule(void* arg) {
 
 std::vector<yb::util::WaitStateInfoPtr> ThreadPool::GetThreadpoolWaitStates() {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
-  std::vector<yb::util::WaitStateInfoPtr> res = bg_wait_states_;
+  std::vector<yb::util::WaitStateInfoPtr> res;
+  for (auto wait_state : bg_wait_states_) {
+    if (wait_state->get_state() != yb::util::WaitStateCode::Unused) {
+      res.push_back(wait_state);
+    }
+  }
   PthreadCall("unlock", pthread_mutex_unlock(&mu_));
   return res;
 }

@@ -3437,6 +3437,7 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
   if (wait_state) {
     wait_state->set_current_request_id(next_job_id_.load());
     wait_state->set_top_level_request_id(reinterpret_cast<uint64_t>(&DBImpl::BGWorkFlush));
+    wait_state->UpdateAuxInfo({.tablet_id = db_options_.log_prefix.substr(2, 32)});
   }
   SET_WAIT_STATUS(yb::util::WaitStateCode::StartFlush);
 
@@ -3476,6 +3477,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
   if (wait_state) {
     wait_state->set_current_request_id(next_job_id_.load());
     wait_state->set_top_level_request_id(reinterpret_cast<uint64_t>(&DBImpl::BGWorkFlush));
+    wait_state->UpdateAuxInfo({.tablet_id = db_options_.log_prefix.substr(2, 32)});
   }
   SET_WAIT_STATUS(yb::util::WaitStateCode::StartCompaction);
 

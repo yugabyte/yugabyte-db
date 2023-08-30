@@ -70,13 +70,13 @@ Result<PerformFuture::Data> PerformFuture::Get() {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   if (this->wait_event_ != util::WaitStateCode::Unused)
-    session_->setWaitEventInfo(this->wait_event_);
+    session_->SetWaitEventInfo(this->wait_event_);
   auto future = std::move(future_);
   auto result = future.get();
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session_->TrySetCatalogReadPoint(result.catalog_read_time);
   if (this->wait_event_ != util::WaitStateCode::Unused)
-    session_->setWaitEventInfo(util::WaitStateCode::Unused);
+    session_->UnsetWaitEventInfo();
   return Data{
       .response = std::move(result.response),
       .used_in_txn_limit = result.used_in_txn_limit};
