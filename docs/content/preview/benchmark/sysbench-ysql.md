@@ -133,13 +133,13 @@ When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cor
 
 ### 10 Tables Each with 100k Rows
 
-| Workload | Throughput (txns/sec) | Latency (ms) |
-| :------- | :-------------------- | :----------- |
-| OLTP_READ_ONLY | 3276 | 39 |
-| OLTP_READ_WRITE | 487 | 265 |
-| OLTP_WRITE_ONLY | 1818 | 70 |
-| OLTP_POINT_SELECT| 95695 | 1.3 |
-| OLTP_INSERT | 6348 | 20.1 |
-| OLTP_UPDATE_INDEX | 4052 | 31 |
-| OLTP_UPDATE_NON_INDEX | 11496 | 11 |
-| OLTP_DELETE | 67499 | 1.9 |
+|       Workload        | Throughput (txns/sec) | Latency (ms) |
+| :-------------------- | :-------------------- | :----------- |
+| OLTP_READ_ONLY        | 3276                  | 39           |
+| OLTP_READ_WRITE       | 487                   | 265          |
+| OLTP_WRITE_ONLY       | 1818                  | 70           |
+| OLTP_POINT_SELECT     | 95695                 | 1.3          |
+| OLTP_INSERT           | 6348                  | 20.1         |
+| OLTP_UPDATE_INDEX     | 4052                  | 31           |
+| OLTP_UPDATE_NON_INDEX | 11496                 | 11           |
+| OLTP_DELETE           | 67499                 | 1.9          |

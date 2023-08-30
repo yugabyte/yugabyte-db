@@ -15,6 +15,8 @@ menu:
     weight: 4
 type: indexpage
 showRightNav: true
+rightNav:
+  hideH3: true
 ---
 
 [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
@@ -27,33 +29,33 @@ All the nodes in the cluster were located in AWS-West in the same zone. The benc
 
 This data shows how YugabyteDB scales horizontally - Increased throughput with the same efficiency as the number of nodes in the cluster is increased.
 
-| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type       |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :----------------------- |
-|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge<br>(8 vCPUs) |
-|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge<br>(8 vCPUs) |
-|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge<br>(8 vCPUs) |
-|       4000 | 51296.9  |     99.72     |   6   | 200         |     62.09 ms      | m6i.2xlarge<br>(8 vCPUs) |
+| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------ |
+|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)  |
+|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge&nbsp;(8)  |
+|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge&nbsp;(8)  |
+|       4000 | 51296.9  |     99.72     |   6   | 200         |     62.09 ms      | m6i.2xlarge&nbsp;(8)  |
 
 ### Vertical Scaling
 
 This data shows how YugabyteDB scales vertically - Increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
 
-| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type        |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
-|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large<br>(2 vCPUs)    |
-|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge<br>(4 vCPUs)   |
-|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge<br>(8 vCPUs)  |
-|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge<br>(16 vCPUs) |
+| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------- |
+|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large&nbsp;(2)     |
+|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge&nbsp;(4)    |
+|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)   |
+|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge&nbsp;(16)  |
 
 ### 100K Warehouses
 
-| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type        |
+| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type (vCPUs)       |
 | ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
-|    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge<br>(36 vCPUs) |
+|    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge&nbsp;(36) |
+
+## Setup for benchmarking
 
 Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL.
-
-## Prerequisites
 
 ### Get TPC-C binaries
 
@@ -73,7 +75,7 @@ Start your YugabyteDB cluster by following the steps for a [manual deployment](.
 You will need the IP addresses of the nodes in the cluster for the next step.
 {{< /tip>}}
 
-## Configure DB connection parameters (optional)
+### Configure DB connection parameters (optional)
 
 Workload configuration like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
 
@@ -85,7 +87,7 @@ Other options like username, password, port, etc. can be changed using the confi
 <password></password>
 ```
 
-## Best practices
+### Other considerations
 
 **Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from source to get the very latest changes.
 
@@ -93,7 +95,7 @@ Other options like username, password, port, etc. can be changed using the confi
 
 **Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 
-## Run the TPC-C benchmark
+## Running TPC-C
 
 ### Load phase
 
