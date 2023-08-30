@@ -188,6 +188,10 @@ extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
 
+extern int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum);
+
+extern AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx);
+
 /*
  * Get primary key columns as bitmap set of a table for real YB columns.
  * Subtracts YBGetFirstLowInvalidAttributeNumber from column attribute numbers.
