@@ -281,12 +281,24 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 
 int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
 {
-	return attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBAttnumToBmsIndexWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), attnum);
 }
 
 AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
 {
-	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBBmsIndexToAttnumWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), idx);
+}
+
+int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum)
+{
+	return attnum - minattr + 1;
+}
+
+AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx)
+{
+	return idx + minattr - 1;
 }
 
 /*
@@ -459,7 +471,7 @@ YBSavepointsEnabled()
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
  *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
- *   * the table pg_yb_catalog_version has one row per database. 
+ *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
  * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
