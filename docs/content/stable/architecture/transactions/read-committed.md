@@ -1551,7 +1551,7 @@ commit;
 
 Read Committed interacts with the following feature:
 
-* [Follower reads](../../../develop/build-global-apps/follower-reads/) (integration in progress): When follower reads is enabled, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms` (if the transaction or statement is known to be explicitly or implicitly read-only).
+* [Follower reads](../../../develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
 
 ## Limitations
 
@@ -1565,7 +1565,7 @@ Read Committed interacts with the following feature:
 
 * Read restart and serialization are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
 
-* Non-transactional side-effects can occur more than once when a conflict or read restart occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement until the error and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
+* Non-transactional side-effects can occur more than once when a `conflict` or `read restart` occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
 
 ## Considerations
 
