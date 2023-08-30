@@ -290,14 +290,14 @@ YB-Master logs are added in the following location:
 
 ```sh
 yugabyte-data/node-#/disk-#/master.out
-yugabyte-data/node-#/disk-#/master/logs
+yugabyte-data/node-#/disk-#/yb-data/master/logs
 ```
 
 YB-TServer logs are added in the following location:
 
 ```sh
 yugabyte-data/node-#/disk-#/tserver.out
-yugabyte-data/node-#/disk-#/tserver/logs
+yugabyte-data/node-#/disk-#/yb-data/tserver/logs
 ```
 
 ## Enable external access
