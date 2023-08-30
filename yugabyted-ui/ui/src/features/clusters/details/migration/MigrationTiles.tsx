@@ -103,7 +103,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               // Everything except first two steps will be pending and disabled
               notStarted = true;
               disabled = true;
-            } else if (index === MigrationStep["Plan And Assess"]) {
+            } else if (index === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be pending
               notStarted = true;
             } else {
@@ -118,7 +118,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               // Everything except first two steps will be pending and disabled
               disabled = true;
               notStarted = true;
-            } else if (index === MigrationStep["Plan And Assess"]) {
+            } else if (index === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be running
               running = true;
             } else {
