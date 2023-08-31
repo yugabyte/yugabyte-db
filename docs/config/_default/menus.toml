@@ -532,7 +532,7 @@
     showSection = true
 
 [[preview_releases]]
-  name = "End of life"
+  name = "End of life and older previews"
   parent = "releases"
   weight = 9999
   identifier = "end-of-life"
@@ -544,6 +544,22 @@
   weight = 4
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Managed releases"
+  weight = 5
+  identifier = "ybm-releases"
+  url = "/preview/yugabyte-cloud/release-notes/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB Voyager releases"
+  weight = 6
+  identifier = "ybv-releases"
+  url = "/preview/yugabyte-voyager/release-notes/"
   [preview_releases.params]
     showSection = true
 
