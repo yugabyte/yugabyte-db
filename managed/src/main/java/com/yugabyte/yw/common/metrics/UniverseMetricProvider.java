@@ -18,29 +18,22 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKeyId;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
-import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import play.Application;
 
 @Singleton
 @Slf4j
@@ -49,6 +42,8 @@ public class UniverseMetricProvider implements MetricsProvider {
   @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
   @Inject MetricService metricService;
+
+  @Inject Application application;
 
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
@@ -73,8 +68,10 @@ public class UniverseMetricProvider implements MetricsProvider {
             .stream()
             .collect(Collectors.toMap(config -> config.configUUID, Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
+    String ybaVersion = ConfigHelper.getCurrentVersion(application);
     for (Customer customer : Customer.getAll()) {
-      for (Universe universe : Universe.getAllWithoutResources(customer)) {
+      Set<Universe> universes = Universe.getAllWithoutResources(customer);
+      for (Universe universe : universes) {
         try {
           MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
           universeGroup.metric(
@@ -91,6 +88,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                   statusValue(universe.getUniverseDetails().updateInProgress)));
+          TaskType taskType =
+              universe.getUniverseDetails().updateInProgress
+                  ? universe.getUniverseDetails().updatingTask
+                  : null;
+          universeGroup.metric(
+              createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
+                      taskType != null ? taskType.getCode() : 0)
+                  .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion));
           universeGroup.metric(
               createUniverseMetric(
                   customer,
