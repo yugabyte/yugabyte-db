@@ -1341,6 +1341,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_context) {
+  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
