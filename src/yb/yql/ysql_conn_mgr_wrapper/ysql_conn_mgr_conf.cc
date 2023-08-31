@@ -24,6 +24,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -134,10 +135,56 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   return conf_file_path;
 }
 
+int getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) {
+  std::ifstream ysql_pg_conf_file(ysqlpgconf_path, std::ios_base::in);
+  if (!ysql_pg_conf_file.is_open()) {
+    LOG(FATAL) << "Unable to read the ysql pg conf file. File path: "
+               << ysqlpgconf_path << ". Error details: " << std::strerror(errno);
+  }
+
+  std::string line;
+  std::string value("10");
+  std::string max_connections_key = "max_connections";
+  while (std::getline(ysql_pg_conf_file, line)) {
+    if (line.length() == 0) {
+      continue;
+    }
+    std::istringstream iss(line);
+    std::string word;
+    if (!StringStartsWithOrEquals(line, max_connections_key.c_str())) {
+      continue;
+    }
+    std::vector<std::string> words = StringSplit(line, '=');
+
+    std::string w0 = words[0];
+    boost::trim(w0);
+    if (words.size() > 1 && w0 == max_connections_key) {
+      std::string w1 = words[1];
+      boost::trim(w0);
+      value = w1;
+    }
+  }
+
+  // Close the input and output files.
+  ysql_pg_conf_file.close();
+  int max = std::atoi(value.c_str());
+  if (max <= 0) {
+    LOG(FATAL) << "Cannot determine the max_connection settings of the database";
+  }
+  LOG(INFO) << "Maximum physical connections settings found = " << max;
+  return max;
+}
+
 void YsqlConnMgrConf::UpdateConfigFromGFlags() {
-  // TODO: Set the value of max_global_server_conns as per the machine configuration.
+  // Get the max size of connections which the postgres can support. The postgres
+  // instance to which this instance of ysql_conn_mgr is going to get attached.
+  int maxConnections = getMaxConnectionsFromYsqlPgConf(ysql_pgconf_file_);
+  // Divide the pool between the global pool and control connection pool.
   global_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
-  control_connection_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
+  if (global_pool_size_ == 0) {
+    global_pool_size_ = maxConnections * 9 / 10;
+  }
+  control_connection_pool_size_ = (maxConnections) / 10;
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
@@ -150,6 +197,8 @@ YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   data_dir_ = JoinPathSegments(data_path, "yb-data", "tserver");
   log_file_ = JoinPathSegments(FLAGS_log_dir, "ysql-conn-mgr.log");
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
+  ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
+
 
   UpdateConfigFromGFlags();
 

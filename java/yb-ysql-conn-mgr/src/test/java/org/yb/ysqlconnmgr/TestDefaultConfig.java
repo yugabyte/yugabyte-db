@@ -40,7 +40,7 @@ public class TestDefaultConfig extends BaseYsqlConnMgr {
       put("resolvers", "1");
       put("client_max", "10000");
       put("pool_discard", "no");
-      put("pool_size", "0");
+      put("pool_size", "270");
       put("pool_reserve_prepared_statement", "yes");
     }
   };
