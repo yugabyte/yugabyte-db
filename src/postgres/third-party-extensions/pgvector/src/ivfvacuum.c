@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include "commands/vacuum.h"
@@ -157,3 +158,4 @@ ivfflatvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 
 	return stats;
 }
+#endif
