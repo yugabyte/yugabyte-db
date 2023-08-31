@@ -34,13 +34,6 @@ var replicatedMigrationStart = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to initialize state " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
-			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.MigratingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("failed to update state: " + err.Error())
-		}
 
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl: " + err.Error())
@@ -57,6 +50,14 @@ var replicatedMigrationStart = &cobra.Command{
 			preflight.PrintPreflightResults(results)
 			log.Fatal("Preflight checks failed. To skip (not recommended), " +
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
+		}
+
+		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
+			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
+		}
+		state.CurrentStatus = ybactlstate.MigratingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to update state: " + err.Error())
 		}
 
 		// Dump replicated settings

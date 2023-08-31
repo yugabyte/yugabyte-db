@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -157,6 +158,15 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 
 // ExportYbaCtl writes existing replicated settings to /opt/yba-ctl/yba-ctl.yml
 func (ac *AppConfig) ExportYbaCtl() error {
+	if _, err := os.Stat(common.InputFile()); !errors.Is(err, os.ErrNotExist) {
+		prompt := fmt.Sprintf("Found existing config file at %s. Proceed with those settings?",
+													common.InputFile())
+		if common.UserConfirm(prompt, common.DefaultYes) {
+			return nil
+		}
+		return fmt.Errorf("found existing config file and asked not to proceed. " +
+											"please delete the config file to migrate replicated settings")
+	}
 	config.WriteDefaultConfig()
 	for _, e := range ac.EntriesAsSlice() {
 		// skip any settings that were not set by replicated
