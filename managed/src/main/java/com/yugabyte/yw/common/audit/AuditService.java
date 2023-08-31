@@ -90,7 +90,15 @@ public class AuditService {
           // Hashicorp token
           "$..HC_VAULT_TOKEN",
           "$..vaultToken",
-          "$..token");
+          "$..token",
+          // Hashicorp Role ID
+          "$..HC_VAULT_ROLE_ID",
+          "$..vaultRoleID",
+          "$..roleID",
+          // Hashicorp Secret ID
+          "$..HC_VAULT_SECRET_ID",
+          "$..vaultSecretID",
+          "$..secretID");
 
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
