@@ -1157,7 +1157,7 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 ##### --ysql_colocate_database_by_default
 
-When set to true at cluster creation time, your cluster will have colocation enabled for all the databases.
+When enabled, all databases created in the cluster are colocated by default. Must be set when the cluster is created.
 
 Default: `false`
 
