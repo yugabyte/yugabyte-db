@@ -26,6 +26,7 @@
 
 /* Yugabyte includes */
 #include "nodes/makefuncs.h"
+#include "pg_yb_utils.h"
 
 static int	TupleHashTableMatch(struct tuplehash_hash *tb, const MinimalTuple tuple1, const MinimalTuple tuple2);
 static inline uint32 TupleHashTableHash_internal(struct tuplehash_hash *tb,
@@ -189,6 +190,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	hashtable->yb_keyColExprs = keyColExprs;
 	hashtable->keyColIdx = NULL;
 	hashtable->tab_hash_funcs = hashfunctions;
+	hashtable->tab_collations = NULL;
 	hashtable->tablecxt = tablecxt;
 	hashtable->tempcxt = tempcxt;
 	hashtable->entrysize = entrysize;
@@ -219,7 +221,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	 * input tuples will have equivalent descriptors.
 	 */
 	hashtable->tableslot = MakeSingleTupleTableSlot(CreateTupleDescCopy(inputDesc),
-													&TTSOpsVirtual);
+													&TTSOpsMinimalTuple);
 
 	/* build comparator for all columns */
 	hashtable->tab_eq_func = eqExpr;
@@ -597,10 +599,14 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 		if (!isNull)			/* treat nulls as having hash key 0 */
 		{
 			uint32		hkey;
-
-			hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
-													hashtable->tab_collations[i],
+			/* YB doesn't support collations with hash functions. */
+			if (IsYugaByteEnabled())
+				hkey = DatumGetUInt32(FunctionCall1(&hashfunctions[i],
 													attr));
+			else
+				hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
+														hashtable->tab_collations[i],
+														attr));
 			hashkey ^= hkey;
 		}
 	}

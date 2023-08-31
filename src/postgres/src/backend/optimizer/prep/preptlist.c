@@ -109,6 +109,14 @@ preprocess_targetlist(PlannerInfo *root)
 		tlist = expand_insert_targetlist(tlist, target_relation);
 	else if (command_type == CMD_UPDATE)
 		root->update_colnos = extract_update_targetlist_colnos(tlist);
+	/*
+	 * For YugaByte relation, if a CMD_DELETE has returning clause, we select
+	 * all columns from the table to evaluate the returning expression list.
+	 * TODO(neil) The optimizer should reduce the list to referenced columns.
+	 */
+	else if ((command_type == CMD_DELETE && IsYBRelation(target_relation) &&
+		 parse->returningList != NULL))
+		tlist = expand_delete_targetlist(tlist, result_relation, target_relation);
 
 	/*
 	 * For non-inherited UPDATE/DELETE/MERGE, register any junk column(s)
@@ -189,17 +197,6 @@ preprocess_targetlist(PlannerInfo *root)
 			list_free(vars);
 		}
 	}
-
-	/*
-	 * YB_TODO(neil@yugabyte): Test that this still works.
-	 *
-	 * For YugaByte relation, if a CMD_DELETE has returning clause, we select
-	 * all columns from the table to evaluate the returning expression list.
-	 * TODO(neil) The optimizer should reduce the list to referenced columns.
-	 */
-	if ((command_type == CMD_DELETE && IsYBRelation(target_relation) &&
-		 parse->returningList != NULL))
-		tlist = expand_delete_targetlist(tlist, result_relation, target_relation);
 
 	/*
 	 * Add necessary junk columns for rowmarked rels.  These values are needed

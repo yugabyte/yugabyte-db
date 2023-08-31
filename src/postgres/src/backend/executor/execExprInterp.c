@@ -609,27 +609,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 
 		EEO_CASE(EEOP_SCAN_SYSVAR)
 		{
-			int			attnum = op->d.var.attnum;
-
-			/*
-			 * The ybctid may be copied to the slot.
-			 * The heap tuple does not need to be formed in this case.
-			 */
-			if (attnum == YBTupleIdAttributeNumber && TABLETUPLE_YBCTID(scanslot))
-			{
-				Datum d;
-
-				/* YB_TODO(alex@yugabyte)
-				 * Pg13 has reimplemented this opcode. Need to do the same for Yugabyte?
-				 */
-				*op->resnull = false;
-				d = TABLETUPLE_YBCTID(scanslot);
-				*op->resvalue = d;
-			}
-			else
-			{
-				ExecEvalSysVar(state, op, econtext, scanslot);
-			}
+			ExecEvalSysVar(state, op, econtext, scanslot);
 			EEO_NEXT();
 		}
 

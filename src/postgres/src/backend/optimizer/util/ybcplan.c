@@ -77,12 +77,6 @@
  */
 static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 {
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte) Need to redo this work. Both sides were changed.
-	 * - NOTE work was done by Jayden.
-	 */
-	Plan *subplan;
-
 	/* Support INSERT, UPDATE, and DELETE. */
 	if (modifyTable->operation != CMD_INSERT &&
 		modifyTable->operation != CMD_UPDATE &&
@@ -101,11 +95,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-	/* Check the data source is a single plan */
-	if (list_length(modifyTable->plans) != 1)
-		return false;
-
-	Plan *plan = (Plan *) linitial(modifyTable->plans);
+	Plan *plan = outerPlan(&modifyTable->plan);
 
 	/*
 	 * Only Result plan without a subplan produces single tuple without making
@@ -114,52 +104,6 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (!IsA(plan, Result) || outerPlan(plan))
 		return false;
 
-	/* YB_TODO(neil@yugabyte) Make sure that checking resultRelations is similar to checking
-	 * old pg11 attributes "node->plans".
-	 */
-	/* Check the data source, only allow a values clause right now */
-	if (list_length(modifyTable->resultRelations) != 1)
-		return false;
-
-	/* YB_TODO(neil@yugabyte) Make sure that this is correct fix.
-	 * Postgres 13 don't use old fields "node->plans" for subplan.
-	 */
-	subplan = outerPlan(modifyTable);
-	switch nodeTag(subplan)
-	{
-		case T_Result:
-		{
-			/* Simple values clause: one valueset (single row) */
-			Result *values = (Result *)subplan;
-			ListCell *lc;
-			foreach(lc, values->plan.targetlist)
-			{
-				TargetEntry *target = (TargetEntry *) lfirst(lc);
-				bool needs_pushdown = false;
-				if (!YBCIsSupportedSingleRowModifyAssignExpr(target->expr,
-				                                             target->resno,
-				                                             &needs_pushdown))
-				{
-					return false;
-				}
-			}
-			break;
-		}
-		case T_ValuesScan:
-		{
-			/*
-			 * Simple values clause: multiple valueset (multi-row).
-			 * TODO: Eventually we could inspect hash key values to check
-			 *       if single shard and optimize that.
-			 *       ---
-			 *       In this case we'd need some other way to explicitly filter out
-			 *       updates involving primary key - right now we simply rely on
-			 *       planner not setting the node to Result.
-			 */
-			return false;
-		}
-	}
-
 	/* Complex expressions in the target list may require DocDB requests */
 	if (YbIsTransactionalExpr((Node *) plan->targetlist))
 		return false;
@@ -167,7 +111,6 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	/* Same for the returning expressions */
 	if (YbIsTransactionalExpr((Node *) modifyTable->returningLists))
 		return false;
-#endif
 
 	/* If all our checks passed return true */
 	return true;
@@ -175,11 +118,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 
 bool YBCIsSingleRowModify(PlannedStmt *pstmt)
 {
-	/* YB_TODO(neil@yugabyte)
-	 * - Turn optimization back on after completing TODO tasks in this modules.
-	 * - Remove "false" in this if block.
-	 */
-	if (false && pstmt->planTree && IsA(pstmt->planTree, ModifyTable))
+	if (pstmt->planTree && IsA(pstmt->planTree, ModifyTable))
 	{
 		ModifyTable *node = castNode(ModifyTable, pstmt->planTree);
 		return ModifyTableIsSingleRowWrite(node);

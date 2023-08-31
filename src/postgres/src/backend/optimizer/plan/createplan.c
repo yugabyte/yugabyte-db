@@ -6364,11 +6364,6 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	*stripped_indexquals_p = stripped_indexquals;
 	*fixed_indexquals_p = fixed_indexquals;
-	/* YB_TODO(Tanuj@yugabyte)
-	 * - Need to track Tanuj's work on this function and rework. His code needs reimplementation to
-	 *   match Postgres's new code.
-	 * - I removed his work for now.
-	 */
 }
 
 /*

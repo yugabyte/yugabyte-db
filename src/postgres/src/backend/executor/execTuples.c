@@ -1405,10 +1405,6 @@ ExecStoreBufferHeapTuple(HeapTuple tuple,
 	Assert(slot != NULL);
 	Assert(slot->tts_tupleDescriptor != NULL);
 
-	/* YB_TODO(neil@yugabyte)
-	 * - Since Yugabyte doesn't use heap buffer, it set the buffer to INVALID in places.
-	 * - Need to verify if that's the right thing to do.
-	 */
 	if (!IsYugaByteEnabled())
 		Assert(BufferIsValid(buffer));
 
@@ -1437,10 +1433,6 @@ ExecStorePinnedBufferHeapTuple(HeapTuple tuple,
 	Assert(slot != NULL);
 	Assert(slot->tts_tupleDescriptor != NULL);
 
-	/* YB_TODO(neil@yugabyte)
-	 * - Since Yugabyte doesn't use heap buffer, it set the buffer to INVALID in places.
-	 * - Need to verify if that's the right thing to do.
-	 */
 	if (!IsYugaByteEnabled())
 		Assert(BufferIsValid(buffer));
 
@@ -1666,13 +1658,6 @@ ExecFetchSlotHeapTuple(TupleTableSlot *slot, bool materialize, bool *shouldFree)
 	Assert(slot != NULL);
 	Assert(!TTS_EMPTY(slot));
 
-	/* YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-	 * - Current Yugabyte API works with HeapTuple instead of slot.
-	 * - Yugabyte does not have its own tuple.  We use HeapTuple as quick shortcut, but that might
-	 *   not work well with Pg13.
-	 * - Need to define YbTuple and setup "tts_ops->materialize()" function to convert slot to a
-	 *   YbTuple instance.
-	 */
 	/* Materialize the tuple so that the slot "owns" it, if requested. */
 	if (materialize)
 		slot->tts_ops->materialize(slot);
