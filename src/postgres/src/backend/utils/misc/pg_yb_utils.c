@@ -3590,7 +3590,8 @@ void ProcSetTopLevelRequestId(const uint64_t *top_level_request_id)
 
 void uint128_to_char(const uint64_t uint_id[2], char *char_id)
 {
-	sprintf(char_id, "%lx%lx", uint_id[0], uint_id[1]);
+	// lx breaks compile in mac
+	sprintf(char_id, "%llx%llx", uint_id[0], uint_id[1]);
 }
 
 uint32 remote_host_port_to_uint(const char* remote_host)

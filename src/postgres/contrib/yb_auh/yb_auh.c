@@ -45,7 +45,7 @@ PG_FUNCTION_INFO_V1(pg_active_universe_history);
 typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
   uint64_t top_level_request_id[2];
-  long request_id;
+  uint64_t request_id;
   uint32 wait_event;
   char wait_event_aux[16];
   uint64_t top_level_node_id[2];
