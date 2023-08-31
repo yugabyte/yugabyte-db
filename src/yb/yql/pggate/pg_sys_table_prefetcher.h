@@ -38,8 +38,16 @@ using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
 
 struct PrefetcherOptions {
-  uint64_t latest_known_ysql_catalog_version;
+  struct VersionInfo {
+    uint64_t version;
+    bool is_db_catalog_version_mode;
+
+    std::string ToString() const;
+  };
+
+  VersionInfo version_info;
   PrefetchingCacheMode cache_mode;
+  uint64_t fetch_row_limit;
 
   std::string ToString() const;
 };

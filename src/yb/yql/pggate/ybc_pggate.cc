@@ -36,6 +36,8 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
@@ -1647,7 +1649,8 @@ void* YBCPgGetThreadLocalErrStatus() {
 }
 
 void YBCStartSysTablePrefetching(
-  uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  YBCPgLastKnownCatalogVersionInfo version_info,
+  YBCPgSysTablePrefetcherCacheMode cache_mode) {
   PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
   switch (cache_mode) {
     case YB_YQL_PREFETCHER_TRUST_CACHE:
@@ -1663,7 +1666,10 @@ void YBCStartSysTablePrefetching(
     default:
       break;
   }
-  pgapi->StartSysTablePrefetching(PrefetcherOptions{latest_known_ysql_catalog_version, mode});
+  pgapi->StartSysTablePrefetching(PrefetcherOptions{
+      {version_info.version, version_info.is_db_catalog_version_mode},
+      mode,
+      implicit_cast<uint64_t>(yb_fetch_row_limit)});
 }
 
 void YBCStopSysTablePrefetching() {
