@@ -21,7 +21,7 @@
      "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
      "(^managed/build[.]sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)",
-     "(^python/yugabyte/test_data/.*[.](log|out)$)",
+     "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
      "(^managed/src/main/resources/metric/Dashboard[.]json$)",
      "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
      "(^managed/devops/replicated[.]yml$)",
