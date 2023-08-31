@@ -81,7 +81,7 @@ static void ybauh_startup_hook(void);
 static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
-                            long request_id,
+                            uint64_t request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,
@@ -285,7 +285,7 @@ yb_auh_circularBufferIndexSize(void)
 
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
-                            long request_id,
+                            uint64_t request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,

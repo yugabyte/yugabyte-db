@@ -4,7 +4,7 @@
 CREATE FUNCTION pg_active_universe_history(
     OUT auh_sample_time timestamptz,
     OUT top_level_request_id text,
-    OUT request_id INTEGER,
+    OUT request_id BIGINT,
     OUT wait_event_component text,
     OUT wait_event_class text,
     OUT wait_event text,
