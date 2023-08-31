@@ -28,6 +28,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Application;
 import org.yaml.snakeyaml.LoaderOptions;
+import play.Environment;
 import play.libs.Json;
 
 @Singleton
@@ -105,26 +106,7 @@ public class ConfigHelper {
   }
 
   public void loadSoftwareVersiontoDB(Application app) {
-    String configFile = "version_metadata.json";
-    InputStream inputStream = app.resourceAsStream(configFile);
-    LoaderOptions loaderOptions = new LoaderOptions();
-
-    if (inputStream == null) { // version_metadata.json not found
-      LOG.info(
-          "{} file not found. Reading version from version.txt file",
-          FilenameUtils.getName(configFile));
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader(), loaderOptions));
-      String version = yaml.load(app.resourceAsStream("version.txt"));
-      loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
-      return;
-    }
-    JsonNode jsonNode = Json.parse(inputStream);
-    String buildNumber = jsonNode.get("build_number").asText();
-    String version =
-        jsonNode.get("version_number").asText()
-            + "-"
-            + (NumberUtils.isDigits(buildNumber) ? "b" : "")
-            + buildNumber;
+    String version = getCurrentVersion(app);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
     // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
@@ -151,5 +133,25 @@ public class ConfigHelper {
 
   public void loadConfigToDB(ConfigType type, Map<String, Object> config) {
     YugawareProperty.addConfigProperty(type.toString(), Json.toJson(config), type.getDescription());
+  }
+
+  public static String getCurrentVersion(Application app) {
+    String configFile = "version_metadata.json";
+    InputStream inputStream = app.resourceAsStream(configFile);
+    LoaderOptions loaderOptions = new LoaderOptions();
+
+    if (inputStream == null) { // version_metadata.json not found
+      LOG.info(
+          "{} file not found. Reading version from version.txt file",
+          FilenameUtils.getName(configFile));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader(), loaderOptions));
+      return yaml.load(app.resourceAsStream("version.txt"));
+    }
+    JsonNode jsonNode = Json.parse(inputStream);
+    String buildNumber = jsonNode.get("build_number").asText();
+    return jsonNode.get("version_number").asText()
+        + "-"
+        + (NumberUtils.isDigits(buildNumber) ? "b" : "")
+        + buildNumber;
   }
 }
