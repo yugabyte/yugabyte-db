@@ -462,7 +462,7 @@ Default: `50`
 
 ##### --ysql_colocate_database_by_default
 
-When enabled, all databases created in the cluster are [colocated](../../../architecture/docdb-sharding/colocated-tables/) by default. Must be set when the cluster is created.
+When enabled, all databases created in the cluster are colocated by default. Must be set when the cluster is created. For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
 
 Default: `false`
 
