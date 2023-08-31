@@ -127,17 +127,23 @@ YbGetLastKnownCatalogCacheVersion()
 		shared_catalog_version : yb_last_known_catalog_cache_version;
 }
 
-uint64_t
+YBCPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
 	// TODO: In future YBGetLastKnownCatalogCacheVersion must be used instead of
 	//       YbGetMasterCatalogVersion to reduce numer of RPCs to a master.
 	//       But this requires some additional changes. This optimization will
 	//       be done separately.
-	if (!*YBCGetGFlags()->ysql_enable_read_request_caching)
-		return YB_CATCACHE_VERSION_UNINITIALIZED;
-	YBCPgResetCatalogReadTime();
-	return YbGetMasterCatalogVersion();
+	uint64_t version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
+	{
+		YBCPgResetCatalogReadTime();
+		version = YbGetMasterCatalogVersion();
+	}
+	return (YBCPgLastKnownCatalogVersionInfo){
+		.version = version,
+		.is_db_catalog_version_mode = is_db_catalog_version_mode};
 }
 
 void

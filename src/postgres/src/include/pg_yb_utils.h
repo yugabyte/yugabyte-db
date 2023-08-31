@@ -41,6 +41,7 @@
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb_ysql_conn_mgr_helper.h"
 
@@ -89,7 +90,8 @@ extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+extern YBCPgLastKnownCatalogVersionInfo
+YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 

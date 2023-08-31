@@ -510,6 +510,11 @@ typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_NO_CACHE
 } YBCPgSysTablePrefetcherCacheMode;
 
+typedef struct PgLastKnownCatalogVersionInfo {
+  uint64_t version;
+  bool is_db_catalog_version_mode;
+} YBCPgLastKnownCatalogVersionInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
