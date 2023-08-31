@@ -1952,9 +1952,9 @@ if [[ ${build_java} == "true" ]]; then
   capture_sec_timestamp java_build_end
 
   if [[ $collect_java_tests == "true" ]]; then
-    capture_sec_timestap collect_java_tests_start
+    capture_sec_timestamp collect_java_tests_start
     collect_java_tests
-    capture_sec_timestap collect_java_tests_end
+    capture_sec_timestamp collect_java_tests_end
   fi
 
   log "Java build finished, total time information above."
