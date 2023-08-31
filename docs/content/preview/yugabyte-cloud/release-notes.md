@@ -20,6 +20,13 @@ On this page:
 
 ## Change log
 
+### August 15, 2023
+
+**Database**
+
+- Innovation track updated to 2.16.6.0.
+- Production track updated to 2.14.11.0.
+
 ### July 13, 2023
 
 **Database**
@@ -109,7 +116,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/end-of-life/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
 
 ### February 13, 2023
 

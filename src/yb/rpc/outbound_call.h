@@ -62,8 +62,8 @@
 #include "yb/rpc/thread_pool.h"
 #include "yb/rpc/reactor_thread_role.h"
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
@@ -73,6 +73,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
 namespace google {
@@ -255,7 +256,8 @@ class OutboundCall : public RpcCall {
 
   // Update the call state to show that the request has been sent.
   // Could be called on already finished call in case it was already timed out.
-  void SetSent();
+  // Returns true if the state transition was successful.
+  WARN_UNUSED_RESULT bool SetSent();
 
   // Outbound call could be moved to final state only once,
   // so only one of SetFinished/SetTimedOut/SetFailed/SetResponse can be called.
@@ -283,6 +285,8 @@ class OutboundCall : public RpcCall {
 
   std::string ToString() const override;
 
+  std::string DebugString() const;
+
   bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) EXCLUDES(mtx_)
       override;
 
@@ -305,6 +309,8 @@ class OutboundCall : public RpcCall {
   }
 
   void InvokeCallbackSync();
+
+  void SetInvalidStateTransition(RpcCallState old_state, RpcCallState new_state);
 
   // ----------------------------------------------------------------------------------------------
   // Getters
@@ -334,6 +340,20 @@ class OutboundCall : public RpcCall {
   size_t DynamicMemoryUsage() const override {
     return DynamicMemoryUsageAllowSizeOf(error_pb_) +
            DynamicMemoryUsageOf(buffer_, call_response_, trace_);
+  }
+
+  CoarseTimePoint CallStartTime() const { return start_; }
+
+  // Queues a reactor thread operation to dump the connection state relevant to this call.
+  void QueueDumpConnectionState() const;
+
+  // Test only method to reproduce a stuck OutboundCall scenario seen in production.
+  void TEST_ignore_response() { test_ignore_response = true; }
+
+  virtual bool is_local() const { return false; }
+
+  bool callback_invoked() const {
+    return IsInitialized(invoke_callback_time_.load(std::memory_order_acquire));
   }
 
  protected:
@@ -369,9 +389,9 @@ class OutboundCall : public RpcCall {
 
   static std::string StateName(State state);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
-  bool SetState(State new_state);
+  MUST_USE_RESULT bool SetState(State new_state);
   State state() const;
 
   // return current status
@@ -433,11 +453,38 @@ class OutboundCall : public RpcCall {
   // are annotated with NO_THREAD_SAFETY_ANALYSIS.
   CallResponse call_response_ GUARDED_BY_REACTOR_THREAD;
 
+  // TEST only flag to reproduce stuck OutboundCall scenario.
+  bool test_ignore_response = false;
+
   // ----------------------------------------------------------------------------------------------
   // Atomic fields
   // ----------------------------------------------------------------------------------------------
 
   std::atomic<State> state_{State::READY};
+
+  std::atomic<CoarseTimePoint> invoke_callback_time_{CoarseTimePoint::min()};
+  std::atomic<CoarseTimePoint> sent_time_{CoarseTimePoint::min()};
+
+  // If we encounter an invalid state transition, we keep track of it so we can log it.
+  struct InvalidStateTransition {
+    uint8_t old_state = RpcCallState::READY;
+    uint8_t new_state = RpcCallState::READY;
+    std::string ToString() const;
+  };
+  static_assert(sizeof(std::optional<InvalidStateTransition>) == 3);
+  std::atomic<std::optional<InvalidStateTransition>> invalid_state_transition_{std::nullopt};
+
+  // ----------------------------------------------------------------------------------------------
+  // Fields with custom synchronization
+  // ----------------------------------------------------------------------------------------------
+
+  // Only set if the OutboundCall was sent. Reset when callback is invoked. Synchronized via
+  // setting connection_weak_ after setting sent_on_connection_ and checking it before resetting
+  // sent_on_connection_.
+  ConnectionPtr sent_on_connection_;
+
+  // Set and hold a weak reference to the connection for the remaining lifetime of the call.
+  WriteOnceWeakPtr<Connection> connection_weak_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

@@ -46,6 +46,9 @@ class DocDBStatistics {
       rocksdb::Statistics* regulardb_statistics,
       rocksdb::Statistics* intentsdb_statistics);
 
+  // Returns number of metric changes dumped.
+  size_t Dump(std::stringstream* out) const;
+
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
 
  private:

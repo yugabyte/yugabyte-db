@@ -728,7 +728,7 @@ DefineIndex(Oid relationId,
 		!IsBootstrapProcessingMode() &&
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
-	
+
 	/* Use tablegroup of the indexed table, if any. */
 	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
 		YbGetTableProperties(rel)->tablegroup_oid :
@@ -1524,6 +1524,8 @@ DefineIndex(Oid relationId,
 	/* Wait for all backends to have up-to-date version. */
 	YbWaitForBackendsCatalogVersion();
 
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
+
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
 	 */
@@ -1561,6 +1563,8 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
 	if (IsYugaByteEnabled() && yb_test_block_index_phase[0] != '\0')
 		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,

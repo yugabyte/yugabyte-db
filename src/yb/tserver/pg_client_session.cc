@@ -268,12 +268,12 @@ Status HandleResponse(uint64_t session_id,
   }
 
   if (response.error_status().size() > 0) {
-    // We do not currently expect more than one status, when we do, we need to decide how to handle
-    // them. Possible options: aggregate multiple statuses into one, discard all but one, etc.
-    DCHECK_EQ(response.error_status().size(), 1) << "Too many error statuses in the response";
-    for (const auto& pb : response.error_status()) {
-      return StatusFromPB(pb);
-    }
+    // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
+    // to decide how to handle them. Possible options: aggregate multiple statuses into one, discard
+    // all but one, etc. Historically, for the one set of status fields (like error_message), new
+    // error message was overriting the previous one, that's why let's return the last entry from
+    // error_status to mimic that past behavior, refer AsyncRpc::Finished for details.
+    return StatusFromPB(*response.error_status().rbegin());
   }
 
   // Older nodes may still use deprecated fields for status, so keep legacy handling
@@ -410,7 +410,8 @@ struct PerformData {
         if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
           table_cache.Invalidate(op->table()->id());
         }
-        VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
+        VLOG_WITH_FUNC(2) << SessionLogPrefix(session_id) << "status: " << status
+                          << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operation, increase mutation counter
@@ -594,21 +595,22 @@ Status PgClientSession::DropDatabase(
 Status PgClientSession::DropTable(
     const PgDropTableRequestPB& req, PgDropTableResponsePB* resp, rpc::RpcContext* context) {
   const auto yb_table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      true /* use_transaction */, context->GetClientDeadline()));
+  // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
+  // table/index deletion to complete. The table will be deleted in the background only after the
+  // transaction has been determined to be a success.
   if (req.index()) {
     client::YBTableName indexed_table;
     RETURN_NOT_OK(client().DeleteIndexTable(
-        yb_table_id, &indexed_table, true, context->GetClientDeadline()));
+        yb_table_id, &indexed_table, !FLAGS_ysql_ddl_rollback_enabled /* wait */,
+        metadata, context->GetClientDeadline()));
     indexed_table.SetIntoTableIdentifierPB(resp->mutable_indexed_table());
     table_cache_.Invalidate(indexed_table.table_id());
     table_cache_.Invalidate(yb_table_id);
     return Status::OK();
   }
 
-  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
-      true /* use_transaction */, context->GetClientDeadline()));
-  // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
-  // table deletion to complete. The table will be deleted in the background only after the
-  // transaction has been determined to be a success.
   RETURN_NOT_OK(client().DeleteTable(yb_table_id, !FLAGS_ysql_ddl_rollback_enabled, metadata,
         context->GetClientDeadline()));
   table_cache_.Invalidate(yb_table_id);
@@ -722,8 +724,10 @@ Status PgClientSession::DropTablegroup(
     const PgDropTablegroupRequestPB& req, PgDropTablegroupResponsePB* resp,
     rpc::RpcContext* context) {
   const auto id = PgObjectId::FromPB(req.tablegroup_id());
+  const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+      true /* use_transaction */, context->GetClientDeadline()));
   const auto status =
-      client().DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid));
+      client().DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata);
   if (status.IsNotFound()) {
     return Status::OK();
   }

@@ -53,14 +53,6 @@ using namespace std::literals;
 DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
     "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
 
-// TODO: ysql_enable_table_level_locks_for_dml_reads, ysql_use_table_lock_for_alter_table
-// and ysql_enable_table_level_locks_for_dml_writes should be converted to a single
-// autoflag.
-DEFINE_RUNTIME_bool(ysql_enable_table_level_locks_for_dml_writes, false,
-                    "Whether to acquire table level locks for DML writes queries.");
-TAG_FLAG(ysql_enable_table_level_locks_for_dml_writes, hidden);
-TAG_FLAG(ysql_enable_table_level_locks_for_dml_writes, experimental);
-
 namespace yb {
 namespace tablet {
 
@@ -264,6 +256,7 @@ void WriteQuery::Complete(const Status& status) {
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
+  docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
   switch (execute_mode_) {
     case ExecuteMode::kSimple:
@@ -309,8 +302,7 @@ Result<bool> WriteQuery::PrepareExecute() {
       const auto& write_batch = request->write_batch();
       // We allow the empty case if transaction is set since that is an update in transaction
       // metadata.
-      if (!write_batch.read_pairs().empty() || write_batch.has_transaction() ||
-          write_batch.table_lock().table_lock_type() != TableLockType::NONE) {
+      if (!write_batch.read_pairs().empty() || write_batch.has_transaction()) {
         return SimplePrepareExecute();
       }
     }
@@ -429,14 +421,6 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
         txn_op_ctx,
         rpc_context_ ? &rpc_context_->sidecars() : nullptr);
     RETURN_NOT_OK(write_op->Init(resp));
-
-    // Add table level lock key and type for DML write query
-    if (!table_info->schema().table_properties().is_ysql_catalog_table() &&
-        GetAtomicFlag(&FLAGS_ysql_enable_table_level_locks_for_dml_writes)) {
-      request().mutable_write_batch()->mutable_table_lock()->set_table_lock_type(
-          TableLockType::ROW_EXCLUSIVE);
-    }
-
     doc_ops_.emplace_back(std::move(write_op));
   }
 
@@ -528,8 +512,7 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_,
-      write_batch.table_lock().table_lock_type(), row_mark_type,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -728,8 +711,6 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   if (restart_read_ht_.is_valid()) {
     return Status::OK();
   }
-
-  docdb_locks_ = std::move(prepare_result_.lock_batch);
 
   return Status::OK();
 }

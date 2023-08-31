@@ -100,6 +100,11 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+// Version gets the version
+func (plat Platform) Version() string {
+	return plat.version
+}
+
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
@@ -183,7 +188,7 @@ func (plat Platform) createNecessaryDirectories() error {
 	userName := viper.GetString("service_username")
 	for _, dir := range dirs {
 		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			if mkErr := common.MkdirAll(dir, os.ModePerm); mkErr != nil {
+			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
 				log.Error("failed to make " + dir + ": " + err.Error())
 				return mkErr
 			}
@@ -544,9 +549,23 @@ func (plat Platform) MigrateFromReplicated() error {
 		return err
 	}
 
-	// TODO: need to pull keys from replicated.
-	if err := createPemFormatKeyAndCert(); err != nil {
-		return err
+	pemVal, err := plat.pemFromDocker()
+	if err != nil {
+		log.Debug("no cert found from replicated, creating self signed")
+		if err := createPemFormatKeyAndCert(); err != nil {
+			return err
+		}
+	} else {
+		serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
+		pemFile, err := common.Create(serverPemPath)
+		if err != nil {
+			log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
+			return err
+		}
+		defer pemFile.Close()
+		if _, err := pemFile.WriteString(pemVal); err != nil {
+			return fmt.Errorf("failed to write pem file at %s: %w", serverPemPath, err)
+		}
 	}
 
 	//Create the platform.log file so that we can start platform as
@@ -579,6 +598,26 @@ func (plat Platform) MigrateFromReplicated() error {
 	}
 
 	log.Info("Finishing Platform migration")
+	return nil
+}
+
+// FinishReplicatedMigrate completest the replicated migration platform specific tasks
+func (plat Platform) FinishReplicatedMigrate() error {
+	files, err := os.ReadDir(filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases"))
+	if err != nil {
+		return fmt.Errorf("could not read releases directory: %w", err)
+	}
+	for _, file := range files {
+		if file.Type() != fs.ModeSymlink {
+			log.DebugLF("skipping directory " + file.Name() + " as it is not a symlink")
+			continue
+		}
+		err = common.ResolveSymlink(filepath.Join(
+			common.GetBaseInstall(), "data/yb-platform/releases", file.Name()))
+		if err != nil {
+			return fmt.Errorf("Could not complete migration of platform: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -659,4 +698,15 @@ func (plat Platform) CreateCronJob() error {
 		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
 		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 	return nil
+}
+
+// pemFromDocker will read the pem file for https from server.pem. This only works for 2.16 and up.
+func (plat Platform) pemFromDocker() (string, error) {
+	out := shell.Run("docker", "exec", "yugaware", "cat",
+		"/opt/yugabyte/yugaware/conf/server.pem")
+	if !out.Succeeded() {
+		out.LogDebug()
+		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
+	}
+	return out.StdoutString(), nil
 }

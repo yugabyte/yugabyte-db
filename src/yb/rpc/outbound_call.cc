@@ -63,6 +63,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
@@ -117,6 +118,39 @@ int32_t NextCallId() {
 }
 
 const std::string kEmptyString;
+
+bool FinishedState(RpcCallState state) {
+  switch (state) {
+    case READY:
+    case ON_OUTBOUND_QUEUE:
+    case SENT:
+      return false;
+    case TIMED_OUT:
+    case FINISHED_ERROR:
+    case FINISHED_SUCCESS:
+      return true;
+  }
+  LOG(FATAL) << "Unknown call state: " << state;
+  return false;
+}
+
+bool ValidStateTransition(RpcCallState old_state, RpcCallState new_state) {
+  switch (new_state) {
+    case ON_OUTBOUND_QUEUE:
+      return old_state == READY;
+    case SENT:
+      return old_state == ON_OUTBOUND_QUEUE;
+    case TIMED_OUT:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE;
+    case FINISHED_SUCCESS:
+      return old_state == SENT;
+    case FINISHED_ERROR:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY;
+    default:
+      // No sanity checks for others.
+      return true;
+  }
+}
 
 } // namespace
 
@@ -176,7 +210,16 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 }
 
 OutboundCall::~OutboundCall() {
-  DCHECK(IsFinished());
+  {
+    auto current_state = state();
+    bool was_callback_invoked = callback_invoked();
+    auto invalid_state_transition = invalid_state_transition_.load(std::memory_order_acquire);
+    LOG_IF_WITH_PREFIX(DFATAL,
+                       !FinishedState(current_state) ||
+                       !was_callback_invoked ||
+                       invalid_state_transition)
+        << "Outbound call is in a bad state when destroyed: " << DebugString();
+  }
   DVLOG(4) << "OutboundCall " << this << " destroyed with state_: " << StateName(state_);
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
@@ -191,7 +234,8 @@ OutboundCall::~OutboundCall() {
   DecrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
-void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void OutboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
+  sent_time_.store(CoarseMonoClock::Now(), std::memory_order_release);
   if (IsFinished()) {
     auto current_state = state();
     LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
@@ -200,7 +244,16 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
         << "(" << StateName(current_state) << ")"
         << ", status: " << this->status();
   } else if (status.ok()) {
-    SetSent();
+    if (!conn) {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << this << " - Unexpected - Connection is null with ok status";
+    }
+    if (SetSent()) {
+      // Only one thread will successfully set the state to SENT so it is safe to write to
+      // sent_on_connection_ here without locking.
+      sent_on_connection_ = conn;
+      connection_weak_.Set(conn);
+    }
   } else {
     VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
     SetFailed(status);
@@ -303,39 +356,6 @@ OutboundCall::State OutboundCall::state() const {
   return state_.load(std::memory_order_acquire);
 }
 
-bool FinishedState(RpcCallState state) {
-  switch (state) {
-    case READY:
-    case ON_OUTBOUND_QUEUE:
-    case SENT:
-      return false;
-    case TIMED_OUT:
-    case FINISHED_ERROR:
-    case FINISHED_SUCCESS:
-      return true;
-  }
-  LOG(FATAL) << "Unknown call state: " << state;
-  return false;
-}
-
-bool ValidStateTransition(RpcCallState old_state, RpcCallState new_state) {
-  switch (new_state) {
-    case ON_OUTBOUND_QUEUE:
-      return old_state == READY;
-    case SENT:
-      return old_state == ON_OUTBOUND_QUEUE;
-    case TIMED_OUT:
-      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE;
-    case FINISHED_SUCCESS:
-      return old_state == SENT;
-    case FINISHED_ERROR:
-      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY;
-    default:
-      // No sanity checks for others.
-      return true;
-  }
-}
-
 bool OutboundCall::SetState(State new_state) {
   auto old_state = state();
   // Sanity check state transitions.
@@ -343,14 +363,16 @@ bool OutboundCall::SetState(State new_state) {
            << StateName(old_state) << " to " << StateName(new_state);
   for (;;) {
     if (FinishedState(old_state)) {
+      // TODO: also handle this as an invalid state transition.
       VLOG(1) << "Call already finished: " << StateName(old_state) << ", new state: "
               << StateName(new_state);
       return false;
     }
     if (!ValidStateTransition(old_state, new_state)) {
-      LOG(DFATAL)
+      LOG_WITH_PREFIX(DFATAL)
           << "Invalid call state transition: " << StateName(old_state) << " => "
           << StateName(new_state);
+      SetInvalidStateTransition(old_state, new_state);
       return false;
     }
     if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
@@ -360,6 +382,24 @@ bool OutboundCall::SetState(State new_state) {
 }
 
 void OutboundCall::InvokeCallback() {
+  {
+    auto now = CoarseMonoClock::Now();
+    auto expected = CoarseTimePoint::min();
+    if (!invoke_callback_time_.compare_exchange_strong(expected, now, std::memory_order_acq_rel)) {
+      LOG_WITH_PREFIX(DFATAL) << "Callback was already invoked for " << DebugString()
+                              << " at " << ToStringRelativeToNow(expected, now);
+      return;
+    }
+  }
+
+  // Release the connection reference once the callback is invoked. This helps prevent circular
+  // dependencies for cleanup between OutboundCall and Connection. We don't need locking here
+  // because sent_on_connection_ is protected by synchronization on initializing connection_weak_
+  // in NotifyTransferred and checking it here.
+  if (connection_weak_.IsInitialized()) {
+    sent_on_connection_.reset();
+  }
+
   if (callback_thread_pool_) {
     callback_task_.SetOutboundCall(shared_from(this));
     callback_thread_pool_->Enqueue(&callback_task_);
@@ -397,8 +437,21 @@ void OutboundCall::InvokeCallbackSync() {
   response_ = nullptr;
 }
 
+void OutboundCall::SetInvalidStateTransition(RpcCallState old_state, RpcCallState new_state) {
+  invalid_state_transition_.store(InvalidStateTransition {
+    .old_state = static_cast<uint8_t>(old_state),
+    .new_state = static_cast<uint8_t>(new_state)
+  }, std::memory_order_release);
+}
+
 void OutboundCall::SetResponse(CallResponse&& resp) {
   DCHECK(!IsFinished());
+
+  if (test_ignore_response) {
+    LOG_WITH_PREFIX(WARNING) << "Skipping OutboundCall response processing: " << this << " - "
+                             << ToString();
+    return;
+  }
 
   auto now = CoarseMonoClock::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
@@ -450,18 +503,19 @@ void OutboundCall::SetQueued() {
   if (outbound_call_metrics_) {
     outbound_call_metrics_->queue_time->Increment(MonoDelta(end_time - start_).ToMicroseconds());
   }
-  SetState(RpcCallState::ON_OUTBOUND_QUEUE);
+  auto ignored [[maybe_unused]] = SetState(RpcCallState::ON_OUTBOUND_QUEUE);  // NOLINT
   TRACE_TO_WITH_TIME(trace_, end_time, "Queued.");
 }
 
-void OutboundCall::SetSent() {
+bool OutboundCall::SetSent() {
   auto end_time = CoarseMonoClock::Now();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
     outbound_call_metrics_->send_time->Increment(MonoDelta(end_time - start_).ToMicroseconds());
   }
-  SetState(RpcCallState::SENT);
+  auto state_set_successfully = SetState(RpcCallState::SENT);
   TRACE_TO_WITH_TIME(trace_, end_time, "Call Sent.");
+  return state_set_successfully;
 }
 
 void OutboundCall::SetFinished() {
@@ -541,8 +595,47 @@ size_t OutboundCall::TransferSidecars(Sidecars* dest) NO_THREAD_SAFETY_ANALYSIS 
 }
 
 string OutboundCall::ToString() const {
-  return Format("RPC call $0 -> $1 , state=$2.",
-                remote_method_, conn_id_, StateName(state()));
+  return Format(
+      // This will say "Local RPC call" for local calls and "RPC call" for remote calls
+      // ("RPC" already stands for "remote procedure call").
+      "$0"
+      "RPC call $1: $2 -> $3"
+      ", id: $4"
+      ", state: $5"
+      ", transfer_state: $6",
+      /* $0 */ is_local() ? "Local " : "",
+      /* $1 */ pointer_cast<const void*>(this),
+      /* $2 */ remote_method_,
+      /* $3 */ conn_id_,
+      /* $4 */ call_id_,
+      /* $5 */ RpcCallState_Name(state()),
+      /* $6 */ transfer_state());
+}
+
+std::string OutboundCall::DebugString() const {
+  auto now = CoarseMonoClock::Now();
+  auto invalid_state_transition = invalid_state_transition_.load(std::memory_order_acquire);
+  auto invoke_callback_time = invoke_callback_time_.load(std::memory_order_acquire);
+  auto conn = connection_weak_.lock();
+  const void* conn_raw_ptr = connection_weak_.raw_ptr_for_logging();
+  auto result = Format(
+      "$0"
+      ", start_time: $1"
+      ", sent_time: $2"
+      ", callback_time: $3"
+      ", now: $4"
+      ", connection: $5",
+      /* $0 */ ToString(),
+      /* $1 */ ToStringRelativeToNow(start_, now),
+      /* $2 */ ToStringRelativeToNow(sent_time_.load(std::memory_order_acquire), now),
+      /* $3 */ ToStringRelativeToNow(invoke_callback_time, now),
+      /* $4 */ now,
+      // Even if the connection is destroyed, still log its raw pointer if it was ever set.
+      /* $5 */ conn ? conn->ToString() : (conn_raw_ptr ? Format("$0", conn_raw_ptr) : "N/A"));
+  if (invalid_state_transition) {
+    result += Format(", invalid_state_transition: $0", invalid_state_transition->ToString());
+  }
+  return result;
 }
 
 bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
@@ -591,6 +684,13 @@ Status OutboundCall::InitHeader(RequestHeader* header) {
     header->set_timeout_millis(VERIFY_RESULT(TimeoutMs()));
   }
   return Status::OK();
+}
+
+void OutboundCall::QueueDumpConnectionState() const {
+  auto connection = connection_weak_.lock();
+  if (connection) {
+    connection->QueueDumpConnectionState(call_id_, this);
+  }
 }
 
 ///
@@ -648,6 +748,12 @@ const std::string kRpcErrorCategoryName = "rpc error";
 
 StatusCategoryRegisterer rpc_error_category_registerer(
     StatusCategoryDescription::Make<RpcErrorTag>(&kRpcErrorCategoryName));
+
+std::string OutboundCall::InvalidStateTransition::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      (old_state, RpcCallState_Name(static_cast<RpcCallState>(old_state))),
+      (new_state, RpcCallState_Name(static_cast<RpcCallState>(new_state))));
+}
 
 }  // namespace rpc
 }  // namespace yb

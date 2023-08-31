@@ -50,9 +50,11 @@ import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
+import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
+import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -280,6 +282,9 @@ class UniverseDetail extends Component {
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
+    const universeStatus =
+      getPromiseState(currentUniverse).isSuccess() && getUniverseStatus(currentUniverse?.data);
+    const isUniverseStatusPending = universeStatus.state === UniverseState.PENDING;
 
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
@@ -575,6 +580,9 @@ class UniverseDetail extends Component {
       featureFlags.released['enableThirdpartyUpgrade'];
 
     const isMKREnabled = featureFlags.test['enableMKR'] || featureFlags.released['enableMKR'];
+    const isCACertRotationEnabled =
+      !isItKubernetesUniverse &&
+      (featureFlags.test['enableCACertRotation'] || featureFlags.released['enableCACertRotation']);
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -614,7 +622,7 @@ class UniverseDetail extends Component {
                     <>
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showSoftwareUpgradesModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -637,7 +645,10 @@ class UniverseDetail extends Component {
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
                         ).value === 'true' && (
-                          <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending}
+                            onClick={showVMImageUpgradeModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade VM Image
                             </YBLabelWithIcon>
@@ -645,7 +656,7 @@ class UniverseDetail extends Component {
                         )}
                       {!universePaused && !useSystemd && !isItKubernetesUniverse && (
                         <YBMenuItem
-                          disabled={updateInProgress || onPremSkipProvisioning}
+                          disabled={isUniverseStatusPending || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -659,7 +670,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && enableThirdpartyUpgrade && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showThirdpartyUpgradeModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -683,14 +694,15 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.editUniverse'
                             )}
+                            disabled={isUniverseStatusPending}
                           >
                             <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
+                      {!universePaused && !this.isRRFlagsEnabled() && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showGFlagsModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -700,9 +712,9 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
+                      {!universePaused && this.isRRFlagsEnabled() && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showGFlagsNewModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -713,7 +725,10 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
                       {!universePaused && isItKubernetesUniverse && (
-                        <YBMenuItem disabled={updateInProgress} onClick={showHelmOverridesModal}>
+                        <YBMenuItem
+                          disabled={isUniverseStatusPending}
+                          onClick={showHelmOverridesModal}
+                        >
                           <YBLabelWithIcon icon="fa fa-pencil-square">
                             Edit Kubernetes Overrides
                           </YBLabelWithIcon>
@@ -721,7 +736,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={() => showSubmenu('security')}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -736,7 +751,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && this.isEditDBSettingsEnabled() && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={() => showSubmenu('dbSettings')}
                         >
                           <YBLabelWithIcon icon="fa fa-database fa-fw">
@@ -749,7 +764,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showRollingRestartModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -764,7 +779,7 @@ class UniverseDetail extends Component {
 
                       {!isReadOnlyUniverse && !universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           to={
                             this.isNewUIEnabled()
                               ? `/universes/${uuid}/${
@@ -790,7 +805,7 @@ class UniverseDetail extends Component {
                           closeModal={closeModal}
                           button={
                             <YBMenuItem
-                              disabled={updateInProgress && !backupRestoreInProgress}
+                              disabled={isUniverseStatusPending && !backupRestoreInProgress}
                               onClick={showRunSampleAppsModal}
                             >
                               <YBLabelWithIcon icon="fa fa-terminal">
@@ -825,7 +840,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={handleBackupToggle}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -871,7 +886,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
-                            disabled={universePaused && updateInProgress}
+                            disabled={universePaused && isUniverseStatusPending}
                           >
                             <YBLabelWithIcon
                               icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
@@ -926,7 +941,7 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'vmImageUpgradeModal' ||
-              visibleModal === 'tlsConfigurationModal' ||
+              (visibleModal === 'tlsConfigurationModal' && !isCACertRotationEnabled) ||
               visibleModal === 'rollingRestart' ||
               visibleModal === 'thirdpartyUpgradeModal' ||
               visibleModal === 'systemdUpgrade')
@@ -964,6 +979,17 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
+        {isCACertRotationEnabled && (
+          <EncryptionInTransit
+            open={showModal && visibleModal === 'tlsConfigurationModal'}
+            onClose={() => {
+              closeModal();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+              this.props.fetchCustomerTasks();
+            }}
+            universe={currentUniverse.data}
+          />
+        )}
         {isMKREnabled ? (
           <EncryptionAtRest
             open={showModal && visibleModal === 'manageKeyModal'}

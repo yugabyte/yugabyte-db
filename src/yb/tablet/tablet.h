@@ -336,9 +336,8 @@ class Tablet : public AbstractTablet,
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      docdb::ConsensusFrontiers* frontiers,
-      HybridTime hybrid_time,
+      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
   void WriteToRocksDB(
@@ -606,6 +605,20 @@ class Tablet : public AbstractTablet,
   Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
+  rocksdb::DB* regular_db() const {
+    return regular_db_.get();
+  }
+
+  rocksdb::DB* intents_db() const {
+    return intents_db_.get();
+  }
+
+  // The only way to make any conclusion that a tablet is a product of a split is to check its key
+  // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
+  const docdb::KeyBounds& key_bounds() const {
+    return key_bounds_;
+  }
+
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
         regular_db_.get(),
@@ -668,14 +681,6 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
-
-  rocksdb::DB* TEST_db() const {
-    return regular_db_.get();
-  }
-
-  rocksdb::DB* TEST_intents_db() const {
-    return intents_db_.get();
-  }
 
   Status TEST_SwitchMemtable();
 
@@ -854,10 +859,6 @@ class Tablet : public AbstractTablet,
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
       TabletLockInfoPB* tablet_lock_info) const;
-
-  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
-    return external_txn_intents_state_.get();
-  }
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
@@ -1086,8 +1087,6 @@ class Tablet : public AbstractTablet,
   std::atomic<int64_t> last_committed_write_index_{0};
 
   HybridTimeLeaseProvider ht_lease_provider_;
-
-  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
 
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;

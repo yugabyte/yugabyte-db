@@ -65,13 +65,6 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
-// TODO: Convert this to an autoflag.
-DEFINE_RUNTIME_bool(ysql_enable_table_level_locks_for_dml_reads, false,
-                    "Whether to acquire table level locks for DML read queries "
-                    "that either have a row mark or are at serializable isolation.");
-TAG_FLAG(ysql_enable_table_level_locks_for_dml_reads, hidden);
-TAG_FLAG(ysql_enable_table_level_locks_for_dml_reads, experimental);
-
 namespace yb {
 namespace tserver {
 
@@ -384,14 +377,6 @@ Status ReadQuery::DoPerform() {
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();
     *write_batch.mutable_transaction() = req_->transaction();
-    if (GetAtomicFlag(&FLAGS_ysql_enable_table_level_locks_for_dml_reads) &&
-        !tablet()->metadata()->primary_table_info()->schema()
-            .table_properties().is_ysql_catalog_table()) {
-      write_batch.mutable_table_lock()->set_table_lock_type(
-          has_row_mark ?
-          TableLockType::ROW_SHARE :
-          TableLockType::ACCESS_SHARE);
-    }
     if (has_row_mark) {
       write_batch.set_row_mark_type(batch_row_mark);
       query->set_read_time(read_time_);

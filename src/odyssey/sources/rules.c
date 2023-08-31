@@ -148,6 +148,7 @@ od_rule_t *od_rules_add(od_rules_t *rules)
 	rule->auth_common_name_default = 0;
 	rule->auth_common_names_count = 0;
 	rule->server_lifetime_us = 3600 * 1000000L;
+	rule->min_pool_size = 0;
 	rule->reserve_session_server_connection = 1;
 #ifdef PAM_FOUND
 	rule->auth_pam_data = od_pam_auth_data_create();
@@ -532,6 +533,9 @@ int od_rules_rule_compare(od_rule_t *a, od_rule_t *b)
 	if (a->server_lifetime_us != b->server_lifetime_us) {
 		return 0;
 	}
+
+	if (a->min_pool_size != b->min_pool_size)
+		return 0;
 
 	return 1;
 }

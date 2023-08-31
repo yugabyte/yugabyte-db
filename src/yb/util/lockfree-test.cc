@@ -281,8 +281,11 @@ class QueuePerformanceHelper {
         cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
             "OptimisticQueue/BlockAllocator/DHP");
     TestQueue<cds::container::RWQueue<ptrdiff_t>>("RWQueue");
-    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
-    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
+    // On GCC11, segmented queue seems to call sized delete with a different size than it allocates
+    // with, which causes a segfault in tcmalloc.
+    // See issue https://github.com/khizmax/libcds/issues/181.
+    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
+    // TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
     TestQueue<cds::container::VyukovMPMCCycleQueue<ptrdiff_t>>("VyukovMPMCCycleQueue", 50000);
   }
  private:
@@ -484,6 +487,41 @@ TEST(LockfreeTest, Stack) {
   std::sort(content.begin(), content.end());
   for (int i = 0; i != kNumEntries; ++i) {
     ASSERT_EQ(content[i], i);
+  }
+}
+
+TEST(LockfreeTest, WriteOnceWeakPtr) {
+  std::shared_ptr<std::string> hello = std::make_shared<std::string>("Hello");
+  std::shared_ptr<std::string> world = std::make_shared<std::string>("world");
+
+  {
+    WriteOnceWeakPtr<std::string> wowp(hello);
+    ASSERT_TRUE(wowp.IsInitialized());
+    ASSERT_FALSE(wowp.Set(world));
+    auto* hello_ptr = hello.get();
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), hello_ptr);
+    hello.reset();
+    ASSERT_EQ(wowp.lock(), nullptr);
+    // Still initialized, even though the object has been destroyed.
+    ASSERT_TRUE(wowp.IsInitialized());
+    // The weak pointer still stores the same raw pointer.
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), hello_ptr);
+  }
+
+  {
+    WriteOnceWeakPtr<std::string> wowp;
+    ASSERT_FALSE(wowp.IsInitialized());
+    ASSERT_FALSE(wowp.Set(nullptr));
+    ASSERT_TRUE(!wowp.IsInitialized());  // Setting to nullptr was a no-op.
+    ASSERT_TRUE(wowp.Set(world));
+    ASSERT_TRUE(wowp.IsInitialized());
+    // Setting the pointer the second time, even to the same value, will fail.
+    ASSERT_FALSE(wowp.Set(world));
+    auto* world_ptr = world.get();
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), world_ptr);
+    world.reset();
+    ASSERT_TRUE(wowp.IsInitialized());
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), world_ptr);
   }
 }
 

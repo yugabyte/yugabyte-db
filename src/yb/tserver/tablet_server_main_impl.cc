@@ -73,6 +73,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/thread.h"
+#include "yb/util/port_picker.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -127,16 +128,18 @@ DECLARE_string(cert_node_filename);
 DECLARE_string(ysql_hba_conf);
 DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
-DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_ysql_conn_mgr);
+DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
 
 
 namespace yb {
 namespace tserver {
 
-void SetProxyAddress(std::string* flag, const std::string& name, uint16_t port) {
-  if (flag->empty()) {
+void SetProxyAddress(std::string* flag, const std::string& name,
+  uint16_t port, bool override_port = false) {
+  if (flag->empty() || override_port) {
     std::vector<HostPort> bind_addresses;
     Status status = HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &bind_addresses);
     LOG_IF(DFATAL, !status.ok()) << "Bad public IPs " << FLAGS_rpc_bind_addresses << ": " << status;
@@ -155,7 +158,35 @@ void SetProxyAddresses() {
   LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
   SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
-  SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
+  if (!FLAGS_enable_ysql_conn_mgr) {
+    SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
+    return;
+  }
+
+  // Pick a random for postgres if not provided or clashig with 5433
+  PortPicker pp;
+  uint16_t freeport = pp.AllocateFreePort();
+  if (!FLAGS_pgsql_proxy_bind_address.empty()) {
+    std::vector<HostPort> bind_addresses;
+    Status status = HostPort::ParseStrings(FLAGS_pgsql_proxy_bind_address, 0, &bind_addresses);
+    LOG_IF(DFATAL, !status.ok())
+    << "Bad pgsql_proxy_bind_address " << FLAGS_pgsql_proxy_bind_address << ": " << status;
+    for (const auto& addr : bind_addresses) {
+      if (addr.port() == PgProcessConf::kDefaultPort && addr.port() == FLAGS_ysql_conn_mgr_port) {
+        LOG(INFO) << "The connection manager and backend db ports are conflicting on "
+        << addr.port() << ". Assigning a random available port: " << freeport <<
+        " to backend db and " << PgProcessConf::kDefaultPort << " to the connection manager";
+        SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", freeport, true);
+        break;
+      }
+    }
+  }
+
+  yb::HostPort postgres_address;
+  CHECK_OK(postgres_address.ParseString(FLAGS_pgsql_proxy_bind_address, freeport));
+  LOG(INFO) << "ysql connection manager is enabled";
+  LOG(INFO) << "Using pgsql_proxy_bind_address = " << FLAGS_pgsql_proxy_bind_address;
+  LOG(INFO) << "Using ysql_connection_manager port = " << FLAGS_ysql_conn_mgr_port;
 }
 
 // Runs the IO service in a loop until it is stopped. Invokes trigger_termination_fn if there is an
@@ -203,7 +234,6 @@ int TabletServerMain(int argc, char** argv) {
   Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
-
   // ----------------------------------------------------------------------------------------------
   // Starting to instantiate servers
   // ----------------------------------------------------------------------------------------------
@@ -219,6 +249,9 @@ int TabletServerMain(int argc, char** argv) {
   std::unique_ptr<TserverCallHome> call_home;
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
+
+  if(!FLAGS_enable_ysql_conn_mgr)
+    FLAGS_enable_ysql_conn_mgr_stats = false;
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
@@ -266,8 +299,8 @@ int TabletServerMain(int argc, char** argv) {
 
     // Construct the config file for the Ysql Connection Manager process.
     ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
-            tablet_server_options->fs_opts.data_paths.front()));
+        ysql_conn_mgr_wrapper::YsqlConnMgrConf(tablet_server_options->fs_opts.data_paths.front()),
+        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0);
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
   }

@@ -398,7 +398,7 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
   }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
-  has_been_fully_compacted = pb.has_been_fully_compacted();
+  parent_data_compacted = pb.parent_data_compacted();
   last_full_compaction_time = pb.last_full_compaction_time();
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
@@ -413,7 +413,7 @@ Status KvStoreInfo::MergeWithRestored(
     dockv::OverwriteSchemaPacking overwrite) {
   lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
-  has_been_fully_compacted = snapshot_kvstoreinfo.has_been_fully_compacted();
+  parent_data_compacted = snapshot_kvstoreinfo.parent_data_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
   return RestoreMissingValuesAndMergeTableSchemaPackings(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
@@ -513,7 +513,7 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
-  pb->set_has_been_fully_compacted(has_been_fully_compacted);
+  pb->set_parent_data_compacted(parent_data_compacted);
   pb->set_last_full_compaction_time(last_full_compaction_time);
 
   // Putting primary table first, then all other tables.
@@ -548,7 +548,7 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
                           rocksdb_dir,
                           lower_bound_key,
                           upper_bound_key,
-                          has_been_fully_compacted,
+                          parent_data_compacted,
                           snapshot_schedules) &&
          MapsEqual(lhs.tables, rhs.tables, eq) &&
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
@@ -1584,11 +1584,27 @@ std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList(
   return hosted_services_;
 }
 
+void RaftGroupMetadata::DisableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  ++disable_schema_gc_counter_;
+}
+
+void RaftGroupMetadata::EnableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  --disable_schema_gc_counter_;
+  LOG_IF(DFATAL, disable_schema_gc_counter_ < 0)
+      << "Disable GC counter underflow: " << disable_schema_gc_counter_;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
+    if (disable_schema_gc_counter_ != 0) {
+      // Could skip schema GC at all, because it will be cleaned after next compaction.
+      return Status::OK();
+    }
     for (const auto& [table_id, schema_version] : versions) {
       auto it = table_id.IsNil() ? kv_store_.tables.find(primary_table_id_)
                                  : kv_store_.tables.find(table_id.ToHexString());
@@ -1664,7 +1680,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
-  metadata->kv_store_.has_been_fully_compacted = false;
+  metadata->kv_store_.parent_data_compacted = false;
   metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;

@@ -351,8 +351,6 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
     CASE_EMPTY_KEY_ENTRY_TYPES
       return;
 
-    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString:
       key_bytes->AppendString(str_val_);
@@ -821,8 +819,6 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     }
 
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: {
       if (out) {
         string result;
@@ -2627,10 +2623,6 @@ KeyEntryValue KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB value) {
 
 std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
   switch (type_) {
-    case KeyEntryType::kWeakTableLock:
-      return "WeakTableLock";
-    case KeyEntryType::kStrongTableLock:
-      return "StrongTableLock";
     case KeyEntryType::kNullHigh: FALLTHROUGH_INTENDED;
     case KeyEntryType::kNullLow:
       return "null";
@@ -2770,8 +2762,6 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarIntDescending:
       return other.str_val_.compare(str_val_);
-    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimal: FALLTHROUGH_INTENDED;
@@ -2986,8 +2976,6 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     CASE_EMPTY_KEY_ENTRY_TYPES
         return true;
 
-    case KeyEntryType::kWeakTableLock: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kStrongTableLock: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending: FALLTHROUGH_INTENDED;

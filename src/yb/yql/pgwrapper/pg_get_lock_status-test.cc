@@ -493,6 +493,40 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
+TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
+  const auto tablegroup = "tg";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup));
+
+  const auto table_name = "foo";
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) TABLEGROUP $1", table_name, tablegroup));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
+
+  const auto key = "1";
+  const auto num_txns = 2;
+  TestThreadHolder thread_holder;
+  CountDownLatch fetched_locks{1};
+  for (auto i = 0 ; i < num_txns ; i++) {
+    thread_holder.AddThreadFunctor([this, &fetched_locks, table_name, key] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=$1", table_name, key));
+      ASSERT_TRUE(fetched_locks.WaitFor(15s * kTimeMultiplier));
+      ASSERT_OK(conn.RollbackTransaction());
+    });
+  }
+
+  SleepFor(5s * kTimeMultiplier);
+  // Each transaction above acquires 3 locks, one {STRONG_READ,STRONG_WRITE} on the column,
+  // one {WEAK_READ, WEAK_WRITE} on the row, and a {WEAK_READ,WEAK_WRITE} on the table.
+  auto res = ASSERT_RESULT(setup_conn.FetchValue<int64_t>("SELECT COUNT(*) FROM pg_locks"));
+  ASSERT_EQ(res, num_txns * 3);
+  fetched_locks.CountDown();
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
 TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
   const auto table = "foo";
   const auto locked_key = "1";

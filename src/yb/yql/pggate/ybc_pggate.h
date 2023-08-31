@@ -341,6 +341,8 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
+
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,
     uint64_t version,
@@ -531,6 +533,9 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
+// Set prefix length for distinct index scans.
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
 // Functions----------------------------------------------------------------------------------------
@@ -552,6 +557,7 @@ YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
+bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);

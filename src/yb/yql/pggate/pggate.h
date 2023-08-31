@@ -396,6 +396,8 @@ class PgApiImpl {
 
   Status ExecDropTable(PgStatement *handle);
 
+  Status ExecDropIndex(PgStatement *handle);
+
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
@@ -546,6 +548,8 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
@@ -589,6 +593,7 @@ class PgApiImpl {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);

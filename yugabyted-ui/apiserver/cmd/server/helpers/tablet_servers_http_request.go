@@ -1,7 +1,6 @@
 package helpers
 
 import (
-        "apiserver/cmd/server/logger"
         "encoding/json"
         "errors"
         "net"
@@ -44,18 +43,18 @@ type TabletServersFuture struct {
         Error   error
 }
 
-func GetTabletServersFuture(log logger.Logger, nodeHost string, future chan TabletServersFuture) {
+func (h *HelperContainer) GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
         tabletServers := TabletServersFuture{
                 Tablets: map[string]map[string]TabletServer{},
                 Error:   nil,
         }
-        urls, err := BuildMasterURLs(log, "api/v1/tablet-servers")
+        urls, err := h.BuildMasterURLs("api/v1/tablet-servers")
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
                 return
         }
-        body, err := AttemptGetRequests(log, urls, true)
+        body, err := h.AttemptGetRequests(urls, true)
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
@@ -79,7 +78,7 @@ func GetTabletServersFuture(log logger.Logger, nodeHost string, future chan Tabl
 }
 
 // Helper for getting the hostnames of each node given a TabletServersFuture response
-func GetNodesList(tablets TabletServersFuture) []string {
+func (h *HelperContainer) GetNodesList(tablets TabletServersFuture) []string {
         hostNames := []string{}
         for _, obj := range tablets.Tablets {
                 for hostport := range obj {
@@ -94,13 +93,13 @@ func GetNodesList(tablets TabletServersFuture) []string {
 
 // Helper for getting a map between hostnames and uuids for tservers
 // For now, we hit the /tablet-servers endpoint and parse the html
-func GetHostToUuidMap(log logger.Logger, nodeHost string) (map[string]string, error) {
+func (h *HelperContainer) GetHostToUuidMap(nodeHost string) (map[string]string, error) {
         hostToUuidMap := map[string]string{}
-        urls, err := BuildMasterURLs(log, "tablet-servers")
+        urls, err := h.BuildMasterURLs("tablet-servers")
         if err != nil {
                 return hostToUuidMap, err
         }
-        body, err := AttemptGetRequests(log, urls, false)
+        body, err := h.AttemptGetRequests(urls, false)
         if err != nil {
                 return hostToUuidMap, err
         }

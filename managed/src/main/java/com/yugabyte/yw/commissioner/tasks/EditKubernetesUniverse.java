@@ -45,10 +45,13 @@ import lombok.extern.slf4j.Slf4j;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected EditKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected EditKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -60,8 +63,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       verifyParams(UniverseOpType.EDIT);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-          universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       // This value is used by subsequent calls to helper methods for
@@ -161,8 +163,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-          getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
@@ -238,15 +239,22 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean tserverCpuChanged =
           !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
               newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
-      boolean masterCpuChanged =
-          !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
-              newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
       boolean tserverMemChanged =
           !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
               newIntent.tserverK8SNodeResourceSpec.memoryGib);
-      boolean masterMemChanged =
-          !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
-              newIntent.masterK8SNodeResourceSpec.memoryGib);
+      boolean masterMemChanged = false;
+      boolean masterCpuChanged = false;
+
+      // For clusters that have read replicas, this condition is true since we
+      // do not pass in masterK8sNodeResourceSpec.
+      if (curIntent.masterK8SNodeResourceSpec != null) {
+        masterMemChanged =
+            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
+                newIntent.masterK8SNodeResourceSpec.memoryGib);
+        masterCpuChanged =
+            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
+                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+      }
       instanceTypeChanged =
           tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
       if (!isReadOnlyCluster && (masterMemChanged || masterCpuChanged)) {

@@ -29,9 +29,10 @@ spec:
                   enum:
                   - generating
                   - ready
+                  - failed
                 access:
                   type: string
-                bundleUUID:
+                resourceUUID:
                   type: string
             spec:
               type: object

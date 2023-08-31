@@ -690,7 +690,8 @@ Status YBClient::DeleteTable(const string& table_id,
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name,
-                                  bool wait) {
+                                  bool wait,
+                                  const TransactionMetadata *txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
@@ -698,12 +699,14 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                             true /* is_index_table */,
                             deadline,
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
                                   bool wait,
+                                  const TransactionMetadata *txn,
                                   CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
@@ -711,7 +714,8 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             true /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
@@ -1143,11 +1147,13 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                  txn);
 }
 
-Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTablegroup(this,
                                  deadline,
-                                 tablegroup_id);
+                                 tablegroup_id,
+                                 txn);
 }
 
 Result<vector<master::TablegroupIdentifierPB>>
@@ -1925,20 +1931,17 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status YBClient::GetTabletLocation(const TabletId& tablet_id,
-                                   master::TabletLocationsPB* tablet_location) {
+Result<yb::master::GetTabletLocationsResponsePB> YBClient::GetTabletLocations(
+    const std::vector<TabletId>& tablet_ids) {
   GetTabletLocationsRequestPB req;
   GetTabletLocationsResponsePB resp;
-  req.add_tablet_ids(tablet_id);
+  req.mutable_tablet_ids()->Reserve(static_cast<int>(tablet_ids.size()));
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletLocations);
 
-  if (resp.tablet_locations_size() != 1) {
-    return STATUS_SUBSTITUTE(IllegalState, "Expected single tablet for $0, received $1",
-                             tablet_id, resp.tablet_locations_size());
-  }
-
-  *tablet_location = resp.tablet_locations(0);
-  return Status::OK();
+  return resp;
 }
 
 Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(

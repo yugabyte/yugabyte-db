@@ -63,8 +63,10 @@ DECLARE_bool(ysql_enable_packed_row);
 
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
+DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -255,6 +257,51 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
 
   ASSERT_OK(WaitForSplitCompletion(table_id));
 }
+
+#ifndef NDEBUG
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/18387.
+// The test checks that we are getting the expected error if an operation is failing several
+// times in a row: in this case it is expected to get the latest error status.
+// The test reproduces two failure. The first failure is happening after a tablet has been split
+// and the request should be forwarded to the one of its children. The second failure is generated
+// synthetically in AsyncRpcBase::CommonResponseCheck(). Before the fix, the test fails with
+// DCHECK_EQ(response.error_status().size(), 1) in pg_client_session.cc:HandleResponse() due to
+// PgsqlResponsePB::error_status contains two entries because this collection was not cleaned
+// before the retry in the original change (where error_status has been introduced).
+TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
+  constexpr auto kNumRows = 100;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS;"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+
+  // Flush tablets and make sure SST files have appeared to be able to split.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(peers.front()));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("BatcherFlushDone:Retry:1", [&](void* arg) {
+    LOG(INFO) << "Batcher retry detected: setting flag to fail retry.";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_common_response_check_fail_once) = true;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Select and stop on retry
+  auto result = conn.Fetch("SELECT * FROM t");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "CommonResponseCheck test runtime error");
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+#endif // NDEBUG
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
@@ -1072,6 +1119,84 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
     expected_clause << ")";
     ASSERT_EQ(range_clause, expected_clause.str());
   }
+}
+
+class PgLocksTabletSplitTest : public PgTabletSplitTest {
+ protected:
+  void SetUp() override {
+    PgTabletSplitTest::SetUp();
+  }
+
+  Result<PGConn> InitConnection(const std::string& table, int num_keys_to_lock) {
+    const auto num_rows_str = "10000";
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS", table));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, $1), 0", table, num_rows_str));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (auto i = 1 ; i <= num_keys_to_lock ; i++) {
+      RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, i));
+    }
+    return conn;
+  }
+
+  static constexpr int kMinTxnAgeSeconds = 1;
+};
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  auto locks_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  SleepFor(FLAGS_cleanup_split_tablets_interval_sec * 2s * kTimeMultiplier);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return ListTabletIdsForTable(cluster_.get(), table_id).size() == 2;
+  }, 5s * kTimeMultiplier, "Wait for clean up of split parent tablet."));
+
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(*) FROM pg_locks")), num_keys_to_lock * 2);
+}
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_get_locks_status_ms) =
+      15 * kTimeMultiplier * 1s / 1ms;
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto locks_conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+    auto num_txns = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_txns, 1, IllegalState,
+                      Format("Expected to see $0 (vs $1) transactions in pg_locks", 1, num_txns));
+    auto num_locks = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(*) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_locks, 2, IllegalState,
+                      Format("Expected to see $0 (vs $1) locks", 2 * num_keys_to_lock, num_locks));
+    return Status::OK();
+  });
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+  ASSERT_OK(status_future.get());
 }
 
 class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {

@@ -51,7 +51,7 @@ LWPgsqlExpressionPB* AllocNonVirtualBindPB(
 }
 
 dockv::KeyEntryValue QLValueToKeyEntryValue(const LWQLValuePB* input, const ColumnSchema& desc) {
-  return input ? dockv::KeyEntryValue::FromQLValuePB(*input, desc.sorting_type())
+  return input ? dockv::KeyEntryValue::FromQLValuePBForKey(*input, desc.sorting_type())
                : dockv::KeyEntryValue();
 }
 

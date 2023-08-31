@@ -109,7 +109,6 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
-    TableLockType table_lock_type,
     RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
@@ -133,19 +132,24 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
-      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(
-          doc_path.as_slice(), &key_prefix_lengths));
+      auto doc_path_slice = doc_path.as_slice();
+      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path.as_slice().ToDebugHexString());
+                             doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
-      // Acquire weak lock on empty key for transactional tables,
-      // unless specified key is already empty.
-      if (doc_path.size() > 0 && transactional_table) {
+      // Acquire weak lock on empty key for transactional tables, unless specified key is already
+      // empty.
+      // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
+      // acquired as part of acquiring weak locks on the prefixes. We should not acquire weak lock
+      // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
+      auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
+      auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
         RETURN_NOT_OK(ApplyIntent(
             partial_key, MakeWeak(intent_types), &result.lock_batch));
@@ -176,10 +180,6 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
               ancestor_doc_key ? MakeWeak(read_intent_types) : read_intent_types,
               &result.lock_batch);
         }, partial_range_key_intents));
-  }
-
-  for (const auto& mapping : GetTableLockIntents(table_lock_type)) {
-    RETURN_NOT_OK(ApplyIntent(mapping.first, mapping.second, &result.lock_batch));
   }
 
   return result;
@@ -232,7 +232,6 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     tablet::TabletMetrics* tablet_metrics,
     IsolationLevel isolation_level,
-    TableLockType table_lock_type,
     RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
@@ -242,7 +241,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, table_lock_type, row_mark_type,
+      doc_write_ops, read_pairs, isolation_level, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
@@ -325,31 +324,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();
-}
-
-IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard lock(mutex_);
-  return map_[txn_id]++;
-}
-
-void ExternalTxnIntentsState::EraseEntries(
-    const ExternalTxnApplyState& apply_external_transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& apply : apply_external_transactions) {
-    map_.erase(apply.first);
-  }
-}
-
-void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& transaction : transactions) {
-    map_.erase(transaction);
-  }
-}
-
-size_t ExternalTxnIntentsState::EntryCount() {
-  std::lock_guard lock(mutex_);
-  return map_.size();
 }
 
 Status EnumerateIntents(
@@ -460,7 +434,6 @@ Result<ApplyTransactionState> GetIntentsBatch(
             write_id = decoded_value.write_id;
 
             if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
-              // TODO(tablelocks): Skip table lock intents.
               reverse_index_iter.Next();
               continue;
             }
@@ -540,81 +513,6 @@ void CombineExternalIntents(
   }
   buffer.AppendUInt64AsVarInt(0);
   provider->SetValue(buffer.AsSlice());
-}
-
-// This method should take the colocation_id of the table as an argument
-// when we start supporting table locks for colocated tables.
-RefCntPrefix GetTableLockPrefix(bool is_strong) {
-  dockv::KeyBytes buffer;
-  // Append table lock type
-  if (is_strong) {
-    buffer.AppendKeyEntryType(dockv::KeyEntryType::kStrongTableLock);
-  } else {
-    buffer.AppendKeyEntryType(dockv::KeyEntryType::kWeakTableLock);
-  }
-  RefCntBuffer path(buffer.size());
-  buffer.AsSlice().CopyTo(path.data());
-  return path;
-}
-
-TableLockIntents GetTableLockIntents(TableLockType lock_type) {
-  RefCntPrefix weak_table_lock_key = GetTableLockPrefix(false);
-  RefCntPrefix strong_table_lock_key = GetTableLockPrefix(true);
-  switch (lock_type) {
-    case TableLockType::NONE:
-      return {};
-    case TableLockType::ACCESS_SHARE:
-      return {
-          std::make_pair(weak_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kWeakRead}))
-      };
-    case TableLockType::ROW_SHARE:
-      return {
-          std::make_pair(weak_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kWeakWrite}))
-      };
-    case TableLockType::ROW_EXCLUSIVE:
-      return {
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kWeakRead}))
-      };
-    case TableLockType::SHARE_UPDATE_EXCLUSIVE:
-      return {
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kWeakWrite,
-                                               dockv::IntentType::kStrongRead}))
-      };
-    case TableLockType::SHARE:
-      return {
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}))
-      };
-    case TableLockType::SHARE_ROW_EXCLUSIVE:
-      return {
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kWeakRead,
-                                               dockv::IntentType::kStrongWrite}))
-      };
-    case TableLockType::EXCLUSIVE:
-      return {
-          std::make_pair(weak_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kStrongRead})),
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kStrongRead,
-                                               dockv::IntentType::kStrongWrite}))
-      };
-    case TableLockType::ACCESS_EXCLUSIVE:
-      return {
-          std::make_pair(weak_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kStrongRead,
-                                             dockv::IntentType::kStrongWrite})),
-          std::make_pair(strong_table_lock_key,
-                         dockv::IntentTypeSet({dockv::IntentType::kStrongRead,
-                                               dockv::IntentType::kStrongWrite}))
-      };
-  }
-  LOG(DFATAL) << "Unreachable";
-  return {};
 }
 
 }  // namespace docdb

@@ -245,6 +245,9 @@ DEFINE_UNKNOWN_int64(protege_synchronization_timeout_ms, 1000,
 DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
                  "Inside RaftConsensus::ReportFailureDetectedTask, skip normal election.");
 
+DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
+                 "Whether to pause before triggering pending operations in RaftConsensus::Start");
+
 namespace yb {
 namespace consensus {
 
@@ -473,6 +476,9 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       MinimumElectionTimeout());
 
   {
+    if (table_type_ != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_pause_replica_start_before_triggering_pending_operations);
+    }
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForStart(&lock));
     state_->ClearLeaderUnlocked();
@@ -622,7 +628,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
 
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
-        LOG_WITH_PREFIX(INFO) << "Fail of leader " << state_->GetLeaderUuidUnlocked()
+        LOG_WITH_PREFIX(INFO) << "Fail or stepdown of leader " << state_->GetLeaderUuidUnlocked()
                               << " detected. Triggering leader " << election_name
                               << ", mode=" << data.mode;
       } else {

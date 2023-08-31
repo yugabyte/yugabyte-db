@@ -34,15 +34,18 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
 using namespace std::chrono_literals;
+using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
@@ -874,22 +877,16 @@ TEST_F_EX(PgIndexBackfillTest,
       const std::string msg = status.message().ToBuffer();
       const std::string relation_already_exists_msg = Format(
           "relation \"$0\" already exists", kIndexName);
-      const std::vector<std::string> allowed_msgs{
-        "Catalog Version Mismatch",
-        "could not serialize access due to concurrent update",
-        "Restart read required",
-        "Transaction aborted",
-        "Transaction metadata missing",
-        "Unknown transaction, could be recently aborted",
-        relation_already_exists_msg,
+      const auto allowed_msgs = {
+        "Catalog Version Mismatch"sv,
+        SerializeAccessErrorMessageSubstring(),
+        "Restart read required"sv,
+        "Transaction aborted"sv,
+        "Transaction metadata missing"sv,
+        "Unknown transaction, could be recently aborted"sv,
+        std::string_view(relation_already_exists_msg),
       };
-      ASSERT_TRUE(std::find_if(
-          std::begin(allowed_msgs),
-          std::end(allowed_msgs),
-          [&msg] (const std::string allowed_msg) {
-            return msg.find(allowed_msg) != std::string::npos;
-          }) != std::end(allowed_msgs))
-        << status;
+      ASSERT_TRUE(HasSubstring(msg, allowed_msgs)) << status;
       LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
       if (msg.find("Restart read required") == std::string::npos
           && msg.find(relation_already_exists_msg) == std::string::npos) {

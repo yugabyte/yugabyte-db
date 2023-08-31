@@ -169,6 +169,11 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
     LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
   }
 
+  // Propagate the test only flag to OutboundCall.
+  if (controller->TEST_disable_outbound_call_response_processing) {
+    call->TEST_ignore_response();
+  }
+
   return true;
 }
 
@@ -192,7 +197,7 @@ void Proxy::AsyncLocalCall(
   }
   auto call = controller->call_.get();
   call->SetQueued();
-  call->SetSent();
+  auto ignored [[maybe_unused]] = call->SetSent();  // NOLINT
   // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =

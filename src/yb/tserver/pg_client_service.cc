@@ -71,11 +71,22 @@ DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, false,
                     "Use shared memory for executing read and write pg client queries");
 
+DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
+                     "Maximum number of retries that will be performed for GetLockStatus "
+                     "requests that fail in the validation phase due to unseen responses from "
+                     "some of the involved tablets.");
+
 DEFINE_test_flag(uint64, delay_before_get_old_transactions_heartbeat_intervals, 0,
                  "When non-zero, we sleep for set transaction heartbeat interval periods before "
                  "fetching old transactions. This delay is implemented to ensure that the "
                  "information returned for yb_lock_status is more up-to-date. Currently, the flag "
                  "is used in tests alone.");
+
+DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
+                 "When non-zero, we sleep for set number of milliseconds after fetching involved "
+                 "tablet locations and before invoking GetLockStatus RPC. Currently the flag is "
+                 "being used to test pg_locks behavior when split happens after fetching involved "
+                 "tablet(s) locations.");
 
 DECLARE_uint64(transaction_heartbeat_usec);
 
@@ -393,6 +404,62 @@ class PgClientServiceImpl::Impl {
     }
   };
 
+  // Fetches location info of involved tablets. On seeing tablet split errors in the response,
+  // retries the operation with split child tablet ids. On encountering further tablet split
+  // errors, returns a bad status.
+  Result<std::vector<RemoteTabletServerPtr>> ReplaceSplitTabletsAndGetLocations(
+      GetLockStatusRequestPB* req, bool is_within_retry = false) {
+    std::vector<TabletId> tablet_ids;
+    tablet_ids.reserve(req->transactions_by_tablet().size());
+    for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
+      tablet_ids.push_back(tablet_id);
+    }
+
+    auto resp = VERIFY_RESULT(client().GetTabletLocations(tablet_ids));
+    auto& txns_by_tablet = *req->mutable_transactions_by_tablet();
+    Status combined_status;
+    for (const auto& error : resp.errors()) {
+      const auto& tablet_id = error.tablet_id();
+      auto status = StatusFromPB(error.status());
+      auto split_child_ids = SplitChildTabletIdsData(status).value();
+      // Return bad status on observing any error types other than tablet split.
+      if (split_child_ids.empty()) {
+        return status.CloneAndPrepend(Format("GetLocations for tablet $0 failed: ", tablet_id));
+      }
+      // Replace the split parent tablet entry in GetLockStatusRequestPB with the child tablets ids.
+      auto& split_parent_entry = txns_by_tablet[tablet_id];
+      const auto& first_child_id = split_child_ids[0];
+      txns_by_tablet[first_child_id].mutable_transactions()->
+                                     Swap(split_parent_entry.mutable_transactions());
+      for (size_t i = 1 ; i < split_child_ids.size() ; i++) {
+        txns_by_tablet[split_child_ids[i]].mutable_transactions()->
+                                           CopyFrom(txns_by_tablet[first_child_id].transactions());
+      }
+      txns_by_tablet.erase(tablet_id);
+      combined_status = status.CloneAndAppend(combined_status.message());
+    }
+    if (!resp.errors().empty()) {
+      // Re-request location info of updated tablet set if not already in the retry context.
+      return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
+    }
+
+    std::set<std::string> tserver_uuids;
+    for (const auto& tablet_location_pb : resp.tablet_locations()) {
+      for (const auto& replica : tablet_location_pb.replicas()) {
+        if (replica.role() == PeerRole::LEADER) {
+          tserver_uuids.insert(replica.ts_info().permanent_uuid());
+        }
+      }
+    }
+
+    std::vector<RemoteTabletServerPtr> remote_tservers;
+    remote_tservers.reserve(tserver_uuids.size());
+    for(const auto& ts_uuid : tserver_uuids) {
+      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(ts_uuid)));
+    }
+    return remote_tservers;
+  }
+
   Status GetLockStatus(
       const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context) {
@@ -409,7 +476,13 @@ class PgClientServiceImpl::Impl {
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
-      return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
+      std::vector<RemoteTabletServerPtr> remote_tservers;
+      remote_tservers.reserve(live_tservers.size());
+      for (const auto& live_ts : live_tservers) {
+        const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+        remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
+      }
+      return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
@@ -476,6 +549,8 @@ class PgClientServiceImpl::Impl {
         auto old_txn_ptr = std::make_shared<OldTransactionMetadataPB>(std::move(old_txn));
         old_txns_pq.push(std::move(old_txn_ptr));
         while (old_txns_pq.size() > max_num_txns) {
+          VLOG(4) << "Dropping old transaction with metadata "
+                  << old_txns_pq.top()->ShortDebugString();
           old_txns_pq.pop();
         }
       }
@@ -510,24 +585,42 @@ class PgClientServiceImpl::Impl {
       }
       old_txns_pq.pop();
     }
-    return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
+    auto remote_tservers = VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(&lock_status_req));
+    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
+  }
+
+  // Merges the src PgGetLockStatusResponsePB into dest, while preserving existing entries in dest.
+  Status MergeLockStatusResponse(PgGetLockStatusResponsePB* dest,
+                                 PgGetLockStatusResponsePB* src) {
+    if (src->status().code() != AppStatusPB::OK) {
+      return StatusFromPB(src->status());
+    }
+    dest->add_node_locks()->Swap(src->mutable_node_locks(0));
+    for (auto i = 0 ; i < src->node_locks_size() ; i++) {
+      dest->add_node_locks()->Swap(src->mutable_node_locks(i));
+    }
+    return Status::OK();
   }
 
   Status DoGetLockStatus(
-      const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
-      rpc::RpcContext* context, const std::vector<master::TSInformationPB>& live_tservers) {
-    if (req.transactions_by_tablet().empty() && req.transaction_ids().empty()) {
+      GetLockStatusRequestPB* req, PgGetLockStatusResponsePB* resp,
+      rpc::RpcContext* context, const std::vector<RemoteTabletServerPtr>& remote_tservers,
+      int retry_attempt = 0) {
+    if (PREDICT_FALSE(FLAGS_TEST_delay_before_get_locks_status_ms > 0)) {
+      AtomicFlagSleepMs(&FLAGS_TEST_delay_before_get_locks_status_ms);
+    }
+
+    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString();
+    if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
     // TODO(pglocks): parallelize RPCs
     rpc::RpcController controller;
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+    for (const auto& remote_tserver : remote_tservers) {
       auto proxy = remote_tserver->proxy();
       GetLockStatusResponsePB node_resp;
       controller.Reset();
-      auto s = proxy->GetLockStatus(req, &node_resp, &controller);
+      auto s = proxy->GetLockStatus(*req, &node_resp, &controller);
       if (!s.ok()) {
         resp->Clear();
         return s;
@@ -538,13 +631,34 @@ class PgClientServiceImpl::Impl {
         return Status::OK();
       }
       auto* node_locks = resp->add_node_locks();
-      node_locks->set_permanent_uuid(permanent_uuid);
+      node_locks->set_permanent_uuid(remote_tserver->permanent_uuid());
       node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
+      VLOG(4) << "Adding node locks to PgGetLockStatusResponsePB: "
+              << node_locks->ShortDebugString();
     }
 
     auto s = RefineAccumulatedLockStatusResp(req, resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend("Error refining accumulated LockStatus responses.");
+    } else if (!req->transactions_by_tablet().empty()) {
+      // We haven't heard back from all involved tablets, retry GetLockStatusRequest on the
+      // tablets missing in the response if we haven't maxed out on the retry attempts.
+      if (retry_attempt > FLAGS_get_locks_status_max_retry_attempts) {
+        s = STATUS_FORMAT(IllegalState,
+                          "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
+                          req->ShortDebugString());
+      } else {
+        PgGetLockStatusResponsePB sub_resp;
+        for (const auto& node_txn_pair : resp->transactions_by_node()) {
+          sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
+        }
+        RETURN_NOT_OK(DoGetLockStatus(
+            req, &sub_resp, context, VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(req)),
+            ++retry_attempt));
+        s = MergeLockStatusResponse(resp, &sub_resp);
+      }
+    }
+    if (!s.ok()) {
       resp->Clear();
     }
     StatusToPB(s, resp->mutable_status());
@@ -552,18 +666,8 @@ class PgClientServiceImpl::Impl {
   }
 
   // Refines PgGetLockStatusResponsePB by dropping duplicate lock responses for a given tablet.
-  // Also ensure that we see a lock status response from all involved tablets of each txn since
-  // returning incomplete/impartial results might be misleading.
-  Status RefineAccumulatedLockStatusResp(
-      const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp) {
-    std::unordered_map<std::string, std::unordered_set<TabletId>> txn_involved_tablets;
-    for (const auto& [tablet_id, involved_txns] : req.transactions_by_tablet()) {
-      for (const auto& txn : involved_txns.transactions()) {
-        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn.id()));
-        txn_involved_tablets[txn_id.ToString()].insert(tablet_id);
-      }
-    }
-
+  Status RefineAccumulatedLockStatusResp(GetLockStatusRequestPB* req,
+                                         PgGetLockStatusResponsePB* resp) {
     // Track the highest seen term for each tablet id.
     std::map<TabletId, uint64_t> peer_term;
     for (const auto& node_lock : resp->node_locks()) {
@@ -573,7 +677,6 @@ class PgClientServiceImpl::Impl {
       }
     }
 
-    std::unordered_set<TabletId> tablets;
     std::set<TransactionId> seen_transactions;
     for (auto& node_lock : *resp->mutable_node_locks()) {
       auto* tablet_lock_infos = node_lock.mutable_tablet_lock_infos();
@@ -589,9 +692,14 @@ class PgClientServiceImpl::Impl {
           lock_it = node_lock.mutable_tablet_lock_infos()->erase(lock_it);
           continue;
         }
+        // TODO(pglocks): We don't fetch involved tablets when the incoming PgGetLockStatusRequestPB
+        // has transaction_id field set. Once https://github.com/yugabyte/yugabyte-db/issues/16913
+        // is addressed remove !req->transaction_ids().empty() in the below check.
         RSTATUS_DCHECK(
-            tablets.emplace(tablet_id).second, IllegalState,
-            "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
+            !req->transaction_ids().empty() || req->transactions_by_tablet().count(tablet_id) == 1,
+            IllegalState, "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
+        req->mutable_transactions_by_tablet()->erase(tablet_id);
+
         for (auto& txn : lock_it->transaction_locks()) {
           seen_transactions.insert(VERIFY_RESULT(FullyDecodeTransactionId(txn.id())));
         }
@@ -599,15 +707,6 @@ class PgClientServiceImpl::Impl {
       }
     }
 
-    for (const auto& [txn_id, involved_tablets] : txn_involved_tablets) {
-      for (const auto& tablet : involved_tablets) {
-        auto it = tablets.find(tablet);
-        RSTATUS_DCHECK(
-            it != tablets.end(), IllegalState,
-            "Expected to see transaction's $0 involved tablet $1 in PgGetLockStatusResponsePB",
-            txn_id, tablet);
-      }
-    }
     // Ensure that the response contains host node uuid for all involved transactions.
     for (const auto& [_, txn_list] : resp->transactions_by_node()) {
       for (const auto& txn : txn_list.transaction_ids()) {
@@ -618,7 +717,7 @@ class PgClientServiceImpl::Impl {
     // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
     // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
     // remove !req.transaction_ids().empty() in the below check.
-    RSTATUS_DCHECK(seen_transactions.empty() || !req.transaction_ids().empty(), IllegalState,
+    RSTATUS_DCHECK(seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
            "Host node uuid not set for all involved transactions");
     return Status::OK();
   }
