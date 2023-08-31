@@ -53,6 +53,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> useSingleZone =
+      new ConfKeyInfo<>(
+          "yb.use_single_zone",
+          ScopeType.GLOBAL,
+          "Use single zone node placement in case of create universe",
+          "Use single zone node placement in case of create universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> useOauth =
       new ConfKeyInfo<>(
           "yb.security.use_oauth",
