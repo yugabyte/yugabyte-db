@@ -1911,8 +1911,11 @@ Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
     const CoarseTimePoint& deadline) {
-  HybridTime consistent_stream_safe_time =
-      tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+  HybridTime consistent_stream_safe_time = HybridTime::kInvalid;
+  if (tablet_ptr->transaction_participant()) {
+    consistent_stream_safe_time =
+        tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+  }
   consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
                                     ? leader_safe_time
                                     : consistent_stream_safe_time;
@@ -2174,7 +2177,9 @@ Status GetChangesForCDCSDK(
   }
   uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
       tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
-  OpId historical_max_op_id = tablet_ptr->transaction_participant()->GetHistoricalMaxOpId();
+  OpId historical_max_op_id = tablet_ptr->transaction_participant()
+                                  ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
+                                  : OpId::Invalid();
   auto table_name = tablet_ptr->metadata()->table_name();
 
   auto safe_hybrid_time_resp = HybridTime::kInvalid;

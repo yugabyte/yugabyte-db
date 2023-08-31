@@ -1450,6 +1450,23 @@ public class YBClient implements AutoCloseable {
       nameSpaceName, format, checkpointType, recordType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType,
+                                                  String recordType,
+                                                  Boolean dbtype) throws Exception {
+    Deferred<CreateCDCStreamResponse> d;
+    if (dbtype) {
+      d = asyncClient.createCDCStream(table,
+        nameSpaceName, format, checkpointType, recordType,
+        CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    } else {
+      d = asyncClient.createCDCStream(table,
+          nameSpaceName, format, checkpointType, recordType);
+    }
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
 
   public boolean waitForTableRemoval(final long timeoutMs, String name) {
     Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
