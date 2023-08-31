@@ -547,22 +547,6 @@
   [preview_releases.params]
     showSection = true
 
-[[preview_releases]]
-  name = "YugabyteDB Managed releases"
-  weight = 5
-  identifier = "ybm-releases"
-  url = "/preview/yugabyte-cloud/release-notes/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
-  name = "YugabyteDB Voyager releases"
-  weight = 6
-  identifier = "ybv-releases"
-  url = "/preview/yugabyte-voyager/release-notes/"
-  [preview_releases.params]
-    showSection = true
-
 ########## Menus (in preview) for FAQ section
 
 [[preview_faq]]
@@ -575,17 +559,17 @@
     showSection = true
 
 [[preview_faq]]
-  name = "Comparisons"
+  name = "FAQ"
   weight = 2
-  identifier = "comparisons-home"
+  identifier = "faq"
   [preview_faq.params]
     showSection = true
     hideLink = true
 
 [[preview_faq]]
-  name = "FAQ"
-  weight = 2
-  identifier = "faq"
+  name = "Comparisons"
+  weight = 3
+  identifier = "comparisons-home"
   [preview_faq.params]
     showSection = true
     hideLink = true
