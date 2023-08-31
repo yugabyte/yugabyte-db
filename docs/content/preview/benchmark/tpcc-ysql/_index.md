@@ -19,15 +19,15 @@ rightNav:
   hideH3: true
 ---
 
-[TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
+[TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity, and which are either executed online or queued for deferred execution.
 
-## Results Overview (v2.18.1)
+## Results overview (YugabyteDB v2.18.1)
 
-All the nodes in the cluster were located in AWS-West in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the DB cluster. Each test was run for 30 minutes after the loading of the data.
+All the nodes in the cluster were located in AWS-west in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the database cluster. Each test was run for 30 minutes after loading the data.
 
-### Horizontal Scaling
+### Horizontal scaling
 
-This data shows how YugabyteDB scales horizontally - Increased throughput with the same efficiency as the number of nodes in the cluster is increased.
+The following table shows how YugabyteDB scales horizontally, providing increased throughput with the same efficiency when the number of nodes in the cluster is increased.
 
 | Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
 | ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------ |
@@ -53,9 +53,9 @@ This data shows how YugabyteDB scales vertically - Increased throughput when the
 | ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
 |    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge&nbsp;(36) |
 
-## Setup for benchmarking
+## Benchmark setup
 
-Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL.
+Run a [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL using the following steps:
 
 ### Get TPC-C binaries
 
@@ -77,7 +77,7 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 
 ### Configure DB connection parameters (optional)
 
-Workload configurations like IP addresses of the nodes, number of warehouses and number of loader threads can be controlled by command line arguments.
+You can configure the workload, including the IP addresses of the nodes, number of warehouses, and number of loader threads, using command line arguments.
 
 Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
@@ -89,13 +89,13 @@ Other options like username, password, port, etc. can be changed using the confi
 
 ### Other considerations
 
-**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest released version, or you can clone the repository and build from the source to get the very latest changes.
+**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest [released](https://github.com/yugabyte/tpcc/releases) version, or you can clone the repository and build from the source to get the very latest changes.
 
 **Pre-compacting tables:** Pre-compact tables with the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
 
 **Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 
-## Running TPC-C
+## Run TPC-C
 
 ### Load phase
 

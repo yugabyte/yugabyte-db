@@ -31,7 +31,7 @@ A YugabyteDB universe can be scaled-out to handle the following:
 
 * More transactions per second
 * A higher number of concurrent client connections
-* Larger datasets/workloads
+* Larger datasets or workloads
 
 A YugabyteDB universe can also be scaled-in dynamically by draining all the data from existing universe nodes (or Kubernetes pods) and subsequently removing them from the universe.
 
