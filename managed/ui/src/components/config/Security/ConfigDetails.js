@@ -63,6 +63,9 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
     const {
       HC_VAULT_ADDRESS,
       HC_VAULT_TOKEN,
+      HC_VAULT_AUTH_NAMESPACE,
+      HC_VAULT_ROLE_ID,
+      HC_VAULT_SECRET_ID,
       HC_VAULT_ENGINE,
       HC_VAULT_MOUNT_PATH,
       HC_VAULT_TTL,
@@ -76,6 +79,18 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       {
         label: 'Secret Token',
         value: HC_VAULT_TOKEN
+      },
+      {
+        label: 'Role ID',
+        value: HC_VAULT_ROLE_ID
+      },
+      {
+        label: 'Secret ID',
+        value: HC_VAULT_SECRET_ID
+      },
+      {
+        label: 'Auth Namespace',
+        value: HC_VAULT_AUTH_NAMESPACE
       },
       {
         label: 'Secret Engine',
