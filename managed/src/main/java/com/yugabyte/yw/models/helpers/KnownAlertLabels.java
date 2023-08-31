@@ -43,7 +43,9 @@ public enum KnownAlertLabels {
   ALERT_EXPRESSION,
   NODE_AGENT_UUID,
   NODE_ADDRESS,
-  NODE_IDENTIFIER;
+  NODE_IDENTIFIER,
+
+  YBA_VERSION;
 
   public String labelName() {
     return name().toLowerCase();
