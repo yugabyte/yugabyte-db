@@ -243,10 +243,6 @@ typedef enum ExprEvalOp
 	/* aggregation related nodes */
 	EEOP_AGG_STRICT_DESERIALIZE,
 	EEOP_AGG_DESERIALIZE,
-	/*
-	 * TODO(zyu@yugabye.com) This opcode is no longer valid.
-	 * EEOP_AGG_STRICT_INPUT_CHECK,
-	 */
 	EEOP_AGG_STRICT_INPUT_CHECK_ARGS,
 	EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
 	EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
@@ -630,11 +626,6 @@ typedef struct ExprEvalStep
 			int			jumpnull;
 		}			agg_deserialize;
 
-#ifdef YB_TODO
-		/* TODO(zyu@yugabyte.com) This opcode is no longer supported.
-		 *   EEOP_AGG_STRICT_INPUT_CHECK
-		 */
-#endif
 		/* for EEOP_AGG_STRICT_INPUT_CHECK_NULLS / STRICT_INPUT_CHECK_ARGS */
 		struct
 		{

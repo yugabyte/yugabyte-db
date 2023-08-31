@@ -582,9 +582,6 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 
 		/*
 		 * Convert Vars in it to contain this partition's attribute numbers.
-		 *
-		 * YB_TODO "convert_tuples_by_name_map" is no longer called here.
-		 * Need to pass `false yb_ignore_type_mismatch` differently.
 		 */
 		part_attmap =
 			build_attrmap_by_name(RelationGetDescr(partrel),
@@ -642,9 +639,6 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 
 		/*
 		 * Convert Vars in it to contain this partition's attribute numbers.
-		 *
-		 * YB_TODO "convert_tuples_by_name_map" is no longer called here.
-		 * Need to pass `false yb_ignore_type_mismatch` differently.
 		 */
 		if (part_attmap == NULL)
 			part_attmap =
@@ -790,9 +784,6 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 				 */
 				onconflset = copyObject(node->onConflictSet);
 
-				/* YB_TODO "convert_tuples_by_name_map" is no longer called here.
-				 * Need to pass `false yb_ignore_type_mismatch` differently.
-				 */
 				if (part_attmap == NULL)
 					part_attmap =
 						build_attrmap_by_name(RelationGetDescr(partrel),
