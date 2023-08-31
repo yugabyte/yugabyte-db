@@ -25,7 +25,6 @@ menu:
 type: indexpage
 ---
 
-A YugabyteDB universe can be scaled horizontally to increase the aggregate vCPUs, memory, and disk in the database by dynamically adding nodes to a running universe or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
 
 A YugabyteDB universe is scaled out so that it can handle the following:
 
@@ -33,9 +32,26 @@ A YugabyteDB universe is scaled out so that it can handle the following:
 * Greater number of concurrent client connections.
 * Larger datasets.
 
-A YugabyteDB universe can also be scaled in dynamically by draining all the data from existing universe nodes (or Kubernetes pods), and subsequently removing them from the universe.
+YugabyteDB can be scaled either horizontally or vertically depending on your needs. Let's understand the differences between these both.
 
-Every table in YugabyteDB is transparently sharded using its primary key. The shards are called tablets. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets during the table creation if possible. Tablets can also be split dynamically.
+## Horizontal Scaling (a.k.a Scaling Out)
+
+Horizontal scaling involves adding more nodes to a distributed database to handle increased load, traffic, and data. In YugabyteDB data is shared and split into tablets and these multiple tablets are located on each node. When more nodes are added, some tablets are automatically moved to the new nodes. Tablets will also split dynamically as needed to use the newly added resource. This leads to each node managing fewer tablets and hence the whole cluster can handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+This is the most common scaling model advised for YugabyteDB as it has several advantages.
+
+- **Improved performance**: More nodes can process requests in parallel, reducing response times.
+- **Cost-effective**: Can utilize commodity hardware, which is generally less expensive than high-end servers.
+- **Easy to add resources**: You can add new nodes as needed to accommodate growth.
+
+You can consider scaling out your cluster to temporarily handle high traffic (e.g. Black Friday Shopping, Major news outbreak) and reduce the size of the cluster (*scaling-in*) after the event by draining all the data from some of the nodes (or Kubernetes pods) and subsequently removing them from the universe.
+
+## Vertical Scaling (a.k.a Scaling Up)
+
+Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, etc. Vertical scaling is often limited by the capacity of a single server and can become **_expensive_** as you move to more powerful hardware. Although you retain the same number of nodes which could simplify your operations, eventually hardware resources will reach their limits, and further scaling might not be feasible.
+
+In some cases, depending on your application needs and budget constraints a combination of both horizontal and vertical scaling (a.k.a elastic scaling), might be employed to achieve the desired performance and scalability goals.
+
+## Scaling in YSQL vs YCQL
 
 The following table summarizes YugabyteDB support for scalability and sharding across YSQL and YCQL APIs:
 
