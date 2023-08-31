@@ -2160,7 +2160,6 @@ typedef struct YbBatchedNestLoopState
 	 * stores lists of tuples with the same hash value.
 	 */
 	TupleHashTable hashtable;
-	TupleTableSlot *hashslot;
 	bool hashiterinit;
 	TupleHashIterator hashiter;
 	BucketTupleInfo *current_ht_tuple;

@@ -854,27 +854,6 @@ ExecInsert(ModifyTableContext *context,
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	/*
-	 * TODO(alex@yugabyte): Relation structure no longer has OID.
-	 *
-	 * YB note:
-	 * --------
-	 * YSQL upgrade introduces a hacky way for INSERT to set OID implemented
-	 * via tts_yb_insert_oid. It would become obsolete after upgrade to PG 12
-	 * which would make oid a regular column.
-	 */
-#ifdef YB_TODO
-	if (resultRelationDesc->rd_rel->relhasoids)
-	{
-		Oid tuple_oid = InvalidOid;
-
-		if (IsYsqlUpgrade && IsYBRelation(resultRelationDesc))
-			tuple_oid = slot->tts_yb_insert_oid;
-
-		HeapTupleSetOid(tuple, tuple_oid);
-	}
-#endif
-
-	/*
 	 * Open the table's indexes, if we have not done so already, so that we
 	 * can add new index entries for the inserted tuple.
 	 */
@@ -1624,15 +1603,6 @@ ExecDelete(ModifyTableContext *context,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-#if YB_TODO
-		/* YB_TODO(neil) Check this code. It's from
-		   commit efccad40c368e0148bd08bf8a6b77608fdfebcda
-		   Author: Alex Abdugafarov <frozenspider@users.noreply.github.com>
-		   Date:   Thu Apr 28 23:06:03 2022 +0500
-		 */
-		bool row_found = YBCExecuteDelete(resultRelationDesc, context->planSlot, estate,
-										  context->mtstate, changingPart);
-#endif
 		bool row_found = YBCExecuteDelete(resultRelationDesc,
 										  context->planSlot,
 										  ((ModifyTable *)context->mtstate->ps.plan)->ybReturningColumns,
@@ -1860,29 +1830,7 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
-#ifdef YB_TODO
-			/* YB_TODO(neil) Need to trace Alex's commit efccad40c368e0148bd08bf8a6b77608fdfebcda */
-			if (mtstate->yb_fetch_target_tuple)
-			{
-				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
-			}
-			/* Previous code */
-			if (context->mtstate->yb_mt_is_single_row_update_or_delete)
-			{
-				slot = context->planSlot;
-			}
-#endif
-
-#ifdef YB_TODO
-			/* TODO(neil@yugabyte)
-			 * - Check to make sure that ExecFilterJunk is no longer needed here.
-			 * - Find where Yugabyte should plugin new code.
-			 */
-			else
-			{
-				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, context->planSlot);
-			}
-#endif
+			slot = context->planSlot;
 		}
 		else
 		{
@@ -1934,13 +1882,11 @@ YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 		         errmsg("could not identify a comparison function for type %s",
 		                format_type_be(typentry->type_id))));
 
-	/* YB_TODOneil) Need to verify if this code works. FuncCallInfo now uses Pg15 structure */
 	InitFunctionCallInfoData(*locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
 	locfcinfo->args[0].value = lhs;
 	locfcinfo->args[0].isnull = false;
 	locfcinfo->args[1].value = rhs;
 	locfcinfo->args[1].isnull = false;
-	locfcinfo->isnull = false;
 	return DatumGetInt32(FunctionCallInvoke(locfcinfo)) == 0;
 }
 
@@ -2512,7 +2458,7 @@ yb_lreplace:;
 		}
 
 #ifdef YB_TODO
-		/* YB_TODO: Handle MERGE */
+		/* Handle MERGE */
 		/*
 		 * No luck, a retry is needed.  If running MERGE, we do not do so
 		 * here; instead let it handle that on its own rules.
@@ -2568,11 +2514,11 @@ yb_lreplace:;
 		row_found = true;
 	}
 	else
-		row_found = YBCExecuteUpdate(
-			resultRelationDesc, resultRelInfo, context->planSlot, slot,
-			oldtuple, estate, plan, context->mtstate->yb_fetch_target_tuple,
-			estate->yb_es_is_single_row_modify_txn, actualUpdatedCols,
-			canSetTag);
+		row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
+									 oldtuple, estate, plan,
+									 context->mtstate->yb_fetch_target_tuple,
+									 estate->yb_es_is_single_row_modify_txn,
+									 actualUpdatedCols, canSetTag);
 
 	bms_free(extraUpdatedCols);
 	return row_found;
@@ -2999,22 +2945,7 @@ redo_act:
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
-	{
-#ifdef YB_TODO
-		/* YB_TODO(neil@yugabyte)
-		 * - Check to make sure that ExecFilterJunk is no longer needed here.
-		 * - Find where Yugabyte should plugin new code.
-		 */
-		/*
-		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
-		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
-		 * differently, so junkFilter is not needed.
-		 */
-		if (IsYBRelation(resultRelationDesc) && resultRelInfo->ri_junkFilter)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, context->planSlot);
-#endif
 		return ExecProcessReturning(resultRelInfo, slot, context->planSlot);
-	}
 
 	return NULL;
 }
@@ -3043,6 +2974,7 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 	ExprState  *onConflictSetWhere = resultRelInfo->ri_onConflict->oc_WhereClause;
 	HeapTuple	oldtuple = NULL;
+	bool 		shouldFree = true;
 	TupleTableSlot *existing = resultRelInfo->ri_onConflict->oc_Existing;
 	TM_FailureData tmfd;
 	LockTupleMode lockmode;
@@ -3196,15 +3128,8 @@ yb_skip_transaction_control_check:
 		ExecCheckTupleVisible(context->estate, relation, existing);
 	else
 	{
-		/*
-		 * YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-		 *
-		 * Current Yugabyte API works with HeapTuple instead of slot.
-		 * - Create tuple as a workaround to compile.
-		 * - Pass slot to Yugabyte call once the API is fixed.
-		 */
-		bool shouldFree = true;
 		oldtuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &shouldFree);
+		ExecStoreBufferHeapTuple(oldtuple, existing, InvalidBuffer);
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(oldtuple);
 	}
 
@@ -3260,19 +3185,15 @@ yb_skip_transaction_control_check:
 	 * wCTE in the ON CONFLICT's SET.
 	 */
 
+	ItemPointer tid = IsYugaByteEnabled() ? NULL : conflictTid;
 	/* Execute UPDATE with projection */
-#ifdef YB_TODO
-	/* YB_TODO(neil) Postgres changes its function signature. Need fix while compiling */
-	*returning = ExecUpdate(mtstate, resultRelInfo, conflictTid, oldtuple,
-							resultRelInfo->ri_onConflict->oc_ProjSlot,
-							context->planSlot,
-							&mtstate->mt_epqstate, mtstate->ps.state,
-							canSetTag);
-#endif
 	*returning = ExecUpdate(context, resultRelInfo,
-							conflictTid, NULL,
+							tid, oldtuple,
 							resultRelInfo->ri_onConflict->oc_ProjSlot,
 							canSetTag);
+
+	if (shouldFree)
+		pfree(oldtuple);
 
 	/*
 	 * Clear out existing tuple, as there might not be another conflict among
@@ -4474,21 +4395,13 @@ ExecModifyTable(PlanState *pstate)
 				 *   bool prev_yb_is_single_row_modify_txn =
 				 *       estate->es_yb_is_single_row_modify_txn;
 				 */
-
 				if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
 					ExecInitInsertProjection(node, resultRelInfo);
 				slot = ExecGetInsertNewTuple(resultRelInfo, context.planSlot);
 				slot = ExecInsert(&context, resultRelInfo, slot,
 								  node->canSetTag, NULL, NULL);
-
-				/* YB_TODO(neil) Fixed function signature
-				slot = ExecGetInsertNewTuple(resultRelInfo, context.planSlot);
-				slot = ExecInsert(node, resultRelInfo, slot, context.planSlot,
-								  estate, node->canSetTag);
-				*/
-
 				/* YB_TODO(neil@yugabyte)
-				 * Work on the optimization for single row insert.
+				 * Check to see if this is still needed.
 				 */
 				/* Revert ExecPrepareTupleRouting's state change. */
 				/* estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn; */
@@ -5114,26 +5027,6 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		else
 			resultRelInfo->ri_BatchSize = 1;
 	}
-#ifdef YB_TODO
-	else
-	{
-		/* YB_TODO(neil@yugabyte)
-		 * Pg13 reimplement junk filter. We need to change this code accordingly.
-		 *
-		 * If it's a YB single row UPDATE/DELETE we do not perform an
-		 * initial scan to populate the ybctid, so there is no junk
-		 * attribute to extract.
-		 */
-		if (IsYBRelation(mtstate->resultRelInfo->ri_RelationDesc))
-		{
-			junk_filter_needed = mtstate->yb_fetch_target_tuple;
-		}
-		else
-		{
-			junk_filter_needed = true;
-		}
-	}
-#endif
 
 	/*
 	 * Lastly, if this is not the primary (canSetTag) ModifyTable node, add it

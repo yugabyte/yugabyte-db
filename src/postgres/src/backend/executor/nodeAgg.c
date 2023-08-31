@@ -4233,7 +4233,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 			if (aggstate->yb_pushdown_supported && !aggref->aggstar)
 			{
-				/* YB_TODO(neil@yugabyte) Must verify this code for pushdown sum() */
 				/*
 				 * Convert SUM function to 8-byte SUM for appropriate types to match values
 				 * returned from DocDB aggregates.

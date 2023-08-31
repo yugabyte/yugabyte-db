@@ -1928,10 +1928,6 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 	Bitmapset  *modifiedCols;
 	Assert(constr);				/* we should not be called otherwise */
 
-	/* YB_TODO(neil@yugabyte) Postgres change rewriter for modified columns.  Look into it */
-	modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
-							 ExecGetUpdatedCols(resultRelInfo, estate));
-
 	if (constr->has_not_null)
 	{
 		int			natts = tupdesc->natts;
@@ -2172,11 +2168,6 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 						modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
 												 ExecGetUpdatedCols(resultRelInfo, estate));
 
-					/* YB_TODO(neil@yugabyte)
-					 * Postgres change rewriter for modified columns. Look into it.
-					 */
-					modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
-											 ExecGetUpdatedCols(resultRelInfo, estate));
 					val_desc = ExecBuildSlotValueDescription(rel,
 															 slot,
 															 tupdesc,

@@ -66,16 +66,16 @@ extern void YBCTupleTableInsert(ResultRelInfo  *resultRelInfo,
  * If non-zero, it will be used instead of generation, otherwise it will be set
  * to the generated value.
  */
-extern Oid YBCHeapInsert(ResultRelInfo *resultRelInfo,
-						 TupleTableSlot *slot,
-                         HeapTuple tuple,
-                         EState *estate);
-extern Oid YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
-							  Oid dboid,
-                              TupleTableSlot *slot,
-                              HeapTuple tuple,
-                              EState *estate,
-                              Datum *ybctid);
+extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
+						  TupleTableSlot *slot,
+						  HeapTuple tuple,
+						  EState *estate);
+extern void YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
+							   Oid dboid,
+							   TupleTableSlot *slot,
+							   HeapTuple tuple,
+							   EState *estate,
+							   Datum *ybctid);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
@@ -85,16 +85,16 @@ extern Oid YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
  * If non-zero, it will be used instead of generation, otherwise it will be set
  * to the generated value.
  */
-extern Oid YBCExecuteInsert(Relation rel,
-                            TupleDesc tupleDesc,
-                            HeapTuple tuple,
-                            OnConflictAction onConflictAction);
-extern Oid YBCExecuteInsertForDb(Oid dboid,
-                                 Relation rel,
-                                 TupleDesc tupleDesc,
-                                 HeapTuple tuple,
-                                 OnConflictAction onConflictAction,
-                                 Datum *ybctid);
+extern void YBCExecuteInsert(Relation rel,
+							 TupleDesc tupleDesc,
+							 HeapTuple tuple,
+							 OnConflictAction onConflictAction);
+extern void YBCExecuteInsertForDb(Oid dboid,
+								  Relation rel,
+								  TupleDesc tupleDesc,
+								  HeapTuple tuple,
+								  OnConflictAction onConflictAction,
+								  Datum *ybctid);
 
 /*
  * Execute the insert outside of a transaction.
@@ -104,16 +104,16 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
  * If non-zero, it will be used instead of generation, otherwise it will be set
  * to the generated value.
  */
-extern Oid YBCExecuteNonTxnInsert(Relation rel,
-                                  TupleDesc tupleDesc,
-                                  HeapTuple tuple,
-                                  OnConflictAction onConflictAction);
-extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
-                                       Relation rel,
-                                       TupleDesc tupleDesc,
-                                       HeapTuple tuple,
-                                       OnConflictAction onConflictAction,
-                                       Datum *ybctid);
+extern void YBCExecuteNonTxnInsert(Relation rel,
+								   TupleDesc tupleDesc,
+								   HeapTuple tuple,
+								   OnConflictAction onConflictAction);
+extern void YBCExecuteNonTxnInsertForDb(Oid dboid,
+										Relation rel,
+										TupleDesc tupleDesc,
+										HeapTuple tuple,
+										OnConflictAction onConflictAction,
+										Datum *ybctid);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
@@ -165,8 +165,7 @@ extern void YBCExecuteDeleteIndex(Relation index,
  * no row to update. This can occur because we do not first perform a scan if
  * it is a single row op.
  */
-extern bool YBCExecuteUpdate(Relation rel,
-							 ResultRelInfo *resultRelInfo,
+extern bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
 							 TupleTableSlot *slot,
 							 HeapTuple oldtuple,
@@ -195,10 +194,10 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
  *
  * This will change ybctid of a row within a tuple.
  */
-extern Oid YBCExecuteUpdateReplace(Relation rel,
-								   TupleTableSlot *planSlot,
-								   TupleTableSlot *slot,
-								   EState *estate);
+extern void YBCExecuteUpdateReplace(Relation rel,
+								    TupleTableSlot *planSlot,
+								    TupleTableSlot *slot,
+								    EState *estate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.

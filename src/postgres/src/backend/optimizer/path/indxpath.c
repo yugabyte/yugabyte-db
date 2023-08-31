@@ -619,7 +619,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		List *colclauses = clauses->indexclauses[i];
 		foreach (lc, colclauses)
 		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			IndexClause *iclause = (IndexClause *) lfirst(lc);
+			RestrictInfo *rinfo = iclause->rinfo;
 
 			/*
 			 * If we can batch up outer vars in rinfo then do so.
@@ -2873,17 +2874,27 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, rinfo->right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		/* YB_TODO(neil) Double check the merge on "if" condition */
 		/*
 		 * Do not use the yb_hash_code special case if we have an applicable
 		 * functional index on yb_hash_code. For example, if the call is an
 		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
 		 * we will take the typical index path.
 		 */
+
 		if (is_yb_hash_code_call(leftop) &&
-			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol) &&
-			(!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause)))
-			return NULL;
+			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol))
+		{
+			if(!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
+				return NULL;
+
+			iclause = makeNode(IndexClause);
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = indexcol;
+			iclause->indexcols = NIL;
+			return iclause;
+		}
 
 		/*
 		 * If the column in the filter clause is part of the hash key for this
@@ -2934,9 +2945,24 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		 * we will take the typical index path.
 		 */
 		if (is_yb_hash_code_call(rightop) &&
-			!yb_hash_code_call_matches_indexcol(rightop, index, indexcol) &&
-			(!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause)))
-			return NULL;
+			!yb_hash_code_call_matches_indexcol(rightop, index, indexcol))
+		{
+			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
+				return NULL;
+
+			Oid			comm_op = get_commutator(expr_op);
+			RestrictInfo *commrinfo;
+
+			/* Build a commuted OpExpr and RestrictInfo */
+			commrinfo = commute_restrictinfo(rinfo, comm_op);
+			iclause = makeNode(IndexClause);
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(commrinfo);
+			iclause->lossy = false;
+			iclause->indexcol = indexcol;
+			iclause->indexcols = NIL;
+			return iclause;
+		}
 
 		/*
 		 * If the column in the filter clause is part of the hash key for this

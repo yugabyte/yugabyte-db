@@ -985,13 +985,6 @@ postquel_sub_params(SQLFunctionCachePtr fcache,
 		{
 			ParamExternData *prm = &paramLI->params[i];
 
-#ifdef YB_TODO
-			/* YB_TODO(neil) remove Ted's data structure */
-			prm->value = fcinfo->arg[i];
-			prm->isnull = fcinfo->argnull[i];
-			prm->pflags = 0;
-			prm->ptype = fcache->pinfo->argtypes[i];
-#endif
 			/*
 			 * If an incoming parameter value is a R/W expanded datum, we
 			 * force it to R/O.  We'd be perfectly entitled to scribble on it,
