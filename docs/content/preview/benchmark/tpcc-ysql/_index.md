@@ -30,28 +30,38 @@ All the nodes in the cluster were located in AWS-west in the same zone. The benc
 The following table shows how YugabyteDB scales horizontally, providing increased throughput with the same efficiency when the number of nodes in the cluster is increased.
 
 | Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------ |
-|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)  |
-|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge&nbsp;(8)  |
-|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge&nbsp;(8)  |
-|       4000 | 51296.9  |     99.72     |   6   | 200         |     62.09 ms      | m6i.2xlarge&nbsp;(8)  |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------- |
+|        500 | 25646.4  |     99.71     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8) |
+|       1000 | 34212.57 |     99.79     |   4   | 266         |     53.92 ms      | m6i.2xlarge&nbsp;(8) |
+|       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge&nbsp;(8) |
+|       4000 | 51296.9  |     99.72     |   6   | 400         |     62.09 ms      | m6i.2xlarge&nbsp;(8) |
 
 ### Vertical Scaling
 
 The following table shows how YugabyteDB scales vertically, providing increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
 
-| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
-| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------- |
-|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large&nbsp;(2)     |
-|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge&nbsp;(4)    |
-|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)   |
-|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge&nbsp;(16)  |
+| Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs)  |
+| ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :-------------------- |
+|        500 | 6415.7   |     99.78     |   3   | 50          |     64.08 ms      | m6i.large&nbsp;(2)    |
+|       1000 | 12829.93 |     99.77     |   3   | 100         |     73.97 ms      | m6i.xlarge&nbsp;(4)   |
+|       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)  |
+|       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge&nbsp;(16) |
 
 ### 100K Warehouses
 
-| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency |       Machine Type (vCPUs)       |
-| ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :------------------------ |
+| Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs)  |
+| ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :-------------------- |
 |    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge&nbsp;(36) |
+
+### 150K Warehouses
+
+| Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
+| ---------: | :--- | :-----------: | :---: | ----------- | :---------------: | :--------------------- |
+|    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | c5d.12xlarge&nbsp;(96) |
+
+{{<note>}}
+The 150K warehouse results are from YugabyteDB release 
+{{</note>}}
 
 ## Benchmark setup
 
