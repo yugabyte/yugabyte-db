@@ -28,6 +28,7 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/xact.h"
 #include "executor/execdebug.h"
 #include "executor/nodeSeqscan.h"
 #include "utils/rel.h"
@@ -53,6 +54,23 @@ SeqNext(SeqScanState *node)
 	EState	   *estate;
 	ScanDirection direction;
 	TupleTableSlot *slot;
+
+	if (IsYugaByteEnabled() && XactIsoLevel == XACT_SERIALIZABLE)
+	{
+		ListCell   *l;
+		foreach(l, node->ss.ps.state->es_rowMarks)
+		{
+			ExecRowMark	   *erm = (ExecRowMark *) lfirst(l);
+			if (erm->markType != ROW_MARK_REFERENCE &&
+				erm->markType != ROW_MARK_COPY)
+			{
+				elog(ERROR,
+					 "Explicit locking clauses aren't supported in "
+					 "SERIALIZABLE isolation in this scan's code path. Did "
+					 "you use a plan hint?");
+			}
+		}
+	}
 
 	/*
 	 * get information from the estate and scan state
