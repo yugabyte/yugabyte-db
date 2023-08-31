@@ -39,6 +39,7 @@ class YsqlConnMgrConf {
   std::string data_dir_;
   std::string log_file_;
   std::string pid_file_;
+  std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;
 
