@@ -3,7 +3,7 @@ title: Benchmark YSQL performance using TPC-C
 headerTitle: TPC-C
 linkTitle: TPC-C
 description: Benchmark YSQL performance using TPC-C
-headcontent: Benchmark YugabyteDB using TPC-C
+headcontent: Benchmark YSQL performance using TPC-C
 image: /images/section_icons/quick_start/explore_ysql.png
 aliases:
   - /benchmark/tpcc
@@ -13,8 +13,7 @@ menu:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
-type: indexpage
-showRightNav: true
+type: docs
 rightNav:
   hideH3: true
 ---
@@ -23,7 +22,7 @@ rightNav:
 
 ## Results overview (YugabyteDB v2.18.1)
 
-All the nodes in the cluster were located in AWS-west in the same zone. The benchmark VM was the same type as the nodes in the cluster and was deployed in the same zone as the database cluster. Each test was run for 30 minutes after loading the data.
+All the nodes in the cluster were located in AWS-west in the same zone. The benchmark VM was the same type as the cluster nodes and was deployed in the same zone. Each test was run for 30 minutes after loading the data.
 
 ### Horizontal scaling
 
@@ -36,7 +35,7 @@ The following table shows how YugabyteDB scales horizontally, providing increase
 |       2000 | 42772.6  |     99.79     |   5   | 333         |     51.01 ms      | m6i.2xlarge&nbsp;(8) |
 |       4000 | 51296.9  |     99.72     |   6   | 400         |     62.09 ms      | m6i.2xlarge&nbsp;(8) |
 
-### Vertical Scaling
+### Vertical scaling
 
 The following table shows how YugabyteDB scales vertically, providing increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
 
@@ -47,25 +46,21 @@ The following table shows how YugabyteDB scales vertically, providing increased 
 |       2000 | 25646.4  |     99.78     |   3   | 200         |     54.21 ms      | m6i.2xlarge&nbsp;(8)  |
 |       4000 | 51343.5  |     99.81     |   3   | 400         |     39.46 ms      | m6i.4xlarge&nbsp;(16) |
 
-### 100K Warehouses
+### 100K warehouses
 
 | Warehouses |    TPMC    | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs)  |
 | ---------: | :--------- | :-----------: | :---: | ----------- | :---------------: | :-------------------- |
 |    100,000 | 1283804.18 |     99.83     |  59   | 1000        |     51.86 ms      | c5d.9xlarge&nbsp;(36) |
 
-### 150K Warehouses
+### 150K warehouses
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |
 | ---------: | :--- | :-----------: | :---: | ----------- | :---------------: | :--------------------- |
 |    150,000 | 1M   |     99.30     |  75   | 9000        |     123.33 ms     | c5d.12xlarge&nbsp;(96) |
 
-{{<note>}}
-The 150K warehouse results are from YugabyteDB release 
-{{</note>}}
-
 ## Benchmark setup
 
-Run a [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL using the following steps:
+Run a [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL using the following steps.
 
 ### Get TPC-C binaries
 
@@ -77,7 +72,7 @@ $ tar -zxvf tpcc.tar.gz
 $ cd tpcc
 ```
 
-### Start the database
+### Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps for a [manual deployment](../../deploy/manual-deployment/).
 
@@ -89,7 +84,7 @@ You will need the IP addresses of the nodes in the cluster for the next step.
 
 You can configure the workload, including the IP addresses of the nodes, number of warehouses, and number of loader threads, using command line arguments.
 
-Other options like username, password, port, etc. can be changed using the configuration file at `config/workload_all.xml`, if needed.
+Other options like username, password, port, and so on, can be changed using the configuration file at `config/workload_all.xml`, if needed.
 
 ```xml
 <port>5433</port>
@@ -99,11 +94,13 @@ Other options like username, password, port, etc. can be changed using the confi
 
 ### Other considerations
 
-**Latest TPCC code:** Use the latest enhancements to the Yugabyte TPCC application. You can either download the latest [released](https://github.com/yugabyte/tpcc/releases) version, or you can clone the repository and build from the source to get the very latest changes.
+When running tests, be sure to do the following:
 
-**Pre-compacting tables:** Pre-compact tables with the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
+- Run the latest TPCC code. Use the latest enhancements to the Yugabyte TPCC application by downloading the latest [released](https://github.com/yugabyte/tpcc/releases) version, or clone the repository and build from the source to get the very latest changes.
 
-**Warming the database:** Use the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
+- Pre-compact tables using the [yb-admin](../../admin/yb-admin/) utility's `compact_table` command.
+
+- Warm the database using the `--warmup-time-secs` flag when you call the execute phase of the TPCC benchmark.
 
 ## Run TPC-C
 

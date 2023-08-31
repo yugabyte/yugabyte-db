@@ -3,7 +3,7 @@ title: Benchmark YSQL performance using sysbench
 headerTitle: sysbench
 linkTitle: sysbench
 description: Benchmark YSQL performance using sysbench.
-headcontent: Benchmark YSQL performance using sysbench.
+headcontent: Benchmark YSQL performance using sysbench
 menu:
   preview:
     identifier: sysbench-ysql
@@ -13,30 +13,14 @@ aliases:
   - /benchmark/sysbench/
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
-    <a href="{{< relref "./sysbench-ysql.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-</ul>
-
-## Overview
-
-sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL, as well as system capabilities like CPU, memory, and I/O.
-
-The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official version](https://github.com/akopytov/sysbench) with a few modifications to better reflect YugabyteDB's distributed nature.
-
-{{< note title="Note" >}}
-To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
-{{< /note >}}
+sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL, as well as system capabilities like CPU, memory, and I/O. The [YugabyteDB version of sysbench](https://github.com/yugabyte/sysbench) is forked from the [official version](https://github.com/akopytov/sysbench) with a few modifications to better reflect YugabyteDB's distributed nature.
 
 ## Running the benchmark
 
 ### 1. Prerequisites
+
+To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
 
 Install sysbench using the following steps:
 
@@ -81,10 +65,21 @@ If you want to run the benchmark with a different count of tables and tablesize,
 
 ### 4. Run individual workloads (optional)
 
-This section outlines instructions in case you need to run workloads individually. Before starting the workload you need to load the data first.
+You can choose to run the following workloads individually:
+
+* oltp_insert
+* oltp_point_select
+* oltp_write_only
+* oltp_read_only
+* oltp_read_write
+* oltp_update_index
+* oltp_update_non_index
+* oltp_delete
+
+Before starting the workload, load the data as follows:
 
 ```sh
-$ sysbench oltp_point_select        \
+$ sysbench <workload>               \
       --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
@@ -96,10 +91,10 @@ $ sysbench oltp_point_select        \
       prepare
 ```
 
-Then you can run the workload as follows
+Run a workload as follows:
 
 ```sh
-$ sysbench oltp_point_select        \
+$ sysbench <workload>               \
       --tables=10                   \
       --table-size=100000           \
       --range_key_partitioning=true \
@@ -114,24 +109,11 @@ $ sysbench oltp_point_select        \
       run
 ```
 
-The choice of different workloads are:
-
-* oltp_insert
-* oltp_point_select
-* oltp_write_only
-* oltp_read_only
-* oltp_read_write
-* oltp_update_index
-* oltp_update_non_index
-* oltp_delete
-
 ## Expected results
 
-### Setup
+The following results are for a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all in the same AZ with the client VM running in the same AZ.
 
-When run on a 3-node cluster with each node on a c5.4xlarge AWS instance (16 cores, 32 GB of RAM, and 2 EBS volumes), all belonging to the same AZ with the client VM running in the same AZ, you get the following results:
-
-### 10 Tables Each with 100k Rows
+### 10 tables each with 100k rows
 
 |       Workload        | Throughput (txns/sec) | Latency (ms) |
 | :-------------------- | :-------------------- | :----------- |
