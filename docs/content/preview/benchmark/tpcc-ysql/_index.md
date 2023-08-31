@@ -38,7 +38,7 @@ The following table shows how YugabyteDB scales horizontally, providing increase
 
 ### Vertical Scaling
 
-This data shows how YugabyteDB scales vertically - Increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
+The following table shows how YugabyteDB scales vertically, providing increased throughput when the power of the machines is increased while keeping the number of nodes in the cluster the same.
 
 | Warehouses |   TPMC   | Efficiency(%) | Nodes | Connections | New Order Latency | Machine Type (vCPUs) |
 | ---------: | :------- | :-----------: | :---: | ----------- | :---------------: | :------------------- |
