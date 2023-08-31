@@ -403,6 +403,12 @@ Assigns an extra priority to automatic (minor) compactions when automatic tablet
 
 Default: `50`
 
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are [colocated](../../../architecture/docdb-sharding/colocated-tables/) by default. Must be set when the cluster is created.
+
+Default: `false`
+
 ## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters:
