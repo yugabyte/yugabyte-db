@@ -7780,6 +7780,10 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "usedForXCluster" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "uuid" : {
           "description" : "PITR config UUID",
           "format" : "uuid",
