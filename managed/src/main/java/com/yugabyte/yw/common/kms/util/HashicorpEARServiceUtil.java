@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Arrays;
 import java.util.List;
@@ -176,12 +177,21 @@ public class HashicorpEARServiceUtil {
         return;
       }
       LOG.debug(
-          "Updating HC_VAULT_TTL_EXPIRY for Decrypt with {} and {}",
+          "Updating HC_VAULT_TTL_EXPIRY for KMS config {} with {} and {}",
+          configUUID,
           ttlInfo.get(0),
           ttlInfo.get(1));
 
       authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL, (long) ttlInfo.get(0));
       authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
+      KmsConfig result = KmsConfig.updateKMSConfig(configUUID, authConfig);
+      if (result != null) {
+        LOG.debug(
+            "Successfully updated HC_VAULT_TTL_EXPIRY for KMS config {} with {} and {}",
+            configUUID,
+            ttlInfo.get(0),
+            ttlInfo.get(1));
+      }
     } catch (Exception e) {
       LOG.error("Unable to update TTL of token into authConfig, it will not reflect on UI", e);
     }
