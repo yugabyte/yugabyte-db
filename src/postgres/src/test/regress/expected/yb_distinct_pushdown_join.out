@@ -491,7 +491,7 @@ SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
 ------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Nested Loop (actual rows=1000 loops=1)
-         ->  YB Seq Scan on t t1 (actual rows=1000 loops=1)
+         ->  Seq Scan on t t1 (actual rows=1000 loops=1)
                Remote Filter: (r1 = 1)
          ->  Materialize (actual rows=1 loops=1000)
                ->  Unique (actual rows=1 loops=1)

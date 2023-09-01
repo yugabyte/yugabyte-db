@@ -13,28 +13,16 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertGreaterThan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.Streams;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import java.util.Arrays;
 
 import com.google.common.collect.Range;
@@ -45,7 +33,6 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.checkReadRequests;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 
 @RunWith(YBTestRunnerNonTsanOnly.class)
 public class TestPgColumnReadEfficiency extends BasePgSQLTest {
@@ -127,7 +114,7 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
             ssEstimate = estimatedRpcsPerCol * 2;
           }
 
-          testSpecificScanRowSize(stmt, NODE_YB_SEQ_SCAN, select, where, ssEstimate, N_ROWS);
+          testSpecificScanRowSize(stmt, NODE_SEQ_SCAN, select, where, ssEstimate, N_ROWS);
           testSpecificScanRowSize(stmt, NODE_INDEX_ONLY_SCAN, select, where,
                                   iosEstimate, N_ROWS);
           if (nConditionCols > 0)
@@ -166,9 +153,9 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
         if (nSelectedCols == 0) {
           ssEstimateWithoutCond = estimatedRpcsPerCol * 6;
         }
-        testSpecificScanRowSize(stmt, NODE_YB_SEQ_SCAN, select, hashcodeCond,
+        testSpecificScanRowSize(stmt, NODE_SEQ_SCAN, select, hashcodeCond,
                                 ssEstimateWithCond, N_ROWS_MATCHING_COND);
-        testSpecificScanRowSize(stmt, NODE_YB_SEQ_SCAN, select, "",
+        testSpecificScanRowSize(stmt, NODE_SEQ_SCAN, select, "",
                                 ssEstimateWithoutCond, N_ROWS);
       }
 
@@ -190,7 +177,7 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
         }
         testSpecificScanRowSize(stmt, NODE_INDEX_ONLY_SCAN, select, hashcodeCond,
                                 iosEstimateWithCond, N_ROWS_MATCHING_COND);
-        testSpecificScanRowSize(stmt, NODE_YB_SEQ_SCAN, select, "",
+        testSpecificScanRowSize(stmt, NODE_SEQ_SCAN, select, "",
                                 iosEstimateWithoutCond, N_ROWS);
       }
     }
@@ -200,7 +187,7 @@ public class TestPgColumnReadEfficiency extends BasePgSQLTest {
         String conditions, long expected, int expectedRows) throws Exception {
     String hint;
     switch(scanType) {
-      case NODE_YB_SEQ_SCAN:
+      case NODE_SEQ_SCAN:
         hint = "SeqScan(t)";
         break;
       case NODE_INDEX_ONLY_SCAN:
