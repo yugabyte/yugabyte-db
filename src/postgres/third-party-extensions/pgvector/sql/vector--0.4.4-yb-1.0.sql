@@ -1,5 +1,5 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
-\echo Use "CREATE EXTENSION vector" to load this file. \quit
+\echo Use "CREATE EXTENSION vector WITH VERSION '0.4.4-yb-1.0'" to load this file. \quit
 
 -- type
 
@@ -208,23 +208,3 @@ CREATE OPERATOR > (
 	COMMUTATOR = < , NEGATOR = <= ,
 	RESTRICT = scalargtsel, JOIN = scalargtjoinsel
 );
-
--- opclasses
-
-CREATE OPERATOR CLASS vector_ops
-	DEFAULT FOR TYPE vector USING btree AS
-	OPERATOR 1 < ,
-	OPERATOR 2 <= ,
-	OPERATOR 3 = ,
-	OPERATOR 4 >= ,
-	OPERATOR 5 > ,
-	FUNCTION 1 vector_cmp(vector, vector);
-
-CREATE OPERATOR CLASS vector_ops
-	DEFAULT FOR TYPE vector USING lsm AS
-	OPERATOR 1 < ,
-	OPERATOR 2 <= ,
-	OPERATOR 3 = ,
-	OPERATOR 4 >= ,
-	OPERATOR 5 > ,
-	FUNCTION 1 vector_cmp(vector, vector);
