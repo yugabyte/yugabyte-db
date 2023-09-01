@@ -20,9 +20,11 @@ rightNav:
 
 [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity, and which are either executed online or queued for deferred execution.
 
-## Results overview (YugabyteDB v2.18.1)
+## Results overview
 
 All the nodes in the cluster were located in AWS-west in the same zone. The benchmark VM was the same type as the cluster nodes and was deployed in the same zone. Each test was run for 30 minutes after loading the data.
+
+All benchmarks were run using YugabyteDB v2.18.1, except 150K warehouses, which was run on v2.11.
 
 ### Horizontal scaling
 
