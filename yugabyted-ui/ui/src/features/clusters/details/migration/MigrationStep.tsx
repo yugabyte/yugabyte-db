@@ -10,17 +10,29 @@ interface MigrationStepProps {
   steps: string[];
   migration: Migration;
   step: number;
+  onRefetch: () => void;
 }
 
 const stepComponents = [MigrationPlanAssess, MigrationSchema, MigrationData, MigrationVerify];
 
-export const MigrationStep: FC<MigrationStepProps> = ({ steps = [""], migration, step }) => {
+export const MigrationStep: FC<MigrationStepProps> = ({
+  steps = [""],
+  migration,
+  step,
+  onRefetch,
+}) => {
   return (
     <Box mt={1}>
       {stepComponents.map((StepComponent, index) => {
         if (index === step) {
           return (
-            <StepComponent key={index} step={index} heading={steps[step]} migration={migration} />
+            <StepComponent
+              key={index}
+              step={index}
+              heading={steps[step]}
+              migration={migration}
+              onRefetch={onRefetch}
+            />
           );
         }
         return <React.Fragment key={index} />;

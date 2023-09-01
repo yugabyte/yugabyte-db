@@ -3,8 +3,8 @@ import { Typography, makeStyles, Box, Card, CardActionArea } from "@material-ui/
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
-import { YBTooltip } from "@app/components";
-import { MigrationPhase, MigrationStep } from "./migration";
+import { STATUS_TYPES, YBStatus, YBTooltip } from "@app/components";
+import { MigrationPhase, MigrationStep, migrationPhases, migrationSteps } from "./migration";
 
 const useStyles = makeStyles((theme) => ({
   wrapper: {
@@ -84,6 +84,29 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   const { t } = useTranslation();
   const classes = useStyles();
 
+  const getTooltip = (step: string) => {
+    if (step === migrationSteps[MigrationStep["Plan and Assess"]]) {
+      return migrationPhases[MigrationPhase["Analyze Schema"]];
+    } else if (step === migrationSteps[MigrationStep["Migrate Schema"]]) {
+      return [
+        migrationPhases[MigrationPhase["Analyze Schema"]],
+        migrationPhases[MigrationPhase["Export Schema"]],
+        migrationPhases[MigrationPhase["Import Schema"]],
+      ].join(", ");
+    } else if (step === migrationSteps[MigrationStep["Migrate Data"]]) {
+      return [
+        migrationPhases[MigrationPhase["Export Data"]],
+        migrationPhases[MigrationPhase["Import Data"]],
+      ].join(", ");
+    } else if (step === migrationSteps[MigrationStep["Verify"]]) {
+      return migrationPhases[MigrationPhase["Verify"]];
+    } else {
+      return step;
+    }
+  };
+
+  const isFetching = false;
+
   return (
     <Box className={classes.wrapper}>
       {steps.map((step, index) => {
@@ -118,19 +141,34 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               // Everything except first two steps will be pending and disabled
               disabled = true;
               notStarted = true;
-            } else if (index === MigrationStep["Plan and Assess"]) {
-              // Plan and assess will be running
+            } else if (index === MigrationStep["Migrate Schema"]) {
+              // Migrate schema will be running
               running = true;
             } else {
-              // Migrate schema will be completed
+              // Plan and assess will be completed
               completed = true;
             }
           }
 
-          // Export data, import schema and import data phase
-          else if (phase <= MigrationPhase["Import Data"]) {
+          // Export data and Import schema phase
+          else if (phase <= MigrationPhase["Import Schema"]) {
+            if (index === MigrationStep["Plan and Assess"]) {
+              // Plan and assess will be completed
+              completed = true;
+            } else if (index <= MigrationStep["Migrate Data"]) {
+              // Migrate schema and Migrate data will be running
+              running = true;
+            } else {
+              // Verify will be pending and disabled
+              disabled = true;
+              notStarted = true;
+            }
+          }
+
+          // Import schema phase
+          else if (phase === MigrationPhase["Import Data"]) {
             if (index <= MigrationStep["Migrate Schema"]) {
-              // Plan and assess and migrate schema will be completed
+              // Plan and assess and Migrate schema will be completed
               completed = true;
             } else if (index === MigrationStep["Migrate Data"]) {
               // Migrate data will be running
@@ -161,21 +199,29 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
                 {/* <span className={classes.icon}>{(index + 1).toString()}</span> */}
                 <Typography variant="h5">{step}</Typography>
                 <Box ml={-1}>
-                  <YBTooltip title={step} />
+                  <YBTooltip title={getTooltip(step)} />
                 </Box>
               </Box>
-              {completed && (
-                <YBBadge
-                  variant={BadgeVariant.Success}
-                  text={t("clusterDetail.voyager.complete")}
+              {isFetching ? (
+                <YBStatus
+                  type={STATUS_TYPES.IN_PROGRESS}
+                  label={t("clusterDetail.voyager.refreshing")}
                 />
-              )}
-              {running && <YBBadge variant={BadgeVariant.InProgress} />}
-
-              {notStarted && (
-                <Box mt={0.8} mb={0.4} className={classes.notStarted}>
-                  {t("clusterDetail.voyager.notStarted")}
-                </Box>
+              ) : (
+                <>
+                  {completed && (
+                    <YBBadge
+                      variant={BadgeVariant.Success}
+                      text={t("clusterDetail.voyager.complete")}
+                    />
+                  )}
+                  {running && <YBBadge variant={BadgeVariant.InProgress} />}
+                  {notStarted && (
+                    <Box mt={0.8} mb={0.4} className={classes.notStarted}>
+                      {t("clusterDetail.voyager.notStarted")}
+                    </Box>
+                  )}
+                </>
               )}
             </CardActionArea>
           </Card>

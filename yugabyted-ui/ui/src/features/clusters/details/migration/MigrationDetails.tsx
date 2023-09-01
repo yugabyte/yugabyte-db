@@ -13,16 +13,21 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationDetailsProps {
   steps: string[];
   migration: Migration;
+  onRefetch: () => void;
 }
 
-export const MigrationDetails: FC<MigrationDetailsProps> = ({ steps = [""], migration }) => {
+export const MigrationDetails: FC<MigrationDetailsProps> = ({
+  steps = [""],
+  migration,
+  onRefetch,
+}) => {
   const theme = useTheme();
   const classes = useStyles();
 
-  const [selectedStep, setSelectedStep] = React.useState<number>(migration.current_step);
+  const [selectedStep, setSelectedStep] = React.useState<number>(migration.landing_step);
   React.useEffect(() => {
-    setSelectedStep(migration.current_step);
-  }, [migration.current_step]);
+    setSelectedStep(migration.landing_step);
+  }, [migration.landing_step]);
 
   return (
     <Box mt={1}>
@@ -43,8 +48,13 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({ steps = [""], migr
             <Box>
               <Divider orientation="vertical" />
             </Box>
-            <Box flex={1}>
-              <MigrationStep steps={steps} migration={migration} step={selectedStep} />
+            <Box flex={1} minWidth={0}>
+              <MigrationStep
+                steps={steps}
+                migration={migration}
+                step={selectedStep}
+                onRefetch={onRefetch}
+              />
             </Box>
           </Box>
         </Box>

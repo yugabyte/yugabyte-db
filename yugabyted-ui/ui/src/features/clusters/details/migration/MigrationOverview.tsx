@@ -59,9 +59,9 @@ const migrationDataList = [
     migration_phase: 0,
     invocation_sequence: 0,
     complexity: "",
-    source_dbVersion: "Oracle 18c",
+    source_db: "Oracle 18c",
     database_name: "database1",
-    schema_name: ["yugabyted"],
+    schema_name: "yugabyted",
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -70,10 +70,10 @@ const migrationDataList = [
     migration_name: "Migration Name2",
     migration_phase: 1,
     invocation_sequence: 1,
+    source_db: "PostgreSQL 13.3",
     complexity: "Easy",
-    source_dbVersion: "PostgreSQL 13.3",
     database_name: "database2",
-    schema_name: ["yugabyted"],
+    schema_name: "yugabyted",
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -83,9 +83,9 @@ const migrationDataList = [
     migration_phase: 2,
     invocation_sequence: 1,
     complexity: "Medium",
-    source_dbVersion: "MySQL 8.0.25",
+    source_db: "MySQL 8.0.25",
     database_name: "database3",
-    schema_name: ["yugabyted", "sales"],
+    schema_name: "yugabyted",
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -95,9 +95,9 @@ const migrationDataList = [
     migration_phase: 3,
     invocation_sequence: 1,
     complexity: "Medium",
-    source_dbVersion: "MySQL 8.0.25",
+    source_db: "MySQL 8.0.25",
     database_name: "database4",
-    schema_name: ["marketing"],
+    schema_name: "sales",
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -107,9 +107,9 @@ const migrationDataList = [
     migration_phase: 4,
     invocation_sequence: 1,
     complexity: "Medium",
-    source_dbVersion: "MySQL 8.0.25",
+    source_db: "MySQL 8.0.25",
     database_name: "database5",
-    schema_name: ["yugabyted", "marketing", "sales"],
+    schema_name: "yugabyted",
     status: "In progress",
     invocation_timestamp: "11/07/2022, 09:55",
   },
@@ -119,15 +119,15 @@ const migrationDataList = [
     migration_phase: 5,
     invocation_sequence: 2,
     complexity: "Hard",
-    source_dbVersion: "Oracle 19c",
+    source_db: "Oracle 19c",
     database_name: "database6",
-    schema_name: ["engineering"],
+    schema_name: "engineering",
     status: "Completed",
     invocation_timestamp: "11/07/2022, 09:55",
   },
 ];
 
-export type Migration = (typeof migrationDataList)[number] & { current_step: number };
+export type Migration = (typeof migrationDataList)[number] & { landing_step: number };
 
 interface MigrationOverviewProps {}
 
@@ -135,15 +135,21 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
+  const refetch = React.useCallback(() => {
+    // TODO: Refetch all migration APIs to prevent inconsistencies
+    console.log("Refetch!");
+  }, []);
+
   const migrationData = migrationDataList.map((data) => {
     return {
       ...data,
-      current_step:
-        data.migration_phase === MigrationPhase["Export Schema"]
+      landing_step:
+        data.migration_phase === MigrationPhase["Export Schema"] ||
+        data.migration_phase === MigrationPhase["Analyze Schema"] ||
+        data.migration_phase === MigrationPhase["Import Schema"]
           ? MigrationStep["Migrate Schema"]
-          : data.migration_phase === MigrationPhase["Analyze Schema"]
-          ? MigrationStep["Plan and Assess"]
-          : data.migration_phase <= MigrationPhase["Import Data"]
+          : data.migration_phase === MigrationPhase["Import Data"] ||
+            data.migration_phase === MigrationPhase["Export Data"]
           ? MigrationStep["Migrate Data"]
           : MigrationStep["Verify"],
     };
@@ -199,9 +205,17 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
       </Box>
 
       {!selectedMigration ? (
-        <MigrationList migrationData={migrationData} onSelectMigration={setSelectedMigration} />
+        <MigrationList
+          migrationData={migrationData}
+          onSelectMigration={setSelectedMigration}
+          onRefetch={refetch}
+        />
       ) : (
-        <MigrationDetails steps={migrationSteps} migration={selectedMigration} />
+        <MigrationDetails
+          steps={migrationSteps}
+          migration={selectedMigration}
+          onRefetch={refetch}
+        />
       )}
     </Box>
   );

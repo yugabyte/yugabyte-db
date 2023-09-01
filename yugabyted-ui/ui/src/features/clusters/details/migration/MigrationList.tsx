@@ -3,10 +3,11 @@ import { Box, Paper, Typography, makeStyles } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { YBTable } from "@app/components";
+import { YBButton, YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
 import { migrationPhases } from "./migration";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -65,9 +66,14 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
 interface MigrationListProps {
   migrationData: Migration[];
   onSelectMigration: (migration: Migration) => void;
+  onRefetch: () => void;
 }
 
-export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectMigration }) => {
+export const MigrationList: FC<MigrationListProps> = ({
+  migrationData,
+  onSelectMigration,
+  onRefetch,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -92,7 +98,6 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       name: "schema_name",
       label: t("clusterDetail.voyager.schema"),
       options: {
-        customBodyRender: (schema: string[]) => schema.join(", "),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({
           style: { padding: "8px 16px", maxWidth: 120, wordBreak: "break-word" },
@@ -109,7 +114,7 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       },
     },
     {
-      name: "source_dbVersion",
+      name: "source_db",
       label: t("clusterDetail.voyager.sourceDB"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -161,9 +166,14 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
   return (
     <Paper>
       <Box p={4}>
-        <Typography variant="h4" className={classes.heading}>
-          {t("clusterDetail.voyager.migrations")}
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="start">
+          <Typography variant="h4" className={classes.heading}>
+            {t("clusterDetail.voyager.migrations")}
+          </Typography>
+          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+            {t("clusterDetail.performance.actions.refresh")}
+          </YBButton>
+        </Box>
         <YBTable
           data={migrationData}
           columns={migrationColumns}

@@ -1,9 +1,17 @@
 import React, { FC } from "react";
-import { Box, makeStyles, Theme, Typography, useTheme } from "@material-ui/core";
+import { Box, LinearProgress, makeStyles, Theme, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../MigrationOverview";
-import { STATUS_TYPES, YBAccordion, YBProgress, YBStatus, YBTable } from "@app/components";
+import {
+  STATUS_TYPES,
+  YBAccordion,
+  YBButton,
+  YBProgress,
+  YBStatus,
+  YBTable,
+} from "@app/components";
 import { MigrationPhase } from "../migration";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -56,91 +64,101 @@ interface MigrationProps {
   heading: string;
   migration: Migration;
   step: number;
+  onRefetch: () => void;
 }
 
-export const MigrationData: FC<MigrationProps> = ({ heading, migration }) => {
+export const MigrationData: FC<MigrationProps> = ({ heading, onRefetch }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
 
-  const isRunning =
-    migration.migration_phase >= MigrationPhase["Export Data"] &&
-    migration.migration_phase <= MigrationPhase["Import Data"];
-  // const isComplete = migration.migration_phase > MigrationPhase["Import Data"]; We don't need this as pending state is not available
-  // const isPending = !isRunning && !isComplete; Pending state will not be shown for this step
+  const isFetchingData = false;
+
+  const dataAPI = {
+    metrics: [
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST1",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 42700,
+        count_total_rows: 42700,
+        invocation_timestamp: "2023-08-27 22:37:13",
+      },
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST2",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 42700,
+        count_total_rows: 52700,
+        invocation_timestamp: "2023-08-27 22:37:24",
+      },
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST3",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 62700,
+        count_total_rows: 62700,
+        invocation_timestamp: "2023-08-27 22:37:50",
+      },
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST4",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 82700,
+        count_total_rows: 82700,
+        invocation_timestamp: "2023-08-27 22:37:46",
+      },
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST5",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 82700,
+        count_total_rows: 82700,
+        invocation_timestamp: "2023-08-27 22:38:14",
+      },
+      {
+        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
+        table_name: "YUGABYTED",
+        schema_name: "YUGABYTED.TEST6",
+        migration_phase: 2,
+        status: 3,
+        count_live_rows: 157000,
+        count_total_rows: 157000,
+        invocation_timestamp: "2023-08-27 22:39:01",
+      },
+    ],
+  };
+
+  const phase = dataAPI.metrics[0]?.migration_phase ?? 0;
 
   const migrationProgressData = React.useMemo(
     () =>
-      [
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST1",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 42700,
-          count_total_rows: 42700,
-          invocation_timestamp: "2023-08-27 22:37:13",
-        },
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST2",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 52700,
-          count_total_rows: 52700,
-          invocation_timestamp: "2023-08-27 22:37:24",
-        },
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST3",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 62000,
-          count_total_rows: 62700,
-          invocation_timestamp: "2023-08-27 22:37:50",
-        },
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST4",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 52000,
-          count_total_rows: 82700,
-          invocation_timestamp: "2023-08-27 22:37:46",
-        },
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST5",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 2700,
-          count_total_rows: 82700,
-          invocation_timestamp: "2023-08-27 22:38:14",
-        },
-        {
-          migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-          table_name: "YUGABYTED",
-          schema_name: "YUGABYTED.TEST6",
-          migration_phase: 2,
-          status: 3,
-          count_live_rows: 0,
-          count_total_rows: 157000,
-          invocation_timestamp: "2023-08-27 22:39:01",
-        },
-      ].map((data) => ({
-        ...data,
-        exportPercentage: migration.migration_phase === MigrationPhase["Export Data"] ? 50 : 100,
-        importPercentage:
-          migration.migration_phase === MigrationPhase["Import Data"]
+      dataAPI.metrics.map((data) => ({
+        table_name: data.table_name,
+        exportPercentage:
+          data.migration_phase === MigrationPhase["Export Data"]
             ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+            : data.migration_phase > MigrationPhase["Export Data"]
+            ? 100
+            : 0,
+        importPercentage:
+          data.migration_phase === MigrationPhase["Import Data"]
+            ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+            : data.migration_phase > MigrationPhase["Import Data"]
+            ? 100
             : 0,
       })),
-    [migration.migration_phase]
+    [dataAPI]
   );
 
   const totalExportProgress = Math.floor(
@@ -194,102 +212,119 @@ export const MigrationData: FC<MigrationProps> = ({ heading, migration }) => {
 
   return (
     <Box>
-      <Typography variant="h4" className={classes.heading}>
-        {heading}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="start">
+        <Typography variant="h4" className={classes.heading}>
+          {heading}
+        </Typography>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+          {t("clusterDetail.performance.actions.refresh")}
+        </YBButton>
+      </Box>
 
-      <Box display="flex" gridGap={4} alignItems="center">
-        <YBStatus type={isRunning ? STATUS_TYPES.IN_PROGRESS : STATUS_TYPES.SUCCESS} size={42} />
-        <Box display="flex" flexDirection="column">
-          <Typography variant="h5">
-            {migration.migration_phase === MigrationPhase["Export Data"]
-              ? t("clusterDetail.voyager.migrateDataExportData")
-              : migration.migration_phase === MigrationPhase["Import Schema"]
-              ? t("clusterDetail.voyager.migrateDataImportSchema")
-              : migration.migration_phase === MigrationPhase["Import Data"]
-              ? t("clusterDetail.voyager.migrateDataImportData")
-              : t("clusterDetail.voyager.migrateDataComplete")}
-          </Typography>
-          <Typography variant="body2">
-            {migration.migration_phase === MigrationPhase["Export Data"]
-              ? t("clusterDetail.voyager.migrateDataExportDataDesc")
-              : migration.migration_phase === MigrationPhase["Import Schema"]
-              ? t("clusterDetail.voyager.migrateDataImportSchemaDesc")
-              : migration.migration_phase === MigrationPhase["Import Data"]
-              ? t("clusterDetail.voyager.migrateDataImportDataDesc")
-              : t("clusterDetail.voyager.migrateDataCompleteDesc")}
-          </Typography>
+      {isFetchingData && (
+        <Box textAlign="center" pt={2} pb={2} width="100%">
+          <LinearProgress />
         </Box>
-      </Box>
+      )}
 
-      <Box mt={6} display="flex" gridGap={theme.spacing(2)} flexDirection="column">
-        <YBAccordion
-          titleContent={
-            <AccordionTitleComponent
-              title={t("clusterDetail.voyager.exportData")}
-              status={totalExportProgress === 100 ? STATUS_TYPES.SUCCESS : STATUS_TYPES.IN_PROGRESS}
-            />
-          }
-          defaultExpanded={migration.migration_phase < MigrationPhase["Import Data"]}
-        >
-          <Box flex={1}>
-            <Box mx={2} mb={5} mt={2}>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                <Typography variant="body1">
-                  {t("clusterDetail.voyager.percentCompleted", { percent: totalExportProgress })}
+      {!isFetchingData && (
+        <>
+          {phase > MigrationPhase["Import Data"] && (
+            <Box display="flex" gridGap={4} alignItems="center" mb={5}>
+              <YBStatus type={STATUS_TYPES.SUCCESS} size={42} />
+              <Box display="flex" flexDirection="column">
+                <Typography variant="h5">
+                  {t("clusterDetail.voyager.migrateData.migratedData")}
+                </Typography>
+                <Typography variant="body2">
+                  {t("clusterDetail.voyager.migrateData.migratedDataDesc")}
                 </Typography>
               </Box>
-              <YBProgress value={totalExportProgress} />
             </Box>
-            <Box mt={2}>
-              <YBTable
-                data={migrationProgressData}
-                columns={migrationExportColumns}
-                options={{
-                  pagination: true,
-                }}
-                withBorder={false}
-              />
-            </Box>
-          </Box>
-        </YBAccordion>
-        <YBAccordion
-          titleContent={
-            <AccordionTitleComponent
-              title={t("clusterDetail.voyager.importData")}
-              status={
-                migration.migration_phase < MigrationPhase["Import Data"]
-                  ? STATUS_TYPES.PENDING
-                  : totalImportProgress === 100
-                  ? STATUS_TYPES.SUCCESS
-                  : STATUS_TYPES.IN_PROGRESS
+          )}
+
+          <Box display="flex" gridGap={theme.spacing(2)} flexDirection="column">
+            <YBAccordion
+              titleContent={
+                <AccordionTitleComponent
+                  title={t("clusterDetail.voyager.exportData")}
+                  status={
+                    phase < MigrationPhase["Export Data"]
+                      ? STATUS_TYPES.PENDING
+                      : totalExportProgress === 100
+                      ? STATUS_TYPES.SUCCESS
+                      : STATUS_TYPES.IN_PROGRESS
+                  }
+                />
               }
-            />
-          }
-          defaultExpanded={migration.migration_phase === MigrationPhase["Import Data"]}
-        >
-          <Box flex={1}>
-            <Box mx={2} mb={5} mt={2}>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                <Typography variant="body1">
-                  {t("clusterDetail.voyager.percentCompleted", { percent: totalImportProgress })}
-                </Typography>
+              defaultExpanded={phase <= MigrationPhase["Export Data"]}
+            >
+              <Box flex={1} minWidth={0}>
+                <Box mx={2} mb={5} mt={2}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                    <Typography variant="body1">
+                      {t("clusterDetail.voyager.percentCompleted", {
+                        percent: totalExportProgress,
+                      })}
+                    </Typography>
+                  </Box>
+                  <YBProgress value={totalExportProgress} />
+                </Box>
+                <Box mt={2}>
+                  <YBTable
+                    data={migrationProgressData}
+                    columns={migrationExportColumns}
+                    options={{
+                      pagination: true,
+                    }}
+                    withBorder={false}
+                  />
+                </Box>
               </Box>
-              <YBProgress value={totalImportProgress} />
-            </Box>
-            <Box mt={2}>
-              <YBTable
-                data={migrationProgressData}
-                columns={migrationImportColumns}
-                options={{
-                  pagination: true,
-                }}
-                withBorder={false}
-              />
-            </Box>
+            </YBAccordion>
+            <YBAccordion
+              titleContent={
+                <AccordionTitleComponent
+                  title={t("clusterDetail.voyager.importData")}
+                  status={
+                    phase < MigrationPhase["Import Data"]
+                      ? STATUS_TYPES.PENDING
+                      : totalImportProgress === 100
+                      ? STATUS_TYPES.SUCCESS
+                      : STATUS_TYPES.IN_PROGRESS
+                  }
+                />
+              }
+              defaultExpanded={
+                phase === MigrationPhase["Import Data"] || phase === MigrationPhase["Import Schema"]
+              }
+            >
+              <Box flex={1} minWidth={0}>
+                <Box mx={2} mb={5} mt={2}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                    <Typography variant="body1">
+                      {t("clusterDetail.voyager.percentCompleted", {
+                        percent: totalImportProgress,
+                      })}
+                    </Typography>
+                  </Box>
+                  <YBProgress value={totalImportProgress} />
+                </Box>
+                <Box mt={2}>
+                  <YBTable
+                    data={migrationProgressData}
+                    columns={migrationImportColumns}
+                    options={{
+                      pagination: true,
+                    }}
+                    withBorder={false}
+                  />
+                </Box>
+              </Box>
+            </YBAccordion>
           </Box>
-        </YBAccordion>
-      </Box>
+        </>
+      )}
     </Box>
   );
 };

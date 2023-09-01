@@ -25,7 +25,8 @@ const useStyles = makeStyles((theme) => ({
     position: 'relative',
     width: '100%',
     minWidth: themeVariables.screenMinWidth,
-    minHeight: themeVariables.screenMinHeight // For short pages with sparse content
+    minHeight: themeVariables.screenMinHeight, // For short pages with sparse content
+    overflow: 'hidden'
   },
   mainContainer: {
     paddingBottom: themeVariables.footerHeight + theme.spacing(3) // space for the absolute positioned footer
