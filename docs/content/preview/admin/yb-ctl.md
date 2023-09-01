@@ -208,7 +208,7 @@ Flag to log internal debug messages to `stderr`.
 
 ### Running on macOS
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yb-ctl start` to fail. Use the [--master_flags flag](#master-flags) when you start the cluster to change the default port number, as follows:
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yb-ctl start` to fail. Use the [--master_flags](#master-flags) flag when you start the cluster to change the default port number, as follows:
 
 ```sh
 ./bin/yb-ctl start --master_flags "webserver_port=7001"
@@ -231,7 +231,7 @@ The loopback addresses do not persist upon rebooting your computer.
 
 To create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
+To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor. To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-and-remove-nodes) commands.
 
 Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
@@ -247,7 +247,7 @@ Note that the default replication factor is 1.
 
 #### Create a 4-node cluster with replication factor of 3
 
-First create 3-node cluster with replication factor of `3`.
+First create a 3-node cluster with replication factor of `3`.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -267,7 +267,7 @@ $ ./bin/yb-ctl --rf 5 create
 
 ### Destroy a local cluster
 
-This command stops all the nodes and deletes the data directory of the cluster.
+The following command stops all the nodes and deletes the data directory of the cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
