@@ -647,6 +647,7 @@ class Tablet : public AbstractTablet,
   Result<size_t> TEST_CountRegularDBRecords();
 
   Status CreateReadIntents(
+      IsolationLevel level,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,

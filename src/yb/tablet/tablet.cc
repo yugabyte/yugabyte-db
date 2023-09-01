@@ -3628,6 +3628,7 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 }
 
 Status Tablet::CreateReadIntents(
+    IsolationLevel level,
     const TransactionMetadataPB& transaction_metadata,
     const SubTransactionMetadataPB& subtransaction_metadata,
     const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
@@ -3649,7 +3650,7 @@ Status Tablet::CreateReadIntents(
       table_info = VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read.table_id()));
     }
     docdb::PgsqlReadOperation doc_op(pgsql_read, txn_op_ctx);
-    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), write_batch));
+    RETURN_NOT_OK(doc_op.GetIntents(table_info->schema(), level, write_batch));
   }
 
   return Status::OK();
