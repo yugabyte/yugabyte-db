@@ -220,6 +220,8 @@ message GetTableSchemaResponsePB {
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
   optional uint32 wal_retention_secs = 15;
+
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 17;
 }
 
 message GetTablegroupSchemaRequestPB {
