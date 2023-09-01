@@ -38,7 +38,7 @@ func (i installExistsCheck) Execute() Result {
 	// the result of InstallExistsCheck. If we can't access the file, it might as well not exist!
 	log.Debug("Checking for install marker file " + common.YbaInstalledMarker())
 
-	state, err := ybactlstate.LoadState()
+	state, err := ybactlstate.Initialize()
 	// Can have no state if upgrading from a version before state existed. Instead check for marker
 	// file.
 	if err != nil {
