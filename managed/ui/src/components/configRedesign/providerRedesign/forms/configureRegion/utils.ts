@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { ON_PREM_LOCATIONS, ON_PREM_UNLISTED_LOCATION } from '../../providerRegionsData';
+import { ON_PREM_LOCATIONS, ON_PREM_CUSTOM_LOCATION } from '../../providerRegionsData';
 import { RegionMetadataResponse } from '../../types';
 
 export const getRegionOption = (
@@ -32,6 +32,6 @@ export const getOnPremLocationOption = (latitude: number, longitude: number) => 
       (name) =>
         ON_PREM_LOCATIONS[name].latitude === latitude &&
         ON_PREM_LOCATIONS[name].longitude === longitude
-    ) ?? ON_PREM_UNLISTED_LOCATION;
-  return { label: locationName, value: ON_PREM_LOCATIONS[locationName] };
+    ) ?? ON_PREM_CUSTOM_LOCATION;
+  return { label: locationName, value: locationName };
 };
