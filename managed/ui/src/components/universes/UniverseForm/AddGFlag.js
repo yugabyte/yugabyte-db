@@ -191,6 +191,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
         if (MULTILINE_GFLAGS_ARRAY.includes(flag?.name) && isGFlagMultilineConfEnabled) {
           return (
             <GFlagsConf
+              dbVersion={dbVersion}
               formProps={formProps}
               serverType={server}
               flagName={flag?.name}

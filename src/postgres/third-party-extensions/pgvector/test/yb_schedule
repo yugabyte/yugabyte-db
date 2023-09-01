@@ -9,3 +9,4 @@ test: yb_setup
 test: cast
 test: functions
 test: input
+test: yb_order_by

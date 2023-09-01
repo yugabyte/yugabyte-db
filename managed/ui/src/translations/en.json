@@ -255,6 +255,7 @@
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
         "invalidKey": "Invalid attribute key or missing '=' between key value pair",
         "uploadKeyset": "Need to upload JWKS keyset",
+        "jwksNotSupported": "Please select database versions 2.18 or above to upload JWKS",
         "missingAttributeValue": "Missing value for the attribute key",
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
