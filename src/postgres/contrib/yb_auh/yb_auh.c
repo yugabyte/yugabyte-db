@@ -53,7 +53,7 @@ typedef struct ybauhEntry {
   uint16 client_node_port;
   long query_id;
   TimestampTz start_ts_of_wait_event;
-  float8 sample_rate;
+  float8 sample_weight;
 } ybauhEntry;
 
 /* counters */
@@ -89,7 +89,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             uint16 client_node_port,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
-                            float8 sample_rate);
+                            float8 sample_weight);
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
 
@@ -179,20 +179,18 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   size_t procCount = 0;
   PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
   PgProcAuhNode *current = nodes_head;
-  float8 sample_rate = 0;
+  float8 sample_weight = 0;
   if (nodes_head != NULL && procCount != 0) 
-  {
-    sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
-  }
+    sample_weight = (float)procCount / Min(num_procs_to_sample, procCount);
   while (current != NULL) 
   {
     PGProcAUHEntryList proc = current->data;
-    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    if (random() < (1.0/sample_weight) * MAX_RANDOM_VALUE) 
     {
       auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                       proc.wait_event_info, "", proc.top_level_node_id,
                       proc.client_node_host, proc.client_node_port,
-                      proc.queryid, auh_sample_time, sample_rate);
+                      proc.queryid, auh_sample_time, sample_weight);
     }
     current = current->next;
   }
@@ -205,16 +203,16 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   YBCAUHDescriptor *rpcs = NULL;
   size_t numrpcs = 0;
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
-  float8 sample_rate= 0;
+  float8 sample_weight = 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
+    sample_weight = (float)numrpcs / Min(num_rpcs_to_sample, numrpcs);  
   for (int i = 0; i < numrpcs; i++) {
-    if(random() <= sample_rate * MAX_RANDOM_VALUE){
+    if(random() <= (1.0/sample_weight) * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
                     rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
-                    rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
+                    rpcs[i].metadata.query_id, auh_sample_time, sample_weight);
     }
   }
 }
@@ -293,7 +291,7 @@ static void auh_entry_store(TimestampTz auh_time,
                             uint16 client_node_port,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
-                            float8 sample_rate)
+                            float8 sample_weight)
 {
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int inserted;
@@ -336,7 +334,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].client_node_port = client_node_port;
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
-  AUHEntryArray[inserted].sample_rate = sample_rate;
+  AUHEntryArray[inserted].sample_weight = sample_weight;
   LWLockRelease(auh_entry_array_lock); 
 }
 
@@ -488,8 +486,8 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     // Sample rate
     // TODO: sample rate is throwing an error in certain mac environments
     // Disabling it for now.
-    if (AUHEntryArray[i].sample_rate)
-      values[j++] = Float8GetDatum(AUHEntryArray[i].sample_rate);
+    if (AUHEntryArray[i].sample_weight)
+      values[j++] = Float8GetDatum(AUHEntryArray[i].sample_weight);
     else
       nulls[j++] = true;
 
