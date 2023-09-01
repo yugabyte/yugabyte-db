@@ -16,7 +16,7 @@ sysbench is a popular tool for benchmarking databases like PostgreSQL and MySQL,
 
 ## Running the benchmark
 
-### 1. Prerequisites
+### Prerequisites
 
 To ensure the recommended hardware requirements are met and the database is correctly configured before benchmarking, review the [deployment checklist](../../deploy/checklist/).
 
@@ -37,7 +37,7 @@ Make sure you have the [YSQL shell](../../admin/ysqlsh/) `ysqlsh` exported to th
 $ export PATH=$PATH:/path/to/ysqlsh
 ```
 
-### 2. Start YugabyteDB
+### Start YugabyteDB
 
 Start your YugabyteDB cluster by following the steps in [Manual deployment](../../deploy/manual-deployment/).
 
@@ -45,7 +45,7 @@ Start your YugabyteDB cluster by following the steps in [Manual deployment](../.
 You will need the IP addresses of the nodes in the cluster for the next step.
 {{< /tip>}}
 
-### 3. Run the benchmark
+### Run the benchmark
 
 Run the `run_sysbench.sh` shell script to load the data and run the various workloads:
 
@@ -61,7 +61,7 @@ If you want to run the benchmark with a different count of tables and tablesize,
 ./run_sysbench.sh --ip <ip> --numtables <number of tables> --tablesize <number of rows in each table>
 ```
 
-### 4. Run individual workloads (optional)
+### Run individual workloads (optional)
 
 You can choose to run the following workloads individually:
 
