@@ -187,6 +187,9 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
+DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
+    "Whether to dump changed metrics in tracing.");
+
 DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, false,
     "Whether to return changed metrics for YSQL queries in RPC response.");
 
@@ -325,6 +328,16 @@ namespace {
 
 thread_local docdb::DocDBStatistics scoped_docdb_statistics;
 thread_local ScopedTabletMetrics scoped_tablet_metrics;
+
+void TraceScopedMetrics() {
+  std::stringstream ss;
+  ss << "Metric changes:\n";
+  size_t changes = scoped_docdb_statistics.Dump(&ss);
+  changes += scoped_tablet_metrics.Dump(&ss);
+  if (changes > 0) {
+    TRACE(ss.str());
+  }
+}
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -556,7 +569,6 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
-  external_txn_intents_state_ = std::make_unique<docdb::ExternalTxnIntentsState>();
 
   if (is_sys_catalog_) {
     auto_flags_manager_ = data.auto_flags_manager;
@@ -1286,20 +1298,23 @@ Status Tablet::ApplyOperation(
     const Operation& operation, int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& write_batch,
     AlreadyAppliedToRegularDB already_applied_to_regular_db) {
-  auto hybrid_time = operation.WriteHybridTime();
+  // The write_hybrid_time is MVCC timestamp to be applied to the records in the batch. This will be
+  // different from batch_hybrid_time in cases like xcluster and index backfill.
+  auto write_hybrid_time = operation.WriteHybridTime();
+  auto batch_hybrid_time = operation.hybrid_time();
 
   docdb::ConsensusFrontiers frontiers;
   // Even if we have an external hybrid time, use the local commit hybrid time in the consensus
   // frontier.
-  auto frontiers_ptr =
-      InitFrontiers(operation.op_id(), operation.hybrid_time(),
+  auto frontiers_ptr = InitFrontiers(
+      operation.op_id(), batch_hybrid_time,
       /* commit_ht= */ HybridTime::kInvalid, &frontiers);
   if (frontiers_ptr) {
     auto ttl = write_batch.has_ttl()
         ? MonoDelta::FromNanoseconds(write_batch.ttl())
         : dockv::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
-        dockv::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
+        dockv::FileExpirationFromValueTTL(batch_hybrid_time, ttl));
     for (const auto& p : write_batch.table_schema_version()) {
       // Since new frontiers does not contain schema version just add it there.
       auto table_id = p.table_id().empty()
@@ -1309,7 +1324,8 @@ Status Tablet::ApplyOperation(
     }
   }
   return ApplyKeyValueRowOperations(
-      batch_idx, write_batch, frontiers_ptr, hybrid_time, already_applied_to_regular_db);
+      batch_idx, write_batch, frontiers_ptr, write_hybrid_time, batch_hybrid_time,
+      already_applied_to_regular_db);
 }
 
 Status Tablet::WriteTransactionalBatch(
@@ -1367,11 +1383,9 @@ Status Tablet::WriteTransactionalBatch(
 }
 
 Status Tablet::ApplyKeyValueRowOperations(
-    int64_t batch_idx,
-    const docdb::LWKeyValueWriteBatchPB& put_batch,
-    docdb::ConsensusFrontiers* frontiers,
-    const HybridTime hybrid_time,
-    AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+    int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch,
+    docdb::ConsensusFrontiers* frontiers, HybridTime write_hybrid_time,
+    HybridTime batch_hybrid_time, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty() &&
       put_batch.apply_external_transactions().empty()) {
     return Status::OK();
@@ -1382,7 +1396,7 @@ Status Tablet::ApplyKeyValueRowOperations(
   // In all other cases we should crash instead of skipping apply.
 
   if (put_batch.has_transaction()) {
-    RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, hybrid_time, frontiers));
+    RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, write_hybrid_time, frontiers));
   } else {
     // See comments for PrepareExternalWriteBatch.
 
@@ -1392,8 +1406,8 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     rocksdb::WriteBatch intents_write_batch;
     docdb::ExternalIntentsBatchWriter batcher(
-        put_batch, hybrid_time, intents_db_.get(), &intents_write_batch,
-        external_txn_intents_state_.get(), &GetSchemaPackingProvider());
+        put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
+        &GetSchemaPackingProvider());
     batcher.SetFrontiers(frontiers);
 
     rocksdb::WriteBatch regular_write_batch;
@@ -1621,6 +1635,9 @@ Status Tablet::HandlePgsqlReadRequest(
       subtransaction_metadata, result);
 
   if (statistics) {
+    if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
+      TraceScopedMetrics();
+    }
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
       scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
       scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);

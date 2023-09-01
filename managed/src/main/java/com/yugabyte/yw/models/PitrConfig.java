@@ -6,10 +6,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.SqlRow;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -37,8 +40,7 @@ import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 @EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
-  private static final Finder<UUID, PitrConfig> find =
-      new Finder<UUID, PitrConfig>(PitrConfig.class) {};
+  private static final Finder<UUID, PitrConfig> find = new Finder<>(PitrConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "PITR config UUID")
@@ -146,5 +148,12 @@ public class PitrConfig extends Model {
         .eq("table_type", tableType.toString())
         .eq("db_name", dbName)
         .findOneOrEmpty();
+  }
+
+  @JsonProperty
+  public boolean isUsedForXCluster() {
+    String sqlStatement = "SELECT xcluster_uuid FROM xcluster_pitr WHERE pitr_uuid = :pitrUuid";
+    List<SqlRow> sqlRow = DB.sqlQuery(sqlStatement).setParameter("pitrUuid", this.uuid).findList();
+    return !sqlRow.isEmpty();
   }
 }

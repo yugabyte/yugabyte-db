@@ -137,21 +137,21 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SE
                      QUERY PLAN
 -----------------------------------------------------
  YB Seq Scan on t_large t (actual rows=5000 loops=1)
-   Storage Table Read Requests: 5000
+   Storage Table Read Requests: 2500
 (2 rows)
 
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_medium AS t;
                       QUERY PLAN
 ------------------------------------------------------
  YB Seq Scan on t_medium t (actual rows=5000 loops=1)
-   Storage Table Read Requests: 626
+   Storage Table Read Requests: 557
 (2 rows)
 
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) /*+ SeqScan(t) */ SELECT * FROM t_small AS t;
                      QUERY PLAN
 -----------------------------------------------------
  YB Seq Scan on t_small t (actual rows=5000 loops=1)
-   Storage Table Read Requests: 279
+   Storage Table Read Requests: 194
 (2 rows)
 
 -- index scan
@@ -160,7 +160,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_larg
 --------------------------------------------------------------------------
  Index Scan using t_large_v_idx_asc on t_large (actual rows=5000 loops=1)
    Index Cond: ((v)::text > ''::text)
-   Storage Table Read Requests: 4956
+   Storage Table Read Requests: 2478
    Storage Index Read Requests: 93
 (4 rows)
 
@@ -169,7 +169,7 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medi
 ----------------------------------------------------------------------------
  Index Scan using t_medium_v_idx_asc on t_medium (actual rows=5000 loops=1)
    Index Cond: ((v)::text > ''::text)
-   Storage Table Read Requests: 642
+   Storage Table Read Requests: 552
    Storage Index Read Requests: 93
 (4 rows)
 

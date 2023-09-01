@@ -109,6 +109,7 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
     try (ResultSet rs = stmt.executeQuery(query)) {
       while (rs.next()) {
       }
+      Thread.sleep(5); // Reduce flakiness by giving a moment for the logs to flush
       rs.close();
     } finally {
       logs = logInterceptor.stop();

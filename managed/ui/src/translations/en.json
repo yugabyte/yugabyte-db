@@ -93,8 +93,8 @@
         "rotateCToNServerCert": "Rotate “Client to Node” Server Certificate",
         "changeCTNCertWarning": "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.",
         "disableEncryptionWarning": "Rotating certificates (Certificate Authority or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
-        "disableNNRotationWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
-        "disableCNRotationWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
+        "rootCAModifiedWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
       }
     },
     "commonErrors": {
@@ -255,6 +255,7 @@
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
         "invalidKey": "Invalid attribute key or missing '=' between key value pair",
         "uploadKeyset": "Need to upload JWKS keyset",
+        "jwksNotSupported": "Please select database versions 2.18 or above to upload JWKS",
         "missingAttributeValue": "Missing value for the attribute key",
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",

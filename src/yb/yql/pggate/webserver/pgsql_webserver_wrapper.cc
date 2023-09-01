@@ -330,6 +330,7 @@ void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
     return;
   }
 
+  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
   // Attach to the segment to get a pointer to it.
   struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
   if (shmp == NULL) {
@@ -337,7 +338,9 @@ void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
     return;
   }
 
-  for (int itr = 0; itr < 2; itr++) {
+  for (uint32_t itr = 0; itr < num_pools; itr++) {
+    if (strcmp(shmp[itr].pool_name, "") == 0)
+      break;
     stats->push_back(shmp[itr]);
   }
 
@@ -357,7 +360,6 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   writer.StartObject();
   writer.String("pools");
   writer.StartArray();
-  uint8_t index = 0;
 
   for (const auto &stat : stats_list) {
     writer.StartObject();
@@ -365,7 +367,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
     // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
     // "control".
     writer.String("pool");
-    writer.String(index == 0 ? "global" : "control");
+    writer.String(stat.pool_name);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.
@@ -402,8 +404,6 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
     // Transaction rate for last "stats_interval" (set in odyssey config) period of time.
     writer.String("tps");
     writer.Int64(stat.transaction_rate);
-
-    index++;
 
     writer.EndObject();
   }

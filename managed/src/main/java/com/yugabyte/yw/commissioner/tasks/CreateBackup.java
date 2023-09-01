@@ -242,12 +242,11 @@ public class CreateBackup extends UniverseTaskBase {
     }
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.isBacklogStatus()) {
+    if (schedule.isBacklogStatus() && baseBackupUUID == null) {
       schedule.updateBacklogStatus(false);
       schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
-    }
-    if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())
+    } else if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())
         && schedule.isIncrementBacklogStatus()) {
       schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} increment backlog status is set to false", schedule.getScheduleUUID());

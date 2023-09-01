@@ -14,6 +14,8 @@
 #pragma once
 
 #define YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME "YSQL_CONN_MGR_STATS_KEY"
+#define YSQL_CONN_MGR_WARMUP_DB "YB_YSQL_CONN_MGR_WARMUP_DB"
+#define YSQL_CONN_MGR_MAX_POOLS 100
 
 struct ConnectionStats {
   uint64_t active_clients;
@@ -24,4 +26,5 @@ struct ConnectionStats {
   uint64_t query_rate;
   uint64_t transaction_rate;
   uint64_t avg_wait_time_ns;
+  char pool_name[64];
 };

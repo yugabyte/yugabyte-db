@@ -102,13 +102,13 @@ public class Region extends Model {
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
   @Constraints.Max(180)
-  private double longitude = -90;
+  private double longitude = 0.0;
 
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's latitude", example = "37.22", accessMode = READ_ONLY)
   @Constraints.Min(-90)
   @Constraints.Max(90)
-  private double latitude = -90;
+  private double latitude = 0.0;
 
   @Column(nullable = false)
   @ManyToOne

@@ -205,7 +205,7 @@ export const OIDCAuth = (props) => {
               <b>Note!</b>{' '}
               {
                 "By disabling OIDC users won't be able to login with your current\
-            authentication provider. Are you sure"
+            authentication provider. Are you sure?"
               }
             </div>
           </div>

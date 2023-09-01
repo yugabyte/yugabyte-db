@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include <float.h>
@@ -532,3 +533,4 @@ IvfflatKmeans(Relation index, VectorArray samples, VectorArray centers)
 
 	CheckCenters(index, centers);
 }
+#endif

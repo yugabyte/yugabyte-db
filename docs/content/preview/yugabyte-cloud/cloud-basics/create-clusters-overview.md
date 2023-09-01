@@ -34,7 +34,7 @@ A YugabyteDB cluster typically consists of three or more nodes that communicate 
 
 #### Single Region
 
-Single-region clusters are available in the following topologies:
+Single-region clusters are available in the following topologies and fault tolerance:
 
 - **Single availability zone**. Resilient to node outages.
 - **Multiple availability zones**. Resilient to node and availability zone outages.
@@ -49,7 +49,7 @@ Multi-region clusters are resilient to region-level outages, and are available i
 
 - **Replicate across regions**. Cluster nodes are deployed across 3 regions, with data replicated synchronously.
 - **Partition by region**. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
-- **Read replica**. Replica clusters are deployed in separate regions. Data is written in the primary cluster, and copied to the read replicas, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+- **Read replica**. Replica clusters are added to an existing primary cluster and deployed in separate regions, typically remote from the primary. Data is written in the primary cluster, and copied to the read replicas, where it can be read. The primary cluster still gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
 <!-- - **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously. -->
 
 Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC. Refer to [VPC networking](../cloud-vpcs/).
@@ -79,7 +79,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering (AWS or GCP) or using a private link (AWS or Azure). This configuration also provides the best security. To connect using a private link (AWS and Azure only), the link endpoints (your cluster and the application) must be in the same region.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via [peering](../cloud-vpcs/cloud-add-peering/) (AWS or GCP) or using a [private link](../cloud-vpcs/cloud-add-endpoint/) (AWS or Azure). This configuration also provides the best security. To connect using a private link (AWS and Azure only), the link endpoints (your cluster and the application) must be in the same region.
 
 For a list of supported regions, refer to [Cloud provider regions](#cloud-provider-regions).
 
@@ -91,13 +91,13 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-The _fault tolerance_ determines how resilient the cluster is to node and cloud zone failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
+The _fault tolerance_ determines how resilient the cluster is to node, zone, and region failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
 
 - **Region Level**. Includes 3 nodes spread across multiple regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
 
 - **Availability Zone Level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
 
-- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
+- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone or region outages.
 
 Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
 

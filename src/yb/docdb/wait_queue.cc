@@ -1163,8 +1163,7 @@ class WaitQueue::Impl {
   void DumpStatusHtml(std::ostream& out) {
     SharedLock l(mutex_);
     if (shutting_down_) {
-      out << "Shutting down...";
-      return;
+      out << "Shutting down..." << std::endl;
     }
 
     out << "<h2>Txn Waiters:</h2>" << std::endl;

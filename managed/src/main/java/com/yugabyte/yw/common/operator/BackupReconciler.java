@@ -59,7 +59,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       status = new BackupStatus();
     }
     status.setMessage(message);
-    status.setBackupUUID(backupUUID);
+    status.setResourceUUID(backupUUID);
     status.setTaskUUID(taskUUID);
     backup.setStatus(status);
 
@@ -82,7 +82,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
     for (StorageConfig storageConfig : storageConfigs) {
       if (storageConfig.getMetadata().getName().equals(scName)) {
-        return UUID.fromString(storageConfig.getStatus().getUUID());
+        return UUID.fromString(storageConfig.getStatus().getResourceUUID());
       }
     }
     return null;

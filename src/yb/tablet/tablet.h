@@ -336,9 +336,8 @@ class Tablet : public AbstractTablet,
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      docdb::ConsensusFrontiers* frontiers,
-      HybridTime hybrid_time,
+      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
   void WriteToRocksDB(
@@ -861,10 +860,6 @@ class Tablet : public AbstractTablet,
       const std::map<TransactionId, SubtxnSet>& transactions,
       TabletLockInfoPB* tablet_lock_info) const;
 
-  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
-    return external_txn_intents_state_.get();
-  }
-
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
 
@@ -1092,8 +1087,6 @@ class Tablet : public AbstractTablet,
   std::atomic<int64_t> last_committed_write_index_{0};
 
   HybridTimeLeaseProvider ht_lease_provider_;
-
-  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
 
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;

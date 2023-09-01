@@ -599,6 +599,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public String ycqlPassword;
 
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYsqlPassword = false;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYcqlPassword = false;
+
     @ApiModelProperty() public Long kubernetesOperatorVersion;
 
     @ApiModelProperty() public boolean enableYSQLAuth = false;

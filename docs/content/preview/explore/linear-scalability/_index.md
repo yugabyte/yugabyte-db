@@ -3,7 +3,7 @@ title: Horizontal scalability
 headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
-headcontent: Dynamically add and remove nodes in a running universe
+headcontent: Handle larger workloads by adding nodes to your cluster 
 aliases:
   - /explore/linear-scalability/
   - /preview/explore/linear-scalability/
@@ -26,13 +26,17 @@ type: indexpage
 ---
 
 
-A YugabyteDB universe is scaled out so that it can handle the following:
+A YugabyteDB universe can be scaled-out to handle the following:
 
-* More transactions per second.
-* Greater number of concurrent client connections.
-* Larger datasets.
+* More transactions per second
+* A higher number of concurrent client connections
+* Larger datasets or workloads
 
+<<<<<<< HEAD
 YugabyteDB can be scaled either horizontally or vertically depending on your needs. Let's understand the differences between these both.
+=======
+A YugabyteDB universe can also be scaled-in dynamically by draining all the data from existing universe nodes (or Kubernetes pods) and subsequently removing them from the universe.
+>>>>>>> master
 
 ## Horizontal Scaling (a.k.a Scaling Out)
 
@@ -53,7 +57,7 @@ In some cases, depending on your application needs and budget constraints a comb
 
 ## Scaling in YSQL vs YCQL
 
-The following table summarizes YugabyteDB support for scalability and sharding across YSQL and YCQL APIs:
+The following table summarizes YugabyteDB support for scalability and sharding across [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) APIs:
 
 | Property | YSQL | YCQL | Comments |
 | :------- | :--- | :--- | :------- |
