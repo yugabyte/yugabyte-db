@@ -31,6 +31,14 @@ ybm metrics-exporter create \
     --datadog-spec api-key=efXXXXXXXXXXXXXXXXXXXXXXXXXXXXee,site=US1
 ```
 
+Assign the configuration to a cluster:
+
+```sh
+ybm metrics-exporter attach \
+    --config-name datadog1 \
+    --cluster-name my_cluster
+```
+
 ## Commands
 
 ### attach
