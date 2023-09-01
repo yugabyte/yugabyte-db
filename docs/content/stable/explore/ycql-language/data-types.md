@@ -4,7 +4,7 @@ linkTitle: Data types
 description: Data types in YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  preview:
+  stable:
     identifier: explore-ycql-language-features-data-types
     parent: explore-ycql-language
     weight: 150
