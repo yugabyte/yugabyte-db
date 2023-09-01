@@ -1,0 +1,106 @@
+'/migrations':
+  get:
+    summary: Get the list of Voyager migrations
+    description: Get the list of Voyager migrations
+    operationId: GetVoyagerMigrationTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: migration_phase
+        in: query
+        description: specify the migration phase for which details are required
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerMigrationsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_assesment':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrationAssesmentDetails
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerAssesmentResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migrate_schema':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrateSchemaTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/MigrateSchemaResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_metrics':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerDataMigrationMetrics
+    tags:
+      - voyager-metrics
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerDataMigrationMetricsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
