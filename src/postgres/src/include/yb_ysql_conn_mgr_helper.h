@@ -71,3 +71,5 @@ extern void YbHandleSetSessionParam(int yb_client_id);
  * packet is sent to the Ysql Connection Manager.
  */
 extern void YbCreateClientId();
+
+extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);

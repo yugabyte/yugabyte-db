@@ -13,6 +13,13 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
+static int yb_get_stats_index()
+{
+	static int index = 0;
+	return ++index;
+}
+
+
 static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			   od_stat_t *avg,
 #ifdef PROM_FOUND
@@ -24,17 +31,40 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 	(void)current;
 
 	if (instance->yb_stats != NULL) {
-		uint8_t index = 0;
+		int index;
+		// OD_RULE_POOL_INTERVAL should be renamed to OD_RULE_POOL_INTENAL.
+		// OD_RULE_POOL_INTERVAL identifies the pool as a control connection.
 		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
-			index = 1;
+			index = 0;
+			strcpy(instance->yb_stats[index].pool_name,
+			       "control_connection");
+		} else {
+			if (route->id.yb_stats_index == -1) {
+				route->id.yb_stats_index = yb_get_stats_index();
+			}
+			strcpy(instance->yb_stats[route->id.yb_stats_index]
+				       .pool_name,
+			       route->id.database);
+			index = route->id.yb_stats_index;
+		}
+
+		if (index == -1) {
+			od_error(&instance->logger, "warmup", NULL, NULL,
+				 "Unexpected value of index for yb stats");
+			return 0;
 		}
 
 		od_route_lock(route);
-		instance->yb_stats[index].active_clients = route->client_pool.count_active;
-		instance->yb_stats[index].queued_clients = route->client_pool.count_queue;
-		instance->yb_stats[index].idle_or_pending_clients = route->client_pool.count_pending;
-		instance->yb_stats[index].active_servers = route->server_pool.count_active;
-		instance->yb_stats[index].idle_servers = route->server_pool.count_idle;
+		instance->yb_stats[index].active_clients =
+			route->client_pool.count_active;
+		instance->yb_stats[index].queued_clients =
+			route->client_pool.count_queue;
+		instance->yb_stats[index].idle_or_pending_clients =
+			route->client_pool.count_pending;
+		instance->yb_stats[index].active_servers =
+			route->server_pool.count_active;
+		instance->yb_stats[index].idle_servers =
+			route->server_pool.count_idle;
 		instance->yb_stats[index].query_rate = avg->count_query;
 		instance->yb_stats[index].transaction_rate = avg->count_tx;
 		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;

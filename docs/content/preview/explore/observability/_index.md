@@ -39,7 +39,7 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 
 ## Alerting and monitoring
 
-Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabytedDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/) which provide industry-standard alerting functionalities.
+Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabytedDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
 
 {{<note>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [Yugabytedb Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
@@ -47,9 +47,9 @@ Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [Yuga
 
 ## Visualization and analysis
 
-YugabytedB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../..//reference/configuration/yugabyted/) starts a web-UI on port [15433](http://127.0.0.1:15433/performance/metrics?interval=lasthour&nodeName=all&showGraph=operations&showGraph=latency&showGraph=cpuUsage&showGraph=diskUsage&showGraph=totalLiveNodes) that displays different charts for various metrics.
+YugabytedB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port [15433](http://127.0.0.1:15433/performance/metrics?interval=lasthour&nodeName=all&showGraph=operations&showGraph=latency&showGraph=cpuUsage&showGraph=diskUsage&showGraph=totalLiveNodes) that displays different charts for various metrics.
 
-You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/) as per the needs of your organization.
+You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
 {{<note>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics) and [Yugabytedb Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.

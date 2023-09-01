@@ -9,6 +9,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.json.Checker;
+import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ObjectCheckerBuilder;
@@ -119,5 +120,27 @@ public class ExplainAnalyzeUtils {
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
     testExplain(stmt, query, checker, false);
+  }
+
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
+  }
+
+  private static PlanCheckerBuilder makePlanBuilder() {
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  public static void checkReadRequests(
+      Statement stmt, String query, String scanType, ValueChecker<Long> readReqChecker,
+      int tableRowCount) throws Exception {
+    Checker checker = makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+            .nodeType(scanType)
+            .actualRows(Checkers.equal(tableRowCount))
+            .build())
+        .storageReadRequests(readReqChecker)
+        .build();
+
+    testExplain(stmt, query, checker);
   }
 }

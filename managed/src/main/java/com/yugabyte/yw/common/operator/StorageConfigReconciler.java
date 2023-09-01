@@ -85,14 +85,14 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     status.setMessage(message);
     UUID currentconfigUUID;
     try {
-      currentconfigUUID = UUID.fromString(sc.getStatus().getUUID());
+      currentconfigUUID = UUID.fromString(sc.getStatus().getResourceUUID());
     } catch (Exception e) {
       currentconfigUUID = null;
     }
     // Don't overwrite configUUID once set.
 
     if (currentconfigUUID == null) {
-      status.setUUID(configUUID);
+      status.setResourceUUID(configUUID);
     }
 
     sc.setStatus(status);
@@ -102,7 +102,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   @Override
   public void onAdd(StorageConfig sc) {
     if (sc.getStatus() != null) {
-      if (sc.getStatus().getUUID() != null) {
+      if (sc.getStatus().getResourceUUID() != null) {
         log.info("Early return because Storage Config is already initialized");
         return;
       }
@@ -144,7 +144,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     log.info("Updating a storage config");
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
-    String configUUID = oldSc.getStatus().getUUID();
+    String configUUID = oldSc.getStatus().getResourceUUID();
     JsonNode payload = getConfigPayloadFromCRD(newSc);
     try {
       cuuid = getCustomerUUID();
@@ -179,7 +179,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       log.info("Failed deleting storageconfig {}, ", e.getMessage());
       return;
     }
-    String configUUID = sc.getStatus().getUUID();
+    String configUUID = sc.getStatus().getResourceUUID();
     ccs.delete(UUID.fromString(cuuid), UUID.fromString(configUUID));
     log.info("Done deleting storage config  {} {}", sc.getMetadata().getName(), configUUID);
   }

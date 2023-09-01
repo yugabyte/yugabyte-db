@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include <float.h>
@@ -360,3 +361,4 @@ ivfflatendscan(IndexScanDesc scan)
 	pfree(so);
 	scan->opaque = NULL;
 }
+#endif

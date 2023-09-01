@@ -3,7 +3,7 @@ title: Horizontal scalability
 headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
-headcontent: Dynamically add and remove nodes in a running universe
+headcontent: Handle larger workloads by adding nodes to your cluster 
 aliases:
   - /explore/linear-scalability/
   - /preview/explore/linear-scalability/
@@ -27,17 +27,17 @@ type: indexpage
 
 A YugabyteDB universe can be scaled horizontally to increase the aggregate vCPUs, memory, and disk in the database by dynamically adding nodes to a running universe or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
 
-A YugabyteDB universe is scaled out so that it can handle the following:
+A YugabyteDB universe can be scaled-out to handle the following:
 
-* More transactions per second.
-* Greater number of concurrent client connections.
-* Larger datasets.
+* More transactions per second
+* A higher number of concurrent client connections
+* Larger datasets or workloads
 
-A YugabyteDB universe can also be scaled in dynamically by draining all the data from existing universe nodes (or Kubernetes pods), and subsequently removing them from the universe.
+A YugabyteDB universe can also be scaled-in dynamically by draining all the data from existing universe nodes (or Kubernetes pods) and subsequently removing them from the universe.
 
 Every table in YugabyteDB is transparently sharded using its primary key. The shards are called tablets. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets during the table creation if possible. Tablets can also be split dynamically.
 
-The following table summarizes YugabyteDB support for scalability and sharding across YSQL and YCQL APIs:
+The following table summarizes YugabyteDB support for scalability and sharding across [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) APIs:
 
 | Property | YSQL | YCQL | Comments |
 | :------- | :--- | :--- | :------- |

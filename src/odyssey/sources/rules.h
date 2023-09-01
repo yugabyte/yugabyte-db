@@ -131,6 +131,7 @@ struct od_rule {
 	double *quantiles;
 	int quantiles_count;
 	uint64_t server_lifetime_us;
+	int min_pool_size;
 	od_list_t link;
 };
 

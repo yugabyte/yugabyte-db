@@ -31,6 +31,8 @@
 #include <unistd.h>
 
 #include "access/htup_details.h"
+#include "catalog/pg_authid.h"
+#include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
@@ -111,6 +113,8 @@ struct ysql_conn_mgr_shmem_header
 
 	Oid database;
 	Oid user;
+	bool is_superuser;
+	char rolename[SHMEM_MAX_STRING_LEN];
 };
 
 struct shmem_session_parameter
@@ -468,10 +472,22 @@ YbUpdateSharedMemory()
 }
 
 int
-yb_shmem_get(Oid user, Oid database)
+yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
+			 const Oid database)
 {
 	int shmem_id;
 	char *shmem_ptr;
+
+	if (strlen(user_name) >= SHMEM_MAX_STRING_LEN)
+	{
+		/*
+		 * Use FATAL, to avoid any edge case of allocating any incorrect
+		 * privilege.
+		 */
+		ereport(FATAL, ((errmsg("Length of the user name '%s' is exceeds the "
+								"max supported length",
+								user_name))));
+	}
 
 	shmem_id = shmget(IPC_PRIVATE, get_shmem_size(DEFAULT_SHMEM_ARR_LEN),
 					  YB_CREATE_SHMEM_FLAG);
@@ -486,8 +502,12 @@ yb_shmem_get(Oid user, Oid database)
 		   &(struct ysql_conn_mgr_shmem_header){.session_parameter_array_len =
 													DEFAULT_SHMEM_ARR_LEN,
 												.database = database,
-												.user = user},
+												.user = user,
+												.is_superuser = is_superuser},
 		   sizeof(struct ysql_conn_mgr_shmem_header));
+
+	strncpy(((struct ysql_conn_mgr_shmem_header *) shmem_ptr)->rolename,
+			user_name, SHMEM_MAX_STRING_LEN);
 
 	if (detach_shmem(shmem_id, shmem_ptr) == -1)
 		return -1;
@@ -511,6 +531,9 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 	struct shmem_session_parameter *shmem_parameter_list =
 		(struct shmem_session_parameter*) 
 				(shared_memory_ptr + sizeof(struct ysql_conn_mgr_shmem_header));
+
+	/* Set the user context */
+	YbSetUserContext(shmem_header.user, shmem_header.is_superuser, shmem_header.rolename);
 
 	int shmem_itr;
 	for (shmem_itr = 0; shmem_itr < shmem_header.session_parameter_array_len;
@@ -576,7 +599,7 @@ YbHandleSetSessionParam(int yb_client_id)
 }
 
 Oid
-GetRoleOid(char *user_name)
+GetRoleOid(char *user_name, bool *is_superuser)
 {
 	HeapTuple roleTuple = NULL;
 	Oid roleid = InvalidOid;
@@ -585,7 +608,21 @@ GetRoleOid(char *user_name)
 	roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(user_name));
 	if (HeapTupleIsValid(roleTuple))
 	{
+		Form_pg_authid	rform = (Form_pg_authid) GETSTRUCT(roleTuple);
 		roleid = HeapTupleGetOid(roleTuple);
+		*is_superuser = ((Form_pg_authid) GETSTRUCT(roleTuple))->rolsuper;
+
+		if (!rform->rolcanlogin)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					 errmsg("role \"%s\" is not permitted to log in",
+							user_name)));
+			roleid = InvalidOid;
+		}
+
+		/* TODO(janand) #18886 Use CountUserBackends to ensure the limit of number of login users */
+
 		ReleaseSysCache(roleTuple);
 	}
 	return roleid;
@@ -597,15 +634,20 @@ YbCreateClientId(void)
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
+	bool is_superuser;
 	Oid database = get_database_oid(MyProcPort->database_name, false);
-	Oid user = GetRoleOid(MyProcPort->user_name);
+	Oid user = GetRoleOid(MyProcPort->user_name, &is_superuser);
 
 	if (user == InvalidOid || database == InvalidOid)
-		ereport(ERROR, (errmsg("Unable to fetch user/database oid for the "
+	{
+		ereport(ERROR,
+				(errmsg("Unable to fetch user/database oid for the "
 							   "client connection.")));
+		return;
+	}
 
 	/* Create a shared memory block for a client connection */
-	int new_client_id = yb_shmem_get(user, database);
+	int new_client_id = yb_shmem_get(user, MyProcPort->user_name, is_superuser, database);
 	if (new_client_id > 0)
 		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
 	else
