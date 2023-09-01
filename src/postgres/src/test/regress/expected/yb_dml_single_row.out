@@ -2710,10 +2710,10 @@ SELECT * FROM multi_row;
 
 -- Test if delete on top of YBSeqScan works properly (GHI #14103)
 EXPLAIN (COSTS FALSE) /*+ SeqScan(multi_row) */ DELETE FROM multi_row WHERE k < 2;
-           QUERY PLAN
---------------------------------
+         QUERY PLAN
+-----------------------------
  Delete on multi_row
-   ->  YB Seq Scan on multi_row
+   ->  Seq Scan on multi_row
          Filter: (k < 2)
 (3 rows)
 
