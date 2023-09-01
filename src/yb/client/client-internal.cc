@@ -1377,6 +1377,9 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   if (resp.has_wal_retention_secs()) {
     info->wal_retention_secs = resp.wal_retention_secs();
   }
+  if (resp.ysql_ddl_txn_verifier_state_size() > 0) {
+    info->ysql_ddl_txn_verifier_state.emplace(resp.ysql_ddl_txn_verifier_state());
+  }
   SCHECK_GT(info->table_id.size(), 0U, IllegalState, "Running against a too-old master");
   info->colocated = resp.colocated();
 

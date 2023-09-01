@@ -65,6 +65,7 @@ namespace master {
  */
 
 class YsqlTransactionDdl {
+ public:
   struct PgColumnFields {
     // Order determines the order in which the columns were created. This is equal to the
     // 'attnum' field in the pg_attribute table in PG catalog.
@@ -74,7 +75,6 @@ class YsqlTransactionDdl {
     PgColumnFields(int attnum, std::string name) : order(attnum), attname(name) {}
   };
 
- public:
   YsqlTransactionDdl(
       const SysCatalogTable* sys_catalog, std::shared_future<client::YBClient*> client_future,
       ThreadPool* thread_pool)
