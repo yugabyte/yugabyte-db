@@ -552,9 +552,9 @@ restore_backup() {
   # The version_metadata.json file is always present in a release package, and it would have
   # been stored during create_backup(), so we don't need to check if the file exists before
   # restoring it from the restore path.
-  bp1=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command})
-  bp2=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command})
-  back_plat_version=${bp1}-${bp2}
+  backup_yba_version="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command}"
+  backup_yba_build="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command}"
+  back_plat_version=${backup_yba_version}-${backup_yba_build}
 
   if [ ${curr_platform_version} != ${back_plat_version} ]
   then

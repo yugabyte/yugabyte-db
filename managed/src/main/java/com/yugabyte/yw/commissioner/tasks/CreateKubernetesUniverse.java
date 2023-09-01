@@ -51,9 +51,13 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
     public String ysqlPassword;
   }
 
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+
   @Inject
-  protected CreateKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -90,8 +94,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-          universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -216,8 +219,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-          getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

@@ -326,31 +326,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   return Status::OK();
 }
 
-IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard lock(mutex_);
-  return map_[txn_id]++;
-}
-
-void ExternalTxnIntentsState::EraseEntries(
-    const ExternalTxnApplyState& apply_external_transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& apply : apply_external_transactions) {
-    map_.erase(apply.first);
-  }
-}
-
-void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& transaction : transactions) {
-    map_.erase(transaction);
-  }
-}
-
-size_t ExternalTxnIntentsState::EntryCount() {
-  std::lock_guard lock(mutex_);
-  return map_.size();
-}
-
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,

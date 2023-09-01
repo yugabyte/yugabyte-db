@@ -172,28 +172,78 @@ namespace {
 // of assigning an instance identifier.
 std::atomic<uint64_t> tablet_metrics_instance_counter;
 
-constexpr std::pair<uint32_t, TabletCounters> kCounters[] = {
-  {pggate::YB_ANALYZE_METRIC_NOT_LEADER_REJECTIONS, TabletCounters::kNotLeaderRejections},
+struct CounterEntry {
+  uint32_t pggate_index;
+  TabletCounters counter;
+  CounterPrototype* prototype;
+};
+
+struct EventStatsEntry {
+  TabletEventStats event_stat;
+  EventStatsPrototype* prototype;
+};
+
+const CounterEntry kCounters[] = {
+  {pggate::YB_ANALYZE_METRIC_NOT_LEADER_REJECTIONS,
+      TabletCounters::kNotLeaderRejections,
+      &METRIC_not_leader_rejections},
   {pggate::YB_ANALYZE_METRIC_LEADER_MEMORY_PRESSURE_REJECTIONS,
-      TabletCounters::kLeaderMemoryPressureRejections},
+      TabletCounters::kLeaderMemoryPressureRejections,
+      &METRIC_leader_memory_pressure_rejections},
   {pggate::YB_ANALYZE_METRIC_MAJORITY_SST_FILES_REJECTIONS,
-      TabletCounters::kMajoritySstFilesRejections},
-  {pggate::YB_ANALYZE_METRIC_TRANSACTION_CONFLICTS, TabletCounters::kTransactionConflicts},
-  {pggate::YB_ANALYZE_METRIC_EXPIRED_TRANSACTIONS, TabletCounters::kExpiredTransactions},
-  {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS, TabletCounters::kRestartReadRequests},
+      TabletCounters::kMajoritySstFilesRejections,
+      &METRIC_majority_sst_files_rejections},
+  {pggate::YB_ANALYZE_METRIC_TRANSACTION_CONFLICTS,
+      TabletCounters::kTransactionConflicts,
+      &METRIC_transaction_conflicts},
+  {pggate::YB_ANALYZE_METRIC_EXPIRED_TRANSACTIONS,
+      TabletCounters::kExpiredTransactions,
+      &METRIC_expired_transactions},
+  {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS,
+      TabletCounters::kRestartReadRequests,
+      &METRIC_restart_read_requests},
   {pggate::YB_ANALYZE_METRIC_CONSISTENT_PREFIX_READ_REQUESTS,
-      TabletCounters::kConsistentPrefixReadRequests},
-  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB, TabletCounters::kPickReadTimeOnDocDB},
+      TabletCounters::kConsistentPrefixReadRequests,
+      &METRIC_consistent_prefix_read_requests},
+  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB,
+      TabletCounters::kPickReadTimeOnDocDB,
+      &METRIC_picked_read_time_on_docdb},
   {pggate::YB_ANALYZE_METRIC_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
-      TabletCounters::kPgsqlConsistentPrefixReadRows},
-  {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS, TabletCounters::kTabletDataCorruptions},
-  {pggate::YB_ANALYZE_METRIC_ROWS_INSERTED, TabletCounters::kRowsInserted},
-  {pggate::YB_ANALYZE_METRIC_FAILED_BATCH_LOCK, TabletCounters::kFailedBatchLock},
-  {pggate::YB_ANALYZE_METRIC_DOCDB_KEYS_FOUND, TabletCounters::kDocDBKeysFound},
+      TabletCounters::kPgsqlConsistentPrefixReadRows,
+      &METRIC_pgsql_consistent_prefix_read_rows},
+  {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS,
+      TabletCounters::kTabletDataCorruptions,
+      &METRIC_tablet_data_corruptions},
+  {pggate::YB_ANALYZE_METRIC_ROWS_INSERTED,
+      TabletCounters::kRowsInserted,
+      &METRIC_rows_inserted},
+  {pggate::YB_ANALYZE_METRIC_FAILED_BATCH_LOCK,
+      TabletCounters::kFailedBatchLock,
+      &METRIC_failed_batch_lock},
+  {pggate::YB_ANALYZE_METRIC_DOCDB_KEYS_FOUND,
+      TabletCounters::kDocDBKeysFound,
+      &METRIC_docdb_keys_found},
   {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND,
-      TabletCounters::kDocDBObsoleteKeysFound},
+      TabletCounters::kDocDBObsoleteKeysFound,
+      &METRIC_docdb_obsolete_keys_found},
   {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
-      TabletCounters::kDocDBObsoleteKeysFoundPastCutoff},
+      TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
+      &METRIC_docdb_obsolete_keys_found_past_cutoff},
+};
+
+const EventStatsEntry kEventStats[] = {
+  {TabletEventStats::kSnapshotReadInflightWaitDuration,
+      &METRIC_snapshot_read_inflight_wait_duration},
+  {TabletEventStats::kQlReadLatency,
+      &METRIC_ql_read_latency},
+  {TabletEventStats::kWriteLockLatency,
+      &METRIC_write_lock_latency},
+  {TabletEventStats::kQlWriteLatency,
+      &METRIC_ql_write_latency},
+  {TabletEventStats::kReadTimeWait,
+      &METRIC_read_time_wait},
+  {TabletEventStats::kTotalWaitQueueTime,
+      &METRIC_total_wait_queue_time},
 };
 
 class TabletMetricsImpl final : public TabletMetrics {
@@ -218,41 +268,13 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
   : event_stats_(kElementsInTabletEventStats),
     counters_(kElementsInTabletCounters) {
 
-#define METRIC_INIT(entity, name, metric_array, enum) \
-    metric_array[to_underlying(enum)] = METRIC_##name.Instantiate(entity)
-#define EVENT_STATS_INIT(entity, name, enum) \
-    METRIC_INIT(entity, name, event_stats_, TabletEventStats::enum)
-#define COUNTER_INIT(entity, name, enum) \
-    METRIC_INIT(entity, name, counters_, TabletCounters::enum)
+  for (const auto& stat : kEventStats) {
+    event_stats_[to_underlying(stat.event_stat)] = stat.prototype->Instantiate(table_entity);
+  }
 
-  EVENT_STATS_INIT(table_entity, snapshot_read_inflight_wait_duration,
-                 kSnapshotReadInflightWaitDuration);
-  EVENT_STATS_INIT(table_entity, ql_read_latency, kQlReadLatency);
-  EVENT_STATS_INIT(table_entity, write_lock_latency, kWriteLockLatency);
-  EVENT_STATS_INIT(table_entity, ql_write_latency, kQlWriteLatency);
-  EVENT_STATS_INIT(table_entity, read_time_wait, kReadTimeWait);
-  EVENT_STATS_INIT(table_entity, total_wait_queue_time, kTotalWaitQueueTime);
-
-  COUNTER_INIT(tablet_entity, not_leader_rejections, kNotLeaderRejections);
-  COUNTER_INIT(tablet_entity, leader_memory_pressure_rejections, kLeaderMemoryPressureRejections);
-  COUNTER_INIT(tablet_entity, majority_sst_files_rejections, kMajoritySstFilesRejections);
-  COUNTER_INIT(tablet_entity, transaction_conflicts, kTransactionConflicts);
-  COUNTER_INIT(tablet_entity, expired_transactions, kExpiredTransactions);
-  COUNTER_INIT(tablet_entity, restart_read_requests, kRestartReadRequests);
-  COUNTER_INIT(tablet_entity, consistent_prefix_read_requests, kConsistentPrefixReadRequests);
-  COUNTER_INIT(tablet_entity, picked_read_time_on_docdb, kPickReadTimeOnDocDB);
-  COUNTER_INIT(tablet_entity, pgsql_consistent_prefix_read_rows, kPgsqlConsistentPrefixReadRows);
-  COUNTER_INIT(tablet_entity, tablet_data_corruptions, kTabletDataCorruptions);
-  COUNTER_INIT(tablet_entity, rows_inserted, kRowsInserted);
-  COUNTER_INIT(tablet_entity, failed_batch_lock, kFailedBatchLock);
-  COUNTER_INIT(tablet_entity, docdb_keys_found, kDocDBKeysFound);
-  COUNTER_INIT(tablet_entity, docdb_obsolete_keys_found, kDocDBObsoleteKeysFound);
-  COUNTER_INIT(tablet_entity, docdb_obsolete_keys_found_past_cutoff,
-               kDocDBObsoleteKeysFoundPastCutoff);
-
-#undef COUNTER_INIT
-#undef EVENT_STATS_INIT
-#undef METRIC_INIT
+  for (const auto& counter : kCounters) {
+    counters_[to_underlying(counter.counter)] = counter.prototype->Instantiate(tablet_entity);
+  }
 }
 
 uint64_t TabletMetricsImpl::Get(TabletCounters counter) const {
@@ -313,16 +335,32 @@ void ScopedTabletMetrics::SetHistogramContext(TabletMetrics* histogram_context) 
 void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
   DCHECK_IN_USE();
   auto* metrics = response->mutable_metrics();
-  for (const auto& [pggate_index, tablet_counter] : kCounters) {
-    auto counter = counters_[to_underlying(tablet_counter)];
+  for (const auto& counter : kCounters) {
+    auto value = counters_[to_underlying(counter.counter)];
     // Don't send unchanged statistics.
-    if (counter == 0) {
+    if (value == 0) {
       continue;
     }
     auto* metric = metrics->add_gauge_metrics();
-    metric->set_metric(pggate_index);
-    metric->set_value(counter);
+    metric->set_metric(counter.pggate_index);
+    metric->set_value(value);
   }
+}
+
+size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
+  DCHECK_IN_USE();
+  size_t dumped = 0;
+  for (const auto& counter : kCounters) {
+    auto value = counters_[to_underlying(counter.counter)];
+    // Don't dump unchanged statistics.
+    if (value == 0) {
+      continue;
+    }
+    const auto* name = counter.prototype->name();
+    (*out) << name << ": " << value << '\n';
+    ++dumped;
+  }
+  return dumped;
 }
 
 void ScopedTabletMetrics::MergeAndClear(TabletMetrics* target) {

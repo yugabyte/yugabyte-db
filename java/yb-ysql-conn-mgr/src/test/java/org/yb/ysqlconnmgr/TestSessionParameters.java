@@ -28,6 +28,11 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
+// TODO (janand) #18889 Add more tests for session parameter support
+//   - RESET query
+//   - SET/RESET in nested transaction
+//   - SET LOCAL query
+
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
   // Pool to be divided between 1 control connection pool and 1 global pool.
@@ -41,7 +46,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     super.customizeMiniClusterBuilder(builder);
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-        put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
       }
     };
 

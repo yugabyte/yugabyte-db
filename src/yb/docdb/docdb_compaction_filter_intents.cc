@@ -95,7 +95,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   const MicrosTime compaction_start_time_;
 
   TransactionIdSet transactions_to_cleanup_;
-  TransactionIdSet external_transactions_to_cleanup_;
   int rejected_transactions_ = 0;
   uint64_t num_errors_ = 0;
 
@@ -125,13 +124,6 @@ Status DocDBIntentsCompactionFilter::CleanupTransactions() {
     RETURN_NOT_OK(manager->Cleanup(std::move(transactions_to_cleanup_)));
   }
 
-  if (!external_transactions_to_cleanup_.empty()) {
-    auto external_txn_intents_state = tablet_->GetExternalTxnIntentsState();
-    if (external_txn_intents_state) {
-      external_txn_intents_state->EraseEntries(external_transactions_to_cleanup_);
-    }
-  }
-
   return Status::OK();
 }
 
@@ -154,7 +146,6 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     if (!transaction_id_optional.has_value()) {
       return rocksdb::FilterDecision::kKeep;
     }
-    AddToSet(*transaction_id_optional, &external_transactions_to_cleanup_);
     return rocksdb::FilterDecision::kDiscard;
   }
 

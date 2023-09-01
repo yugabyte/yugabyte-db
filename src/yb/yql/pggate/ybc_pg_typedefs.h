@@ -355,9 +355,8 @@ typedef struct PgCallbacks {
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
   /* yb_type.c */
-  int64_t (*PostgresEpochToUnixEpoch)(int64_t);
   int64_t (*UnixEpochToPostgresEpoch)(int64_t);
-  void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
+  void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
 } YBCPgCallbacks;

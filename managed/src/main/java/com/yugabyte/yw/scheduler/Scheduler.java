@@ -197,7 +197,7 @@ public class Scheduler {
             schedule.updateNextIncrementScheduleTaskTime(nextIncrementScheduleTaskTime);
           }
 
-          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
+          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime) || backlogStatus;
           UUID baseBackupUUID = null;
           if (isIncrementalBackupSchedule) {
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
@@ -219,7 +219,7 @@ public class Scheduler {
             }
           }
 
-          if (shouldRunTask || backlogStatus || incrementBacklogStatus) {
+          if (shouldRunTask) {
             switch (taskType) {
               case BackupUniverse:
                 this.runBackupTask(schedule, alreadyRunning);

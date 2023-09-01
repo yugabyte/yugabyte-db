@@ -95,9 +95,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
       try {
         universeOverrides = HelmUtils.convertYamlToMap(userIntent.universeOverrides);
       } catch (Exception e) {
-        String errMsg = String.format("Error in parsing universe overrides: %s", e.getMessage());
         LOG.error("Error in convertYamlToMap: ", e);
-        overrideErrorsSet.add(errMsg);
+        overrideErrorsSet.add(
+            "Error: Unable to parse overrides structure, incorrect format specified");
       }
       Set<String> providersAZSet = new HashSet<>();
       Set<String> placementAZSet = new HashSet<>();

@@ -232,6 +232,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang14
   clang15
   clang16
+  clang17
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -544,12 +545,7 @@ set_default_compiler_type() {
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
-        YB_COMPILER_TYPE=clang16
-      else
-        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang16
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
