@@ -241,7 +241,7 @@ Are you sure you want to continue?`
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
@@ -299,7 +299,7 @@ var replicatedRollbackCmd = &cobra.Command{
 		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
 		"migrate will not be reflected after the rollback completes",
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
