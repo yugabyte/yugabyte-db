@@ -43,7 +43,7 @@ orafce_reminder_smallint(PG_FUNCTION_ARGS)
 
 /*
  * CREATE OR REPLACE FUNCTION oracle.remainder(int, int)
- * RETURNS smallint
+ * RETURNS int
  */
 Datum
 orafce_reminder_int(PG_FUNCTION_ARGS)
