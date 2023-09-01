@@ -1836,7 +1836,7 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_req
 
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query) {
   TRACE(__func__);
-  SCOPED_WAIT_STATUS(util::WaitStateCode::AcquiringLocks);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     query->Cancel(
         STATUS(NotSupported, "Transaction status table does not support write"));
@@ -3317,7 +3317,6 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
-  SCOPED_WAIT_STATUS(util::WaitStateCode::GetSafeTime);
   if (require_lease == RequireLease::kFalse) {
     return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
   }

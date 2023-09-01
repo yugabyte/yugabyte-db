@@ -203,6 +203,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
         (proxy->*func)(req, resp, controller, callback);
       });
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCSyncLeaderMasterRpc);
   auto result = rpc->synchronizer().Wait();
   if (attempts) {
     *attempts = rpc->num_attempts();
@@ -2072,6 +2073,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_name,
       info,
       deadline);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCGetTableSchema);
   return sync.Wait();
 }
 
@@ -2088,6 +2090,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       info,
       deadline,
       resp);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCGetTableSchema);
   return sync.Wait();
 }
 
@@ -2383,6 +2386,7 @@ Status YBClient::Data::SetMasterServerProxy(CoarseTimePoint deadline,
   Synchronizer sync;
   SetMasterServerProxyAsync(deadline, skip_resolution,
       wait_for_leader_election, sync.AsStdStatusCallback());
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCFindMasterProxy);
   return sync.Wait();
 }
 

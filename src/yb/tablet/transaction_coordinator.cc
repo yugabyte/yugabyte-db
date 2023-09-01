@@ -70,6 +70,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/wait_state.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -1087,7 +1088,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
     deleting_.store(true, std::memory_order_release);
 
+    SCOPED_WAIT_STATUS(util::WaitStateCode::TxnCoordWaitForMutexInPrepareForDeletion);
     std::unique_lock<std::mutex> lock(managed_mutex_);
+    util::WaitStateInfo::AssertWaitAllowed();
     if (!last_transaction_finished_.wait_until(
             lock, deadline, [this]() { return managed_transactions_.empty(); })) {
       return STATUS(TimedOut, "Timed out waiting for running transactions to complete");
@@ -1291,6 +1294,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
         ++idx;
       }
+      SCOPED_WAIT_STATUS(util::WaitStateCode::TxnResolveSealedStatus);
       latch.Wait();
     }
 

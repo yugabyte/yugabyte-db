@@ -39,6 +39,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/wait_state.h"
 #include "yb/util/write_buffer.h"
 
 METRIC_DEFINE_counter(server, pg_response_cache_hits,
@@ -175,6 +176,8 @@ class Data {
 
   Result<const PgResponseCache::Response&> Get(CoarseTimePoint deadline) const {
     const auto& actual_deadline = std::min(deadline, readiness_deadline_);
+    SCOPED_WAIT_STATUS(util::WaitStateCode::PgResponseCache_Get);
+    util::WaitStateInfo::AssertWaitAllowed();
     if (future_.wait_until(actual_deadline) != std::future_status::timeout) {
       return future_.get();
     }

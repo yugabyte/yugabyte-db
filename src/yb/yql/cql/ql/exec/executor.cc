@@ -1770,6 +1770,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   }
 
   reset_async_calls->Cancel();
+  SET_WAIT_STATUS(util::WaitStateCode::CQLWaitingOnDocdb);
   num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
   for (auto* exec_context : commit_contexts) {
     exec_context->CommitTransaction(
@@ -1785,7 +1786,6 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
     auto exec_context = pair.second;
     session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
-    SET_WAIT_STATUS(util::WaitStateCode::CQLFlushAsync);
     session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
         FlushAsyncDone(flush_status, exec_context);
       });
@@ -1797,7 +1797,6 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
 // Any update on data structures shared in Executor should either be protected by a mutex or
 // deferred to ProcessAsyncResults() that will be invoked exclusively.
 void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* exec_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::CQLFlushAsyncDone);
   TRACE("Flush Async Done");
   // Process FlushAsync status for either transactional session in an ExecContext, or the
   // non-transactional session in the Executor for other ExecContexts with no transactional session.
@@ -1875,6 +1874,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
     LOG(DFATAL) << __func__ << " while have " << num_async_calls() << " async calls running";
     return;
   }
+  SET_WAIT_STATUS(util::WaitStateCode::CQLActiveOnCPU);
 
   // If the current thread is not the RPC worker thread, call the callback directly. Otherwise,
   // reschedule the call to resume in the RPC worker thread.

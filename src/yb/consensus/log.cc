@@ -93,6 +93,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/wait_state.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.
@@ -1104,6 +1105,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WALLogSync);
   std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
     return Status::OK();

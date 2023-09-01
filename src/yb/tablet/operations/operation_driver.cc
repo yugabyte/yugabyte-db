@@ -131,7 +131,6 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
-    SET_WAIT_STATUS(util::WaitStateCode::AddedToFollower);
     RETURN_NOT_OK(operation_->AddedToFollower());
   }
 
@@ -194,40 +193,6 @@ void OperationDriver::ExecuteAsync() {
   }
   auto s = preparer_->Submit(this);
 
-  {
-    switch (operation_type()) {
-      case OperationType::kWrite:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedWriteToPreparer);
-        break;
-      case OperationType::kChangeMetadata:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedChangeMetadataToPreparer);
-        break;
-      case OperationType::kUpdateTransaction:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedUpdateTransactionToPreparer);
-        break;
-      case OperationType::kSnapshot:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedSnapshotToPreparer);
-        break;
-      case OperationType::kTruncate:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedTruncateToPreparer);
-        break;
-      case OperationType::kEmpty:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedEmptyToPreparer);
-        break;
-      case OperationType::kHistoryCutoff:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedHistoryCutoffToPreparer);
-        break;
-      case OperationType::kSplit:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedSplitToPreparer);
-        break;
-      case OperationType::kChangeAutoFlagsConfig:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedChangeAutoFlagsConfigToPreparer);
-        break;
-      default:
-        SET_WAIT_STATUS(util::WaitStateCode::SubmittedUnexpectedToPreparer);
-    }
-  }
-  // SET_WAIT_STATUS(util::WaitStateCode::SubmittedToPreparer);
   if (operation_) {
     operation_->SubmittedToPreparer();
   }
@@ -243,8 +208,8 @@ Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_o
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
-  SET_WAIT_STATUS(util::WaitStateCode::AddedToLeader);
   RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
+  SET_WAIT_STATUS(util::WaitStateCode::RaftWaitingForQuorum);
 
   StartOperation();
   return Status::OK();
@@ -277,7 +242,6 @@ Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
   if (operation_) {
-    SET_WAIT_STATUS(util::WaitStateCode::PrepareAndStart);
     RETURN_NOT_OK(operation_->Prepare(is_leader_side));
   }
 
@@ -332,7 +296,6 @@ void OperationDriver::HandleFailure(const Status& status) {
   CHECK(!status.ok());
   ADOPT_TRACE(trace());
   SCOPED_ADOPT_WAIT_STATE(wait_state());
-  SET_WAIT_STATUS(util::WaitStateCode::HandleFailure);
   TRACE("HandleFailure($0)", status.ToString());
 
   switch (repl_state_copy) {
@@ -445,9 +408,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    SET_WAIT_STATUS(util::WaitStateCode::Applying);
+    SET_WAIT_STATUS(util::WaitStateCode::ApplyingRaftEdits);
     auto status = operation_->Replicated(leader_term, WasPending::kTrue);
-    SET_WAIT_STATUS(util::WaitStateCode::ApplyDone);
+    SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

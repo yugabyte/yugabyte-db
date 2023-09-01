@@ -28,6 +28,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 using std::string;
 
@@ -226,6 +227,8 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
     std::unique_lock<std::mutex> lock(mutex);
     old_value = num_holding.load(std::memory_order_acquire);
     if ((old_value & kIntentTypeSetConflicts[type_idx]) != 0) {
+      SCOPED_WAIT_STATUS(util::WaitStateCode::LockedBatchEntry_Lock);
+      util::WaitStateInfo::AssertWaitAllowed();
       if (deadline != CoarseTimePoint::max()) {
         // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
         // detection since this eventually succeeds (in which case thread gets to queue) or times

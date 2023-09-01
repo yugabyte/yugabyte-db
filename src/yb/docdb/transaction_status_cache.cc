@@ -22,6 +22,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/wait_state.h"
 #include "yb/util/flags.h"
 
 using namespace std::literals;
@@ -120,6 +121,8 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
               TransactionLoadFlags{TransactionLoadFlag::kCleanup},
               callback});
     auto wait_start = CoarseMonoClock::now();
+    SCOPED_WAIT_STATUS(util::WaitStateCode::TransactionStatusCache_DoGetCommitData);
+    util::WaitStateInfo::AssertWaitAllowed();
     auto future_status = future.wait_until(
         TEST_retry_allowed ? wait_start + kRequestTimeout : deadline_);
     if (future_status == std::future_status::ready) {

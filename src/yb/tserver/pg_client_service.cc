@@ -112,6 +112,7 @@ class LockablePgClientSession : public PgClientSession {
         latch = ProcessSharedRequest(size, &exchange_->exchange());
       }
       if (latch) {
+        SCOPED_WAIT_STATUS(util::WaitStateCode::PgClientSessionStartExchange);
         latch->Wait();
       }
     });
@@ -729,6 +730,7 @@ class PgClientServiceImpl::Impl {
 
   void GetRPCsWaitStates(
       tserver::PgActiveUniverseHistoryResponsePB* resp, yb::util::MessengerType messenger_type) {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
 
@@ -753,6 +755,8 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
+    VLOG(2) << __PRETTY_FUNCTION__ << " TServer wait-states " << yb::ToString(resp->tserver_wait_states());
+    VLOG(2) << __PRETTY_FUNCTION__ << " CQL wait-states " << yb::ToString(resp->cql_wait_states());
   }
 
   Status ActiveUniverseHistory(

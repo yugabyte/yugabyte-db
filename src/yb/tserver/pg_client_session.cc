@@ -391,6 +391,7 @@ struct PerformData {
   virtual void SendResponse() = 0;
 
   void FlushDone(client::FlushStatus* flush_status) {
+    SET_WAIT_STATUS(util::WaitStateCode::PGActiveOnCPU);
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
     if (status.ok()) {
       status = ProcessResponse();
@@ -927,6 +928,7 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
+  SET_WAIT_STATUS(util::WaitStateCode::PgPerformHandling);
   if (options.has_auh_metadata()) {
     util::WaitStateInfo::UpdateMetadataFromPB(options.auh_metadata());
   }
@@ -977,6 +979,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   data->ops = VERIFY_RESULT(PrepareOperations(
       &data->req, session, &data->sidecars, &table_cache_));
 
+  SET_WAIT_STATUS(util::WaitStateCode::PgPerformHandling);
   session->FlushAsync([this, data](client::FlushStatus* flush_status) {
     data->FlushDone(flush_status);
     const auto ops_count = data->ops.size();

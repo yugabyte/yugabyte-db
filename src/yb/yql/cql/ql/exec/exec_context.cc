@@ -39,6 +39,7 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/util/flags.h"
+#include "yb/util/wait_state.h"
 
 DEFINE_UNKNOWN_int32(cql_prepare_child_threshold_ms, 2000 * yb::kTimeMultiplier,
              "Timeout if preparing for child transaction takes longer"
@@ -110,6 +111,7 @@ Status ExecContext::PrepareChildTransaction(
       deadline,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms));
 
+  util::WaitStateInfo::AssertWaitAllowed();
   auto future_status = future.wait_until(future_deadline);
 
   if (future_status == std::future_status::ready) {

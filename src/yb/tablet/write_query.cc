@@ -186,7 +186,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  SET_WAIT_STATUS(util::WaitStateCode::SubmittingToRaft);
+  SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   context_->Submit(self.release()->PrepareSubmit(), term_);
 }
 
@@ -429,7 +429,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ExecuteWrite);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   auto* query_ptr = query.get();
   query_ptr->self_ = std::move(query);
 

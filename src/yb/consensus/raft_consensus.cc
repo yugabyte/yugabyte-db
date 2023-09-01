@@ -1526,7 +1526,6 @@ Status RaftConsensus::Update(
           .client_node_host = (1ll << 32) - 1,
           .client_node_port = (1 << 16) - 1});
   }
-  SET_WAIT_STATUS(util::WaitStateCode::Updating);
 
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
 
@@ -1570,7 +1569,6 @@ Status RaftConsensus::Update(
     }
 
     LongOperationTracker operation_tracker("UpdateReplica", 1s);
-    SET_WAIT_STATUS(util::WaitStateCode::UpdateReplica);
     result = VERIFY_RESULT(UpdateReplica(request_ptr, response));
 
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
@@ -1600,7 +1598,6 @@ Status RaftConsensus::Update(
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));
-  SET_WAIT_STATUS(util::WaitStateCode::DoneUpdate);
   return Status::OK();
 }
 

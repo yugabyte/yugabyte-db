@@ -49,6 +49,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -1747,6 +1748,8 @@ Status CatalogManager::IsBootstrapRequired(
   }
 
   // Wait until the first promise is raised, and prepare response.
+  SCOPED_WAIT_STATUS(util::WaitStateCode::XreplCatalogManagerWaitForIsBootstrapRequired);
+  util::WaitStateInfo::AssertWaitAllowed();
   if (future.wait_until(deadline) == std::future_status::timeout) {
     return SetupError(
         resp->mutable_error(),

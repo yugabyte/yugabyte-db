@@ -28,6 +28,7 @@
 #include "yb/util/result.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/wait_state.h"
 
 #ifdef __linux__
 #include <sys/resource.h>
@@ -174,6 +175,7 @@ int main(int argc, char** argv) {
 
         bool finished_local = false;
         {
+          yb::util::WaitStateInfo::AssertWaitAllowed();
           unique_lock<mutex> l(lock);
           finished_cond.wait_until(l, wait_until_when, [&finished] { return finished; });
           finished_local = finished;

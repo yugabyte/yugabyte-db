@@ -1277,7 +1277,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ConflictResolution);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
@@ -1318,7 +1318,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ConflictResolution);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", initial_resolution_ht: " << intial_resolution_ht;

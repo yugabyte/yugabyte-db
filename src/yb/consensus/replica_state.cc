@@ -56,6 +56,7 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 
@@ -1362,6 +1363,7 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
+    util::WaitStateInfo::AssertWaitAllowed();
     if (deadline == CoarseTimePoint::max()) {
       cond_.wait(l, predicate);
     } else if (!cond_.wait_until(l, deadline, predicate)) {
