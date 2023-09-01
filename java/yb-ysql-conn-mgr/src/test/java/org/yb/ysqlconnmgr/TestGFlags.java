@@ -20,6 +20,8 @@ import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 // Check that values from Gflags gets reflected in the Ysql Connection Manager config file.
+// TODO (janand) #18837: Use Parameterized test runner with TSERVER_FLAGS and EXPECTED_CONFIG_VALUES
+// as the parameter.
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestGFlags extends TestDefaultConfig {
 
@@ -27,15 +29,14 @@ public class TestGFlags extends TestDefaultConfig {
     {
       put("ysql_conn_mgr_max_client_connections", "1000");
       put("ysql_conn_mgr_num_workers", "8");
-      put("ysql_conn_mgr_pool_size", "100");
+      put("ysql_conn_mgr_max_conns_per_db", "22");
     }
   };
 
   private final Map<String, String> EXPECTED_CONFIG_VALUES = new HashMap() {
     {
       put("client_max", "1000");
-      // 90% of total pool size will be assigned to the global pool.
-      put("pool_size", "90");
+      put("pool_size", "22");
       put("workers", "8");
     }
   };

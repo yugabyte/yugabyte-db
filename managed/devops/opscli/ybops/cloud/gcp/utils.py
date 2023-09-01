@@ -1089,12 +1089,12 @@ class GoogleCloudAdmin():
             current_items.append({'key': 'startup-script', 'value': boot_script})
 
         # Update the instance metadata with the new items list
-        self.compute.instances().setMetadata(
+        self.waiter.wait(self.compute.instances().setMetadata(
             project=self.project,
             zone=args.zone,
             instance=instance['name'],
             body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
-        ).execute()
+        ).execute(), zone=args.zone)
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

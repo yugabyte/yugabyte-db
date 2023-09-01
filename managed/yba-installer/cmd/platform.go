@@ -549,9 +549,23 @@ func (plat Platform) MigrateFromReplicated() error {
 		return err
 	}
 
-	// TODO: need to pull keys from replicated.
-	if err := createPemFormatKeyAndCert(); err != nil {
-		return err
+	pemVal, err := plat.pemFromDocker()
+	if err != nil {
+		log.Debug("no cert found from replicated, creating self signed")
+		if err := createPemFormatKeyAndCert(); err != nil {
+			return err
+		}
+	} else {
+		serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
+		pemFile, err := common.Create(serverPemPath)
+		if err != nil {
+			log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
+			return err
+		}
+		defer pemFile.Close()
+		if _, err := pemFile.WriteString(pemVal); err != nil {
+			return fmt.Errorf("failed to write pem file at %s: %w", serverPemPath, err)
+		}
 	}
 
 	//Create the platform.log file so that we can start platform as
@@ -684,4 +698,15 @@ func (plat Platform) CreateCronJob() error {
 		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
 		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 	return nil
+}
+
+// pemFromDocker will read the pem file for https from server.pem. This only works for 2.16 and up.
+func (plat Platform) pemFromDocker() (string, error) {
+	out := shell.Run("docker", "exec", "yugaware", "cat",
+		"/opt/yugabyte/yugaware/conf/server.pem")
+	if !out.Succeeded() {
+		out.LogDebug()
+		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
+	}
+	return out.StdoutString(), nil
 }

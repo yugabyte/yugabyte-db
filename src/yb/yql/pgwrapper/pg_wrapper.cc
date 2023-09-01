@@ -217,6 +217,9 @@ static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::st
 
 DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistencyLevel);
 
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
+    "Database for which warmup needs to be done.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -991,7 +994,7 @@ key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
   // Let's use a key start at 13000 + 997 (largest 3 digit prime number). Just decreasing
   // the chances of collision with the pg shared memory key space logic.
   key_t shmem_key = 13000 + 997;
-  size_t size_of_shmem = 2 * sizeof(struct ConnectionStats);
+  size_t size_of_shmem = YSQL_CONN_MGR_MAX_POOLS * sizeof(struct ConnectionStats);
   key_t shmid = -1;
 
   while (true) {

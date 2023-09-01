@@ -240,6 +240,13 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		 */
 		if (*count > route->rule->storage->server_max_routing)
 			return 0;
+
+		/*
+		 * Dont expire the server connection if the min size is reached.
+		 */
+		if (od_server_pool_total(&route->server_pool) <=
+		    route->rule->min_pool_size)
+			return 0;
 	} // else remove server because we are forced to
 
 	/* remove server for server pool */
@@ -370,7 +377,8 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 			     .database_len = startup->database.value_len,
 			     .user_len = startup->user.value_len,
 			     .physical_rep = false,
-			     .logical_rep = false };
+			     .logical_rep = false,
+			     .yb_stats_index = -1};
 	if (rule->storage_db) {
 		id.database = rule->storage_db;
 		id.database_len = strlen(rule->storage_db) + 1;

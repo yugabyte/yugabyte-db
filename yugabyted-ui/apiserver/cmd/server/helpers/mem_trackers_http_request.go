@@ -14,7 +14,11 @@ type MemTrackersFuture struct {
     Error       error
 }
 
-func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTrackersFuture) {
+func (h *HelperContainer) GetMemTrackersFuture(
+    hostName string,
+    isMaster bool,
+    future chan MemTrackersFuture,
+) {
     port := TserverUIPort
     if isMaster {
         port = MasterUIPort
@@ -50,12 +54,12 @@ func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTracker
         return
     }
     match := regex.FindSubmatch(body)
-    memTrackers.Consumption, err = GetBytesFromString(string(match[1]))
+    memTrackers.Consumption, err = h.GetBytesFromString(string(match[1]))
     if err != nil {
         memTrackers.Error = err
         future <- memTrackers
         return
     }
-    memTrackers.Limit, memTrackers.Error = GetBytesFromString(string(match[3]))
+    memTrackers.Limit, memTrackers.Error = h.GetBytesFromString(string(match[3]))
     future <- memTrackers
 }

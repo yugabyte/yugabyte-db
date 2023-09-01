@@ -36,7 +36,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
 
-DEFINE_RUNTIME_AUTO_bool(enable_flush_retryable_requests, kLocalPersisted, false, true,
+DEFINE_RUNTIME_bool(enable_flush_retryable_requests, false,
     "If enabled, will flush retryable requests structure to the disk when roll the log segment, "
     "which helps speedup bootstrap process");
 

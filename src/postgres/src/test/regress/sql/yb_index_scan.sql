@@ -389,50 +389,6 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 /*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);
 DROP TABLE pk_hash_range_int;
 
--- Test IndexOnlyScan on the primary key index and the secondary index without targets
-CREATE TABLE t_kv(k int, v int, PRIMARY KEY(k ASC));
-INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
-
--- IndexOnlyScan on the primary index
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(1) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
-/*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT 1 FROM t_kv;
-
--- IndexOnlyScan on the secondary index
-CREATE INDEX t_vi ON t_kv (v asc);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-
--- Verify duplicated keys in secondary index
-INSERT INTO t_kv VALUES (11, 1);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-
--- Verify null values in secondary index
-INSERT INTO t_kv VALUES (12, NULL);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-
--- Verify counts in IndexOnlyScan on the primary index after the updates
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(1) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
-/*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
-
-DROP TABLE t_kv;
-
 -- Test index SPLIT AT with INCLUDE clause
 CREATE TABLE test_tbl (
   a INT,

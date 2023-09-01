@@ -138,6 +138,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 
 namespace yb {
 
@@ -423,23 +424,14 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         MonoDelta::FromSeconds(kRpcTimeout), "Verify written records");
   }
 
-  Status VerifyNumRecords(const YBTableName& table, Cluster* cluster, int expected_size) {
+  Status VerifyNumRecords(
+      std::shared_ptr<client::YBTable> table, Cluster* cluster, int expected_size) {
     return LoggedWaitFor(
         [this, table, cluster, expected_size]() -> Result<bool> {
-          auto results = ScanToStrings(table, cluster);
+          auto results = ScanToStrings(table->name(), cluster);
           return PQntuples(results.get()) == expected_size;
         },
         MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
-  }
-
-  void VerifyExternalTxnIntentsStateEmpty() {
-    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
-    for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
-      mini_tserver->server()->tablet_manager()->GetTabletPeers(&tablet_ptrs);
-      for (auto& tablet : tablet_ptrs) {
-        ASSERT_EQ(0, tablet->GetExternalTxnIntentsState()->EntryCount());
-      }
-    }
   }
 
   Status TruncateTable(Cluster* cluster, std::vector<string> table_ids) {
@@ -740,8 +732,6 @@ TEST_F(XClusterYsqlTest, GenerateSeries) {
   ASSERT_OK(InsertGenerateSeriesOnProducer(0, 50));
 
   ASSERT_OK(VerifyWrittenRecords());
-
-  VerifyExternalTxnIntentsStateEmpty();
 }
 
 constexpr int kTransactionalConsistencyTestDurationSecs = 30;
@@ -929,7 +919,6 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     return WaitFor(
         [&]() {
           if (CountIntents(consumer_cluster()) == 0) {
-            VerifyExternalTxnIntentsStateEmpty();
             return true;
           }
           return false;
@@ -1607,8 +1596,6 @@ TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   ASSERT_EQ(resp.entry().tables_size(), 1);
   ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
   ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
-
-  VerifyExternalTxnIntentsStateEmpty();
 }
 
 TEST_F(XClusterYsqlTest, ChangeRole) {
@@ -3671,4 +3658,30 @@ TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
   }
 }
 
+TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {
+  // Fail one third of the Applies.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0.3;
+  constexpr int kNumTablets = 3;
+  constexpr int kBatchSize = 100;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, 3));
+  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+  ASSERT_OK(CorrectlyPollingAllTablets(kNumTablets));
+
+  // Write some non-transactional rows.
+  int batch_count = 0;
+  for (int i = 0; i < 5; i++) {
+    ASSERT_OK(InsertRowsInProducer(batch_count * kBatchSize, (batch_count + 1) * kBatchSize));
+    batch_count++;
+  }
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Write some transactional rows.
+  for (int i = 0; i < 5; i++) {
+    ASSERT_OK(InsertTransactionalBatchOnProducer(
+        batch_count * kBatchSize, (batch_count + 1) * kBatchSize));
+    batch_count++;
+  }
+  ASSERT_OK(VerifyNumRecords(producer_table_, &producer_cluster_, batch_count * kBatchSize));
+  ASSERT_OK(VerifyWrittenRecords());
+}
 }  // namespace yb

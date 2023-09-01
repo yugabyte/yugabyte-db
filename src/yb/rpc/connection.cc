@@ -206,7 +206,8 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
     auto current_last_activity_time = last_activity_time();
     deadline = current_last_activity_time + timeout;
-    DVLOG_WITH_PREFIX(5) << Format("now: $0, deadline: $1, timeout: $2", now, deadline, timeout);
+    DVLOG_WITH_PREFIX(5) << Format(
+        "now: $0, deadline: $1, timeout: $2", now, ToStringRelativeToNow(deadline, now), timeout);
     if (now > deadline) {
       auto passed = reactor_->cur_time() - current_last_activity_time;
       reactor_->DestroyConnection(
@@ -406,12 +407,13 @@ void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) cons
                              ? CoarseTimePoint()
                              : active_calls_.get<ExpirationTag>().begin()->expires_at;
   auto found_call_id = active_calls_.find(call_id) != active_calls_.end();
+  auto now = CoarseMonoClock::Now();
   LOG_WITH_PREFIX(INFO) << Format(
       "LastActivityTime: $0, "
       "ActiveCalls stats: { "
       "during shutdown: $1, "
       "current size: $2, "
-      "earliest expiry: $3, "
+      "earliest expiry: $3 "
       "}, "
       "OutboundCall: { "
       "ptr: $4, "
@@ -424,15 +426,15 @@ void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) cons
       "calls: $9, "
       "responses: $10 "
       "}",
-      /* $0 */ last_activity_time(),
+      /* $0 */ ToStringRelativeToNow(last_activity_time(), now),
       /* $1 */ active_calls_during_shutdown_.load(std::memory_order_acquire),
       /* $2 */ active_calls_.size(),
-      /* $3 */ earliest_expiry,
+      /* $3 */ ToStringRelativeToNow(earliest_expiry, now),
       /* $4 */ call_ptr,
       /* $5 */ call_id,
       /* $6 */ found_call_id,
       /* $7 */ shutdown_status_,
-      /* $8 */ shutdown_time_,
+      /* $8 */ ToStringRelativeToNow(shutdown_time_, now),
       /* $9 */ calls_queued_after_shutdown_.load(std::memory_order_acquire),
       /* $10 */ responses_queued_after_shutdown_.load(std::memory_order_acquire));
 }

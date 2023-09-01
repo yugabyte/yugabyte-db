@@ -301,7 +301,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx = 0, int64 index = 0, int64 term = 0, std::string key = "",
       int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "",
-      int64 safe_hybrid_time = -1, int32_t wal_segment_index = 0);
+      int64 safe_hybrid_time = -1, int32_t wal_segment_index = 0,
+      const bool populate_checkpoint = true);
 
   void PrepareChangeRequest(
       GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
@@ -390,7 +391,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0);
+      int wal_segment_index = 0,
+      const bool populate_checkpoint = true);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,

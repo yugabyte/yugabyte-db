@@ -24,7 +24,7 @@ spec:
               properties:
                 message:
                   type: string
-                backupUUID:
+                resourceUUID:
                   type: string
                 taskUUID:
                   type: string

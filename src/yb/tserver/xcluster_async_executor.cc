@@ -77,7 +77,7 @@ void XClusterAsyncExecutor::ScheduleFunc(
     std::string&& func_name, const std::function<void()>&& func) {
   RETURN_WHEN_OFFLINE;
 
-  VLOG_WITH_PREFIX(3) << "Scheduling '" << func_name << "' on thread pool";
+  VLOG_WITH_PREFIX(5) << "Scheduling '" << func_name << "' on thread pool";
   auto s = thread_pool_->SubmitFunc(std::bind(
       &XClusterAsyncExecutor::WeakPtrCallback, weak_from_this(), std::move(func_name),
       std::move(func)));
@@ -92,7 +92,7 @@ void XClusterAsyncExecutor::WeakPtrCallback(
     const std::weak_ptr<XClusterAsyncExecutor>& weak_ptr, const std::string& func_name,
     const std::function<void()>& func) {
   LOCK_WEAK_PTR_AND_RETURN_WHEN_OFFLINE;
-  VLOG(3) << shared_ptr->LogPrefix() << "Executing '" << func_name << "'";
+  VLOG(5) << shared_ptr->LogPrefix() << "Executing '" << func_name << "'";
 
   func();
 }
@@ -100,7 +100,7 @@ void XClusterAsyncExecutor::WeakPtrCallback(
 void XClusterAsyncExecutor::RpcCallback(
     const std::weak_ptr<XClusterAsyncExecutor>& weak_ptr, rpc::Rpcs::Handle rpc_handle,
     rpc::Rpcs* rpcs, std::string&& func_name, std::function<void()>&& func) {
-  VLOG_WITH_FUNC(3) << "Received rpc callback for " << func_name;
+  VLOG_WITH_FUNC(5) << "Received rpc callback for " << func_name;
 
   auto shared_ptr = weak_ptr.lock();
   if (shared_ptr) {
@@ -144,7 +144,7 @@ void XClusterAsyncExecutor::ScheduleFuncWithDelay(
     return;
   }
 
-  VLOG_WITH_PREFIX(3) << "Scheduling '" << func_name << "' on reactor with delay " << delay_ms
+  VLOG_WITH_PREFIX(5) << "Scheduling '" << func_name << "' on reactor with delay " << delay_ms
                       << "ms";
 
   auto task_id_result = messenger_->ScheduleOnReactor(
@@ -161,7 +161,7 @@ void XClusterAsyncExecutor::ScheduleFuncWithDelay(
   ANNOTATE_UNPROTECTED_WRITE(TEST_is_sleeping_) = true;
   reactor_task_id_ = *task_id_result;
   reactor_task_name_ = std::move(func_name);
-  VLOG_WITH_PREFIX(4) << "Scheduled task '" << reactor_task_name_ << "' (" << reactor_task_id_
+  VLOG_WITH_PREFIX(5) << "Scheduled task '" << reactor_task_name_ << "' (" << reactor_task_id_
                       << ") on reactor with delay " << delay_ms << "ms";
 }
 
@@ -176,7 +176,7 @@ void XClusterAsyncExecutor::ReactorCallback(
     std::lock_guard l(shared_ptr->reactor_task_id_mutex_);
 
     DCHECK(shared_ptr->reactor_task_id_ != rpc::kInvalidTaskId);
-    VLOG(3) << shared_ptr->LogPrefix() << "Executing '" << shared_ptr->reactor_task_name_ << "' ("
+    VLOG(5) << shared_ptr->LogPrefix() << "Executing '" << shared_ptr->reactor_task_name_ << "' ("
             << shared_ptr->reactor_task_id_ << ") on reactor";
     shared_ptr->reactor_task_id_ = rpc::kInvalidTaskId;
     func_name.swap(shared_ptr->reactor_task_name_);
