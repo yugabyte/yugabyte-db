@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -30,7 +29,6 @@ import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -767,15 +765,8 @@ public class YbcManager {
             OsType.LINUX.toString().toLowerCase(),
             Architecture.x86_64.name().toLowerCase());
     String ybcPackage = releaseMetadata.filePath;
-    UUID providerUUID =
-        UUID.fromString(universe.getCluster(nodeDetails.placementUuid).userIntent.provider);
-    Provider provider =
-        Provider.get(Customer.get(universe.getCustomerId()).getUuid(), providerUUID);
-    boolean listenOnAllInterfaces =
-        confGetter.getConfForScope(provider, ProviderConfKeys.ybcListenOnAllInterfacesK8s);
     Map<String, String> ybcGflags =
-        GFlagsUtil.getYbcFlagsForK8s(
-            universe.getUniverseUUID(), nodeDetails.nodeName, listenOnAllInterfaces);
+        GFlagsUtil.getYbcFlagsForK8s(universe.getUniverseUUID(), nodeDetails.nodeName);
     try {
       Path confFilePath =
           fileHelperService.createTempFile(

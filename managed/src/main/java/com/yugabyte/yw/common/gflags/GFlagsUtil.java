@@ -356,8 +356,7 @@ public class GFlagsUtil {
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
-  public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces) {
+  public static Map<String, String> getYbcFlagsForK8s(UUID universeUUID, String nodeName) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -370,14 +369,10 @@ public class GFlagsUtil {
             Math.ceil(
                 InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
                     .getNumCores());
-    String serverAddress =
-        listenOnAllInterfaces
-            ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
-            : node.cloudInfo.private_ip;
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
-    ybcFlags.put("server_address", serverAddress);
+    ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", K8S_YBC_CORES_DIR);
