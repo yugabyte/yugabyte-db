@@ -31,7 +31,7 @@ This is legal only in a regular function (but _not_ in a table function). In fac
 
 ### The "return next" statement
 
-This is legal only in a table function. In fact every table function _must_ have at least one such statement and the point of execution must reach one of these. Often, the _return next_ statement is written within a loop so that the table function returns many rows. Notice that the _return next_ statement takes no argument. Rather, you must assign value(s) ordinarily before invoking it, just as if these identified ordinary _in out_ formal arguments, using the identifier(s) that the the _returns table(...)_ clause, in the function's header, specifies.
+This is legal only in a table function. In fact every table function _must_ have at least one such statement and the point of execution must reach one of these. Often, the _return next_ statement is written within a loop so that the table function returns many rows. Notice that the _return next_ statement takes no argument. Rather, you must assign value(s) ordinarily before invoking it, just as if these identified ordinary _in out_ formal arguments, using the identifier(s) that the _returns table(...)_ clause, in the function's header, specifies.
 
 ### The "return new", "return old" and "return null" statements
 
