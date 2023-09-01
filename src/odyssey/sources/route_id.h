@@ -16,6 +16,7 @@ struct od_route_id {
 	int database_len;
 	bool physical_rep;
 	bool logical_rep;
+	int yb_stats_index;
 };
 
 static inline void od_route_id_init(od_route_id_t *id)

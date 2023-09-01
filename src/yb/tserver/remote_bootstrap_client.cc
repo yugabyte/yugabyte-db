@@ -687,11 +687,10 @@ Status RemoteBootstrapClient::DownloadRetryableRequestsFile() {
 Status RemoteBootstrapClient::WriteConsensusMetadata() {
   // If we didn't find a previous consensus meta file, create one.
   if (!cmeta_) {
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    return ConsensusMetadata::Create(&fs_manager(), tablet_id_, fs_manager().uuid(),
-                                     remote_committed_cstate_->config(),
-                                     remote_committed_cstate_->current_term(),
-                                     &cmeta);
+    cmeta_ = VERIFY_RESULT(ConsensusMetadata::Create(
+        &fs_manager(), tablet_id_, fs_manager().uuid(), remote_committed_cstate_->config(),
+        remote_committed_cstate_->current_term()));
+    return Status::OK();
   }
 
   // Otherwise, update the consensus metadata to reflect the config and term

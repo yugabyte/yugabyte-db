@@ -161,6 +161,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
+  "net.minidev" % "json-smart" % "2.5.0",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -201,11 +202,10 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "crd-generator-apt" % "6.4.1",
-  "io.fabric8" % "kubernetes-client" % "6.4.1",
-  "io.fabric8" % "kubernetes-client-api" % "6.4.1",
-  "io.fabric8" % "kubernetes-model" % "4.9.2",
-  "io.fabric8" % "kubernetes-api" % "3.0.12",
+  "io.fabric8" % "crd-generator-apt" % "6.8.0",
+  "io.fabric8" % "kubernetes-client" % "6.8.0",
+  "io.fabric8" % "kubernetes-client-api" % "6.8.0",
+  "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
 
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
