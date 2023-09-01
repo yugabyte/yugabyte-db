@@ -306,7 +306,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // all of the credentials (token or approle) are empty, populate the value from auth config
         if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
             && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
-                && formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
           if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
             formData.set(
                 HashicorpVaultConfigParams.HC_VAULT_TOKEN,
