@@ -37,7 +37,7 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
   private final int MAX_PHYSICAL_CONNECTION = 50;
 
   private final int MAX_LOGICAL_CONNECTION = 10000;
-  private final int POOL_SIZE = 33;
+  private final int POOL_SIZE = 22;
   private final int MAX_ROWS = 10000;
 
   @Override
@@ -47,7 +47,7 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
       {
         put("ysql_max_connections", Integer.toString(MAX_PHYSICAL_CONNECTION));
         put("ysql_conn_mgr_max_client_connections", Integer.toString(MAX_LOGICAL_CONNECTION));
-        put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
       }
     };
 

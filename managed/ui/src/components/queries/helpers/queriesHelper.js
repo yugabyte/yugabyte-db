@@ -177,7 +177,7 @@ const hasTokenMatch = (query, token, keyMap) => {
     }
   } else {
     // Search through all properties for token value
-    return Object.values(query).some((val) => hasSubstringMatch(String(val), token.value));
+    return Object.values(query).some((val) => hasSubstringMatch(String(val), token.value?.trim()));
   }
 };
 

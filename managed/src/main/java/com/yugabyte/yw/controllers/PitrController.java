@@ -297,6 +297,13 @@ public class PitrController extends AuthenticatedController {
     }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
 
+    if (pitrConfig.isUsedForXCluster()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "This PITR config is used for transactional xCluster and cannot be deleted; "
+              + "to delete you need to first delete the related xCluster config");
+    }
+
     DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
     deletePitrConfigParams.setUniverseUUID(universeUUID);
     deletePitrConfigParams.pitrConfigUuid = pitrConfig.getUuid();

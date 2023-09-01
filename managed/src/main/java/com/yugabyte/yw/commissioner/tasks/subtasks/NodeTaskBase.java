@@ -67,15 +67,14 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
     if (cause instanceof RecoverableException) {
       NodeTaskParams params = taskParams();
 
-      log.warn("Encountered a recoverable error, rebooting node {}", params.nodeName);
+      log.warn("Encountered a recoverable error, hard rebooting node {}", params.nodeName);
 
-      RebootServer.Params rebootParams = new RebootServer.Params();
+      NodeTaskParams rebootParams = new NodeTaskParams();
       rebootParams.nodeName = params.nodeName;
       rebootParams.setUniverseUUID(params.getUniverseUUID());
       rebootParams.azUuid = params.azUuid;
-      rebootParams.useSSH = false;
 
-      RebootServer task = createTask(RebootServer.class);
+      HardRebootServer task = createTask(HardRebootServer.class);
       task.initialize(rebootParams);
       task.setUserTaskUUID(userTaskUUID);
       task.run();

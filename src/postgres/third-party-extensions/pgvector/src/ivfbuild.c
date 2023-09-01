@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include <float.h>
@@ -662,3 +663,4 @@ ivfflatbuildempty(Relation index)
 
 	BuildIndex(NULL, index, indexInfo, &buildstate, INIT_FORKNUM);
 }
+#endif

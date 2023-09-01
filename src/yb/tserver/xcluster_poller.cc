@@ -68,6 +68,10 @@ DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
 DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
     "If true, the poller will not check the leader term.");
 
+DEFINE_test_flag(
+    double, xcluster_simulate_random_failure_after_apply, 0,
+    "If non-zero, simulate a random failure after writing rows to the target tablet.");
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 using namespace std::placeholders;
@@ -420,7 +424,8 @@ void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse response)
 }
 
 void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
-  if (!response.status.ok()) {
+  if (!response.status.ok() ||
+      RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =

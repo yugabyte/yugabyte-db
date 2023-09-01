@@ -11,7 +11,8 @@ import {
   NODE_NODE_CERT_FIELD_NAME,
   CLIENT_NODE_CERT_FIELD_NAME,
   ENABLE_NODE_NODE_ENCRYPTION_NAME,
-  ENABLE_CLIENT_NODE_ENCRYPTION_NAME
+  ENABLE_CLIENT_NODE_ENCRYPTION_NAME,
+  USE_SAME_CERTS_FIELD_NAME
 } from '../EncryptionInTransitUtils';
 
 interface RotateServerCertsProps {
@@ -35,6 +36,7 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
   const clientRootCA = watch(CLIENT_NODE_CERT_FIELD_NAME);
   const enableNodeToNodeEncrypt = watch(ENABLE_NODE_NODE_ENCRYPTION_NAME);
   const enableClientToNodeEncrypt = watch(ENABLE_CLIENT_NODE_ENCRYPTION_NAME);
+  const rootAndClientRootCASame = watch(USE_SAME_CERTS_FIELD_NAME);
 
   const rotationDisabled =
     encryptionEnabled &&
@@ -42,7 +44,9 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
       enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt);
 
   const rootCAModified = encryptionEnabled && rootCAInitial !== rootCA;
-  const clientRootCAModified = encryptionEnabled && clientRootCAInitial !== clientRootCA;
+  const clientRootCAModified =
+    encryptionEnabled &&
+    (clientRootCAInitial !== clientRootCA || (rootAndClientRootCASame && rootCAModified));
 
   return (
     <>
@@ -52,7 +56,7 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
         </Typography>
       </Box>
       <Box mt={1} display="flex" flexDirection="column" className={classes.container}>
-        <Box py={2} px={1} hidden={!enableNodeToNodeEncrypt}>
+        <Box py={2} px={1} hidden={!enableNodeToNodeEncrypt && !rootAndClientRootCASame}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <YBTooltip
               title={
@@ -79,7 +83,7 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
 
         <Divider />
 
-        <Box py={2} px={1} hidden={!enableClientToNodeEncrypt}>
+        <Box py={2} px={1} hidden={!enableClientToNodeEncrypt && !rootAndClientRootCASame}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <YBTooltip
               title={

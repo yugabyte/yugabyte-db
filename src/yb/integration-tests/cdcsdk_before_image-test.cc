@@ -382,7 +382,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(
   ExpectedRecordWithThreeColumns expected_records[] = {
       {}, {1, 2, 3}, {1, 3, 3}, {}};
   ExpectedRecordWithThreeColumns expected_before_image_records[] = {
-      {}, {}, {}, {1, INT_MAX, INT_MAX}};
+      {}, {}, {}, {1, 3, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
