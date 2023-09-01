@@ -35,6 +35,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/wait_state.h"
 
 #ifdef ENABLE_THREAD_RESTRICTIONS
 
@@ -75,6 +76,7 @@ void ThreadRestrictions::AssertIOAllowed() {
     << "yb::ThreadRestrictions::SetIOAllowed() in this thread's "
     << "startup. "
     << (Thread::current_thread() ? Thread::current_thread()->ToString() : "(not a yb::Thread)");
+  util::WaitStateInfo::AssertIOAllowed();
 }
 
 bool ThreadRestrictions::SetWaitAllowed(bool allowed) {
@@ -92,6 +94,7 @@ void ThreadRestrictions::AssertWaitAllowed() {
     << "Waiting is not allowed to be used on this thread to prevent "
     << "server-wide latency aberrations and deadlocks. "
     << (Thread::current_thread() ? Thread::current_thread()->ToString() : "(not a yb::Thread)");
+  util::WaitStateInfo::AssertWaitAllowed();
 }
 
 } // namespace yb

@@ -18,6 +18,7 @@
 #include <iosfwd>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "yb/util/flags.h"
 
@@ -85,10 +86,11 @@ YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
     ((Unused, 0))
+     (DumpRunningRpcs)
 
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
-       (Queued) // Rpc has been queued. Waiting for Service threads to pick up
+       (Queued) // Rpc has been queued. Waiting for Service threads to pick up. Currently unused.
        (Handling) // Rpc handler is currently working on this rpc.
        (HandlingDone) // Rpc handler is done.
        (QueueingResponse) // The response is being queued.
@@ -336,6 +338,9 @@ class WaitStateInfo {
   static void freeze();
   static void unfreeze();
 
+  static void AssertIOAllowed();
+  static void AssertWaitAllowed();
+  void check_and_update_thread_id(util::WaitStateCode p, util::WaitStateCode n);
  private:
   std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
   std::atomic<WaitStateCode> frozen_state_code_{WaitStateCode::Unused};
@@ -344,6 +349,16 @@ class WaitStateInfo {
   mutable simple_spinlock mutex_;
   AUHMetadata metadata_ GUARDED_BY(mutex_);
   AUHAuxInfo aux_info_ GUARDED_BY(mutex_);
+
+#ifndef NDEBUG
+  static simple_spinlock does_io_lock_;
+  static simple_spinlock does_wait_lock_;
+  static std::unordered_map<util::WaitStateCode, std::atomic_bool> does_io GUARDED_BY(does_io_lock_);
+  static std::unordered_map<util::WaitStateCode, std::atomic_bool> does_wait GUARDED_BY(does_wait_lock_);
+
+  std::string thread_name_;
+  std::atomic<int64_t> thread_id_ = 0;
+#endif
 
 #ifdef TRACK_WAIT_HISTORY
   std::atomic_int16_t num_updates_ GUARDED_BY(mutex_);
