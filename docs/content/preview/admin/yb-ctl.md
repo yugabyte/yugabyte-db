@@ -231,7 +231,7 @@ The loopback addresses do not persist upon rebooting your computer.
 
 To create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor. To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-and-remove-nodes) commands.
+To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor. To expand or shrink the cluster, use the [add_node](#add-nodes) and [remove_node](#stop-and-remove-nodes) commands.
 
 Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
 
@@ -394,7 +394,7 @@ You can test the failure of a node in a 3-node RF3 cluster by killing 1 instance
 ./bin/yb-ctl start_node 3 --master
 ```
 
-The command `./bin/yb-ctl start_node 3` will start yb-tserver3. However, it will throw an error even though the command will succeed. This is because there are only 2 yb-masters present in the cluster at this point. This is not an error in the cluster configuration but rather a warning to highlight that the cluster is under-replicated and does not have enough yb-masters to ensure continued fault tolerance. Following [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/4156) tracks the work to convert this error into a user-friendly warning.
+The command `./bin/yb-ctl start_node 3` starts the third YB-TServer. This displays an error, though the command succeeds. This is because only 2 YB-Masters are present in the cluster at this point. This is not an error in the cluster configuration but rather a warning to highlight that the cluster is under-replicated and does not have enough YB-Masters to ensure continued fault tolerance. See [issue 3506](https://github.com/yugabyte/yugabyte-db/issues/3506).
 
 ## Default directories for local clusters
 
