@@ -74,6 +74,10 @@ Just with 59 nodes, YugabyteDB breezed through the 100K Warehouse at a `99.83%` 
 | YSQL Ops/sec             | `950K`     |
 | CPU USage                | `80%`      |
 
+The latency and ops/s during the test execution are shown below.
+
+![Ops and Latency](/images/explore/scalability/150k_warehouse_latency.png)
+
 ## Horizontal scaling
 
 YugabyteDB can scale seamlessly while running a read-write workload. You can easily see this by using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node universe with a replication factor of 3 and add a node while the workload is running. Using the built-in metrics, you can observe how the universe scales out by verifying that the number of read and write IOPS are evenly distributed across all nodes at all times.
