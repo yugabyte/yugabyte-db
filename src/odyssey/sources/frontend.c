@@ -1653,6 +1653,8 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 			}
 
+// Disabled the unnecessary logs
+#ifndef YB_SUPPORT_FOUND
 #if OD_DEVEL_LVL != OD_RELEASE_MODE
 			if (server != NULL && server->is_allocated &&
 			    server->is_transaction &&
@@ -1663,14 +1665,16 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					client->id.id);
 			}
 #endif
-
+#endif
 			/* one minute */
 			if (machine_cond_wait(client->cond, 60000) == 0) {
 				client->time_last_active = machine_time_us();
+#ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
 					1,
 					"change client last active time %lld\n",
 					client->time_last_active);
+#endif
 				break;
 			}
 		}

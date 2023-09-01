@@ -499,13 +499,13 @@ TEST(LockfreeTest, WriteOnceWeakPtr) {
     ASSERT_TRUE(wowp.IsInitialized());
     ASSERT_FALSE(wowp.Set(world));
     auto* hello_ptr = hello.get();
-    ASSERT_EQ(wowp.raw_ptr(), hello_ptr);
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), hello_ptr);
     hello.reset();
     ASSERT_EQ(wowp.lock(), nullptr);
     // Still initialized, even though the object has been destroyed.
     ASSERT_TRUE(wowp.IsInitialized());
     // The weak pointer still stores the same raw pointer.
-    ASSERT_EQ(wowp.raw_ptr(), hello_ptr);
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), hello_ptr);
   }
 
   {
@@ -518,10 +518,10 @@ TEST(LockfreeTest, WriteOnceWeakPtr) {
     // Setting the pointer the second time, even to the same value, will fail.
     ASSERT_FALSE(wowp.Set(world));
     auto* world_ptr = world.get();
-    ASSERT_EQ(wowp.raw_ptr(), world_ptr);
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), world_ptr);
     world.reset();
     ASSERT_TRUE(wowp.IsInitialized());
-    ASSERT_EQ(wowp.raw_ptr(), world_ptr);
+    ASSERT_EQ(wowp.raw_ptr_for_logging(), world_ptr);
   }
 }
 

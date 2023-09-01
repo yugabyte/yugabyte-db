@@ -512,7 +512,7 @@ void Peer::ProcessResponse() {
 void Peer::ProcessHeartbeatResponse(const Status& status) {
   DCHECK(performing_heartbeat_mutex_.is_locked()) << "Got a heartbeat when nothing was pending.";
   DCHECK(heartbeat_request_.ops().empty()) << "Got a heartbeat with a non-zero number of ops.";
-  last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
+  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
 
   auto performing_heartbeat_lock = LockPerformingHeartbeat(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
