@@ -101,28 +101,6 @@ public class CreateSupportBundle extends AbstractTaskBase {
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
     }
 
-    // Downloads each type of global level support bundle component type into the bundle path
-    for (BundleDetails.ComponentType componentType :
-        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
-      SupportBundleComponent supportBundleComponent =
-          supportBundleComponentFactory.getComponent(componentType);
-      try {
-        // Call the downloadComponentBetweenDates() function for all global level components with
-        // node = null.
-        // Each component verifies if the dates are required and calls the downloadComponent().
-        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
-        Files.createDirectories(globalComponentsDirPath);
-        supportBundleComponent.downloadComponentBetweenDates(
-            customer, universe, globalComponentsDirPath, startDate, endDate, null);
-      } catch (Exception e) {
-        log.error("Error occurred in support bundle collection", e);
-        throw new RuntimeException(
-            String.format(
-                "Error while trying to download the global level component files : %s",
-                e.getMessage()));
-      }
-    }
-
     // Downloads each type of node level support bundle component type into the bundle path
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
     for (NodeDetails node : nodes) {
@@ -146,6 +124,28 @@ public class CreateSupportBundle extends AbstractTaskBase {
                   "Error while trying to download the node level component files : %s",
                   e.getMessage()));
         }
+      }
+    }
+
+    // Downloads each type of global level support bundle component type into the bundle path
+    for (BundleDetails.ComponentType componentType :
+        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
+      SupportBundleComponent supportBundleComponent =
+          supportBundleComponentFactory.getComponent(componentType);
+      try {
+        // Call the downloadComponentBetweenDates() function for all global level components with
+        // node = null.
+        // Each component verifies if the dates are required and calls the downloadComponent().
+        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+        Files.createDirectories(globalComponentsDirPath);
+        supportBundleComponent.downloadComponentBetweenDates(
+            customer, universe, globalComponentsDirPath, startDate, endDate, null);
+      } catch (Exception e) {
+        log.error("Error occurred in support bundle collection", e);
+        throw new RuntimeException(
+            String.format(
+                "Error while trying to download the global level component files : %s",
+                e.getMessage()));
       }
     }
 
