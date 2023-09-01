@@ -5,9 +5,9 @@
       "series": "v2.19",
       "alias": "preview",
       "display": "v2.19 (Preview)",
-      "version": "2.19.0.0",
-      "versionShort": "2.19.0",
-      "appVersion": "2.19.0.0-b190",
+      "version": "2.19.2.0",
+      "versionShort": "2.19.2",
+      "appVersion": "2.19.2.0-b111",
       "isStable": false,
       "initialRelease": "2023-06-20"
     },
