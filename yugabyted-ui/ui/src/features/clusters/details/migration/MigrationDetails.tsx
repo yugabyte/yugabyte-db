@@ -14,12 +14,14 @@ interface MigrationDetailsProps {
   steps: string[];
   migration: Migration;
   onRefetch: () => void;
+  isFetching?: boolean;
 }
 
 export const MigrationDetails: FC<MigrationDetailsProps> = ({
   steps = [""],
   migration,
   onRefetch,
+  isFetching = false,
 }) => {
   const theme = useTheme();
   const classes = useStyles();
@@ -43,6 +45,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
                 currentStep={selectedStep}
                 onStepChange={setSelectedStep}
                 phase={migration.migration_phase}
+                isFetching={isFetching}
               />
             </Box>
             <Box>
@@ -54,6 +57,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
                 migration={migration}
                 step={selectedStep}
                 onRefetch={onRefetch}
+                isFetching={isFetching}
               />
             </Box>
           </Box>

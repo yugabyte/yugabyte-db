@@ -73,6 +73,7 @@ interface MigrationTilesProps {
   currentStep?: number;
   phase?: number;
   onStepChange?: (step: number) => void;
+  isFetching?: boolean;
 }
 
 export const MigrationTiles: FC<MigrationTilesProps> = ({
@@ -80,6 +81,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   onStepChange,
   currentStep,
   phase,
+  isFetching = false,
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
@@ -104,8 +106,6 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
       return step;
     }
   };
-
-  const isFetching = false;
 
   return (
     <Box className={classes.wrapper}>

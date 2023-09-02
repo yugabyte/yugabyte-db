@@ -11,6 +11,7 @@ interface MigrationStepProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  isFetching?: boolean;
 }
 
 const stepComponents = [MigrationPlanAssess, MigrationSchema, MigrationData, MigrationVerify];
@@ -20,6 +21,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
   migration,
   step,
   onRefetch,
+  isFetching = false,
 }) => {
   return (
     <Box mt={1}>
@@ -32,6 +34,7 @@ export const MigrationStep: FC<MigrationStepProps> = ({
               heading={steps[step]}
               migration={migration}
               onRefetch={onRefetch}
+              isFetching={isFetching}
             />
           );
         }

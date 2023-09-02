@@ -36,6 +36,7 @@ import MigrationAccordionTitle from "../MigrationAccordionTitle";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import clsx from "clsx";
+import { useGetVoyagerMigrateSchemaTasksQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -138,100 +139,28 @@ interface MigrationSchemaProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  isFetching?: boolean;
 }
 
-export const MigrationSchema: FC<MigrationSchemaProps> = ({ heading, onRefetch }) => {
+export const MigrationSchema: FC<MigrationSchemaProps> = ({
+  heading,
+  migration,
+  onRefetch,
+  isFetching = false,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
 
-  const isFetchingData = false;
+  const {
+    data,
+    isFetching: isFetchingAPI,
+    refetch: refetchMigrationSchemaTasks,
+  } = useGetVoyagerMigrateSchemaTasksQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
 
-  /* const schemaAPI = {
-    migration_uuid: "07058f53-487e-11ee-bd6c-42010a97001d",
-    overall_status: "in-progress",
-    export_schema: "in-progress",
-    analyze_schema: "N/A",
-    import_schema: "N/A",
-    suggestions_errors: null,
-    sql_objects: null,
-  }; */
-
-  const schemaAPI = {
-    migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001d",
-    overall_status: "in-progress",
-    export_schema: "complete",
-    analyze_schema: "complete",
-    import_schema: "N/A",
-    suggestions_errors: [
-      {
-        objectType: "TABLE",
-        objectName: "",
-        reason: "INHERITS not supported yet.",
-        sqlStatement:
-          "CREATE TABLE public.payment_p2007_01 (\n    CONSTRAINT payment_p2007_01_payment_date_check CHECK (((payment_date \u003e= '2007-01-01 00:00:00'::timestamp without time zone) AND (payment_date \u003c '2007-02-01 00:00:00'::timestamp without time zone)))\n)\nINHERITS (public.payment);",
-        filePath:
-          "/home/centos/dev-server-ssinghal/home/centos/export-dirs/postgres-sakila-migration/schema/tables/table.sql",
-        suggestion: "",
-        GH: "https://github.com/YugaByte/yugabyte-db/issues/1129",
-      },
-      {
-        objectType: "TABLE",
-        objectName: "",
-        reason: "DIVIDE not supported yet.",
-        sqlStatement: "CREATE TABLE public.payment_p2007_01",
-        filePath:
-          "/home/centos/dev-server-ssinghal/home/centos/export-dirs/postgres-sakila-migration/schema/tables/table2.sql",
-        suggestion: "",
-        GH: "https://github.com/YugaByte/yugabyte-db/issues/1229",
-      },
-    ],
-    sql_objects: [
-      {
-        objectType: "TABLE",
-        totalCount: 6,
-        invalidCount: 0,
-        objectNames: "test1, test2, test3, test4, test5, test6",
-        objectDetails: "",
-      },
-    ],
-  };
-
-  /* const schemaAPI = {
-    migration_uuid: "07058f53-487e-11ee-bd6c-42010a97001d",
-    overall_status: "in-progress",
-    export_schema: "complete",
-    analyze_schema: "complete",
-    import_schema: "in-progress",
-    suggestions_errors: null,
-    sql_objects: [
-      {
-        objectType: "TABLE",
-        totalCount: 6,
-        invalidCount: 0,
-        objectNames: "test5, test6, test1, test2, test3, test4",
-        objectDetails: "",
-      },
-    ],
-  }; */
-
-  /* const schemaAPI = {
-    migration_uuid: "07058f53-487e-11ee-bd6c-42010a97001d",
-    overall_status: "complete",
-    export_schema: "complete",
-    analyze_schema: "complete",
-    import_schema: "complete",
-    suggestions_errors: null,
-    sql_objects: [
-      {
-        objectType: "TABLE",
-        totalCount: 6,
-        invalidCount: 0,
-        objectNames: "test5, test6, test1, test2, test3, test4",
-        objectDetails: "",
-      },
-    ],
-  }; */
+  const schemaAPI = data?.data || {};
 
   const schemaStates = Object.entries(schemaAPI)
     .filter(([key]) => key.endsWith("schema"))
@@ -322,18 +251,25 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({ heading, onRefetch }
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+        <YBButton
+          variant="ghost"
+          startIcon={<RefreshIcon />}
+          onClick={() => {
+            refetchMigrationSchemaTasks();
+            onRefetch();
+          }}
+        >
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>
 
-      {isFetchingData && (
+      {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!isFetchingData && (
+      {!(isFetching || isFetchingAPI) && (
         <>
           {schemaAPI.overall_status === "complete" && (
             <Box display="flex" gridGap={4} alignItems="center" mb={4}>

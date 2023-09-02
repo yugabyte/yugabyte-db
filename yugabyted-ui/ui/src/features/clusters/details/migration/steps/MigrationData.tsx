@@ -12,6 +12,7 @@ import {
 } from "@app/components";
 import { MigrationPhase } from "../migration";
 import RefreshIcon from "@app/assets/refresh.svg";
+import { useGetVoyagerDataMigrationMetricsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -65,79 +66,28 @@ interface MigrationProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  isFetching?: boolean;
 }
 
-export const MigrationData: FC<MigrationProps> = ({ heading, onRefetch }) => {
+export const MigrationData: FC<MigrationProps> = ({
+  heading,
+  migration,
+  onRefetch,
+  isFetching = false,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
 
-  const isFetchingData = false;
+  const {
+    data,
+    isFetching: isFetchingAPI,
+    refetch: refetchMigrationMetrics,
+  } = useGetVoyagerDataMigrationMetricsQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
 
-  const dataAPI = {
-    metrics: [
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST1",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 42700,
-        count_total_rows: 42700,
-        invocation_timestamp: "2023-08-27 22:37:13",
-      },
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST2",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 42700,
-        count_total_rows: 52700,
-        invocation_timestamp: "2023-08-27 22:37:24",
-      },
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST3",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 62700,
-        count_total_rows: 62700,
-        invocation_timestamp: "2023-08-27 22:37:50",
-      },
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST4",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 82700,
-        count_total_rows: 82700,
-        invocation_timestamp: "2023-08-27 22:37:46",
-      },
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST5",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 82700,
-        count_total_rows: 82700,
-        invocation_timestamp: "2023-08-27 22:38:14",
-      },
-      {
-        migration_uuid: "34fdb71d-4514-11ee-9019-42010a97001d",
-        table_name: "YUGABYTED",
-        schema_name: "YUGABYTED.TEST6",
-        migration_phase: 2,
-        status: 3,
-        count_live_rows: 157000,
-        count_total_rows: 157000,
-        invocation_timestamp: "2023-08-27 22:39:01",
-      },
-    ],
-  };
+  const dataAPI = { metrics: data?.metrics || [] };
 
   const phase = dataAPI.metrics[0]?.migration_phase ?? 0;
 
@@ -147,14 +97,18 @@ export const MigrationData: FC<MigrationProps> = ({ heading, onRefetch }) => {
         table_name: data.table_name,
         exportPercentage:
           data.migration_phase === MigrationPhase["Export Data"]
-            ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
-            : data.migration_phase > MigrationPhase["Export Data"]
+            ? data.count_live_rows && data.count_total_rows
+              ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+              : 0
+            : (data.migration_phase ? data.migration_phase > MigrationPhase["Export Data"] : 0)
             ? 100
             : 0,
         importPercentage:
           data.migration_phase === MigrationPhase["Import Data"]
-            ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
-            : data.migration_phase > MigrationPhase["Import Data"]
+            ? data.count_live_rows && data.count_total_rows
+              ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+              : 0
+            : (data.migration_phase ? data.migration_phase > MigrationPhase["Import Data"] : 0)
             ? 100
             : 0,
       })),
@@ -216,18 +170,25 @@ export const MigrationData: FC<MigrationProps> = ({ heading, onRefetch }) => {
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+        <YBButton
+          variant="ghost"
+          startIcon={<RefreshIcon />}
+          onClick={() => {
+            refetchMigrationMetrics();
+            onRefetch();
+          }}
+        >
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>
 
-      {isFetchingData && (
+      {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!isFetchingData && (
+      {!(isFetching || isFetchingAPI) && (
         <>
           {phase > MigrationPhase["Import Data"] && (
             <Box display="flex" gridGap={4} alignItems="center" mb={5}>

@@ -7,6 +7,7 @@ import RefreshIcon from "@app/assets/refresh.svg";
 import { MigrationStepNA } from "../MigrationStepNA";
 import MigrationAccordionTitle from "../MigrationAccordionTitle";
 import { ErrorRounded, InfoOutlined } from "@material-ui/icons";
+import { useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -41,35 +42,28 @@ interface MigrationPlanAssessProps {
   migration: Migration;
   step: number;
   onRefetch: () => void;
+  isFetching?: boolean;
 }
 
-export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, onRefetch }) => {
+export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
+  heading,
+  migration,
+  onRefetch,
+  isFetching = false,
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const theme = useTheme();
 
-  const isFetchingData = false;
+  const {
+    data,
+    isFetching: isFetchingAPI,
+    refetch: refetchMigrationAssesmentDetails,
+  } = useGetVoyagerMigrationAssesmentDetailsQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
 
-  /* const assessmentAPI = {
-    assesment_status: false,
-    top_errors: [],
-    top_suggestions: [],
-    complexity_overview: [],
-  }; */
-
-  const assessmentAPI = {
-    assesment_status: true,
-    top_errors: ["error"],
-    top_suggestions: ["suggestion"],
-    complexity_overview: [
-      {
-        schema: "DMS",
-        sql_objects_count: 6,
-        table_count: 6,
-        complexity: "Easy",
-      },
-    ],
-  };
+  const assessmentAPI = data?.data || {};
 
   const isComplete = assessmentAPI.assesment_status === true;
 
@@ -115,18 +109,25 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, onR
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
+        <YBButton
+          variant="ghost"
+          startIcon={<RefreshIcon />}
+          onClick={() => {
+            refetchMigrationAssesmentDetails();
+            onRefetch();
+          }}
+        >
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>
 
-      {isFetchingData && (
+      {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!isFetchingData && (
+      {!(isFetching || isFetchingAPI) && (
         <>
           <Box display="flex" gridGap={4} alignItems="center">
             <Box px={!isComplete ? 1 : 0}>
@@ -154,13 +155,13 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, onR
               titleContent={
                 <MigrationAccordionTitle
                   title={t("clusterDetail.voyager.planAndAssess.topSuggestions")}
-                  count={assessmentAPI.top_suggestions.length}
+                  count={assessmentAPI.top_suggestions?.length}
                   color={theme.palette.warning[100]}
                 />
               }
               defaultExpanded={isComplete}
             >
-              {assessmentAPI.top_suggestions.length === 0 ? (
+              {!assessmentAPI.top_suggestions?.length ? (
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
@@ -183,13 +184,13 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, onR
               titleContent={
                 <MigrationAccordionTitle
                   title={t("clusterDetail.voyager.planAndAssess.topErrors")}
-                  count={assessmentAPI.top_errors.length}
+                  count={assessmentAPI.top_errors?.length}
                   color={theme.palette.error[100]}
                 />
               }
               defaultExpanded={isComplete}
             >
-              {assessmentAPI.top_errors.length === 0 ? (
+              {!assessmentAPI.top_errors?.length ? (
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
@@ -207,7 +208,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({ heading, onR
               titleContent={t("clusterDetail.voyager.planAndAssess.complexityOverview")}
               defaultExpanded={isComplete}
             >
-              {assessmentAPI.complexity_overview.length === 0 ? (
+              {!assessmentAPI.complexity_overview?.length ? (
                 <MigrationStepNA />
               ) : (
                 <Box flex={1} px={2} minWidth={0}>
