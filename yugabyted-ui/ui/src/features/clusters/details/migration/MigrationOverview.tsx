@@ -6,15 +6,17 @@ import {
   Link,
   makeStyles,
   MenuItem,
+  Paper,
   Typography,
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { GenericFailure, YBDropdown } from "@app/components";
+import { GenericFailure, YBButton, YBDropdown } from "@app/components";
 import { MigrationList } from "./MigrationList";
 import TriangleDownIcon from "@app/assets/caret-down.svg";
 import { MigrationDetails } from "./MigrationDetails";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import { useGetVoyagerMigrationTasksQuery, VoyagerMigrationDetails } from "@app/api/src";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -34,7 +36,7 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(1.5),
   },
   heading: {
-    marginBottom: theme.spacing(5),
+    marginBottom: theme.spacing(4),
   },
   link: {
     "&:link, &:focus, &:active, &:visited, &:hover": {
@@ -155,11 +157,24 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
       {!isFetchingMigrationTasks && migrationData && (
         <>
           {!selectedMigration ? (
-            <MigrationList
-              migrationData={migrationData}
-              onSelectMigration={setSelectedMigration}
-              onRefetch={refetch}
-            />
+            <Box>
+              <Paper>
+                <Box p={4}>
+                  <Box display="flex" justifyContent="space-between" alignItems="start">
+                    <Typography variant="h4" className={classes.heading}>
+                      {t("clusterDetail.voyager.migrations")}
+                    </Typography>
+                    <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+                      {t("clusterDetail.performance.actions.refresh")}
+                    </YBButton>
+                  </Box>
+                  <MigrationList
+                    migrationData={migrationData}
+                    onSelectMigration={setSelectedMigration}
+                  />
+                </Box>
+              </Paper>
+            </Box>
           ) : (
             <MigrationDetails
               steps={migrationSteps}

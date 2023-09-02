@@ -1,13 +1,12 @@
 import React, { FC } from "react";
-import { Box, Paper, Typography, makeStyles } from "@material-ui/core";
+import { Box, makeStyles } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { YBButton, YBTable } from "@app/components";
+import { YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
 import { migrationPhases } from "./migration";
-import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -24,10 +23,7 @@ const useStyles = makeStyles((theme) => ({
   },
   easyComp: {
     color: theme.palette.success.main,
-  },
-  heading: {
-    marginBottom: theme.spacing(4),
-  },
+  }
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
@@ -66,14 +62,9 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
 interface MigrationListProps {
   migrationData: Migration[];
   onSelectMigration: (migration: Migration) => void;
-  onRefetch: () => void;
 }
 
-export const MigrationList: FC<MigrationListProps> = ({
-  migrationData,
-  onSelectMigration,
-  onRefetch,
-}) => {
+export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectMigration }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -164,27 +155,15 @@ export const MigrationList: FC<MigrationListProps> = ({
   }
 
   return (
-    <Paper>
-      <Box p={4}>
-        <Box display="flex" justifyContent="space-between" alignItems="start">
-          <Typography variant="h4" className={classes.heading}>
-            {t("clusterDetail.voyager.migrations")}
-          </Typography>
-          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
-            {t("clusterDetail.performance.actions.refresh")}
-          </YBButton>
-        </Box>
-        <YBTable
-          data={migrationData}
-          columns={migrationColumns}
-          options={{
-            pagination: false,
-            rowHover: true,
-            onRowClick: (_, { dataIndex }) => onSelectMigration(migrationData[dataIndex]),
-          }}
-          withBorder={false}
-        />
-      </Box>
-    </Paper>
+    <YBTable
+      data={migrationData}
+      columns={migrationColumns}
+      options={{
+        pagination: false,
+        rowHover: true,
+        onRowClick: (_, { dataIndex }) => onSelectMigration(migrationData[dataIndex]),
+      }}
+      withBorder={false}
+    />
   );
 };

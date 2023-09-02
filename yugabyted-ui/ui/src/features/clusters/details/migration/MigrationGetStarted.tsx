@@ -20,8 +20,9 @@ export const useStyles = makeStyles((theme) => ({
     width: "100%",
     minHeight: 325,
     padding: theme.spacing(0, 4),
-    margin: theme.spacing(2, "auto", 0, "auto"),
+    margin: theme.spacing(0, "auto"),
     borderRadius: theme.shape.borderRadius,
+    border: "none",
   },
 }));
 
