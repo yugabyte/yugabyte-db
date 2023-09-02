@@ -25,12 +25,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
+  const complexityL = complexity.toLowerCase();
+
   const className =
-    complexity === "Hard"
+    complexityL === "hard"
       ? classes.hardComp
-      : complexity === "Medium"
+      : complexityL === "medium"
       ? classes.mediumComp
-      : complexity === "Easy"
+      : complexityL === "easy"
       ? classes.easyComp
       : undefined;
 
@@ -63,7 +65,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const assessmentAPI = data?.data || {};
+  const assessmentAPI = (data as any) || {};
 
   const isComplete = assessmentAPI.assesment_status === true;
 
@@ -165,7 +167,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
-                  {assessmentAPI.top_suggestions.map((suggestion) => (
+                  {assessmentAPI.top_suggestions.map((suggestion: any) => (
                     <Box
                       key={suggestion}
                       display="flex"
@@ -194,7 +196,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
-                  {assessmentAPI.top_errors.map((error) => (
+                  {assessmentAPI.top_errors.map((error: any) => (
                     <Box key={error} display="flex" alignItems="center" gridGap={theme.spacing(1)}>
                       <ErrorRounded color="error" />
                       <Typography variant="body2">{error}</Typography>

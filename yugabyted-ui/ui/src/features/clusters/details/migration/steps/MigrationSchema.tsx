@@ -160,7 +160,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const schemaAPI = data?.data || {};
+  const schemaAPI = (data as any) || {};
 
   const schemaStates = Object.entries(schemaAPI)
     .filter(([key]) => key.endsWith("schema"))

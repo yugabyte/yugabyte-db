@@ -27,12 +27,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
+  const complexityL = complexity.toLowerCase();
+
   const className =
-    complexity === "Hard"
+    complexityL === "hard"
       ? classes.hardComp
-      : complexity === "Medium"
+      : complexityL === "medium"
       ? classes.mediumComp
-      : complexity === "Easy"
+      : complexityL === "easy"
       ? classes.easyComp
       : undefined;
 
