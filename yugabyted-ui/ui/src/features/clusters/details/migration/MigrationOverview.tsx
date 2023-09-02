@@ -73,7 +73,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
 
   const {
     data: migrationDataList,
-    isFetching: isFetchingMigrationTasks,
+    isLoading: isLoadingMigrationTasks,
     refetch: refetchMigrationTasks,
     isError: isErrorMigrationTasks,
   } = useGetVoyagerMigrationTasksQuery({});
@@ -148,13 +148,13 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
 
       {isErrorMigrationTasks && <GenericFailure />}
 
-      {isFetchingMigrationTasks && (
+      {isLoadingMigrationTasks && (
         <Box textAlign="center" pt={4} pb={4} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!isFetchingMigrationTasks && migrationData && (
+      {!isLoadingMigrationTasks && migrationData && (
         <>
           {!selectedMigration ? (
             <Box>
@@ -180,7 +180,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
               steps={migrationSteps}
               migration={selectedMigration}
               onRefetch={refetch}
-              isFetching={isFetchingMigrationTasks}
+              isFetching={isLoadingMigrationTasks}
             />
           )}
         </>
