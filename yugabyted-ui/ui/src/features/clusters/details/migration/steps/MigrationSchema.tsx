@@ -285,18 +285,16 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
             </Box>
           )}
 
-          {schemaAPI.overall_status !== "complete" && (
-            <Box>
-              <YBTable
-                data={schemaStates}
-                columns={schemaStateColumns}
-                options={{
-                  pagination: false,
-                }}
-                withBorder={false}
-              />
-            </Box>
-          )}
+          <Box>
+            <YBTable
+              data={schemaStates}
+              columns={schemaStateColumns}
+              options={{
+                pagination: false,
+              }}
+              withBorder={false}
+            />
+          </Box>
 
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} mt={5}>
             <YBAccordion
