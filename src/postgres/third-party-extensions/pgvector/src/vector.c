@@ -17,6 +17,13 @@
 #include "utils/float.h"
 #else
 #include <float.h>
+/*
+ * YB Note: PG versions < 12 declared the int 'extra_float_digits' in
+ * utils/builtins.h. As part of commit a09ec42b5cadc5993da902c52c2e399f012eeebf
+ * this was moved to utils/float.h. To avoid including the header file for a
+ * single int, 'extra_float_digits' is declared here.
+ */
+extern PGDLLIMPORT int extra_float_digits;
 #endif
 
 #if PG_VERSION_NUM < 130000

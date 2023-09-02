@@ -8012,19 +8012,25 @@ set_config_option(const char *name, const char *value,
 	 * the use startup packet to set a session parameter) then it won't be
 	 * supported.
 	 *
-	 * TODO (janand): Support the setting of session parameter via startup packet.
+	 * TODO (janand) #18884 Support the setting of session parameter via startup
+	 * packet.
+	 *
+	 * TODO (janand) #18885 For RESET command add an identifier,
+	 * 		for better memory management in shared memory.
 	 *
 	 * PGC_SUSET is used in case of a super user use a SET statement.
 	 */
-	if (changeVal && source != YSQL_CONN_MGR &&
-		(context == PGC_SUSET || context == PGC_USERSET))
+	if (changeVal && 			/* Add only if the parameter value is changed */
+		source != YSQL_CONN_MGR && /* Don't add the parameter to the changed
+									* list, if it is set from YSQL CONN MGR */
+		(context == PGC_SUSET || context == PGC_USERSET || /* SET statement */
+		 value == NULL))								   /* RESET statement */
 	{
 		YbAddToChangedSessionParametersList(name);
 	}
 
 	return changeVal ? 1 : -1;
 }
-
 
 /*
  * Set the fields for source file and line number the setting came from.

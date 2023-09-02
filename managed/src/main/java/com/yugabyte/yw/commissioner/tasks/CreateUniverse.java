@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -110,17 +109,16 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   updateTaskDetailsInDB(taskParams());
                 }
               });
-
-      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+      boolean cacheYCQLAuthPass =
+          primaryCluster.userIntent.enableYCQL
+              && primaryCluster.userIntent.enableYCQLAuth
+              && !primaryCluster.userIntent.defaultYcqlPassword;
+      boolean cacheYSQLAuthPass =
+          primaryCluster.userIntent.enableYSQL
+              && primaryCluster.userIntent.enableYSQLAuth
+              && !primaryCluster.userIntent.defaultYsqlPassword;
+      if (cacheYCQLAuthPass || cacheYSQLAuthPass) {
         if (isFirstTry()) {
-          if (isYCQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-                RedactingService.redactString(ycqlPassword);
-          }
-          if (isYSQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-                RedactingService.redactString(ysqlPassword);
-          }
           log.debug("Storing passwords in memory");
           passwordStore.put(
               universe.getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
