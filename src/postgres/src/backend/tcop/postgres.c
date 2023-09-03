@@ -5885,7 +5885,13 @@ PostgresMain(int argc, char *argv[],
 				{
 					start_xact_command();
 					YbHandleSetSessionParam(pq_getmsgint(&input_message, 4));
+					int new_shmem_key = yb_logical_client_shmem_key;
 					finish_xact_command();
+
+					// finish_xact_command() resets the yb_logical_client_shmem_key value.
+					if (new_shmem_key > 0)
+						yb_logical_client_shmem_key = new_shmem_key;
+
 					send_ready_for_query = true;
 				}
 				else

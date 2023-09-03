@@ -13,12 +13,23 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
-static int yb_get_stats_index()
+static int yb_get_stats_index(struct ConnectionStats *yb_stats,
+			      const char *db_name)
 {
-	static int index = 0;
-	return ++index;
-}
+	if (strlen(db_name) >= DB_NAME_MAX_LEN)
+		return -1;
 
+	for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+		if (strncmp(yb_stats[i].pool_name, db_name, DB_NAME_MAX_LEN) ==
+		    0)
+			return i;
+
+		if (strncmp(yb_stats[i].pool_name, "", DB_NAME_MAX_LEN) == 0)
+			return i;
+	}
+
+	return -1;
+}
 
 static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			   od_stat_t *avg,
@@ -40,18 +51,24 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			       "control_connection");
 		} else {
 			if (route->id.yb_stats_index == -1) {
-				route->id.yb_stats_index = yb_get_stats_index();
+				route->id.yb_stats_index = yb_get_stats_index(
+					instance->yb_stats, route->id.database);
 			}
-			strcpy(instance->yb_stats[route->id.yb_stats_index]
-				       .pool_name,
-			       route->id.database);
+
 			index = route->id.yb_stats_index;
+			strcpy(instance->yb_stats[index].pool_name,
+			       route->id.database);
 		}
 
+		od_debug(&instance->logger, "stats", NULL, NULL,
+			 "Updating stats for db %s with index %d",
+			 route->id.database, index);
+
 		if (index == -1) {
-			od_error(&instance->logger, "warmup", NULL, NULL,
-				 "Unexpected value of index for yb stats");
-			return 0;
+			od_error(&instance->logger, "stats", NULL, NULL,
+				 "Unable to find the index for db %s",
+				 route->id.database);
+			return -1;
 		}
 
 		od_route_lock(route);
