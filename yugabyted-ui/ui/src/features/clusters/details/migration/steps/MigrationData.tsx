@@ -89,40 +89,44 @@ export const MigrationData: FC<MigrationProps> = ({
 
   const dataAPI = { metrics: data?.metrics || [] };
 
-  const phase = dataAPI.metrics[0]?.migration_phase ?? 0;
-
-  const migrationProgressData = React.useMemo(
+  const migrationExportProgressData = React.useMemo(
     () =>
-      dataAPI.metrics.map((data) => ({
-        table_name: data.table_name,
-        exportPercentage:
-          data.migration_phase === MigrationPhase["Export Data"]
-            ? data.count_live_rows && data.count_total_rows
+      dataAPI.metrics
+        .filter((m) => m.migration_phase === MigrationPhase["Export Data"])
+        .map((data) => ({
+          table_name: data.table_name,
+          exportPercentage:
+            data.count_live_rows && data.count_total_rows
               ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
-              : 0
-            : (data.migration_phase ? data.migration_phase > MigrationPhase["Export Data"] : 0)
-            ? 100
-            : 0,
-        importPercentage:
-          data.migration_phase === MigrationPhase["Import Data"]
-            ? data.count_live_rows && data.count_total_rows
+              : 0,
+        })),
+    [dataAPI]
+  );
+
+  const migrationImportProgressData = React.useMemo(
+    () =>
+      dataAPI.metrics
+        .filter((m) => m.migration_phase === MigrationPhase["Import Data"])
+        .map((data) => ({
+          table_name: data.table_name,
+          importPercentage:
+            data.count_live_rows && data.count_total_rows
               ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
-              : 0
-            : (data.migration_phase ? data.migration_phase > MigrationPhase["Import Data"] : 0)
-            ? 100
-            : 0,
-      })),
+              : 0,
+        })),
     [dataAPI]
   );
 
   const totalExportProgress = Math.floor(
-    migrationProgressData.reduce((acc, { exportPercentage }) => acc + exportPercentage, 0) /
-      migrationProgressData.length
+    migrationExportProgressData.reduce((acc, { exportPercentage }) => acc + exportPercentage, 0) /
+      migrationExportProgressData.length
   );
   const totalImportProgress = Math.floor(
-    migrationProgressData.reduce((acc, { importPercentage }) => acc + importPercentage, 0) /
-      migrationProgressData.length
+    migrationImportProgressData.reduce((acc, { importPercentage }) => acc + importPercentage, 0) /
+      migrationImportProgressData.length
   );
+
+  const phase = migration.migration_phase ? migration.migration_phase : 0;
 
   const migrationImportColumns = [
     {
@@ -233,7 +237,7 @@ export const MigrationData: FC<MigrationProps> = ({
                 </Box>
                 <Box mt={2}>
                   <YBTable
-                    data={migrationProgressData}
+                    data={migrationExportProgressData}
                     columns={migrationExportColumns}
                     options={{
                       pagination: true,
@@ -273,7 +277,7 @@ export const MigrationData: FC<MigrationProps> = ({
                 </Box>
                 <Box mt={2}>
                   <YBTable
-                    data={migrationProgressData}
+                    data={migrationImportProgressData}
                     columns={migrationImportColumns}
                     options={{
                       pagination: true,

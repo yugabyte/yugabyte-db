@@ -5,6 +5,11 @@ import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { STATUS_TYPES, YBStatus, YBTooltip } from "@app/components";
 import { MigrationPhase, MigrationStep, migrationPhases, migrationSteps } from "./migration";
+import {
+  useGetVoyagerMigrateSchemaTasksQuery,
+  useGetVoyagerMigrationAssesmentDetailsQuery,
+} from "@app/api/src";
+import type { Migration } from "./MigrationOverview";
 
 const useStyles = makeStyles((theme) => ({
   wrapper: {
@@ -72,6 +77,7 @@ interface MigrationTilesProps {
   steps: string[];
   currentStep?: number;
   phase?: number;
+  migration: Migration;
   onStepChange?: (step: number) => void;
   isFetching?: boolean;
 }
@@ -81,10 +87,19 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
   onStepChange,
   currentStep,
   phase,
+  migration,
   isFetching = false,
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
+
+  const { data: migrationAssessmentData } = useGetVoyagerMigrationAssesmentDetailsQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
+
+  const { data: migrationSchemaData } = useGetVoyagerMigrateSchemaTasksQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
 
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Plan and Assess"]]) {
@@ -148,6 +163,14 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               // Plan and assess will be completed
               completed = true;
             }
+
+            // Extra check for plan and assess
+            if (
+              index === MigrationStep["Plan and Assess"] &&
+              migrationAssessmentData?.data?.assesment_status === true
+            ) {
+              completed = true;
+            }
           }
 
           // Export data and Import schema phase
@@ -163,9 +186,17 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               disabled = true;
               notStarted = true;
             }
+
+            // Extra check for migrate schema
+            if (
+              index === MigrationStep["Migrate Schema"] &&
+              migrationSchemaData?.data?.overall_status === "complete"
+            ) {
+              completed = true;
+            }
           }
 
-          // Import schema phase
+          // Import data phase
           else if (phase === MigrationPhase["Import Data"]) {
             if (index <= MigrationStep["Migrate Schema"]) {
               // Plan and assess and Migrate schema will be completed

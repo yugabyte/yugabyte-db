@@ -45,6 +45,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
                 currentStep={selectedStep}
                 onStepChange={setSelectedStep}
                 phase={migration.migration_phase}
+                migration={migration}
                 isFetching={isFetching}
               />
             </Box>
