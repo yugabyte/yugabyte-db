@@ -73,7 +73,13 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const assessmentAPI = (data as MigrationAssesmentInfo) || {};
+
+  const assessmentAPI = React.useMemo(() => {
+    const assessmentData = (data as MigrationAssesmentInfo) || {};
+    assessmentData.top_suggestions = assessmentData.top_suggestions?.filter(s => s.trim());
+    assessmentData.top_errors = assessmentData.top_errors?.filter(s => s.trim());
+    return assessmentData;
+  }, [data]);
 
   const isComplete = assessmentAPI.assesment_status === true;
 
