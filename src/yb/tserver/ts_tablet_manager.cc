@@ -115,6 +115,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -778,6 +779,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
     const std::unordered_set<StatefulServiceKind>& hosted_services) {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::CreatingNewTablet);
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }

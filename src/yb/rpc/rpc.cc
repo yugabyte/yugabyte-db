@@ -48,6 +48,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -329,6 +330,8 @@ void Rpcs::Shutdown() {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
+      SCOPED_WAIT_STATUS(util::WaitStateCode::RpcsWaitOnMutexInShutdown);
+      util::WaitStateInfo::AssertWaitAllowed();
       if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }

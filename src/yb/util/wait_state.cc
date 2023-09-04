@@ -14,8 +14,11 @@
 #include "yb/util/wait_state.h"
 
 #include <arpa/inet.h>
+#include <unordered_map>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 using yb::util::WaitStateCode;
@@ -54,6 +57,9 @@ void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
 
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
+#ifndef NDEBUG
+  , thread_id_(0)
+#endif
 #ifdef TRACK_WAIT_HISTORY
   , num_updates_(0) 
 #endif 
@@ -78,12 +84,32 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
   return code_;
 }
 
+void WaitStateInfo::push_state(WaitStateCode c) {
+  DCHECK(state_to_pop_to_.load() == WaitStateCode::Unused) << "We only support one level of push/pop";
+  state_to_pop_to_ = code_.exchange(c, std::memory_order_acq_rel);
+}
+
+void WaitStateInfo::pop_state(WaitStateCode c) {
+  DCHECK_EQ(code_.load(), c) << "We only support one level of push/pop. "
+      << "Previous state was " << util::ToString(state_to_pop_to_.load());
+  code_ = state_to_pop_to_.exchange(WaitStateCode::Unused, std::memory_order_acq_rel);
+}
+
 void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
+  std::string old_to_string;
+  if (VLOG_IS_ON(3)) {
+    old_to_string = ToString();
+  }
+  if (!WaitsForSomething(c)) {
+    c = WaitStateCode::ActiveOnCPU;
+  }
   auto ret = code_.compare_exchange_strong(prev, c);
   if (!ret) {
     return;
   }
+  check_and_update_thread_id(prev, c);
   VTRACE(0, "cas-ed $0 -> $1", util::ToString(prev), util::ToString(c));
+  VLOG(3) << this << " " << old_to_string << " setting state to " << util::ToString(c);
   if (freeze_) {
     // See comments in ::set_state()
     if (frozen_state_code_ == WaitStateCode::Unused) {
@@ -105,6 +131,8 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
 }
 
 void WaitStateInfo::set_state(WaitStateCode c) {
+  TRACE(util::ToString(c));
+  check_and_update_thread_id(code_.load(), c);
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   if (freeze_) {
     // If this is the first time we are calling set_state after freeze() was called,
@@ -174,6 +202,57 @@ void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
   metadata_.set_client_node_ip(endpoint);
 }
 
+bool WaitsForLock(WaitStateCode c) {
+  switch (c) {
+    case WaitStateCode::LockedBatchEntry_Lock:
+    case WaitStateCode::TransactionStatusCache_DoGetCommitData:
+    case WaitStateCode::XreplCatalogManagerWaitForIsBootstrapRequired:
+    case WaitStateCode::RpcsWaitOnMutexInShutdown:
+    case WaitStateCode::MVCCWaitForSafeTime:
+    case WaitStateCode::TxnCoordWaitForMutexInPrepareForDeletion:
+    case WaitStateCode::PgResponseCache_Get:
+    case WaitStateCode::BackfillIndexWaitForAFreeSlot:
+    case WaitStateCode::YBCSyncLeaderMasterRpc:
+    case WaitStateCode::YBCFindMasterProxy:
+    case WaitStateCode::TxnResolveSealedStatus:
+    case WaitStateCode::PgClientSessionStartExchange:
+    case WaitStateCode::WaitForYsqlBackendsCatalogVersion:
+     return true;
+    default:
+      return false;
+  }
+}
+
+bool WaitsForIO(WaitStateCode c) {
+  switch (c) {
+    case WaitStateCode::ApplyingRaftEdits:
+    case WaitStateCode::BlockCacheReadFromDisk:
+    case WaitStateCode::CloseFile:
+    case WaitStateCode::Handling:
+    case WaitStateCode::WALLogSync:
+    case WaitStateCode::CreatingNewTablet:
+     return true;
+    default:
+      return false;
+  }
+}
+
+bool WaitsForThread(WaitStateCode c) {
+  switch (c) {
+    case WaitStateCode::RaftWaitingForQuorum:
+    case WaitStateCode::LookingUpTablet:
+    case WaitStateCode::ResponseQueued:
+    case WaitStateCode::Unused:
+     return true;
+    default:
+      return false;
+  }
+}
+
+bool WaitsForSomething(WaitStateCode c) {
+  return WaitsForIO(c) || WaitsForLock(c) || WaitsForThread(c);
+}
+
 void WaitStateInfo::set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.top_level_node_id = top_level_node_id;
@@ -192,6 +271,68 @@ void WaitStateInfo::UpdateAuxInfo(const AUHAuxInfo& aux) {
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
   threadlocal_wait_state_ = wait_state;
 }
+
+#ifndef NDEBUG
+simple_spinlock WaitStateInfo::does_io_lock_;
+simple_spinlock WaitStateInfo::does_wait_lock_;
+std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_io(200);
+std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_wait(200);
+
+
+void WaitStateInfo::AssertIOAllowed() {
+  auto wait_state = CurrentWaitState();
+  if (wait_state) {
+    auto state = wait_state->get_state();
+    bool inserted = false;
+    {
+      std::lock_guard<simple_spinlock> l(does_io_lock_);
+      inserted = does_io.try_emplace(state, true).second;
+    }
+    LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
+    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
+    DCHECK(WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+  }
+}
+
+void WaitStateInfo::AssertWaitAllowed() {
+  auto wait_state = CurrentWaitState();
+  if (wait_state) {
+    auto state = wait_state->get_state();
+    bool inserted = false;
+    {
+      std::lock_guard<simple_spinlock> l(does_wait_lock_);
+      inserted = does_wait.try_emplace(state, true).second;
+    }
+    LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
+    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
+    DCHECK(WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+  }
+}
+
+// Isn't really using locks to update thread_name_. But I think that's ok.
+void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode next) {
+  auto tid = Thread::CurrentThreadId();
+  if (tid != thread_id_.load()) {
+    auto* current_thread = Thread::current_thread();
+    if (!current_thread) {
+      LOG(ERROR) << "Current thread is not a thread. Thread::current_thread() returns NULL";
+    }
+    auto cur_thread_name = current_thread->name();
+    VLOG(1) << "Setting state to " << util::ToString(next) << " on " << cur_thread_name
+            << " was previously " << util::ToString(prev) << " set on " << thread_name_;
+    thread_name_ = std::move(cur_thread_name);
+    thread_id_ = tid;
+    DCHECK(WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
+  }
+}
+
+#else
+void WaitStateInfo::AssertIOAllowed() {}
+
+void WaitStateInfo::AssertWaitAllowed() {}
+
+void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode next) {}
+#endif // NDEBUG
 
 ScopedWaitState::ScopedWaitState(WaitStateInfoPtr wait_state) {
   prev_state_ = WaitStateInfo::CurrentWaitState();
@@ -219,6 +360,10 @@ ScopedWaitStatus::ScopedWaitStatus(WaitStateCode state)
 }
 
 ScopedWaitStatus::~ScopedWaitStatus() {
+  ResetToPrevStatus();
+}
+
+void ScopedWaitStatus::ResetToPrevStatus() {
   if (wait_state_ && wait_state_->get_state() == state_) {
     wait_state_->set_state(prev_state_);
   }

@@ -18,6 +18,7 @@
 #include <iosfwd>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "yb/util/flags.h"
 
@@ -53,6 +54,15 @@
 #define SCOPED_WAIT_STATUS(state) \
   SCOPED_WAIT_STATUS_FOR(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
+#define PUSH_WAIT_STATUS_TO(ptr, state) \
+  if (ptr) ptr->push_state(state)
+#define PUSH_WAIT_STATUS(state) \
+  PUSH_WAIT_STATUS_TO(yb::util::WaitStateInfo::CurrentWaitState(), (state))
+
+#define POP_WAIT_STATUS_TO(ptr, state) \
+  if (ptr) ptr->pop_state(state)
+#define POP_WAIT_STATUS(state) \
+  POP_WAIT_STATUS_TO(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
 /* ----------
  * YB AUH Wait Components
@@ -61,6 +71,7 @@
 #define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
 #define YB_CQL       0xD0000000U
+#define YB_YBC       0xC0000000U
 #define YB_PG        0x00000000U
 /* ----------
  * YB AUH Wait Classes
@@ -72,8 +83,8 @@
 #define YB_CONSENSUS                 0xED000000U
 #define YB_TABLET_WAIT               0xEC000000U
 #define YB_ROCKSDB                   0xEB000000U
-#define YB_CLIENT                    0xEA000000U
 #define YB_CQL_WAIT_STATE            0xDF000000U
+#define YB_CLIENT                    0xCA000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -85,76 +96,66 @@ YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
     ((Unused, 0))
+     (ActiveOnCPU)
 
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
-       (Queued) // Rpc has been queued. Waiting for Service threads to pick up
        (Handling) // Rpc handler is currently working on this rpc.
-       (HandlingDone) // Rpc handler is done.
-       (QueueingResponse) // The response is being queued.
+       // Response Queued waiting for network transfer. -- Is this expected to take long?
        (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
-       (ResponseTransferred) // Response has been transferred. RPC is done now.
 
     // Writes
-    ((AcquiringLocks, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
-        (ConflictResolution)            // Doing conflict resolution.
-        (ExecuteWrite)   // Write query is executing
-        (SubmittingToRaft)   // Write query is submitting the write operation to Raft.
-    // Reads
-    (GetSafeTime)(GetSubDoc)(DoRead)
+    ((TabletActiveOnCPU, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
+    (LockedBatchEntry_Lock)
+    (MVCCWaitForSafeTime)
+    (BackfillIndexWaitForAFreeSlot)
+
+    (TransactionStatusCache_DoGetCommitData)
+    (XreplCatalogManagerWaitForIsBootstrapRequired)
+    (RpcsWaitOnMutexInShutdown)
+    (TxnCoordWaitForMutexInPrepareForDeletion)
+    (PgResponseCache_Get)
+    (TxnResolveSealedStatus)
+    (PgClientSessionStartExchange)
+    (WaitForYsqlBackendsCatalogVersion)
+    (CreatingNewTablet)
 
     // OperationDriver
-    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer.
-        (PrepareAndStart) // 
-        (SubmittedToPreparer) // raft-operation has been submitted to preparer.
-        (AddedToLeader) // raft-operation written to the leader's log. Waiting for response from followers.
-        (AddedToFollower) // On the follower side.
-        (HandleFailure) // Ran into some kind of failure.
-      (Applying) // operation has been replicated/acknowledged by a majority. Applying it to the tablet.
-      (ApplyDone) // apply is done.
-
-    // UpdateConsensus
-      (Updating) // Update rpc is called on a follower
-      (UpdateReplica) // Handling UpdateReplica
-      (DoneUpdate)   // Done update
-
-    // Debugging
-    // Various specific operations in SubmittedToPrepare state
-      (SubmittedWriteToPreparer)
-      (SubmittedChangeMetadataToPreparer)
-      (SubmittedUpdateTransactionToPreparer)
-      (SubmittedSnapshotToPreparer)
-      (SubmittedTruncateToPreparer)
-      (SubmittedEmptyToPreparer)
-      (SubmittedHistoryCutoffToPreparer)
-      (SubmittedSplitToPreparer)
-      (SubmittedChangeAutoFlagsConfigToPreparer)
-      (SubmittedUnexpectedToPreparer)
+    ((RaftActiveOnCPU, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen
+      (WALLogSync) // waiting for WALEdits to be persisted.
+      (RaftWaitingForQuorum)
+      (ApplyingRaftEdits)
 
     // Flush and Compaction
     ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
-    (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
+    (OpenFile)
+    (CloseFile)
+    (DeleteFile)
+    (WriteToFile)
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
     // CQL Wait Events
     ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteWaitingForCB)
-    (CQLRead)(CQLWrite)(CQLHandling)(CQLHandlingDone)(CQLFlushAsync)(CQLFlushAsyncDone)
+    (CQLActiveOnCPU)
+    (CQLRead)(CQLWrite)
+    (CQLWaitingOnDocdb)
 
-    ((RocksDB, YB_ROCKSDB))
-       (BlockCacheLookupInCache)
-       (BlockCacheLookupCompressed)
+    ((RocksDBActiveOnCPU, YB_ROCKSDB))
        (BlockCacheReadFromDisk)
 
     // Perform Wait Events
-    ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
+    ((DmlRead, YB_PG_WAIT_PERFORM))
+    (DmlWrite)
+    (DmlReadWrite)
+    (PgPerformHandling) 
+    (PGWaitingOnDocdb)
+    (PGActiveOnCPU)
 
     // YBClient
-    ((Flushing, YB_CLIENT))
-      (FlushedWaitingForCB)
-      (YBClientRpcsSent)
-      (YBCCallbackCalled)
+    ((YBCActiveOnCPU, YB_CLIENT))
       (LookingUpTablet)
-      (TabletLookupFinished)
+      (YBCSyncLeaderMasterRpc)
+      (YBCFindMasterProxy)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
@@ -280,6 +281,11 @@ struct AUHAuxInfo {
   }
 };
 
+bool WaitsForLock(WaitStateCode c);
+bool WaitsForIO(WaitStateCode c);
+bool WaitsForThread(WaitStateCode c);
+bool WaitsForSomething(WaitStateCode c);
+
 class WaitStateInfo;
 
 // typedef WaitStateInfo* WaitStateInfoPtr;
@@ -293,6 +299,8 @@ class WaitStateInfo {
   void set_state_if(WaitStateCode prev, WaitStateCode c);
   WaitStateCode get_state() const;
   WaitStateCode get_frozen_state() const;
+  void push_state(WaitStateCode c);
+  void pop_state(WaitStateCode c);
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
@@ -336,7 +344,11 @@ class WaitStateInfo {
   static void freeze();
   static void unfreeze();
 
+  static void AssertIOAllowed();
+  static void AssertWaitAllowed();
+  void check_and_update_thread_id(util::WaitStateCode p, util::WaitStateCode n);
  private:
+  std::atomic<WaitStateCode> state_to_pop_to_{WaitStateCode::Unused};
   std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
   std::atomic<WaitStateCode> frozen_state_code_{WaitStateCode::Unused};
   static std::atomic<bool> freeze_;
@@ -344,6 +356,16 @@ class WaitStateInfo {
   mutable simple_spinlock mutex_;
   AUHMetadata metadata_ GUARDED_BY(mutex_);
   AUHAuxInfo aux_info_ GUARDED_BY(mutex_);
+
+#ifndef NDEBUG
+  static simple_spinlock does_io_lock_;
+  static simple_spinlock does_wait_lock_;
+  static std::unordered_map<util::WaitStateCode, std::atomic_bool> does_io GUARDED_BY(does_io_lock_);
+  static std::unordered_map<util::WaitStateCode, std::atomic_bool> does_wait GUARDED_BY(does_wait_lock_);
+
+  std::string thread_name_;
+  std::atomic<int64_t> thread_id_ = 0;
+#endif
 
 #ifdef TRACK_WAIT_HISTORY
   std::atomic_int16_t num_updates_ GUARDED_BY(mutex_);
@@ -372,6 +394,7 @@ class ScopedWaitStatus {
   ScopedWaitStatus(WaitStateCode state);
   ScopedWaitStatus(WaitStateInfoPtr wait_state, WaitStateCode state);
   ~ScopedWaitStatus();
+  void ResetToPrevStatus();
 
  private:
   WaitStateInfoPtr wait_state_;

@@ -249,13 +249,11 @@ YBClient* YBSession::client() const {
 }
 
 void YBSession::FlushStarted(internal::BatcherPtr batcher) {
-  SET_WAIT_STATUS(util::WaitStateCode::Flushing);
   std::lock_guard l(lock_);
   flushed_batchers_.insert(batcher);
 }
 
 void YBSession::FlushFinished(internal::BatcherPtr batcher) {
-  SET_WAIT_STATUS(util::WaitStateCode::FlushedWaitingForCB);
   std::lock_guard l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
@@ -371,6 +369,7 @@ Status YBSession::ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops) {
     }
   }
 
+  util::WaitStateInfo::AssertWaitAllowed();
   auto future_status = future.wait_until(deadline);
   SCHECK(future_status == std::future_status::ready, TimedOut, "Timed out waiting for Flush");
   auto flush_status = future.get();

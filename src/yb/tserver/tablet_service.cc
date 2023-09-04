@@ -606,8 +606,10 @@ void TabletServiceAdminImpl::BackfillIndex(
   const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::BackfillIndexWaitForAFreeSlot);
     std::unique_lock<std::mutex> l(backfill_lock_);
     while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
+      util::WaitStateInfo::AssertWaitAllowed();
       if (backfill_cond_.wait_until(l, deadline) == std::cv_status::timeout) {
         SetupErrorAndRespond(
             resp->mutable_error(),
@@ -1819,6 +1821,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // First, check tserver's catalog version.
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WaitForYsqlBackendsCatalogVersion);
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
