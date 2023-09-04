@@ -2073,7 +2073,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_name,
       info,
       deadline);
-  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCGetTableSchema);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCSyncLeaderMasterRpc);
   return sync.Wait();
 }
 
@@ -2090,7 +2090,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       info,
       deadline,
       resp);
-  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCGetTableSchema);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::YBCSyncLeaderMasterRpc);
   return sync.Wait();
 }
 

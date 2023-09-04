@@ -93,7 +93,7 @@ InboundCall::~InboundCall() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  wait_state_->set_state(util::WaitStateCode::ResponseTransferred);
+  wait_state_->set_state(util::WaitStateCode::ActiveOnCPU);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -150,7 +150,6 @@ void InboundCall::RecordCallReceived() {
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_received.Initialized()) << "Already marked as received";
   VLOG_WITH_PREFIX(4) << "Received";
-  wait_state_->set_state(util::WaitStateCode::Queued);
   timing_.time_received = MonoTime::Now();
 }
 

@@ -204,18 +204,15 @@ void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
 
 bool WaitsForLock(WaitStateCode c) {
   switch (c) {
-    case WaitStateCode::YBSessionApplyAndFlushSync:
     case WaitStateCode::LockedBatchEntry_Lock:
     case WaitStateCode::TransactionStatusCache_DoGetCommitData:
     case WaitStateCode::XreplCatalogManagerWaitForIsBootstrapRequired:
     case WaitStateCode::RpcsWaitOnMutexInShutdown:
-    case WaitStateCode::MVCCWaitOnSafeTimeForFollower:
-    case WaitStateCode::MVCCWaitOnDoGetSafeTime:
+    case WaitStateCode::MVCCWaitForSafeTime:
     case WaitStateCode::TxnCoordWaitForMutexInPrepareForDeletion:
     case WaitStateCode::PgResponseCache_Get:
     case WaitStateCode::BackfillIndexWaitForAFreeSlot:
     case WaitStateCode::YBCSyncLeaderMasterRpc:
-    case WaitStateCode::YBCGetTableSchema:
     case WaitStateCode::YBCFindMasterProxy:
     case WaitStateCode::TxnResolveSealedStatus:
     case WaitStateCode::PgClientSessionStartExchange:
@@ -244,11 +241,8 @@ bool WaitsForThread(WaitStateCode c) {
   switch (c) {
     case WaitStateCode::RaftWaitingForQuorum:
     case WaitStateCode::LookingUpTablet:
-    case WaitStateCode::Queued:
     case WaitStateCode::ResponseQueued:
-    case WaitStateCode::ResponseTransferred:
     case WaitStateCode::Unused:
-    case WaitStateCode::YBClientRpcsSent:
      return true;
     default:
       return false;

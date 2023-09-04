@@ -100,16 +100,14 @@ YB_DEFINE_ENUM_TYPE(
 
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
-       (Queued) // Rpc has been queued. Waiting for Service threads to pick up. Currently unused.
        (Handling) // Rpc handler is currently working on this rpc.
+       // Response Queued waiting for network transfer. -- Is this expected to take long?
        (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
-       (ResponseTransferred) // Response has been transferred. RPC is done now.
 
     // Writes
     ((TabletActiveOnCPU, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
     (LockedBatchEntry_Lock)
-    (MVCCWaitOnSafeTimeForFollower)
-    (MVCCWaitOnDoGetSafeTime)
+    (MVCCWaitForSafeTime)
     (BackfillIndexWaitForAFreeSlot)
 
     (TransactionStatusCache_DoGetCommitData)
@@ -156,10 +154,7 @@ YB_DEFINE_ENUM_TYPE(
     // YBClient
     ((YBCActiveOnCPU, YB_CLIENT))
       (LookingUpTablet)
-      (YBClientRpcsSent)
-      (YBSessionApplyAndFlushSync)
       (YBCSyncLeaderMasterRpc)
-      (YBCGetTableSchema)
       (YBCFindMasterProxy)
     )
 
