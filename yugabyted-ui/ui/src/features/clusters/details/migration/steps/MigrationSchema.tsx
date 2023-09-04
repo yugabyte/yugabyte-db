@@ -10,6 +10,7 @@ import {
 } from "@material-ui/core";
 import type { Migration } from "../MigrationOverview";
 import {
+  GenericFailure,
   STATUS_TYPES,
   YBAccordion,
   YBButton,
@@ -36,7 +37,7 @@ import MigrationAccordionTitle from "../MigrationAccordionTitle";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import clsx from "clsx";
-import { useGetVoyagerMigrateSchemaTasksQuery } from "@app/api/src";
+import { MigrateSchemaTaskInfo, useGetVoyagerMigrateSchemaTasksQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -156,11 +157,12 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
     data,
     isFetching: isFetchingAPI,
     refetch: refetchMigrationSchemaTasks,
+    isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const schemaAPI = (data as any) || {};
+  const schemaAPI = (data as MigrateSchemaTaskInfo) || {};
 
   const schemaStates = Object.entries(schemaAPI)
     .filter(([key]) => key.endsWith("schema"))
@@ -215,7 +217,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
       name: "filePath",
       label: t("clusterDetail.voyager.migrateSchema.filename"),
       options: {
-        renderCustomBody: () => "ho",
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
       },
     },
@@ -263,13 +264,15 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
         </YBButton>
       </Box>
 
+      {isErrorMigrationSchemaTasks && <GenericFailure />}
+
       {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI) && (
+      {!(isFetching || isFetchingAPI || isErrorMigrationSchemaTasks) && (
         <>
           {schemaAPI.overall_status === "complete" && (
             <Box display="flex" gridGap={4} alignItems="center" mb={4}>

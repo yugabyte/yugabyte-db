@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { STATUS_TYPES, YBStatus, YBTooltip } from "@app/components";
 import { MigrationPhase, MigrationStep, migrationPhases, migrationSteps } from "./migration";
 import {
+  useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
   useGetVoyagerMigrationAssesmentDetailsQuery,
 } from "@app/api/src";
@@ -101,6 +102,10 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
+  const { data: migrationMetricsData } = useGetVoyagerDataMigrationMetricsQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
+
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Plan and Assess"]]) {
       return migrationPhases[MigrationPhase["Analyze Schema"]];
@@ -124,27 +129,26 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 
   return (
     <Box className={classes.wrapper}>
-      {steps.map((step, index) => {
+      {steps.map((step, stepIndex) => {
         let disabled = false;
         let notStarted = false;
         let completed = false;
         let running = false;
 
-        // Phase 0, 1    === Plan and Assess & Migrate Schema                         steps active
-        // Phase 2, 3, 4 === Plan and Assess & Migrate Schema & Migrate Data          steps active
-        // Phase 5       === Plan and Assess & Migrate Schema & Migrate Data & Verify steps active
-
         if (phase != null) {
           // Export schema phase
           if (phase === MigrationPhase["Export Schema"]) {
-            if (index >= MigrationStep["Migrate Data"]) {
-              // Everything except first two steps will be pending and disabled
+            if (
+              stepIndex === MigrationStep["Migrate Data"] ||
+              stepIndex === MigrationStep["Verify"]
+            ) {
+              // Migrate data and Verify will be pending and disabled
               notStarted = true;
               disabled = true;
-            } else if (index === MigrationStep["Plan and Assess"]) {
+            } else if (stepIndex === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be pending
               notStarted = true;
-            } else {
+            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
               // Migrate schema will be running
               running = true;
             }
@@ -152,59 +156,52 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 
           // Analyze schema phase
           else if (phase === MigrationPhase["Analyze Schema"]) {
-            if (index >= MigrationStep["Migrate Data"]) {
-              // Everything except first two steps will be pending and disabled
+            if (
+              stepIndex === MigrationStep["Migrate Data"] ||
+              stepIndex === MigrationStep["Verify"]
+            ) {
+              // Migrate data and Verify will be pending and disabled
               disabled = true;
               notStarted = true;
-            } else if (index === MigrationStep["Migrate Schema"]) {
+            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
               // Migrate schema will be running
               running = true;
-            } else {
+            } else if (stepIndex === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be completed
-              completed = true;
-            }
-
-            // Extra check for plan and assess
-            if (
-              index === MigrationStep["Plan and Assess"] &&
-              migrationAssessmentData?.data?.assesment_status === true
-            ) {
               completed = true;
             }
           }
 
           // Export data and Import schema phase
-          else if (phase <= MigrationPhase["Import Schema"]) {
-            if (index === MigrationStep["Plan and Assess"]) {
+          else if (
+            phase === MigrationPhase["Export Data"] ||
+            phase === MigrationPhase["Import Schema"]
+          ) {
+            if (stepIndex === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be completed
               completed = true;
-            } else if (index <= MigrationStep["Migrate Data"]) {
+            } else if (
+              stepIndex === MigrationStep["Migrate Schema"] ||
+              stepIndex === MigrationStep["Migrate Data"]
+            ) {
               // Migrate schema and Migrate data will be running
               running = true;
-            } else {
+            } else if (stepIndex === MigrationStep["Verify"]) {
               // Verify will be pending and disabled
               disabled = true;
               notStarted = true;
-            }
-
-            // Extra check for migrate schema
-            if (
-              index === MigrationStep["Migrate Schema"] &&
-              migrationSchemaData?.data?.overall_status === "complete"
-            ) {
-              completed = true;
             }
           }
 
           // Import data phase
           else if (phase === MigrationPhase["Import Data"]) {
-            if (index <= MigrationStep["Migrate Schema"]) {
+            if (stepIndex <= MigrationStep["Migrate Schema"]) {
               // Plan and assess and Migrate schema will be completed
               completed = true;
-            } else if (index === MigrationStep["Migrate Data"]) {
+            } else if (stepIndex === MigrationStep["Migrate Data"]) {
               // Migrate data will be running
               running = true;
-            } else {
+            } else if (stepIndex === MigrationStep["Verify"]) {
               // Verify will be pending and disabled
               disabled = true;
               notStarted = true;
@@ -212,18 +209,61 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           }
 
           // Verify phase
-          else {
+          else if (phase === MigrationPhase["Verify"]) {
             // Everything will be completed
             completed = true;
+          }
+
+          // Extra check overrides based on other migration APIs
+          if (stepIndex === MigrationStep["Plan and Assess"]) {
+            if (migrationAssessmentData?.data?.assesment_status === true) {
+              notStarted = false;
+              disabled = false;
+              completed = true;
+            }
+          } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+            if (migrationSchemaData?.data?.overall_status === "complete") {
+              notStarted = false;
+              disabled = false;
+              completed = true;
+            }
+          } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+            if (!migrationMetricsData?.metrics?.length) {
+              notStarted = true;
+            } else {
+              const importedMetrics = migrationMetricsData?.metrics
+                ?.filter((metrics) => metrics.migration_phase === MigrationPhase["Import Data"])
+                .map((data) => ({
+                  importPercentage:
+                    data.count_live_rows && data.count_total_rows
+                      ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+                      : 0,
+                }));
+
+              if (
+                importedMetrics &&
+                Math.floor(
+                  importedMetrics.reduce((acc, { importPercentage }) => acc + importPercentage, 0) /
+                    (importedMetrics.length || 1)
+                ) === 100
+              ) {
+                notStarted = false;
+                disabled = false;
+                completed = true;
+              }
+            }
           }
         }
 
         return (
           <Card key={step} className={clsx(classes.card, disabled && classes.disabledCard)}>
             <CardActionArea
-              className={clsx(classes.cardActionArea, currentStep === index && classes.selected)}
+              className={clsx(
+                classes.cardActionArea,
+                currentStep === stepIndex && classes.selected
+              )}
               disabled={disabled}
-              onClick={() => onStepChange && onStepChange(index)}
+              onClick={() => onStepChange && onStepChange(stepIndex)}
             >
               {disabled && <Box className={classes.disabledOverlay} />}
               <Box display="flex" alignItems="center" gridGap={10}>

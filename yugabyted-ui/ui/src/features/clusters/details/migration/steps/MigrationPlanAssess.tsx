@@ -2,12 +2,19 @@ import React, { FC } from "react";
 import { Box, LinearProgress, makeStyles, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../MigrationOverview";
-import { STATUS_TYPES, YBAccordion, YBButton, YBStatus, YBTable } from "@app/components";
+import {
+  GenericFailure,
+  STATUS_TYPES,
+  YBAccordion,
+  YBButton,
+  YBStatus,
+  YBTable,
+} from "@app/components";
 import RefreshIcon from "@app/assets/refresh.svg";
 import { MigrationStepNA } from "../MigrationStepNA";
 import MigrationAccordionTitle from "../MigrationAccordionTitle";
 import { ErrorRounded, InfoOutlined } from "@material-ui/icons";
-import { useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
+import { MigrationAssesmentInfo, useGetVoyagerMigrationAssesmentDetailsQuery } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -61,11 +68,12 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
     data,
     isFetching: isFetchingAPI,
     refetch: refetchMigrationAssesmentDetails,
+    isError: isErrorMigrationAssessmentDetails,
   } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const assessmentAPI = (data as any) || {};
+  const assessmentAPI = (data as MigrationAssesmentInfo) || {};
 
   const isComplete = assessmentAPI.assesment_status === true;
 
@@ -123,13 +131,15 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
         </YBButton>
       </Box>
 
+      {isErrorMigrationAssessmentDetails && <GenericFailure />}
+
       {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI) && (
+      {!(isFetching || isFetchingAPI || isErrorMigrationAssessmentDetails) && (
         <>
           <Box display="flex" gridGap={4} alignItems="center">
             <Box px={!isComplete ? 1 : 0}>
@@ -167,7 +177,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
-                  {assessmentAPI.top_suggestions.map((suggestion: any) => (
+                  {assessmentAPI.top_suggestions.map((suggestion) => (
                     <Box
                       key={suggestion}
                       display="flex"
@@ -196,7 +206,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
                 <MigrationStepNA />
               ) : (
                 <Box display="flex" gridGap={theme.spacing(1)} flexDirection="column" minWidth={0}>
-                  {assessmentAPI.top_errors.map((error: any) => (
+                  {assessmentAPI.top_errors.map((error) => (
                     <Box key={error} display="flex" alignItems="center" gridGap={theme.spacing(1)}>
                       <ErrorRounded color="error" />
                       <Typography variant="body2">{error}</Typography>

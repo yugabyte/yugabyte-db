@@ -17,6 +17,7 @@ import { MigrationDetails } from "./MigrationDetails";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import { useGetVoyagerMigrationTasksQuery, VoyagerMigrationDetails } from "@app/api/src";
 import RefreshIcon from "@app/assets/refresh.svg";
+import { StringParam, useQueryParams } from "use-query-params";
 
 const useStyles = makeStyles((theme) => ({
   label: {
@@ -74,6 +75,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const {
     data: migrationDataList,
     isLoading: isLoadingMigrationTasks,
+    isFetching: isFetchingMigrationTasks,
     refetch: refetchMigrationTasks,
     isError: isErrorMigrationTasks,
   } = useGetVoyagerMigrationTasksQuery({});
@@ -98,6 +100,17 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   });
 
   const [selectedMigration, setSelectedMigration] = React.useState<Migration>();
+  const [{ migration_uuid }, setQueryParams] = useQueryParams({
+    migration_uuid: StringParam,
+  });
+
+  React.useEffect(() => {
+    setSelectedMigration(
+      migration_uuid
+        ? migrationData?.find((migration) => migration.migration_uuid === migration_uuid)
+        : undefined
+    );
+  }, [migration_uuid]);
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
@@ -107,7 +120,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
             <Link
               className={classes.link}
               onClick={() => {
-                setSelectedMigration(undefined);
+                setQueryParams({ migration_uuid: undefined });
               }}
             >
               <Typography variant="body2" color="primary">
@@ -134,7 +147,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                     <MenuItem
                       key={migration.migration_name}
                       selected={migration.migration_name === selectedMigration.migration_name}
-                      onClick={() => setSelectedMigration(migration)}
+                      onClick={() => setQueryParams({ migration_uuid: migration.migration_uuid })}
                     >
                       {migration.migration_name}
                     </MenuItem>
@@ -170,7 +183,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                   </Box>
                   <MigrationList
                     migrationData={migrationData}
-                    onSelectMigration={setSelectedMigration}
+                    onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
                   />
                 </Box>
               </Paper>
@@ -180,7 +193,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
               steps={migrationSteps}
               migration={selectedMigration}
               onRefetch={refetch}
-              isFetching={isLoadingMigrationTasks}
+              isFetching={isFetchingMigrationTasks}
             />
           )}
         </>

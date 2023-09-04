@@ -3,6 +3,7 @@ import { Box, LinearProgress, makeStyles, Theme, Typography, useTheme } from "@m
 import { useTranslation } from "react-i18next";
 import type { Migration } from "../MigrationOverview";
 import {
+  GenericFailure,
   STATUS_TYPES,
   YBAccordion,
   YBButton,
@@ -83,6 +84,7 @@ export const MigrationData: FC<MigrationProps> = ({
     data,
     isFetching: isFetchingAPI,
     refetch: refetchMigrationMetrics,
+    isError: isErrorMigrationMetrics,
   } = useGetVoyagerDataMigrationMetricsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
@@ -119,11 +121,11 @@ export const MigrationData: FC<MigrationProps> = ({
 
   const totalExportProgress = Math.floor(
     migrationExportProgressData.reduce((acc, { exportPercentage }) => acc + exportPercentage, 0) /
-      migrationExportProgressData.length
+      (migrationExportProgressData.length || 1)
   );
   const totalImportProgress = Math.floor(
     migrationImportProgressData.reduce((acc, { importPercentage }) => acc + importPercentage, 0) /
-      migrationImportProgressData.length
+      (migrationImportProgressData.length || 1)
   );
 
   const phase = migration.migration_phase ? migration.migration_phase : 0;
@@ -186,13 +188,15 @@ export const MigrationData: FC<MigrationProps> = ({
         </YBButton>
       </Box>
 
+      {isErrorMigrationMetrics && <GenericFailure />}
+
       {(isFetching || isFetchingAPI) && (
         <Box textAlign="center" pt={2} pb={2} width="100%">
           <LinearProgress />
         </Box>
       )}
 
-      {!(isFetching || isFetchingAPI) && (
+      {!(isFetching || isFetchingAPI || isErrorMigrationMetrics) && (
         <>
           {phase > MigrationPhase["Import Data"] && (
             <Box display="flex" gridGap={4} alignItems="center" mb={5}>
@@ -214,7 +218,8 @@ export const MigrationData: FC<MigrationProps> = ({
                 <AccordionTitleComponent
                   title={t("clusterDetail.voyager.exportData")}
                   status={
-                    phase < MigrationPhase["Export Data"]
+                    phase < MigrationPhase["Export Data"] ||
+                    migrationExportProgressData.length === 0
                       ? STATUS_TYPES.PENDING
                       : totalExportProgress === 100
                       ? STATUS_TYPES.SUCCESS
@@ -252,7 +257,8 @@ export const MigrationData: FC<MigrationProps> = ({
                 <AccordionTitleComponent
                   title={t("clusterDetail.voyager.importData")}
                   status={
-                    phase < MigrationPhase["Import Data"]
+                    phase < MigrationPhase["Import Data"] ||
+                    migrationImportProgressData.length === 0
                       ? STATUS_TYPES.PENDING
                       : totalImportProgress === 100
                       ? STATUS_TYPES.SUCCESS

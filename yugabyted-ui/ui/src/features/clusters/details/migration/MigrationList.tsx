@@ -23,7 +23,7 @@ const useStyles = makeStyles((theme) => ({
   },
   easyComp: {
     color: theme.palette.success.main,
-  }
+  },
 }));
 
 const ComplexityComponent = (classes: ReturnType<typeof useStyles>) => (complexity: string) => {
@@ -110,6 +110,7 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
       name: "source_db",
       label: t("clusterDetail.voyager.sourceDB"),
       options: {
+        customBodyRender: (sourceDB: string) => sourceDB.toUpperCase(),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({
           style: { padding: "8px 16px", maxWidth: 120, wordBreak: "break-word" },
