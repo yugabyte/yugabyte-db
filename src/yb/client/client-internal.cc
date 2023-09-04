@@ -96,6 +96,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 
