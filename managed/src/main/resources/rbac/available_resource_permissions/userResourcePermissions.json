@@ -2,6 +2,7 @@
   {
     "resourceType": "USER",
     "action": "CREATE",
+    "name": "Create User",
     "description": "Allows user to create a user.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": [
@@ -14,6 +15,7 @@
   {
     "resourceType": "USER",
     "action": "READ",
+    "name": "View User",
     "description": "Allows user to read/view user.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": []
@@ -21,6 +23,7 @@
   {
     "resourceType": "USER",
     "action": "UPDATE_ROLE_BINDINGS",
+    "name": "Update Role Bindings",
     "description": "Allows user to update role bindings on a user.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
@@ -33,6 +36,7 @@
   {
     "resourceType": "USER",
     "action": "UPDATE_PROFILE",
+    "name": "Update User Profile",
     "description": "Allows user to update user profile.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
@@ -45,6 +49,7 @@
   {
     "resourceType": "USER",
     "action": "DELETE",
+    "name": "Delete User",
     "description": "Allows user to delete user.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
