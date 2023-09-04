@@ -70,7 +70,6 @@
  */
 #define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
-#define YB_CQL       0xD0000000U
 #define YB_YBC       0xC0000000U
 #define YB_PG        0x00000000U
 /* ----------
@@ -83,8 +82,10 @@
 #define YB_CONSENSUS                 0xED000000U
 #define YB_TABLET_WAIT               0xEC000000U
 #define YB_ROCKSDB                   0xEB000000U
-#define YB_CQL_WAIT_STATE            0xDF000000U
-#define YB_CLIENT                    0xCA000000U
+
+#define YB_PG_CLIENT_SERVICE         0xCF000000U
+#define YB_CQL_WAIT_STATE            0xCE000000U
+#define YB_CLIENT                    0xCD000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -126,6 +127,9 @@ YB_DEFINE_ENUM_TYPE(
       (RaftWaitingForQuorum)
       (ApplyingRaftEdits)
 
+    ((RocksDBActiveOnCPU, YB_ROCKSDB))
+       (BlockCacheReadFromDisk)
+
     // Flush and Compaction
     ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
     (OpenFile)
@@ -140,14 +144,7 @@ YB_DEFINE_ENUM_TYPE(
     (CQLRead)(CQLWrite)
     (CQLWaitingOnDocdb)
 
-    ((RocksDBActiveOnCPU, YB_ROCKSDB))
-       (BlockCacheReadFromDisk)
-
-    // Perform Wait Events
-    ((DmlRead, YB_PG_WAIT_PERFORM))
-    (DmlWrite)
-    (DmlReadWrite)
-    (PgPerformHandling) 
+    ((PgPerformHandling, YB_PG_CLIENT_SERVICE))
     (PGWaitingOnDocdb)
     (PGActiveOnCPU)
 
@@ -156,6 +153,11 @@ YB_DEFINE_ENUM_TYPE(
       (LookingUpTablet)
       (YBCSyncLeaderMasterRpc)
       (YBCFindMasterProxy)
+
+    // Perform Wait Events
+    ((DmlRead, YB_PG_WAIT_PERFORM))
+    (DmlWrite)
+    (DmlReadWrite)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
