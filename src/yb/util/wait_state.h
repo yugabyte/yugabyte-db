@@ -97,11 +97,10 @@ YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
     ((Unused, 0))
-     (ActiveOnCPU)
 
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
-       (Handling) // Rpc handler is currently working on this rpc.
+      (ActiveOnCPU)
        // Response Queued waiting for network transfer. -- Is this expected to take long?
        (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
 

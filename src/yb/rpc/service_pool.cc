@@ -251,7 +251,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
     SCOPED_ADOPT_WAIT_STATE(incoming->wait_state());
-    SET_WAIT_STATUS(util::WaitStateCode::Handling);
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
     const char* error_message;
     if (PREDICT_FALSE(incoming->ClientTimedOut())) {
@@ -263,7 +263,6 @@ class ServicePoolImpl final : public InboundCallHandler {
         TRACE_TO(incoming->trace(), "Handling call $0", AsString(incoming->method_name()));
         service_->Handle(std::move(incoming));
       }
-      SET_WAIT_STATUS_IF_AT(util::WaitStateCode::Handling, util::WaitStateCode::ActiveOnCPU);
       return;
     }
 

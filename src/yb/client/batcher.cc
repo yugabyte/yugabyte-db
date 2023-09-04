@@ -324,7 +324,6 @@ void Batcher::LookupTabletFor(InFlightOp* op) {
 
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
-  POP_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
   VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
       << "Op: " << op->ToString() << ", result: " << AsString(lookup_result);
 
@@ -416,6 +415,7 @@ void Batcher::AllLookupsDone() {
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
 
+  POP_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
   if (state_ != BatcherState::kResolvingTablets) {
     LOG(DFATAL) << __func__ << " is invoked in wrong state: " << state_;
     return;
