@@ -185,7 +185,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   while (current != NULL) 
   {
     PGProcAUHEntryList proc = current->data;
-    if (random() < (1.0/sample_weight) * MAX_RANDOM_VALUE) 
+    if (random() < MAX_RANDOM_VALUE/sample_weight) 
     {
       auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                       proc.wait_event_info, "", proc.top_level_node_id,
@@ -207,7 +207,7 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   if(numrpcs != 0)
     sample_weight = (float)numrpcs / Min(num_rpcs_to_sample, numrpcs);  
   for (int i = 0; i < numrpcs; i++) {
-    if(random() <= (1.0/sample_weight) * MAX_RANDOM_VALUE){
+    if(random() <= MAX_RANDOM_VALUE/sample_weight){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
                     rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
