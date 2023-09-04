@@ -669,18 +669,23 @@ public class GFlagsUtil {
     List<Map<String, String>> masterAndTserverGFlags =
         Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
     if (userIntent.specificGFlags != null) {
-      masterAndTserverGFlags =
-          Arrays.asList(
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      if (userIntent.specificGFlags.isInheritFromPrimary()) {
+        return;
+      }
+      if (userIntent.specificGFlags.getPerProcessFlags() != null) {
+        masterAndTserverGFlags =
+            Arrays.asList(
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      }
     }
     for (Map<String, String> gflags : masterAndTserverGFlags) {
       GFLAG_TO_INTENT_ACCESSOR.forEach(
