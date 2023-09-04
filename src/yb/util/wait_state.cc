@@ -85,14 +85,30 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
 }
 
 void WaitStateInfo::push_state(WaitStateCode c) {
-  DCHECK(state_to_pop_to_.load() == WaitStateCode::Unused) << "We only support one level of push/pop";
-  state_to_pop_to_ = code_.exchange(c, std::memory_order_acq_rel);
+  // DCHECK(state_to_pop_to_.load() == WaitStateCode::Unused || code_.load() == c)
+  // This is ok if we are pushing the same state.
+  LOG_IF(INFO, state_to_pop_to_.load() != WaitStateCode::Unused && code_.load() != c)
+        << "We only support one level of push/pop "
+        << yb::Format("Currently state_to_ pop : $0, code_ : $1 pushing : $2",
+                        util::ToString(state_to_pop_to_.load()), 
+                        util::ToString(code_.load()), 
+                        util::ToString(c));
+  if (state_to_pop_to_.load() == WaitStateCode::Unused) {
+    state_to_pop_to_ = code_.exchange(c, std::memory_order_acq_rel);
+  }
 }
 
 void WaitStateInfo::pop_state(WaitStateCode c) {
-  DCHECK_EQ(code_.load(), c) << "We only support one level of push/pop. "
-      << "Previous state was " << util::ToString(state_to_pop_to_.load());
-  code_ = state_to_pop_to_.exchange(WaitStateCode::Unused, std::memory_order_acq_rel);
+  // This is ok if we previously popped the same state.
+  LOG_IF(INFO, state_to_pop_to_.load() != WaitStateCode::Unused && code_.load() == c) 
+        << "We only support one level of push/pop"
+        << yb::Format("Currently state_to_ pop : $0, code_ : $1 expected to pop : $2",
+                        util::ToString(state_to_pop_to_.load()), 
+                        util::ToString(code_.load()), 
+                        util::ToString(c));
+  if (state_to_pop_to_.load() != WaitStateCode::Unused) {
+    code_ = state_to_pop_to_.exchange(WaitStateCode::Unused, std::memory_order_acq_rel);
+  }
 }
 
 void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
