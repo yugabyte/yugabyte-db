@@ -198,7 +198,7 @@ void CQLServiceImpl::Shutdown() {
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   TRACE("Handling the CQL call");
-  SET_WAIT_STATUS(util::WaitStateCode::CQLActiveOnCPU);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::CQLActiveOnCPU);
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
   DVLOG(4) << "Handling " << cql_call->ToString();
@@ -221,7 +221,6 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
   (**processor).ProcessCall(std::move(inbound_call));
-  SET_WAIT_STATUS(util::WaitStateCode::CQLHandlingDone);
 }
 
 Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
