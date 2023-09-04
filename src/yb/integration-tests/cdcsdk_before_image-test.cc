@@ -1275,16 +1275,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithBeforeI
 
   GetChangesResponsePB change_resp_2 =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  uint32_t seen_ddl_records = 0;
   seen_dml_records = 0;
   for (const auto& record : change_resp_2.cdc_sdk_proto_records()) {
     if (record.row_message().op() == RowMessage::BEGIN ||
-        record.row_message().op() == RowMessage::COMMIT) {
+        record.row_message().op() == RowMessage::COMMIT ||
+        (seen_dml_records == 0 && seen_ddl_records == 0 &&
+        record.row_message().op() == RowMessage::DDL)) {
+      if (record.row_message().op() == RowMessage::DDL) {
+        seen_ddl_records++;
+      }
       continue;
     }
 
     CheckRecordWithThreeColumns(
         record, expected_records_2[seen_dml_records], count_2, true,
         expected_before_image_records_2[seen_dml_records]);
+    if (record.row_message().op() == RowMessage::DDL) {
+      seen_ddl_records++;
+    }
     seen_dml_records++;
   }
   LOG(INFO) << "Got " << count_2[1] << " insert record and " << count_2[2] << " update record";
