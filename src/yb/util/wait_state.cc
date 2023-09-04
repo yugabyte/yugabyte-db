@@ -228,7 +228,6 @@ bool WaitsForIO(WaitStateCode c) {
     case WaitStateCode::ApplyingRaftEdits:
     case WaitStateCode::BlockCacheReadFromDisk:
     case WaitStateCode::CloseFile:
-    case WaitStateCode::Handling:
     case WaitStateCode::WALLogSync:
     case WaitStateCode::CreatingNewTablet:
      return true;
