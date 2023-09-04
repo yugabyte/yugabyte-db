@@ -53,8 +53,8 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
         case YB_PG:
             event_component = "PG";
             break;
-        case YB_CQL:
-            event_component = "CQL";
+        case YB_YBC:
+            event_component = "Proxy/YBClient";
             break;
         default:
             event_component = "???";
@@ -84,6 +84,9 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
     switch (classId) {
         case YB_PG_WAIT_PERFORM:
             event_type = "Perform";
+            break;
+        case YB_PG_CLIENT_SERVICE:
+            event_type = "Perform API";
             break;
         case YB_RPC:
             event_type = "RPC";
