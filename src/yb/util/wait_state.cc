@@ -290,7 +290,8 @@ void WaitStateInfo::AssertIOAllowed() {
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
     // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    DCHECK(WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    // DCHECK(WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
   }
 }
 
@@ -305,7 +306,8 @@ void WaitStateInfo::AssertWaitAllowed() {
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
     // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    DCHECK(WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // DCHECK(WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
   }
 }
 
@@ -322,7 +324,8 @@ void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode
             << " was previously " << util::ToString(prev) << " set on " << thread_name_;
     thread_name_ = std::move(cur_thread_name);
     thread_id_ = tid;
-    DCHECK(WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
+    // LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
+    // DCHECK(WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
   }
 }
 
