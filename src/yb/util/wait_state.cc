@@ -87,6 +87,7 @@ WaitStateCode WaitStateInfo::get_frozen_state() const {
 void WaitStateInfo::push_state(WaitStateCode c) {
   // DCHECK(state_to_pop_to_.load() == WaitStateCode::Unused || code_.load() == c)
   // This is ok if we are pushing the same state.
+  VLOG(2) <<  __func__ << " pushing " << util::ToString(c);
   LOG_IF(INFO, state_to_pop_to_.load() != WaitStateCode::Unused && code_.load() != c)
         << "We only support one level of push/pop "
         << yb::Format("Currently state_to_ pop : $0, code_ : $1 pushing : $2",
@@ -99,6 +100,7 @@ void WaitStateInfo::push_state(WaitStateCode c) {
 }
 
 void WaitStateInfo::pop_state(WaitStateCode c) {
+  VLOG(2) <<  __func__ << " popping from " << util::ToString(c);
   // This is ok if we previously popped the same state.
   LOG_IF(INFO, state_to_pop_to_.load() != WaitStateCode::Unused && code_.load() == c) 
         << "We only support one level of push/pop"
