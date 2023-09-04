@@ -227,7 +227,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               disabled = false;
               completed = true;
             }
-          } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+          } else if (stepIndex === MigrationStep["Migrate Data"]) {
             if (!migrationMetricsData?.metrics?.length) {
               notStarted = true;
             } else {
