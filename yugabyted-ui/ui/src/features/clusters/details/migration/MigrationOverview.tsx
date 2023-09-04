@@ -110,7 +110,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
         ? migrationData?.find((migration) => migration.migration_uuid === migration_uuid)
         : undefined
     );
-  }, [migration_uuid]);
+  }, [migration_uuid, migrationData]);
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
