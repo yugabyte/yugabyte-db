@@ -234,6 +234,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             if allVoygaerMigration.migrationPhase == 4 &&
             allVoygaerMigration.invocationSeq >= 2 {
                 rowStruct.Status = "Complete"
+                rowStruct.MigrationPhase = 5
             }
 
             rand.Seed(time.Now().UnixNano())
@@ -283,14 +284,20 @@ func getVoyagerDataMigrationMetricsFuture(log logger.Logger, conn *pgxpool.Pool,
     for rows.Next() {
         rowStruct := models.VoyagerMigrateDataMetricsDetails{}
         var invocation_ts time.Time
-        err := rows.Scan(&rowStruct.MigrationUuid, &rowStruct.SchemaName, &rowStruct.TableName,
+        err := rows.Scan(&rowStruct.MigrationUuid, &rowStruct.TableName, &rowStruct.SchemaName,
             &rowStruct.MigrationPhase, &rowStruct.Status, &rowStruct.CountLiveRows,
             &rowStruct.CountTotalRows, &invocation_ts)
-        rowStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
         if err != nil {
             voyagerDataMigrationMetricsResponse.Error = err
             future <- voyagerDataMigrationMetricsResponse
             return
+        }
+        rowStruct.InvocationTimestamp = invocation_ts.Format("2006-01-02 15:04:05")
+        tableName := strings.Split(rowStruct.TableName, ".")
+        if len(tableName) > 1 {
+            rowStruct.TableName = tableName[1]
+        } else {
+            rowStruct.TableName = tableName[0]
         }
         voyagerDataMigrationMetricsResponse.Metrics = append(
             voyagerDataMigrationMetricsResponse.Metrics, rowStruct)
