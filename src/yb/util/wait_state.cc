@@ -205,18 +205,19 @@ void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
 bool WaitsForLock(WaitStateCode c) {
   switch (c) {
     case WaitStateCode::LockedBatchEntry_Lock:
+    case WaitStateCode::MVCCWaitForSafeTime:
+    case WaitStateCode::BackfillIndexWaitForAFreeSlot:
     case WaitStateCode::TransactionStatusCache_DoGetCommitData:
     case WaitStateCode::XreplCatalogManagerWaitForIsBootstrapRequired:
     case WaitStateCode::RpcsWaitOnMutexInShutdown:
-    case WaitStateCode::MVCCWaitForSafeTime:
     case WaitStateCode::TxnCoordWaitForMutexInPrepareForDeletion:
     case WaitStateCode::PgResponseCache_Get:
-    case WaitStateCode::BackfillIndexWaitForAFreeSlot:
-    case WaitStateCode::YBCSyncLeaderMasterRpc:
-    case WaitStateCode::YBCFindMasterProxy:
     case WaitStateCode::TxnResolveSealedStatus:
     case WaitStateCode::PgClientSessionStartExchange:
     case WaitStateCode::WaitForYsqlBackendsCatalogVersion:
+
+    case WaitStateCode::YBCSyncLeaderMasterRpc:
+    case WaitStateCode::YBCFindMasterProxy:
      return true;
     default:
       return false;
@@ -225,11 +226,11 @@ bool WaitsForLock(WaitStateCode c) {
 
 bool WaitsForIO(WaitStateCode c) {
   switch (c) {
+    case WaitStateCode::CreatingNewTablet:
+    case WaitStateCode::WALLogSync:
     case WaitStateCode::ApplyingRaftEdits:
     case WaitStateCode::BlockCacheReadFromDisk:
     case WaitStateCode::CloseFile:
-    case WaitStateCode::WALLogSync:
-    case WaitStateCode::CreatingNewTablet:
      return true;
     default:
       return false;
@@ -238,6 +239,7 @@ bool WaitsForIO(WaitStateCode c) {
 
 bool WaitsForThread(WaitStateCode c) {
   switch (c) {
+    case WaitStateCode::Created:
     case WaitStateCode::RaftWaitingForQuorum:
     case WaitStateCode::LookingUpTablet:
     case WaitStateCode::ResponseQueued:
