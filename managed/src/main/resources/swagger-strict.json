@@ -7710,6 +7710,9 @@
         "description" : {
           "type" : "string"
         },
+        "name" : {
+          "type" : "string"
+        },
         "permissionValidOnResource" : {
           "type" : "boolean"
         },

@@ -98,6 +98,10 @@ public class PermissionInfo {
   @JsonProperty("action")
   public Action action;
 
+  // Human readable name for the permission. Used for UI.
+  @JsonProperty("name")
+  public String name;
+
   @JsonProperty("description")
   public String description;
 
