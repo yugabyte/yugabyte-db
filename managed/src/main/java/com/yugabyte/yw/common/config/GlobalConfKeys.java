@@ -840,4 +840,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cooldown after disk resize in aws (in hours)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> metricsAuth =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth",
+          ScopeType.GLOBAL,
+          "Prometheus auth enabled",
+          "Enables basic authentication for Prometheus web UI/APIs access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> metricsAuthUsername =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_username",
+          ScopeType.GLOBAL,
+          "Prometheus auth username",
+          "Username, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> metricsAuthPassword =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_password",
+          ScopeType.GLOBAL,
+          "Prometheus auth password",
+          "Password, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

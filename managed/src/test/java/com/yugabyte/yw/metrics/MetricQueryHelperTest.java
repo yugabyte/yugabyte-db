@@ -21,11 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.AssertHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.metrics.data.AlertData;
@@ -66,6 +62,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock RuntimeConfGetter runtimeConfGetter;
 
+  @Mock WSClientRefresher wsClientRefresher;
+
   MetricConfigDefinition validMetric;
 
   @Before
@@ -80,13 +78,23 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsAuth)).thenReturn(false);
     when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
         .thenReturn(true);
 
     MetricUrlProvider metricUrlProvider = new MetricUrlProvider(runtimeConfGetter);
     metricQueryHelper =
         new MetricQueryHelper(
-            mockAppConfig, mockApiHelper, metricUrlProvider, mockPlatformExecutorFactory);
+            mockAppConfig,
+            runtimeConfGetter,
+            wsClientRefresher,
+            metricUrlProvider,
+            mockPlatformExecutorFactory) {
+          @Override
+          protected ApiHelper getApiHelper() {
+            return mockApiHelper;
+          }
+        };
   }
 
   @Test
@@ -374,9 +382,9 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 
-    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    when(mockApiHelper.getRequest(anyString(), any())).thenReturn(responseJson);
     List<AlertData> alerts = metricQueryHelper.queryAlerts();
-    verify(mockApiHelper).getRequest(queryUrl.capture());
+    verify(mockApiHelper).getRequest(queryUrl.capture(), any());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
 
@@ -403,13 +411,13 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 
-    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    when(mockApiHelper.getRequest(anyString(), any())).thenReturn(responseJson);
     try {
       metricQueryHelper.queryAlerts();
     } catch (Exception e) {
       assertThat(e, CoreMatchers.instanceOf(RuntimeException.class));
     }
-    verify(mockApiHelper).getRequest(queryUrl.capture());
+    verify(mockApiHelper).getRequest(queryUrl.capture(), any());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
   }
