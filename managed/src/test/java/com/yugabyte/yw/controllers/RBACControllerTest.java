@@ -9,6 +9,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -467,6 +468,40 @@ public class RBACControllerTest extends FakeDBApplication {
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(BAD_REQUEST, result.status());
     assertEquals(1, Role.getAll(customer.getUuid()).size());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testDeleteInvalidRoleWithRoleBindings() throws IOException {
+    // Create test role and insert into DB.
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "testSystemRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+
+    // Create test role binding and insert into DB.
+    RoleBinding roleBinding1 =
+        RoleBinding.create(
+            user,
+            RoleBindingType.Custom,
+            role1,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceDefinition.builder()
+                            .resourceType(ResourceType.DEFAULT)
+                            .allowAll(true)
+                            .build()))));
+
+    // Call API and assert that role is not deleted due to existing role bindings.
+    Result result =
+        assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
+    assertEquals(CONFLICT, result.status());
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    assertEquals(1, RoleBinding.getAll(user.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 
