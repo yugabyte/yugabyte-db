@@ -45,7 +45,7 @@ const StatusComponent = () => (status: string) => {
   return (
     <Box>
       <YBBadge
-        variant={status === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress}
+        variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
         text={status}
         icon={false}
       />
