@@ -73,7 +73,8 @@ type MigrateSchemaUIDetailFuture struct {
 }
 
 type PayloadReport struct {
-    Summary SchemaAnalyzeReport `json:"summary"`
+    Summary SchemaAnalyzeReport                  `json:"summary"`
+    Issues  []models.ErrorsAndSuggestionsDetails `json:"issues"`
 }
 
 type SchemaAnalyzeReport struct {
@@ -82,7 +83,6 @@ type SchemaAnalyzeReport struct {
     DbVersion       string                               `json:"dbVersion"`
     Notes           string                               `json:"notes"`
     DatabaseObjects []models.SqlObjectsDetails           `json:"databaseObjects"`
-    Issues          []models.ErrorsAndSuggestionsDetails `json:"issues"`
 }
 
 type AllVoygaerMigrations struct {
@@ -453,7 +453,7 @@ func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, mi
         return
     }
     MigrateSchemaUIDetailResponse.SqlObjects = schemaAnalyzeReport.Summary.DatabaseObjects
-    MigrateSchemaUIDetailResponse.SuggestionsErrors = schemaAnalyzeReport.Summary.Issues
+    MigrateSchemaUIDetailResponse.SuggestionsErrors = schemaAnalyzeReport.Issues
 
     future <- MigrateSchemaUIDetailResponse
 }
@@ -489,8 +489,8 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     }
 
     //TO-DO: rank the errors and suggestions
-    var errors map[string]int
-    var suggestions map[string]int
+    var errors = make(map[string]int)
+    var suggestions = make(map[string]int)
     for _, suggestionsError := range migrateSchemaUIDetails.SuggestionsErrors {
         errors[suggestionsError.Reason]++
         suggestions[suggestionsError.Suggestion]++
