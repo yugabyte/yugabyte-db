@@ -78,6 +78,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
               && !primaryCluster.userIntent.defaultYsqlPassword;
       if (cacheYCQLAuthPass || cacheYSQLAuthPass) {
         if (isFirstTry()) {
+          if (cacheYSQLAuthPass) {
+            ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+          }
+          if (cacheYCQLAuthPass) {
+            ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+          }
           passwordStore.put(
               taskParams().getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
         } else {
