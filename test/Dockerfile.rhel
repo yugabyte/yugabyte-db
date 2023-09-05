@@ -1,7 +1,7 @@
 FROM centos:7
 
 # Install packages
-RUN yum install -y centos-release-scl-rh epel-release sudo make gcc openssl-devel llvm-toolset-7-clang llvm5.0
+RUN yum install -y centos-release-scl-rh epel-release sudo make gcc openssl-devel
 
 # Create postgres user/group with specific IDs
 ARG UID=1000
@@ -12,15 +12,16 @@ RUN useradd -m -u $UID -g $GID -o -s /bin/bash postgres
 
 # Add PostgreSQL repository
 RUN rpm --import http://yum.postgresql.org/RPM-GPG-KEY-PGDG
-RUN rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-
-# Enable PG15 repo (can be removed after the official release)
-RUN yum-config-manager --enable pgdg15-updates-testing
+RUN rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-`uname -m`/pgdg-redhat-repo-latest.noarch.rpm
 
 # Install PostgreSQL
 ENV PGVERSION=15
 
 RUN yum install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib
+
+# Configure llvm lib (required for aarch64)
+RUN echo /opt/rh/llvm-toolset-7.0/root/usr/lib64/ > /etc/ld.so.conf.d/llvm-toolset.conf
+RUN ldconfig
 
 # Create PostgreSQL cluster
 ENV PGBIN=/usr/pgsql-${PGVERSION}/bin
