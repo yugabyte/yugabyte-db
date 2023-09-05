@@ -276,8 +276,10 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
+    auto relation_type = ResolveRelationType(*pgsql_ops_.front(), table_);
+
     if (!IsWrite()) {
-      if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::SYSTEM) {
+      if (relation_type == TableType::SYSTEM) {
         pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogRead);
       } else {
         pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageRead);
@@ -293,8 +295,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     // correlate wait/execution times directly with the request. We update instrumentation for
     // reads exactly once, upon receiving a success response from the underlying storage layer.
     if (!IsWrite()) {
-      pg_session_->metrics().ReadRequest(
-          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
+      pg_session_->metrics().ReadRequest(relation_type, wait_time);
     }
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
@@ -358,8 +359,9 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // the request. We update instrumentation for writes sexactly once, after successfully sending an
   // RPC request to the underlying storage layer.
   if (IsWrite()) {
-    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
-    if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::USER) {
+    auto relation_type = ResolveRelationType(*pgsql_ops_.front(), table_);
+    pg_session_->metrics().WriteRequest(relation_type);
+    if (relation_type == TableType::SYSTEM) {
       pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageWrite);
     } else {
       pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogWrite);

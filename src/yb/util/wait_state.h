@@ -76,7 +76,7 @@
  * YB AUH Wait Classes
  * ----------
  */
-#define YB_PG_WAIT_PERFORM           0xFE000000U
+#define YB_PG_WAIT_PERFORM           0x0E000000U
 #define YB_RPC                       0xEF000000U
 #define YB_FLUSH_AND_COMPACTION      0xEE000000U
 #define YB_CONSENSUS                 0xED000000U
