@@ -246,6 +246,10 @@ DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
 DEFINE_test_flag(bool, skip_post_split_compaction, false,
                  "Skip processing post split compaction.");
 
+DEFINE_RUNTIME_uint64(post_split_compaction_input_size_threshold_bytes, 256_MB,
+             "Max size of a files to be compacted within one iteration. "
+             "Set to 0 to compact all files at once during post split compaction.");
+
 DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "Enables exclusive mode for post-split compaction for a tablet: all scheduled and "
        "unscheduled compactions are run before post-split compaction and no other compaction "
@@ -409,10 +413,16 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
         metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
       }
-      if (!metadata.parent_data_compacted()) {
-        metadata.set_parent_data_compacted(true);
-      }
+      metadata.OnPostSplitCompactionDone();
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+    } else if (ci.is_no_op_compaction &&
+               ci.compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
+      // Trivial post split compaction completion generally means that there are no more files
+      // inherited from a parent tablet available for compaction (literally all the files have
+      // been already compacted due to some reason), or there are no files at all (not expected).
+      if (metadata.OnPostSplitCompactionDone()) {
+        ERROR_NOT_OK(metadata.Flush(), log_prefix_);
+      }
     }
 
     if (FLAGS_enable_schema_packing_gc) {
@@ -3431,30 +3441,71 @@ bool Tablet::ShouldDisableLbMove() {
   return metadata_->schema()->has_colocation_id();
 }
 
-void Tablet::TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush) {
-  CHECK_OK(ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction, skip_flush));
+Status Tablet::ForceManualRocksDBCompact(docdb::SkipFlush skip_flush) {
+  return ForceRocksDBCompact(rocksdb::CompactionReason::kManualCompaction, skip_flush);
 }
 
-Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
-    docdb::SkipFlush skip_flush) {
-  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
-  RETURN_NOT_OK(scoped_operation);
+Status Tablet::ForceRocksDBCompact(
+    rocksdb::CompactionReason compaction_reason, docdb::SkipFlush skip_flush) {
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
-  options.exclusive_manual_compaction =
-      (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) ?
-      FLAGS_tablet_exclusive_post_split_compaction : FLAGS_tablet_exclusive_full_compaction;
+  if (compaction_reason != rocksdb::CompactionReason::kPostSplitCompaction) {
+    options.exclusive_manual_compaction = FLAGS_tablet_exclusive_full_compaction;
+    return ForceRocksDBCompact(options, options);
+  }
 
+  // Specific handling for post split compaction.
+  options.exclusive_manual_compaction = FLAGS_tablet_exclusive_post_split_compaction;
+
+  // We may want to modify options for regular db compaction, let's do a copy.
+  auto regular_options = options;
   if (regular_db_) {
-    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), options));
+    // Our expectations at this point:
+    // 1) If parent_data_compacted then we don't want to compact again.
+    // 2) If file_number_upper_bound is not set, then we don't setup limited compaction.
+    // 3) If file_number_upper_bound is 0 and !parent_data_compacted then is looks like a bug,
+    //    but we still want to compact to have parent_data_compacted.
+    // (1) and (3) are possible due to async nature of triggereing ForceRocksDBCompact()
+    // via TriggerPostSplitCompactionIfNeeded().
+    const auto parent_data_compacted = metadata()->parent_data_compacted();
+    if (parent_data_compacted) {
+      LOG_WITH_PREFIX(WARNING) << "Ignoring post split compaction as "
+                               << "parent data have already been compacted.";
+      return Status::OK();
+    }
+
+    const auto file_number_upper_bound =
+        metadata()->post_split_compaction_file_number_upper_bound();
+    LOG_IF(DFATAL, file_number_upper_bound == 0) <<
+          "It is unexpected to have file_number_upper_bound == 0 when parent data has not been "
+          "compacted yet, it is an inconsistent state. Please check the logic. Ignoring "
+          "file_number_upper_bound as if it is not specified.";
+
+    const auto input_size_threshold = FLAGS_post_split_compaction_input_size_threshold_bytes;
+    if (file_number_upper_bound > 0 && input_size_threshold > 0) {
+      regular_options.file_number_upper_bound = *file_number_upper_bound;
+      regular_options.input_size_limit_per_job = input_size_threshold;
+    }
+  }
+
+  return ForceRocksDBCompact(regular_options, options);
+}
+
+Status Tablet::ForceRocksDBCompact(
+    const rocksdb::CompactRangeOptions& regular_options,
+    const rocksdb::CompactRangeOptions& intents_options) {
+  auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_operation);
+  if (regular_db_) {
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), regular_options));
   }
   if (intents_db_) {
-    if (!skip_flush) {
+    if (!intents_options.skip_flush) {
       RETURN_NOT_OK_PREPEND(
           intents_db_->Flush(rocksdb::FlushOptions()), "Pre-compaction flush of intents db failed");
     }
-    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), options));
+    RETURN_NOT_OK(docdb::ForceRocksDBCompact(intents_db_.get(), intents_options));
   }
   return Status::OK();
 }
@@ -3685,6 +3736,8 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     const TabletId& tablet_id, const dockv::Partition& partition,
     const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
     const HybridTime& split_op_hybrid_time) {
+  SCHECK(key_bounds.IsInitialized(), IllegalState, "Key bounds must be set");
+
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -3712,19 +3765,26 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
     subtablet_rocksdbs.push_back(
         { metadata->intents_rocksdb_dir(), docdb::StorageDbType::kIntents });
   }
-  for (auto rocksdb : subtablet_rocksdbs) {
+  for (const auto& db_info : subtablet_rocksdbs) {
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
-        &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, rocksdb.db_type),
+        &rocksdb_options, MakeTabletLogPrefix(tablet_id, log_prefix_suffix_, db_info.db_type),
         /* statistics */ nullptr, tablet_options_, rocksdb::BlockBasedTableOptions(),
         hash_for_data_root_dir(metadata->data_root_dir()));
     rocksdb_options.create_if_missing = false;
     // Disable background compactions, we only need to update flushed frontier.
     rocksdb_options.compaction_style = rocksdb::CompactionStyle::kCompactionStyleNone;
     std::unique_ptr<rocksdb::DB> db =
-        VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, rocksdb.db_dir));
+        VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, db_info.db_dir));
     RETURN_NOT_OK(
         db->ModifyFlushedFrontier(frontier.Clone(), rocksdb::FrontierModificationMode::kUpdate));
+
+    // Update meta with file number upper bound for post split compaction purpose.
+    if (db_info.db_type == docdb::StorageDbType::kRegular) {
+      const auto file_number_upper_bound = db->GetNextFileNumber();
+      metadata->set_post_split_compaction_file_number_upper_bound(file_number_upper_bound);
+      RETURN_NOT_OK(metadata->Flush());
+    }
   }
   return metadata;
 }
@@ -3893,7 +3953,7 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
   if (!StillHasOrphanedPostSplitDataAbortable()) {
     return;
   }
-  auto status = TriggerFullCompactionIfNeeded(rocksdb::CompactionReason::kPostSplitCompaction);
+  auto status = TriggerManualCompactionIfNeeded(rocksdb::CompactionReason::kPostSplitCompaction);
   if (status.ok()) {
     ts_post_split_compaction_added_->Increment();
   } else if (!status.IsServiceUnavailable()) {
@@ -3902,7 +3962,7 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
   }
 }
 
-Status Tablet::TriggerFullCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
+Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
   }
@@ -3919,7 +3979,7 @@ Status Tablet::TriggerFullCompactionIfNeeded(rocksdb::CompactionReason compactio
   }
 
   return full_compaction_task_pool_token_->SubmitFunc(
-      std::bind(&Tablet::TriggerFullCompactionSync, this, compaction_reason));
+      std::bind(&Tablet::TriggerManualCompactionSync, this, compaction_reason));
 }
 
 Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
@@ -3935,7 +3995,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeededHelper(
   }
 
   return admin_full_compaction_task_pool_token_->SubmitFunc([this, on_compaction_completion]() {
-    TriggerFullCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
+    TriggerManualCompactionSync(rocksdb::CompactionReason::kAdminCompaction);
     on_compaction_completion();
   });
 }
@@ -3949,10 +4009,10 @@ Status Tablet::TriggerAdminFullCompactionWithCallbackIfNeeded(
   return TriggerAdminFullCompactionIfNeededHelper(on_compaction_completion);
 }
 
-void Tablet::TriggerFullCompactionSync(rocksdb::CompactionReason reason) {
+void Tablet::TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_full_compaction);
   WARN_WITH_PREFIX_NOT_OK(
-      ForceFullRocksDBCompact(reason),
+      ForceRocksDBCompact(reason),
       Format("$0: Failed tablet full compaction ($1)", log_prefix_suffix_, ToString(reason)));
 }
 
