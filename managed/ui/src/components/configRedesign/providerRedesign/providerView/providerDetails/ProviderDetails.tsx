@@ -46,7 +46,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
       <Box display="flex">
         <div className={styles.sideNav}>
           <Tabs
-            classes={{ flexContainer: styles.tabGroup }}
+            classes={{ flexContainer: styles.tabGroup, root: styles.noTabBorder }}
             orientation="vertical"
             onChange={handleTabChange}
           >

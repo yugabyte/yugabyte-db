@@ -204,6 +204,8 @@ export interface UniverseDetails {
   nodePrefix: string;
   resetAZConfig: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
   updateSucceeded: boolean;

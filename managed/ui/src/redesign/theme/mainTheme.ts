@@ -607,6 +607,22 @@ export const mainTheme = createTheme({
         }
       }
     },
+    MuiTabs: {
+      root: {
+        '& .MuiTabs-indicator': {
+          backgroundColor: colors.orange[500],
+          height: 4
+        },
+        '& .MuiButtonBase-root': {
+          padding: 0,
+          textTransform: 'none',
+          fontSize: 14,
+          fontWeight: 500,
+          color: colors.ybacolors.labelBackground
+        },
+        borderBottom: `1px solid ${colors.ybacolors.ybBorderGray}`
+      }
+    },
     MuiSnackbar: {
       anchorOriginBottomRight: {
         '@media (min-width: 600px)': {

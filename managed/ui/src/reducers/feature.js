@@ -34,7 +34,8 @@ const initialStateFeatureInTest = {
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
-  enableConfigureDBApi: false
+  enableConfigureDBApi: false,
+  enableCACertRotation: false
 };
 
 const initialStateFeatureReleased = {
