@@ -42,6 +42,8 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
+#include "yb/yql/pggate/pg_session.h"
+
 namespace yb {
 namespace pggate {
 
@@ -169,14 +171,6 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 } // namespace
 
 void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
-  if (wait_event_ == util::WaitStateCode::Unused) wait_event_ = op.get()->getWaitEvent();
-  else if (
-      (wait_event_ == util::WaitStateCode::DmlRead &&
-       op.get()->getWaitEvent() == util::WaitStateCode::DmlWrite) ||
-      (wait_event_ == util::WaitStateCode::DmlWrite &&
-       op.get()->getWaitEvent() == util::WaitStateCode::DmlRead))
-    wait_event_ = util::WaitStateCode::DmlReadWrite;
-
   operations.push_back(std::move(op));
   relations.push_back(relation);
 }
@@ -331,6 +325,9 @@ class PgOperationBuffer::Impl {
       auto result = VERIFY_RESULT(metrics_.CallWithDuration(
           [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration));
       metrics_.FlushRequest(duration);
+      if (in_flight_ops_.size() == 1) {
+        in_flight_ops_.front().future.session()->UnsetWaitEventInfo();
+      }
       in_flight_ops_.pop_front();
     }
     return Status::OK();

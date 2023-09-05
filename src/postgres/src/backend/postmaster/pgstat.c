@@ -4220,7 +4220,7 @@ pgstat_get_cpu_event(WaitEventCPU w)
 	switch (w)
 	{
 		case WAIT_EVENT_CPU:
-			event_name = "CPUProcessing";
+			event_name = "QueryProcessing";
 			break;
 			/* no default case, so that compiler will warn */
 	}
