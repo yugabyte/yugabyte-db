@@ -51,6 +51,7 @@ You can install YugabyteDB Anywhere using YBA Installer on the following Linux d
 - CentOS 7
 - Alma Linux 8
 - Alma Linux 9
+- Amazon Linux
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
