@@ -591,7 +591,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     table_id = table->id();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
+        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid for table " << table_id;
         auto const att_name_typid_map = VERIFY_RESULT(GetPgAttNameTypidMap(table));
         vector<uint32_t> type_oids;
         for (const auto& entry : att_name_typid_map) {
@@ -629,8 +629,10 @@ Status CatalogManager::BackfillMetadataForCDC(
       // it is present or not. It is a safeguard against
       // https://phabricator.dev.yugabyte.com/D17099 which fills the pgschema_name in memory if it
       // is not present without backfilling it to master's disk or tservers.
-      if (backfill_required || !table->has_pgschema_name()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name";
+      // Skip this check for colocated parent tables as they do not have pgschema names.
+      if (!IsColocationParentTableId(table_id) &&
+          (backfill_required || table->pgschema_name().empty())) {
+        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
         VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
@@ -5877,7 +5879,7 @@ Result<HybridTime> CatalogManager::BootstrapAndAddIndexToXClusterReplication(
   std::vector<string> bootstrap_ids;
   HybridTime bootstrap_time;
   std::vector<PgSchemaName> pg_schema_names;
-  if (index_info.has_pgschema_name()) {
+  if (!index_info.pgschema_name().empty()) {
     pg_schema_names.emplace_back(index_info.pgschema_name());
   }
   RETURN_NOT_OK(cdc_rpc->client()->BootstrapProducer(
