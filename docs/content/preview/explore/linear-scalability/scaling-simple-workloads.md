@@ -1,37 +1,34 @@
 ---
-title: Scaling simple workloads
-headerTitle: Scaling simple workloads
-linkTitle: Scaling simple workloads
-description: Scaling simple workloads
+title: Simple workloads
+headerTitle: Simple workloads
+linkTitle: Simple workloads
+description: Simple workloads
 headcontent: Understand how YugabyteDB handles large simple workloads
 menu:
   preview:
-    name: Scaling simple workloads
+    name: Simple workloads
     identifier: scaling-simple-workloads
     parent: explore-scalability
-    weight: 300
+    weight: 70
 type: docs
 ---
 
+[DocDB](../../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to support this design goal, including the following:
 
-[DocDB](../../../architecture/docdb/), YugabyteDB’s underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered ground up to deliver high performance at a massive scale. Several features have been built into DocDB to support this design goal, like:
-
-- Scan Resistant Global Block Cache
-- Bloom/Index Data Splitting
-- Global Memstore Limit
+- Scan-resistant global block cache
+- Bloom/index data splitting
+- Global memstore limit
 - Separate compaction queues to reduce read amplification
-- Smart load-balancing across disks
+- Smart load balancing across disks
 
-These features enable YugabyteDB to handle massive datasets with ease. Let us go through the scenario of loading `1 billion` rows into a 3`-node cluster and look at the performance metrics.
+These features enable YugabyteDB to handle massive datasets with ease. The following scenario loads 1 billion rows into a 3-node cluster.
 
-## 1 Billion rows
+## 1 billion rows
 
-In this experiment, we use the [YCSB benchmark](https://github.com/brianfrankcooper/YCSB/wiki) with the standard JDBC binding to load 1 billion rows. We expected the dataset at the end of the data load to cross `1TB` on each node (or a `3TB` total data set size in each cluster).
+This experiment uses the [YCSB benchmark](https://github.com/brianfrankcooper/YCSB/wiki) with the standard JDBC binding to load 1 billion rows. The expected dataset at the end of the data load is 1TB on each node (or a 3TB total data set size in each cluster).
 
-## Configuration and Cluster setup
-
-|                 |                        |
-| --------------: | :--------------------- |
+| Cluster configuration |                        |
+| :-------------------- | :--------------------- |
 |          Region | AWS us-west-2          |
 |         Release | v2.1.5                 |
 |             API | YSQL                   |
@@ -43,13 +40,13 @@ In this experiment, we use the [YCSB benchmark](https://github.com/brianfrankcoo
 
 ## Results at a glance
 
-`1B` row data load completed successfully for YSQL (using a range-sharded table) in about 26 hours. The following graphs show the throughput and average latency for the range-sharded load phase of the YCSB benchmark during the load phase.
+1B row data load completed successfully for YSQL (using a range-sharded table) in about 26 hours. The following graphs show the throughput and average latency for the range-sharded load phase of the YCSB benchmark during the load phase.
 
 ![Ops and Latency](https://www.yugabyte.com/wp-content/uploads/2020/05/YugabyteDB-1B-data-load-completed-successfully-1024x369.png)
 
-The total dataset was `3.2TB` across the two nodes. Each node had just over `1TB` of data.
+The total dataset was 3.2TB across the two nodes. Each node had just over 1TB of data.
 
-![](https://www.yugabyte.com/wp-content/uploads/2020/05/YugabyteDB-high-performance-with-low-SSTable-file-count-and-read-amplification.png)
+![Total dataset](https://www.yugabyte.com/wp-content/uploads/2020/05/YugabyteDB-high-performance-with-low-SSTable-file-count-and-read-amplification.png)
 
 ## Learn more
 
