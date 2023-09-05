@@ -212,7 +212,8 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
-                    rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
+                    (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
+                    rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
