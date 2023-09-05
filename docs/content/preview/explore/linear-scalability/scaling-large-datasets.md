@@ -9,13 +9,13 @@ menu:
     name: Scaling large datasets
     identifier: scaling-large-datasets
     parent: explore-scalability
-    weight: 200
+    weight: 400
 type: docs
 ---
 
-With ever-growing data workloads such as time series metrics and IoT sensor events, it has become important for the database to handle large data (c.f `> 10 TB`). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost efficiency standpoint. But spinning up new data nodes only to get more storage-per-node leads to significant wastage of expensive compute resources.
+With ever-growing data workloads such as time series metrics and IoT sensor events, it has become important for the database to handle large data (c.f `> 10 TB`). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost-efficiency standpoint. But spinning up new data nodes only to get more storage-per-node leads to significant wastage of expensive compute resources.
 
-YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](). Bootstrapping of new nodes and removal of existing nodes are much simpler and more resilient operations when compared to the eventually consistent Cassandra-compatible databases.
+YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](../../../architecture/docdb/). Bootstrapping of new nodes and removal of existing nodes are much simpler and more resilient operations when compared to the eventually consistent Cassandra-compatible databases.
 
 Let us see how the YugabyteDB handles a total of `18TB` on just `4` general-purpose machines.
 
@@ -75,7 +75,19 @@ On a write-heavy workload with 2 readers and 64 writers, YugabyteDB serviced `25
 
 ### Some observations
 
-- For write-heavy workload, there is more variability because of the use of general-purpose SSD (gp2) EBS volumes. This variability arises from the need to perform periodic compactions. [Note: For time series data such as IoT or KairosDB-like workloads, YugabyteDB doesn’t need to perform aggressive compactions, and the results will be even better. But this particular experiment is running an arbitrary KV workload, and as expected puts a higher demand on the system.]
+- For a write-heavy workload, there is more variability because of the use of general-purpose SSD (gp2) EBS volumes. This variability arises from the need to perform periodic compactions. [Note: For time series data such as IoT or KairosDB-like workloads, YugabyteDB doesn’t need to perform aggressive compactions, and the results will be even better. But this particular experiment is running an arbitrary KV workload, and as expected puts a higher demand on the system.]
 - Instead of using `1x6000GB` EBS volume per node, using `2x3000GB` EBS volumes might have been a better choice to get more throughput. When the disk R + W throughput reaches its max (around `150MB/sec`) during compactions, the latencies also go up a bit.
 - To allow sufficient room for foreground operations on a low-end gp2 SSD volume-based setup, we reduced the default quota settings for compaction/flush rate from 100MB/sec to 30MB/sec.
 - On i3* instance types with directly attached nvme SSDs which have much more disk IOPS and throughput, this observed variability should be minimal for a similar workload.
+
+## Other Experiments
+
+In a customer evaluation, Yugabyte DB was loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and 
+Yugabyte DB was able to handle sustained `450K ops/sec` with CPU utilization at `~40%` maximum.
+
+Operational efficiency
+Scaling up and down with Yugabyte DB didn’t result in any loss of availability and the data loader application continued to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compactions automatically in the background, explicit manual compaction is not needed and there was only 10-20% space amplification overhead.
+
+## Learn more
+
+- [YugabyteDB Performance Benchmarks](../../../benchmark/)

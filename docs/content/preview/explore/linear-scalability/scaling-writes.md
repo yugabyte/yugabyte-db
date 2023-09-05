@@ -9,7 +9,7 @@ menu:
     name: Scaling writes
     identifier: scaling-writes
     parent: explore-scalability
-    weight: 200
+    weight: 100
 type: docs
 ---
 

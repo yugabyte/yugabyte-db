@@ -32,11 +32,7 @@ A YugabyteDB universe can be scaled-out to handle the following:
 * A higher number of concurrent client connections
 * Larger datasets or workloads
 
-<<<<<<< HEAD
 YugabyteDB can be scaled either horizontally or vertically depending on your needs. Let's understand the differences between these both.
-=======
-A YugabyteDB universe can also be scaled-in dynamically by draining all the data from existing universe nodes (or Kubernetes pods) and subsequently removing them from the universe.
->>>>>>> master
 
 ## Horizontal Scaling (a.k.a Scaling Out)
 

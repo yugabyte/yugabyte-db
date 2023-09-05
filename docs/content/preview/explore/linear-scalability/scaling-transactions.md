@@ -165,3 +165,7 @@ Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the n
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
 {{% explore-cleanup-local %}}
+
+## Learn more
+
+- [TPC-C benchmark](../../../benchmark/tpcc-ysql)
