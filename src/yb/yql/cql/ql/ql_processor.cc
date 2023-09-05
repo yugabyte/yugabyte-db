@@ -166,7 +166,6 @@ QLProcessor::~QLProcessor() {
 Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
                           const bool reparsed, const MemTrackerPtr& mem_tracker,
                           const bool internal) {
-  SET_WAIT_STATUS(util::WaitStateCode::Parse);
   // Parse the statement and get the generated parse tree.
   const MonoTime begin_time = MonoTime::Now();
   auto* parser = parser_pool_->Take();
@@ -189,7 +188,6 @@ Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
 }
 
 Status QLProcessor::Analyze(ParseTree::UniPtr* parse_tree) {
-  SET_WAIT_STATUS(util::WaitStateCode::Analyze);
   // Semantic analysis - traverse, error-check, and decorate the parse tree nodes with datatypes.
   const MonoTime begin_time = MonoTime::Now();
   const Status s = analyzer_.Analyze(std::move(*parse_tree));
@@ -431,7 +429,6 @@ void QLProcessor::ExecuteAsync(const ParseTree& parse_tree, const StatementParam
       return;
     }
   }
-  SET_WAIT_STATUS(util::WaitStateCode::Execute);
   executor_.ExecuteAsync(parse_tree, params, std::move(cb));
 }
 
