@@ -182,6 +182,18 @@ class XClusterAdminCliTest : public AdminCliTestBase {
     return producer_backup_service_proxy_.get();
   }
 
+  std::pair<client::TableHandle, client::TableHandle> CreateAdditionalTableOnBothClusters() {
+    const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
+    client::TableHandle consumer_table2;
+    client::TableHandle producer_table2;
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
+    client::kv_table_test::CreateTable(
+        Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
+        kTableName2);
+    return std::make_pair(consumer_table2, producer_table2);
+  }
+
   const string kProducerClusterId = "producer";
   std::unique_ptr<client::YBClient> producer_cluster_client_;
   std::unique_ptr<MiniCluster> producer_cluster_;
@@ -510,11 +522,13 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
 
   // Also create a second stream so we can verify name collisions.
   std::string collision_id = "collision_id";
+  // Need to create new tables so that we don't hit "N:1 replication topology not supported" errors.
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
   ASSERT_OK(RunAdminToolCommand(
       "setup_universe_replication",
       collision_id,
       producer_cluster_->GetMasterAddresses(),
-      producer_cluster_table->id()));
+      producer_table2->id()));
   ASSERT_NOK(RunAdminToolCommand(
       "alter_universe_replication", new_replication_id, "rename_id", collision_id));
 
@@ -558,14 +572,7 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
 
   // Create an additional table to test with as well.
-  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
-  client::TableHandle consumer_table2;
-  client::TableHandle producer_table2;
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
-      kTableName2);
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
 
   // Setup replication with both tables, this should only return once complete.
   // Only use the leader master address initially.
@@ -606,14 +613,7 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootst
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
 
   // Create an additional table to test with as well.
-  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
-  client::TableHandle consumer_table2;
-  client::TableHandle producer_table2;
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
-  client::kv_table_test::CreateTable(
-      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
-      kTableName2);
+  auto [consumer_table2, producer_table2] = CreateAdditionalTableOnBothClusters();
 
   // Get bootstrap ids for both producer tables and get bootstrap ids.
   string output =

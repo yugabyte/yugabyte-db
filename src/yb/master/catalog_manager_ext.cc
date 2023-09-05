@@ -3188,6 +3188,13 @@ Status CatalogManager::ValidateTableSchema(
                       info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
   }
 
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
+      return STATUS(IllegalState, "N:1 replication topology not supported");
+    }
+  }
+
   return Status::OK();
 }
 
