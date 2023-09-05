@@ -57,7 +57,7 @@ ybcstat_get_wait_event_component(uint32_t wait_event_info) {
             event_component = "Proxy/YBClient";
             break;
         case YB_CQL:
-            event_component = "YCQL";
+            event_component = "CQL";
             break;
         default:
             event_component = "???";
