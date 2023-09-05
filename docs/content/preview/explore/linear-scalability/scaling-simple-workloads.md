@@ -28,12 +28,12 @@ These features enable YugabyteDB to handle massive datasets with ease. The follo
 This experiment uses the [YCSB benchmark](https://github.com/brianfrankcooper/YCSB/wiki) with the standard JDBC binding to load 1 billion rows. The expected dataset at the end of the data load is 1TB on each node (or a 3TB total data set size in each cluster).
 
 | Cluster configuration |                        |
-| :-------------------- | :--------------------- |
+| --------------------: | :--------------------- |
 |          Region | AWS us-west-2          |
 |         Release | v2.1.5                 |
 |             API | YSQL                   |
 |           Nodes | 3                      |
-|    Machine Type | c5.4xlarge             |
+|   Instance type | c5.4xlarge             |
 |         Storage | 2 x 5TB SSDs (gp2 EBS) |
 |        Sharding | Range and Hash         |
 | Isolation level | Snapshot               |
