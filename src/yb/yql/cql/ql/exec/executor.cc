@@ -863,7 +863,6 @@ Status Executor::GetOffsetOrLimit(
 //   calls within the same process. These two different cases can be cleaned up later to avoid
 //   confusion.
 Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::CQLRead);
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
     // If this is a request for 'system.peers_v2' table make sure that we send the appropriate error
@@ -880,6 +879,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // result.
     return tnode->is_system() ? Status::OK()
                               : exec_context_->Error(tnode, ErrorCode::OBJECT_NOT_FOUND);
+  }
+
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo({.table_id = table->id()});    
   }
 
   // If there is a table id in the statement parameter's paging state, this is a continuation of a
@@ -1270,9 +1274,12 @@ Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo({.table_id = table->id()});    
+  }
   YBqlWriteOpPtr insert_op(table->NewQLInsert());
   QLWriteRequestPB *req = insert_op->mutable_request();
 
@@ -1341,9 +1348,12 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo({.table_id = table->id()});    
+  }
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
   QLWriteRequestPB *req = delete_op->mutable_request();
 
@@ -1396,9 +1406,12 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context) {
-  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo({.table_id = table->id()});    
+  }
   YBqlWriteOpPtr update_op(table->NewQLUpdate());
   QLWriteRequestPB *req = update_op->mutable_request();
 
@@ -1719,6 +1732,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   // FlushAsync() and CommitTransaction(). This is necessary so that only the last callback will
   // correctly detect that all async calls are done invoked before processing the async results
   // exclusively.
+  bool is_read = write_batch_.Empty();
   write_batch_.Clear();
   std::vector<std::pair<YBSessionPtr, ExecContext*>> flush_sessions;
   std::vector<ExecContext*> commit_contexts;
@@ -1769,8 +1783,12 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
     return StatementExecuted(Status::OK(), reset_async_calls);
   }
 
+  if (is_read) {
+    SET_WAIT_STATUS(util::WaitStateCode::CQLRead);
+  } else {
+    SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
+  }
   reset_async_calls->Cancel();
-  SET_WAIT_STATUS(util::WaitStateCode::CQLWaitingOnDocdb);
   num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
   for (auto* exec_context : commit_contexts) {
     exec_context->CommitTransaction(
