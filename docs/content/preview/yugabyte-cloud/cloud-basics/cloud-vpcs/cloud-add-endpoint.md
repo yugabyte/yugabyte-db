@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a Virtual Private Cloud (VPC) with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a privately linked service.
+A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a Virtual Private Cloud (VPC) with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a private connection.
 
 ![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
 
