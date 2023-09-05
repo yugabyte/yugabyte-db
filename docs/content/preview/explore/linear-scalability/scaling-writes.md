@@ -13,29 +13,33 @@ menu:
 type: docs
 ---
 
-Writes scale linearly in YugabyteDB as more nodes are added to the cluster. To understand how this happens, let us go over how data is distributed in YugabyteDB.
+Writes scale linearly in YugabyteDB as more nodes are added to the cluster.
 
-In YugabyteDB, the rows are [sharded into tablets](./sharding-data) based on the primary key (or the row-id when a primary key is not defined), and these tablets are distributed across various nodes in the system. Sharding ensures that the data is spread across the different nodes in the cluster. This enables parallel write operations to happen on different nodes in the cluster thereby leading to linear scaling with the addition of more nodes to the cluster.
+In YugabyteDB, the rows are [sharded into tablets](../sharding-data) based on the primary key (or the row-id when a primary key is not defined), and these tablets are distributed across various nodes in the cluster. Sharding ensures that the data is distributed across the different nodes in the cluster, enabling parallel write operations to happen on different nodes in the cluster, and thereby leading to linear scaling with the addition of more nodes to the cluster.
 
-YugabyteDB can easily clock more than `1M writes/s` in both [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) APIs.
+YugabyteDB can clock more than 1 million writes/second in both [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) APIs.
 
-## YSQL: 1 Million writes/s
+The following sections describe results from a cluster set up to run 1 million YSQL and YCQL.
 
-We set up a 100-node YugabyteDB cluster with `c5.4xlarge` instances (`16` vCPUs @ `3.3GHz`) in a single zone. This cluster, aptly named MillionOps, is shown below.
+## Results for 1 million YSQL writes/second
 
-![1.26 million writes/sec at 1.7ms latency](https://www.yugabyte.com/wp-content/uploads/2019/09/yugabyte-db-vs-aws-aurora-cockroachdb-benchmarks-5.png)
+On a 100-node YugabyteDB cluster set up with `c5.4xlarge` instances (16 vCPUs at 3.3GHz) in a single zone, the cluster was able to perform **1.26** million writes/second at **1.7ms** latency.
 
-This cluster was able to perform **1.26** million writes/sec at **1.7ms** latency!
+The cluster details are described in the following illustration:
 
-## YCQL: 1 Million writes/s
+![YSQL write latency](https://www.yugabyte.com/wp-content/uploads/2019/09/yugabyte-db-vs-aws-aurora-cockroachdb-benchmarks-5.png)
 
-On a 50-node setup in GCP on `n1-standard-16` instances (`16` vCPUs @ `2.20GHz`), YCQL clocked `1.2M` write ops/sec with a `3.1ms` average latency.
+## Results for 1 million YCQL writes/second
 
-![1.2M writes/s @ 3.1ms latency](/images/explore/scalability/ycql_1million_writes.png)
+On a 50-node setup in GCP on `n1-standard-16` instances (16 vCPUs at 2.20GHz), YCQL clocked **1.2M** writes/second with a **3.1ms** average latency.
+
+The cluster details are described in the following illustration:
+
+![YCQL write latency](/images/explore/scalability/ycql_1million_writes.png)
 
 ## Learn more
 
 - [TPC-C benchmark](../../../benchmark/tpcc-ysql)
 - [Write I/O path](../../../architecture/core-functions/write-path/)
 - [YugabyteDB Benchmarks](../../../benchmark)
-- [Scaling: YugabyteDB vs. Cockroach vs. Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)
+- [Scaling: YugabyteDB vs Cockroach vs Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)
