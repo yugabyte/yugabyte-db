@@ -44,6 +44,7 @@
 #endif // NDEBUG
 
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/wait_state.h"
 
 namespace yb {
 
@@ -132,6 +133,7 @@ void RWCLock::WriteLockThreadChanged() {
 }
 
 void RWCLock::WriteLock() {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::TakeRWCLock);
   ThreadRestrictions::AssertWaitAllowed();
 
   MutexLock l(lock_);
@@ -166,6 +168,7 @@ void RWCLock::WriteLock() {
 }
 
 void RWCLock::WriteUnlock() {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::TakeRWCLock);
   ThreadRestrictions::AssertWaitAllowed();
 
   MutexLock l(lock_);
@@ -178,6 +181,7 @@ void RWCLock::WriteUnlock() {
 }
 
 void RWCLock::UpgradeToCommitLock() {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::TakeRWCLock);
   lock_.lock();
   DCHECK(write_locked_);
 #ifndef NDEBUG

@@ -739,6 +739,10 @@ class PgClientServiceImpl::Impl {
     dump_req.set_dump_timed_out(false);
 
     auto messenger = tablet_server_.GetMessenger(messenger_type);
+    if (!messenger) {
+      LOG(ERROR) << __func__ << " got no messenger for type " << util::ToString(messenger_type);
+      return;
+    }
 
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
     

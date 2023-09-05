@@ -104,6 +104,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals; // NOLINT
 using namespace yb::size_literals;
@@ -701,6 +702,10 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   peer_write_count->Increment();
 
   {
+    // This thread is waiting for the Write to complete. The wait state for the rpc
+    // will be updated by the raft layer while we are waiting. Set the wait-state to
+    // nullptr to avoid having to mark the raft wait-states as involving waits.
+    SCOPED_ADOPT_WAIT_STATE(nullptr);
     int num_iterations = 0;
     auto time = CoarseMonoClock::now();
     auto deadline = time + FLAGS_sys_catalog_write_timeout_ms * 1ms;

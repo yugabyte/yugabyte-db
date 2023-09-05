@@ -1244,7 +1244,7 @@ rpc::Messenger* TabletServer::GetMessenger(util::MessengerType messenger_type) c
     case util::MessengerType::kTserver:
       return messenger();
     case util::MessengerType::kCQLServer:
-      return cql_server_messenger_();
+      return (cql_server_messenger_ ? cql_server_messenger_() : nullptr);
     default:
       LOG(FATAL) << "AUH asking for invalid messenger";
   }

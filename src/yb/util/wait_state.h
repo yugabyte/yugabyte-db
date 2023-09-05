@@ -45,7 +45,6 @@
 
 // Note that we are not taking ownership or even shared ownership of the ptr.
 // The ptr should be live until this is done.
-#define ADOPT_WAIT_STATE(ptr) yb::util::WaitStateInfo::SetCurrentWaitState(ptr)
 #define SCOPED_ADOPT_WAIT_STATE(ptr) \
   yb::util::ScopedWaitState _scoped_state { ptr }
 
@@ -119,12 +118,24 @@ YB_DEFINE_ENUM_TYPE(
     (PgClientSessionStartExchange)
     (WaitForYsqlBackendsCatalogVersion)
     (CreatingNewTablet)
+    (RetryableRequestsSaveToDisk)
+    (WriteAutoFlagsConfigToDisk)
+    (WriteInstanceMetadataToDisk)
+    (WriteSysCatalogSnapshotToDisk)
+    (SaveRaftGroupMetadataToDisk)
+    (TakeRWCLock)
+    (SysCatalogTableSyncWrite)
+    (WaitOnTxn)
 
     // OperationDriver
     ((RaftActiveOnCPU, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen
       (WALLogSync) // waiting for WALEdits to be persisted.
       (RaftWaitingForQuorum)
       (ApplyingRaftEdits)
+      (ConsensusMetaFlush)
+      (ReplicaStateTakeUpdateLock)
+      (ReplicaStateWaitForMajorityReplicatedHtLeaseExpiration)
+      (DumpRunningRpcWaitOnReactor)
 
     ((RocksDBActiveOnCPU, YB_ROCKSDB))
        (BlockCacheReadFromDisk)

@@ -639,6 +639,8 @@ class WaitOnConflictResolver : public ConflictResolver {
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
   // invokes this call.
   void WaitingDone(const Status& status, HybridTime resume_ht) {
+    TRACE(__func__);
+    SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
     wait_for_iters_++;
 

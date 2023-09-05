@@ -54,7 +54,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/wait_state.h"
+
 
 DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
     "If greater than zero, indicates the maximum amount of time to wait to lock keys "
@@ -834,6 +837,8 @@ class WaitQueue::Impl {
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, WaitDoneCallback callback) {
+    TRACE(__func__);
+    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxn);
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " blockers=" << *blockers
