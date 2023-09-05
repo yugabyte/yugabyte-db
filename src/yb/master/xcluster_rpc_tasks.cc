@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/client/client.h"
@@ -65,10 +65,10 @@ namespace yb {
 namespace master {
 using yb::master::SysSnapshotEntryPB_State;
 
-Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
+Result<std::shared_ptr<XClusterRpcTasks>> XClusterRpcTasks::CreateWithMasterAddrs(
     const cdc::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
   // NOTE: This is currently an expensive call (5+ sec). Encountered during Task #10611.
-  auto cdc_rpc_tasks = std::make_shared<CDCRpcTasks>();
+  auto xcluster_rpc_tasks = std::make_shared<XClusterRpcTasks>();
   std::string dir;
 
   if (FLAGS_use_node_to_node_encryption) {
@@ -78,42 +78,42 @@ Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
           FLAGS_certs_for_cdc_dir,
           cdc::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
-    cdc_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
+    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
         dir, "", "", server::SecureContextType::kInternal, &messenger_builder));
-    cdc_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
+    xcluster_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 
   LOG(INFO) << __func__ << " before";
-  cdc_rpc_tasks->yb_client_ = VERIFY_RESULT(
-      yb::client::YBClientBuilder()
-          .add_master_server_addr(master_addrs)
-          .default_admin_operation_timeout(
-              MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
-          .Build(cdc_rpc_tasks->messenger_.get()));
+  xcluster_rpc_tasks->yb_client_ =
+      VERIFY_RESULT(yb::client::YBClientBuilder()
+                        .add_master_server_addr(master_addrs)
+                        .default_admin_operation_timeout(
+                            MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
+                        .Build(xcluster_rpc_tasks->messenger_.get()));
   LOG(INFO) << __func__ << " after";
 
-  return cdc_rpc_tasks;
+  return xcluster_rpc_tasks;
 }
 
-CDCRpcTasks::~CDCRpcTasks() {
+XClusterRpcTasks::~XClusterRpcTasks() {
   if (messenger_) {
     messenger_->Shutdown();
   }
 }
 
-Result<client::YBClient*> CDCRpcTasks::UpdateMasters(const std::string& master_addrs) {
+Result<client::YBClient*> XClusterRpcTasks::UpdateMasters(const std::string& master_addrs) {
   RETURN_NOT_OK(yb_client_->SetMasterAddresses(master_addrs));
   return yb_client_.get();
 }
 
-Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTableLocations(
+Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> XClusterRpcTasks::GetTableLocations(
     const std::string& table_id) {
   google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, 0 /* max tablets */, &tablets));
   return tablets;
 }
 
-Status CDCRpcTasks::BootstrapProducer(
+Status XClusterRpcTasks::BootstrapProducer(
     const NamespaceIdentifierPB& producer_namespace, const std::vector<client::YBTableName>& tables,
     BootstrapProducerCallback callback) {
   SCHECK(!tables.empty(), InvalidArgument, "Empty tables");
@@ -153,7 +153,7 @@ Status CDCRpcTasks::BootstrapProducer(
   return Status::OK();
 }
 
-Result<TableBootstrapIdsMap> CDCRpcTasks::HandleBootstrapProducerResponse(
+Result<TableBootstrapIdsMap> XClusterRpcTasks::HandleBootstrapProducerResponse(
     client::BootstrapProducerResult bootstrap_result) {
   auto [table_ids, bootstrap_ids, _] = VERIFY_RESULT(std::move(bootstrap_result));
   SCHECK_EQ(
@@ -169,7 +169,7 @@ Result<TableBootstrapIdsMap> CDCRpcTasks::HandleBootstrapProducerResponse(
   return table_bootstrap_ids;
 }
 
-Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshot(
+Result<SnapshotInfoPB> XClusterRpcTasks::CreateSnapshot(
     const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id) {
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_to_send_create_snapshot_request)) {
     return STATUS(Aborted, "Test failure");
@@ -189,7 +189,7 @@ Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshot(
   return promise.get_future().get();
 }
 
-Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshotCallback(const TxnSnapshotId& snapshot_id) {
+Result<SnapshotInfoPB> XClusterRpcTasks::CreateSnapshotCallback(const TxnSnapshotId& snapshot_id) {
   const auto delay_increment =
       MonoDelta::FromMilliseconds(FLAGS_list_snapshot_backoff_increment_ms);
   const auto max_delay_time = MonoDelta::FromSeconds(FLAGS_list_snapshot_max_backoff_sec);
@@ -240,5 +240,5 @@ Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshotCallback(const TxnSnapshotId& 
   return result;
 }
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb
