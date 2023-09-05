@@ -550,7 +550,7 @@ Status ReadQuery::Complete() {
 }
 
 Result<ReadHybridTime> ReadQuery::DoRead() {
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   Result<ReadHybridTime> result{ReadHybridTime()};
   {
     LongOperationTracker long_operation_tracker("Read", 1s);

@@ -350,6 +350,7 @@ class WriteQueryCompletionCallback {
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() &&

@@ -337,6 +337,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return;
     }
 
+    TRACE("Has conflicts.");
     conflict_data_ = std::make_shared<ConflictDataManager>(conflicts_.size());
     for (const auto& [id, conflict_info] : conflicts_) {
       conflict_data_->AddTransaction(id, conflict_info);
@@ -458,7 +459,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction](Result<TransactionStatusResult> result) {
+        [self, &transaction, trace = Trace::CurrentTrace(),
+         wait_state = util::WaitStateInfo::CurrentWaitState()](Result<TransactionStatusResult> result) {
+          SCOPED_ADOPT_WAIT_STATE(wait_state);
+          ADOPT_TRACE(trace);
           if (result.ok()) {
             transaction.ProcessStatus(*result);
           } else if (result.status().IsTryAgain()) {
@@ -615,7 +619,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        serial_no_, std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), Trace::CurrentTrace(), util::WaitStateInfo::CurrentWaitState(), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
     } else if (!*did_wait_or_status) {
@@ -630,18 +634,22 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
+    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxn);
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), Trace::CurrentTrace(), util::WaitStateInfo::CurrentWaitState(), _1, _2));
   }
 
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
   // invokes this call.
-  void WaitingDone(const Status& status, HybridTime resume_ht) {
+  void WaitingDone(Trace* trace, util::WaitStateInfoPtr wait_state, const Status& status, HybridTime resume_ht) {
+    ADOPT_TRACE(trace);
+    SCOPED_ADOPT_WAIT_STATE(wait_state);
     TRACE(__func__);
     SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
-    VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
+    VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status << " current trace is " << Trace::CurrentTrace()
+      << " wait state is " << util::WaitStateInfo::CurrentWaitState().get();
     wait_for_iters_++;
 
     if (!status.ok()) {
@@ -1279,7 +1287,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
@@ -1320,7 +1328,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", initial_resolution_ht: " << intial_resolution_ht;

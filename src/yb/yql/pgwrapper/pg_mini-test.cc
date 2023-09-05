@@ -68,6 +68,7 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_direct_local_tablet_server_call);
 DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -132,6 +133,9 @@ Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& d
 
 class PgMiniTest : public PgMiniTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_direct_local_tablet_server_call) = false;
+  }
   // Have several threads doing updates and several threads doing large scans in parallel.
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
@@ -203,6 +207,44 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
   ASSERT_OK(WaitFor([client_service, expected_count = connections.size()]() {
     return client_service->TEST_SessionsCount() == expected_count;
   }, 4 * FLAGS_pg_client_session_expiration_ms * 1ms, "client session cleanup", 1s));
+}
+
+TEST_F(PgMiniTest, WaitFor) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key int PRIMARY KEY, value int)"));
+
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+  ASSERT_OK(conn.Execute("SET yb_enable_docdb_tracing = true"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 1)"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto update_conn = ASSERT_RESULT(Connect());
+    int key = 1;
+    ASSERT_OK(update_conn.Execute("SET yb_debug_log_docdb_requests = true"));
+    ASSERT_OK(update_conn.Execute("SET yb_enable_docdb_tracing = true"));
+    ASSERT_OK(update_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(update_conn.Execute(
+        Format("UPDATE t SET value = value + 1 WHERE key = $0", key)));
+    SleepFor(10s);
+    ASSERT_OK(update_conn.Execute("COMMIT"));
+  });
+  // auto conn2 = ASSERT_RESULT(Connect());
+  // ASSERT_OK(conn2.Execute("SET yb_debug_log_docdb_requests = true"));
+  // ASSERT_OK(conn2.Execute("SET yb_read_from_followers = true"));
+  // ASSERT_OK(conn2.Execute("SET yb_enable_docdb_tracing = true"));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  SleepFor(1s);
+  ASSERT_OK(conn.Execute("UPDATE t SET value = value + 2 where key = 1"));
+
+  // ASSERT_OK(conn2.Execute("BEGIN TRANSACTION"));
+  // ASSERT_OK(conn2.Execute("UPDATE t SET value = value + 1 where key = 1"));
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+  // ASSERT_OK(conn2.Execute("COMMIT"));
 }
 
 // Try to change this to test follower reads.

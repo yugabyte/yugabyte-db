@@ -17,6 +17,7 @@
 
 #include "yb/util/status_format.h"
 #include "yb/util/flags.h"
+#include "yb/util/trace.h"
 
 DEFINE_UNKNOWN_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");
@@ -82,6 +83,7 @@ LockBatch UnlockedBatch::Lock(CoarseTimePoint deadline) && {
 
 std::optional<UnlockedBatch> LockBatch::Unlock() {
   DCHECK(!empty());
+  TRACE(__func__);
   DoUnlock();
   return std::make_optional<UnlockedBatch>(std::move(data_.key_to_type), data_.shared_lock_manager);
 }
