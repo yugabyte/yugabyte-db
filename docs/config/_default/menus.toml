@@ -300,7 +300,6 @@
   identifier = "home"
   url = "/"
   [home.params]
-    classes = "separator"
     showSection = true
 
 [[home]]
@@ -318,6 +317,7 @@
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [home.params]
+    classes = "separator"
     showSection = true
     hideChildren = true
 
