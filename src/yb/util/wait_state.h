@@ -125,6 +125,7 @@ YB_DEFINE_ENUM_TYPE(
     (SaveRaftGroupMetadataToDisk)
     (TakeRWCLock)
     (SysCatalogTableSyncWrite)
+    (WaitOnTxn)
 
     // OperationDriver
     ((RaftActiveOnCPU, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen

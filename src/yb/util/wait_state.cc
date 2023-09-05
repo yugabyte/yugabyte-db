@@ -241,6 +241,7 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::TakeRWCLock:
     case WaitStateCode::SysCatalogTableSyncWrite:
     case WaitStateCode::RaftWaitingForQuorum:
+    case WaitStateCode::WaitOnTxn:
     // We may be taking locks while running in ActiveOnCPU. Distinct wait states
     // have only been created for places where we are waiting on a condition variable.
     case WaitStateCode::ActiveOnCPU:
