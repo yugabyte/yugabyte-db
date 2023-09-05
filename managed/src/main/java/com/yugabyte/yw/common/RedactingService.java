@@ -54,6 +54,8 @@ public class RedactingService {
           .add("$..KUBECONFIG_CONTENT")
           // onprem and certificate private keys
           .add("$..keyContent")
+          .add("$..certContent")
+          .add("$..customServerCertData")
           .add("$..['customServerCertData.serverKeyContent']")
           // S3 storage credentials
           .add("$..AWS_ACCESS_KEY_ID")

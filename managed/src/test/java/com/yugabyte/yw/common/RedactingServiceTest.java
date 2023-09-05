@@ -68,6 +68,7 @@ public class RedactingServiceTest {
     JsonNode redacted = RedactingService.filterSecretFields(formData, RedactionTarget.LOGS);
     assertEquals(
         SECRET_REPLACEMENT, redacted.get("customServerCertData.serverKeyContent").asText());
+    assertEquals(SECRET_REPLACEMENT, redacted.get("certContent").asText());
   }
 
   private ObjectNode getJsonNode() {
