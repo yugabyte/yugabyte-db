@@ -3,7 +3,7 @@ title: Horizontal scalability
 headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
-headcontent: Handle larger workloads by adding nodes to your cluster 
+headcontent: Handle larger workloads by adding nodes to your cluster
 aliases:
   - /explore/linear-scalability/
   - /preview/explore/linear-scalability/
@@ -32,24 +32,25 @@ A YugabyteDB universe can be scaled-out to handle the following:
 * A higher number of concurrent client connections
 * Larger datasets or workloads
 
-YugabyteDB can be scaled either horizontally or vertically depending on your needs. Let's understand the differences between these both.
+YugabyteDB can be scaled either horizontally or vertically depending on your needs as described in the following sections.
 
-## Horizontal Scaling (a.k.a Scaling Out)
+## Horizontal scaling (scaling-out)
 
-Horizontal scaling involves adding more nodes to a distributed database to handle increased load, traffic, and data. In YugabyteDB data is shared and split into tablets and these multiple tablets are located on each node. When more nodes are added, some tablets are automatically moved to the new nodes. Tablets will also split dynamically as needed to use the newly added resource. This leads to each node managing fewer tablets and hence the whole cluster can handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
-This is the most common scaling model advised for YugabyteDB as it has several advantages.
+Horizontal scaling involves adding more nodes to a distributed database to handle increased load, traffic, and data. In YugabyteDB, data is shared and split into tablets, and these multiple tablets are located on each node. When more nodes are added, some tablets are automatically moved to the new nodes. Tablets will also split dynamically as needed to use the newly added resource which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
-- **Improved performance**: More nodes can process requests in parallel, reducing response times.
-- **Cost-effective**: Can utilize commodity hardware, which is generally less expensive than high-end servers.
-- **Easy to add resources**: You can add new nodes as needed to accommodate growth.
+Horizontal scaling is the most common scaling model advised for YugabyteDB as it has several advantages.
 
-You can consider scaling out your cluster to temporarily handle high traffic (e.g. Black Friday Shopping, Major news outbreak) and reduce the size of the cluster (*scaling-in*) after the event by draining all the data from some of the nodes (or Kubernetes pods) and subsequently removing them from the universe.
+* **Improved performance**: More nodes can process requests in parallel, reducing response times.
+* **Cost-effective**: Can utilize commodity hardware, which is generally less expensive than high-end servers.
+* **Resource expansion**: You can add new nodes as needed to accommodate growth.
 
-## Vertical Scaling (a.k.a Scaling Up)
+You can consider scaling-out your cluster to temporarily handle high traffic (For example, Black Friday shopping, major news outbreak) and reduce the size of the cluster (*scaling-in*) after the event by draining all the data from some of the nodes (or Kubernetes pods) and subsequently removing them from the universe.
 
-Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, etc. Vertical scaling is often limited by the capacity of a single server and can become **_expensive_** as you move to more powerful hardware. Although you retain the same number of nodes which could simplify your operations, eventually hardware resources will reach their limits, and further scaling might not be feasible.
+## Vertical scaling (scaling-up)
 
-In some cases, depending on your application needs and budget constraints a combination of both horizontal and vertical scaling (a.k.a elastic scaling), might be employed to achieve the desired performance and scalability goals.
+Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on. Vertical scaling is often limited by the capacity of a single server and can get **_expensive_** as you move to more powerful hardware. Although you retain the same number of nodes which could simplify your operations, eventually hardware resources will reach their limits, and further scaling might not be feasible.
+
+In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling (also known as elastic scaling) may be used to achieve the desired performance and scalability goals.
 
 ## Scaling in YSQL vs YCQL
 
