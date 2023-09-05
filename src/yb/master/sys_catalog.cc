@@ -702,11 +702,14 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   peer_write_count->Increment();
 
   {
+    // This thread is waiting for the Write to complete. The wait state for the rpc
+    // will be updated by the raft layer while we are waiting. Set the wait-state to
+    // nullptr to avoid having to mark the raft wait-states as involving waits.
+    SCOPED_ADOPT_WAIT_STATE(nullptr);
     int num_iterations = 0;
     auto time = CoarseMonoClock::now();
     auto deadline = time + FLAGS_sys_catalog_write_timeout_ms * 1ms;
     static constexpr auto kWarningInterval = 5s;
-    SCOPED_WAIT_STATUS(util::WaitStateCode::SysCatalogTableSyncWrite);
     while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;

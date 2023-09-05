@@ -45,7 +45,6 @@
 
 // Note that we are not taking ownership or even shared ownership of the ptr.
 // The ptr should be live until this is done.
-#define ADOPT_WAIT_STATE(ptr) yb::util::WaitStateInfo::SetCurrentWaitState(ptr)
 #define SCOPED_ADOPT_WAIT_STATE(ptr) \
   yb::util::ScopedWaitState _scoped_state { ptr }
 
