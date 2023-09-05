@@ -83,8 +83,9 @@
 #define YB_TABLET_WAIT               0xEC000000U
 #define YB_ROCKSDB                   0xEB000000U
 
-#define YB_PG_CLIENT_SERVICE         0xCF000000U
 #define YB_CQL_WAIT_STATE            0xDF000000U
+
+#define YB_PG_CLIENT_SERVICE         0xCF000000U
 #define YB_CLIENT                    0xCD000000U
 
 // For debugging purposes:
