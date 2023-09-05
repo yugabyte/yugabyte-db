@@ -154,9 +154,9 @@ YB_DEFINE_ENUM_TYPE(
       (YBCFindMasterProxy)
 
     // Perform Wait Events
-    ((StorageRead, YB_PG_WAIT_PERFORM))
-    (StorageWrite)(CatalogRead)(CatalogWrite)
-    (DmlRead)(DmlWrite)
+    ((DmlRead, YB_PG_WAIT_PERFORM))
+    (DmlWrite)
+    (DmlReadWrite)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
