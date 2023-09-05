@@ -276,12 +276,6 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
-    if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::SYSTEM) {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogRead);
-    } else {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageRead);
-    }
-
     uint64_t wait_time = 0;
     auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
         [&response = response_] { return response.Get(); }, &wait_time));
@@ -296,8 +290,6 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     }
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
-
-    pg_session_->UnsetWaitEventInfo();
 
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
@@ -355,11 +347,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // RPC request to the underlying storage layer.
   if (IsWrite()) {
     pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
-    if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::USER) {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageWrite);
-    } else {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogWrite);
-    }
   }
   return Status::OK();
 }
