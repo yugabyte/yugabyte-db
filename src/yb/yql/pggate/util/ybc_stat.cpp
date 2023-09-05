@@ -83,7 +83,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
 
     switch (classId) {
         case YB_PG_WAIT_PERFORM:
-            event_type = "Perform";
+            event_type = "PG Query";
             break;
         case YB_PG_CLIENT_SERVICE:
             event_type = "Perform API";

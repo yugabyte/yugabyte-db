@@ -276,6 +276,16 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
+    auto relation_type = ResolveRelationType(*pgsql_ops_.front(), table_);
+
+    if (!IsWrite()) {
+      if (relation_type == TableType::SYSTEM) {
+        pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogRead);
+      } else {
+        pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageRead);
+      }
+    }
+
     uint64_t wait_time = 0;
     auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
         [&response = response_] { return response.Get(); }, &wait_time));
@@ -285,11 +295,14 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
     // correlate wait/execution times directly with the request. We update instrumentation for
     // reads exactly once, upon receiving a success response from the underlying storage layer.
     if (!IsWrite()) {
-      pg_session_->metrics().ReadRequest(
-          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
+      pg_session_->metrics().ReadRequest(relation_type, wait_time);
     }
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
+
+    if (!IsWrite()) {
+      pg_session_->UnsetWaitEventInfo();
+    }
 
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
@@ -346,7 +359,13 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // the request. We update instrumentation for writes sexactly once, after successfully sending an
   // RPC request to the underlying storage layer.
   if (IsWrite()) {
-    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
+    auto relation_type = ResolveRelationType(*pgsql_ops_.front(), table_);
+    pg_session_->metrics().WriteRequest(relation_type);
+    if (relation_type == TableType::SYSTEM) {
+      pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogWrite);
+    } else {
+      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageWrite);
+    }
   }
   return Status::OK();
 }
