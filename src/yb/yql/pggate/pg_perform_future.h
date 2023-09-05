@@ -48,6 +48,8 @@ class PerformFuture {
   bool Ready() const;
   Result<Data> Get();
 
+  PgSession* session();
+
  private:
   std::future<PerformResult> future_;
   PgSession* session_ = nullptr;
