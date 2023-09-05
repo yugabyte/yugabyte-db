@@ -34,7 +34,7 @@ public class RuntimeConfGetter {
   public <T> T getConfForScope(Customer customer, ConfKeyInfo<T> keyInfo) {
     if (keyInfo.scope != ScopeType.CUSTOMER) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "This key isn't defined in Customer scope");
+          INTERNAL_SERVER_ERROR, "Key " + keyInfo.getKey() + " isn't defined in Customer scope");
     }
     return keyInfo
         .getDataType()
@@ -45,7 +45,7 @@ public class RuntimeConfGetter {
   public <T> T getConfForScope(Universe universe, ConfKeyInfo<T> keyInfo) {
     if (keyInfo.scope != ScopeType.UNIVERSE) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "This key isn't defined in Universe scope");
+          INTERNAL_SERVER_ERROR, "Key " + keyInfo.getKey() + " isn't defined in Universe scope");
     }
     return keyInfo
         .getDataType()
@@ -56,7 +56,7 @@ public class RuntimeConfGetter {
   public <T> T getConfForScope(Provider provider, ConfKeyInfo<T> keyInfo) {
     if (keyInfo.scope != ScopeType.PROVIDER) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "This key isn't defined in Provider scope");
+          INTERNAL_SERVER_ERROR, "Key " + keyInfo.getKey() + " isn't defined in Provider scope");
     }
     return keyInfo
         .getDataType()
@@ -67,7 +67,7 @@ public class RuntimeConfGetter {
   public <T> T getGlobalConf(ConfKeyInfo<T> keyInfo) {
     if (keyInfo.scope != ScopeType.GLOBAL) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "This key isn't defined in Global scope");
+          INTERNAL_SERVER_ERROR, "Key " + keyInfo.getKey() + " isn't defined in Global scope");
     }
     return keyInfo
         .getDataType()

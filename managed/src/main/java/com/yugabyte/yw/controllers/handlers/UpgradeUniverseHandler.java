@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -285,6 +286,21 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.ThirdpartySoftwareUpgrade,
         CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID modifyAuditLoggingConfig(
+      AuditLogConfigParams requestParams, Customer customer, Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    requestParams.verifyParams(universe);
+    userIntent.auditLogConfig = requestParams.auditLogConfig;
+    return submitUpgradeTask(
+        TaskType.ModifyAuditLoggingConfig,
+        CustomerTask.TaskType.ModifyAuditLoggingConfig,
         requestParams,
         customer,
         universe);

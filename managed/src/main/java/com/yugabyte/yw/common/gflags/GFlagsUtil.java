@@ -28,6 +28,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -54,11 +57,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,6 +115,7 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -533,10 +539,61 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
+      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
+        gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
+      }
     } else {
       gflags.put(ENABLE_YSQL, "false");
     }
     return gflags;
+  }
+
+  private static String getYsqlPgConfCsv(Universe universe) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYsqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YSQLAuditConfig ysqlAuditConfig = auditLogConfig.getYsqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ysqlAuditConfig.getClasses())) {
+          ysqlPgConfCsvEntries.add(
+              "\"pgaudit.log='"
+                  + ysqlAuditConfig.getClasses().stream()
+                      .map(YSQLAuditConfig.YSQLAuditStatementClass::name)
+                      .collect(Collectors.joining(","))
+                  + "'\"");
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_catalog", ysqlAuditConfig.isLogCatalog()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_client", ysqlAuditConfig.isLogClient()));
+        if (ysqlAuditConfig.getLogLevel() != null) {
+          ysqlPgConfCsvEntries.add("pgaudit.log_level=" + ysqlAuditConfig.getLogLevel().name());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_parameter", ysqlAuditConfig.isLogParameter()));
+        if (ysqlAuditConfig.getLogParameterMaxSize() != null) {
+          ysqlPgConfCsvEntries.add(
+              "pgaudit.log_parameter_max_size=" + ysqlAuditConfig.getLogParameterMaxSize());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_relation", ysqlAuditConfig.isLogRelation()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_row", ysqlAuditConfig.isLogRow()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_statement", ysqlAuditConfig.isLogStatement()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag(
+                "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
+      }
+    }
+    return String.join(",", ysqlPgConfCsvEntries);
+  }
+
+  private static String encodeBooleanPgAuditFlag(String flag, boolean value) {
+    return flag + "=" + (value ? "ON" : "OFF");
   }
 
   private static Map<String, String> getYCQLGFlags(
@@ -562,10 +619,59 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
+      gflags.putAll(getYcqlAuditFlags(universe));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
+  }
+
+  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+    Map<String, String> result = new HashMap<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYcqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YCQLAuditConfig ycqlAuditConfig = auditLogConfig.getYcqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedCategories())) {
+          result.put(
+              "ycql_audit_included_categories",
+              ycqlAuditConfig.getIncludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_categories",
+              ycqlAuditConfig.getExcludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedUsers())) {
+          result.put(
+              "ycql_audit_included_users", String.join(",", ycqlAuditConfig.getIncludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedUsers())) {
+          result.put(
+              "ycql_audit_excluded_users", String.join(",", ycqlAuditConfig.getExcludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedKeyspaces())) {
+          result.put(
+              "ycql_audit_included_keyspaces",
+              String.join(",", ycqlAuditConfig.getIncludedKeyspaces()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_keyspaces",
+              String.join(",", ycqlAuditConfig.getExcludedKeyspaces()));
+        }
+        if (ycqlAuditConfig.getLogLevel() != null) {
+          result.put("ycql_audit_log_level", ycqlAuditConfig.getLogLevel().name());
+        }
+      }
+    }
+    return result;
   }
 
   public static Map<String, String> getCertsAndTlsGFlags(

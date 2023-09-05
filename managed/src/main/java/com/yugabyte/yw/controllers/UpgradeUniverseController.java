@@ -15,19 +15,9 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
-import com.yugabyte.yw.forms.CertsRotateParams;
-import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
-import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
-import com.yugabyte.yw.forms.ResizeNodeParams;
-import com.yugabyte.yw.forms.RestartTaskParams;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
-import com.yugabyte.yw.forms.SystemdUpgradeParams;
-import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
-import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -322,6 +312,36 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::toggleTls,
         TlsToggleParams.class,
         Audit.ActionType.ToggleTls,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API to modify the audit logging configuration for a universe.
+   *
+   * @param customerUuid ID of the customer
+   * @param universeUuid ID of the universe
+   * @param request HTTP request object
+   * @return Result indicating the success of the modification operation
+   */
+  @ApiOperation(
+      value = "Modify Audit Logging Configuration",
+      notes = "Modifies the audit logging configuration for a universe.",
+      nickname = "modifyAuditLogging",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "auditLoggingConfig",
+          value = "Audit Logging Configuration",
+          dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
+          required = true,
+          paramType = "body"))
+  public Result modifyAuditLogging(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::modifyAuditLoggingConfig,
+        AuditLogConfigParams.class,
+        Audit.ActionType.ModifyAuditLogging,
         customerUuid,
         universeUuid);
   }

@@ -301,6 +301,9 @@ public class CustomerTask extends Model {
     @EnumValue("ThirdpartySoftwareUpgrade")
     ThirdpartySoftwareUpgrade,
 
+    @EnumValue("ModifyAuditLoggingConfig")
+    ModifyAuditLoggingConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -451,6 +454,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Upgraded third-party software for "
               : "Upgrading third-party software for ";
+        case ModifyAuditLoggingConfig:
+          return completed
+              ? "Modified audit logging config for "
+              : "Modifying audit logging config for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
