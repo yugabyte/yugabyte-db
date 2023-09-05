@@ -186,7 +186,7 @@ TEST_P(PgPackedRowTest, AlterTable) {
   auto deadline = CoarseMonoClock::now() + 90s;
 
   while (!thread_holder.stop_flag().load() && CoarseMonoClock::now() < deadline) {
-    cluster_->mini_master()->tablet_peer()->tablet()->TEST_ForceRocksDBCompact();
+    ASSERT_OK(cluster_->mini_master()->tablet_peer()->tablet()->ForceManualRocksDBCompact());
   }
 
   thread_holder.Stop();

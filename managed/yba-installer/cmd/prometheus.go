@@ -440,7 +440,8 @@ func (prom Prometheus) createDataDirs() error {
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
 	// Create the log file
-	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil {
+	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil &&
+		!errors.Is(err, os.ErrExist) {
 		log.Error("Failed to create prometheus log file: " + err.Error())
 		return err
 	}

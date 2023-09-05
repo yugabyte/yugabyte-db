@@ -148,3 +148,35 @@ TableInfoResponse:
     application/json:
       schema:
         $ref: '../schemas/_index.yaml#/TableInfo'
+VoyagerMigrationsResponse:
+  description: List of the Voyager migrations
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VoyagerMigrationsInfo'
+VoyagerDataMigrationMetricsResponse:
+  description: Voyager data migration metrics response
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/VoyagerMigrateDataMetrics'
+MigrateSchemaResponse:
+  description: Response for individual migration task
+  content:
+    application/json:
+      schema:
+        title: Individual Migration Task Info
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrateSchemaTaskInfo'
+VoyagerAssesmentResponse:
+  description: Response for Plan and Asses page
+  content:
+    application/json:
+      schema:
+        title: API for Plan and Asses page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'

@@ -1018,6 +1018,7 @@ class KeyManagementConfiguration extends Component {
 
     this.setState({
       listView: false,
+      hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE,
       mode: 'EDIT',
       formData
     });
@@ -1035,7 +1036,7 @@ class KeyManagementConfiguration extends Component {
    * Shows list view on click of cancel button by turning the listView flag ON.
    */
   showListView = () => {
-    this.setState({ listView: true, mode: 'NEW', formData: DEFAULT_FORM_DATA });
+    this.setState({ listView: true, mode: 'NEW', hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE, formData: DEFAULT_FORM_DATA });
   };
 
   isValidUrl = (url) => {

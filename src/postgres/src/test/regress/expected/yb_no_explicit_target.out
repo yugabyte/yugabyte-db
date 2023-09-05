@@ -5,9 +5,9 @@ INSERT INTO t_kv VALUES (11, 1); -- test duplicate key
 INSERT INTO t_kv VALUES (12, NULL); -- test null values
 -- yb seq scan
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT k FROM t_kv;
-                  QUERY PLAN
-----------------------------------------------
- YB Seq Scan on t_kv (actual rows=12 loops=1)
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
 (1 row)
 
 /*+ SeqScan(t_kv) */ SELECT k FROM t_kv;
@@ -28,9 +28,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELEC
 (12 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT FROM t_kv;
-                  QUERY PLAN
-----------------------------------------------
- YB Seq Scan on t_kv (actual rows=12 loops=1)
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
 (1 row)
 
 /*+ SeqScan(t_kv) */ SELECT FROM t_kv;
@@ -38,10 +38,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELEC
 (12 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT count(1) FROM t_kv;
-                    QUERY PLAN
----------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
-   ->  YB Seq Scan on t_kv (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
          Partial Aggregate: true
 (3 rows)
 
@@ -52,10 +52,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELEC
 (1 row)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT count(*) FROM t_kv;
-                    QUERY PLAN
----------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
-   ->  YB Seq Scan on t_kv (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
          Partial Aggregate: true
 (3 rows)
 
@@ -66,9 +66,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELEC
 (1 row)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT 1 FROM t_kv;
-                  QUERY PLAN
-----------------------------------------------
- YB Seq Scan on t_kv (actual rows=12 loops=1)
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
 (1 row)
 
 /*+ SeqScan(t_kv) */ SELECT 1 FROM t_kv;
@@ -186,9 +186,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */
 (12 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT k FROM t_kv;
-                  QUERY PLAN
-----------------------------------------------
- YB Seq Scan on t_kv (actual rows=12 loops=1)
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
 (1 row)
 
 /*+ IndexOnlyScan(t_kv) */ SELECT k FROM t_kv;
@@ -276,9 +276,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_v
 (12 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT k FROM t_kv;
-                  QUERY PLAN
-----------------------------------------------
- YB Seq Scan on t_kv (actual rows=12 loops=1)
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
 (1 row)
 
 /*+ IndexOnlyScan(t_kv t_vi) */ SELECT k FROM t_kv;
@@ -379,10 +379,10 @@ SELECT * FROM t_kv;
 
 -- yb seq scan
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ DELETE FROM t_kv;
-                     QUERY PLAN
-----------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Delete on t_kv (actual rows=0 loops=1)
-   ->  YB Seq Scan on t_kv (actual rows=10 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
 (2 rows)
 
 INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
@@ -403,10 +403,10 @@ INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
 
 -- index only scan on the primary index
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ DELETE FROM t_kv;
-                     QUERY PLAN
-----------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Delete on t_kv (actual rows=0 loops=1)
-   ->  YB Seq Scan on t_kv (actual rows=10 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
 (2 rows)
 
 INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
@@ -427,10 +427,10 @@ INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
 
 -- index only scan on the secondary index
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ DELETE FROM t_kv;
-                     QUERY PLAN
-----------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Delete on t_kv (actual rows=0 loops=1)
-   ->  YB Seq Scan on t_kv (actual rows=10 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
 (2 rows)
 
 INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;

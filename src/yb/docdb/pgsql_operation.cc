@@ -178,20 +178,68 @@ class DocKeyColumnPathBuilderHolder {
 
 YB_STRONGLY_TYPED_BOOL(KeyOnlyRequested);
 
+YB_DEFINE_ENUM(IntentFeature, (kRegularRead)(kKeyOnlyRead)(kRowLock));
+
+// Helper class to describe what kind of intents must be created on particular doc key:
+// - regular_read - intent for regular read is required
+// - key_only_read - intent for key column only read is required
+// - row_lock - intent for row lock is required.
+// Note: regular_read and key_only_read can't be both equaled true.
+class IntentMode {
+ public:
+  IntentMode(IsolationLevel level, RowMarkType row_mark, KeyOnlyRequested key_only_requested) {
+    auto intent_types = dockv::GetIntentTypesForRead(level, row_mark);
+    const auto& read_intents = intent_types.read;
+    auto& lock_intents = intent_types.row_mark;
+    if (!read_intents.None()) {
+      auto all_read_intents = MakeWeak(read_intents);
+      if (key_only_requested) {
+        features_.Set(IntentFeature::kKeyOnlyRead);
+      } else {
+        all_read_intents |= read_intents;
+        features_.Set(IntentFeature::kRegularRead);
+      }
+      lock_intents &= ~(all_read_intents);
+    }
+    if (!lock_intents.None()) {
+      features_.Set(IntentFeature::kRowLock);
+    }
+  }
+
+  [[nodiscard]] bool regular_read() const {
+    return features_.Test(IntentFeature::kRegularRead);
+  }
+
+  [[nodiscard]] bool key_only_read() const {
+    return features_.Test(IntentFeature::kKeyOnlyRead);
+  }
+
+  [[nodiscard]] bool row_lock() const {
+    return features_.Test(IntentFeature::kRowLock);
+  }
+
+ private:
+  EnumBitSet<IntentFeature> features_;
+};
+
 class IntentInserter {
  public:
   explicit IntentInserter(LWKeyValueWriteBatchPB* out)
       : out_(*out) {}
 
-  void Add(Slice encoded_key, KeyOnlyRequested key_only_requested) {
-    if (!key_only_requested) {
+  void Add(Slice encoded_key, const IntentMode& mode) {
+    if (mode.regular_read()) {
       Add(encoded_key);
-      return;
+    } else if (mode.key_only_read()) {
+      auto& buf = buffer();
+      buf.Clear();
+      DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
+      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
     }
-    auto& buf = buffer();
-    buf.Clear();
-    DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
-    Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
+
+    if (mode.row_lock()) {
+      Add(encoded_key, /*row_lock=*/ true);
+    }
   }
 
  private:
@@ -202,10 +250,13 @@ class IntentInserter {
     return *buffer_;
   }
 
-  void Add(Slice encoded_key) {
+  void Add(Slice encoded_key, bool is_row_lock = false) {
     auto& pair = *out_.add_read_pairs();
     pair.dup_key(encoded_key);
-    pair.dup_value(Slice(&dockv::ValueEntryTypeAsChar::kNullLow, 1));
+    pair.dup_value(Slice(
+        is_row_lock ? &dockv::ValueEntryTypeAsChar::kRowLock
+                    : &dockv::ValueEntryTypeAsChar::kNullLow,
+        1));
   }
 
   std::optional<dockv::KeyBytes> buffer_;
@@ -1990,10 +2041,10 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
-  const auto has_row_mark = IsValidRowMarkType(
-      request_.has_row_mark_type() ? request_.row_mark_type() : ROW_MARK_ABSENT);
-  if (has_row_mark) {
+Status PgsqlReadOperation::GetIntents(
+    const Schema& schema, IsolationLevel level, LWKeyValueWriteBatchPB* out) {
+  const auto row_mark = request_.has_row_mark_type() ? request_.row_mark_type() : ROW_MARK_ABSENT;
+  if (IsValidRowMarkType(row_mark)) {
     RSTATUS_DCHECK(request_.has_wait_policy(), IllegalState, "wait policy is expected");
     out->set_wait_policy(request_.wait_policy());
   }
@@ -2003,21 +2054,19 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatch
 
   DocKeyAccessor accessor(schema);
   if (!(has_batch_arguments || request_.has_ybctid_column_value())) {
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request_)), KeyOnlyRequested::kFalse);
+    inserter.Add(
+        VERIFY_RESULT(accessor.GetEncoded(request_)), {level, row_mark, KeyOnlyRequested::kFalse});
     return Status::OK();
   }
 
-  // TODO(dmitry): the '!has_row_mark' requirement will be removed in context of fix for #16212.
-  const KeyOnlyRequested key_only_requested{
-      !has_row_mark && IsOnlyKeyColumnsRequested(schema, request_)};
+  const IntentMode mode{
+      level, row_mark, KeyOnlyRequested(IsOnlyKeyColumnsRequested(schema, request_))};
   for (const auto& batch_argument : request_.batch_arguments()) {
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), key_only_requested);
+    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), mode);
   }
   if (!has_batch_arguments) {
     DCHECK(request_.has_ybctid_column_value());
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(request_.ybctid_column_value())), key_only_requested);
+    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request_.ybctid_column_value())), mode);
   }
   return Status::OK();
 }

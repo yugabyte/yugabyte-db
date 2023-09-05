@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.NOT_FOUND;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -37,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
 import play.libs.Json;
@@ -286,6 +284,21 @@ public class RBACController extends AuthenticatedController {
       String errorMsg = "Cannot delete System Role with given UUID: " + roleUUID;
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Ensure we don't delete role if role_binding exists.
+    Set<String> usersHavingRoleBindingsWithRole =
+        RoleBinding.getAllWithRole(roleUUID).stream()
+            .map(rb -> rb.getUser().getEmail())
+            .collect(Collectors.toSet());
+    if (!usersHavingRoleBindingsWithRole.isEmpty()) {
+      String errorMsg =
+          String.format(
+              "Cannot delete Role with name: '%s', "
+                  + "since there are role bindings associated on users '%s'.",
+              role.getName(), usersHavingRoleBindingsWithRole);
+      log.error(errorMsg);
+      throw new PlatformServiceException(CONFLICT, errorMsg);
     }
 
     // Delete the custom role.

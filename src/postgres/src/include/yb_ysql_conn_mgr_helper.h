@@ -35,6 +35,9 @@
  */
 extern bool yb_is_client_ysqlconnmgr;
 
+/* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
+extern int yb_logical_client_shmem_key;
+
 /*
  * Check whether the connection is made from Ysql Connection Manager.
  */

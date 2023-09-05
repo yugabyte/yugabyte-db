@@ -25,7 +25,8 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "selected": "Selected"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -255,6 +256,7 @@
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
         "invalidKey": "Invalid attribute key or missing '=' between key value pair",
         "uploadKeyset": "Need to upload JWKS keyset",
+        "jwksNotSupported": "Please select database versions 2.18 or above to upload JWKS",
         "missingAttributeValue": "Missing value for the attribute key",
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
@@ -713,7 +715,7 @@
           "form": {
             "name": "Name",
             "namePlaceholder": "Role Name",
-            "description": "Description (Optional)",
+            "description": "Description",
             "descriptionPlaceholder": "Role description",
             "selectPermissions": "Select Permissions",
             "selectPermissionSubText": "Select the permissions you want to include in this role.",
@@ -755,8 +757,59 @@
         }
       },
       "permissions": {
+        "title": "Select a role and define its scope by mapping it to applicable Universes.",
+        "connectOnly": "<b>'Connect Only'</b> role is automatically assigned to users without a role, restricting access to login and view their own profile page.",
+        "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
+        "role": "Role",
+        "for": "for",
+        "assignNewRole": "Assign Role",
+        "userAssignedRole": "User’s assigned roles",
         "selectPermissionModal": {
           "title": "Select Permissions"
+        }
+      },
+      "users": {
+        "create": {
+          "title": "Add User",
+          "form": {
+            "email": "User Email",
+            "emailPlaceholder": "Add email",
+            "password": "Password",
+            "confirmPassword":"Confirm Password"
+          }
+        },
+        "edit": {
+          "title": "Edit User",
+          "delete": "Delete User"
+        },
+        "list": {
+          "rowsCount": "{{count}} Users",
+          "createUser" : "Create User",
+          "search": "search by user email",
+          "table": {
+            "email": "User Email",
+            "createdAt": "Created At",
+            "actions": "Actions",
+            "moreActions": {
+              "editAssignedRoles": "Edit Assigned Roles",
+              "deleteUser": "Delete User"
+            }
+          }
+        }
+      },
+      "policy": {
+        "universeSelection": {
+          "noRole":"Once you select the role, you can select the Universes here.",
+          "editSelection": "Edit Selection",
+          "allFutureUniverses": "All present and future Universes.",
+          "universes": "Universes",
+          "title": {
+            "selectUniverse": "Select Universe",
+            "editUniverse": "Edit universe"
+          },
+          "universeName": "Universe Name",
+          "searchPlaceholder": "Search by universe name...",
+          "includeFutureUniverse": "Include future Universes"
         }
       }
     }
