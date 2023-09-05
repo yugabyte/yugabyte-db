@@ -9241,22 +9241,14 @@ agtype_value *alter_properties(agtype_value *original_properties,
     // Copy original properties.
     if (original_properties)
     {
-        int i;
-
         if (original_properties->type != AGTV_OBJECT)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("a map is expected")));
         }
 
-        for (i = 0; i < original_properties->val.object.num_pairs; i++)
-        {
-            agtype_pair* pair = original_properties->val.object.pairs + i;
-            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_KEY,
-                                                    &pair->key);
-            parsed_agtype_value = push_agtype_value(&parse_state, WAGT_VALUE,
-                                                    &pair->value);
-        }
+        copy_agtype_value(parse_state, original_properties,
+                          &parsed_agtype_value, true);
     }
 
     // Append new properties.

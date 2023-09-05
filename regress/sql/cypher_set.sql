@@ -260,6 +260,7 @@ SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Kevin {name:'Kevin', age:32, h
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Matt {name:'Matt', city:'Toronto'}) $$) AS (a agtype);
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Juan {name:'Juan', role:'admin'}) $$) AS (a agtype);
 SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Robert {name:'Robert', role:'manager', city:'London'}) $$) AS (a agtype);
+SELECT * FROM cypher('cypher_set_1',$$ CREATE (a: VertexA {map: {a: 1, b: {c: 2, d: []}, c: [{d: -100, e: []}]}, list: [1, "string", [{a: []}, [[1, 2]]]], bool: true, num: -1.9::numeric, str: "string"})$$) as (a agtype);
 
 -- test copying properties between entities
 SELECT * FROM cypher('cypher_set_1', $$
@@ -312,6 +313,31 @@ $$) AS (p agtype);
 -- expected: no change
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (p {name: 'Rob'})
+    SET p += {}
+    RETURN p
+$$) AS (p agtype);
+
+-- test plus-equal with original properties having non-scalar values
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {map: {}})
+    SET p += {json: {a: -1, b: ['a', -1, true], c: {d: 'string'}}}
+    RETURN p
+$$) AS (p agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p: VertexA {map: {}})
+    SET p += {list_upd: [1, 2, 3, 4, 5]}
+    RETURN p
+$$) AS (p agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p: VertexA)
+    SET p += {vertex: {id: 281474976710659, label: "", properties: {a: 1, b: [1, 2, 3]}}::vertex}
+    RETURN p
+$$) AS (p agtype);
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {map: {}})
     SET p += {}
     RETURN p
 $$) AS (p agtype);

@@ -489,6 +489,9 @@ void convert_extended_object(StringInfo buffer, agtentry *pheader,
                              agtype_value *val);
 Datum get_numeric_datum_from_agtype_value(agtype_value *agtv);
 bool is_numeric_result(agtype_value *lhs, agtype_value *rhs);
+void copy_agtype_value(agtype_parse_state* pstate,
+                       agtype_value* original_agtype_value,
+                       agtype_value **copied_agtype_value, bool is_top_level);
 
 /* agtype.c support functions */
 /*

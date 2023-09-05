@@ -787,6 +787,11 @@ SELECT * FROM cypher('cypher_set_1', $$ CREATE (a:Robert {name:'Robert', role:'m
 ---
 (0 rows)
 
+SELECT * FROM cypher('cypher_set_1',$$ CREATE (a: VertexA {map: {a: 1, b: {c: 2, d: []}, c: [{d: -100, e: []}]}, list: [1, "string", [{a: []}, [[1, 2]]]], bool: true, num: -1.9::numeric, str: "string"})$$) as (a agtype);
+ a 
+---
+(0 rows)
+
 -- test copying properties between entities
 SELECT * FROM cypher('cypher_set_1', $$
     MATCH (at {name: 'Andy'}), (pn {name: 'Peter'})
@@ -869,6 +874,47 @@ $$) AS (p agtype);
  {"id": 2251799813685249, "label": "Robert", "properties": {"age": 47, "city": "London", "name": "Rob"}}::vertex
 (1 row)
 
+-- test plus-equal with original properties having non-scalar values
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {map: {}})
+    SET p += {json: {a: -1, b: ['a', -1, true], c: {d: 'string'}}}
+    RETURN p
+$$) AS (p agtype);
+                                                                                                                                                      p                                                                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "VertexA", "properties": {"map": {"a": 1, "b": {"c": 2, "d": []}, "c": [{"d": -100, "e": []}]}, "num": -1.9::numeric, "str": "string", "bool": true, "json": {"a": -1, "b": ["a", -1, true], "c": {"d": "string"}}, "list": [1, "string", [{"a": []}, [[1, 2]]]]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p: VertexA {map: {}})
+    SET p += {list_upd: [1, 2, 3, 4, 5]}
+    RETURN p
+$$) AS (p agtype);
+                                                                                                                                                                     p                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "VertexA", "properties": {"map": {"a": 1, "b": {"c": 2, "d": []}, "c": [{"d": -100, "e": []}]}, "num": -1.9::numeric, "str": "string", "bool": true, "json": {"a": -1, "b": ["a", -1, true], "c": {"d": "string"}}, "list": [1, "string", [{"a": []}, [[1, 2]]]], "list_upd": [1, 2, 3, 4, 5]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p: VertexA)
+    SET p += {vertex: {id: 281474976710659, label: "", properties: {a: 1, b: [1, 2, 3]}}::vertex}
+    RETURN p
+$$) AS (p agtype);
+                                                                                                                                                                                                                     p                                                                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "VertexA", "properties": {"map": {"a": 1, "b": {"c": 2, "d": []}, "c": [{"d": -100, "e": []}]}, "num": -1.9::numeric, "str": "string", "bool": true, "json": {"a": -1, "b": ["a", -1, true], "c": {"d": "string"}}, "list": [1, "string", [{"a": []}, [[1, 2]]]], "vertex": {"id": 281474976710659, "label": "", "properties": {"a": 1, "b": [1, 2, 3]}}::vertex, "list_upd": [1, 2, 3, 4, 5]}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_set_1', $$
+    MATCH (p {map: {}})
+    SET p += {}
+    RETURN p
+$$) AS (p agtype);
+                                                                                                                                                                                                                     p                                                                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "VertexA", "properties": {"map": {"a": 1, "b": {"c": 2, "d": []}, "c": [{"d": -100, "e": []}]}, "num": -1.9::numeric, "str": "string", "bool": true, "json": {"a": -1, "b": ["a", -1, true], "c": {"d": "string"}}, "list": [1, "string", [{"a": []}, [[1, 2]]]], "vertex": {"id": 281474976710659, "label": "", "properties": {"a": 1, "b": [1, 2, 3]}}::vertex, "list_upd": [1, 2, 3, 4, 5]}}::vertex
+(1 row)
+
 --
 -- Check passing mismatched types with SET
 -- Issue 899
@@ -912,7 +958,7 @@ NOTICE:  graph "cypher_set" has been dropped
 (1 row)
 
 SELECT drop_graph('cypher_set_1', true);
-NOTICE:  drop cascades to 8 other objects
+NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table cypher_set_1._ag_label_vertex
 drop cascades to table cypher_set_1._ag_label_edge
 drop cascades to table cypher_set_1."Andy"
@@ -921,6 +967,7 @@ drop cascades to table cypher_set_1."Kevin"
 drop cascades to table cypher_set_1."Matt"
 drop cascades to table cypher_set_1."Juan"
 drop cascades to table cypher_set_1."Robert"
+drop cascades to table cypher_set_1."VertexA"
 NOTICE:  graph "cypher_set_1" has been dropped
  drop_graph 
 ------------
