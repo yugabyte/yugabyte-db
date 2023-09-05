@@ -502,6 +502,9 @@ public enum TaskType {
   ThirdpartySoftwareUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class),
 
+  ModifyAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
+
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
 

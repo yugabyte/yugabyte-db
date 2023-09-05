@@ -368,6 +368,9 @@ public class Audit extends Model {
     @EnumValue("Toggle Universe's TLS State")
     ToggleTls,
 
+    @EnumValue("Modify Universe's Audit Logging Config")
+    ModifyAuditLogging,
+
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
 
