@@ -111,6 +111,15 @@ message KvStoreInfoPB {
   // Uint64 representation of a HybridTime indicating the last time the tablet was fully
   // compacted. Defaults to 0 (i.e. HybridTime::kMin).
   optional uint64 last_full_compaction_time = 10;
+
+  // Indicates the upper bound for a set of files, which should be included into post-split
+  // compaction. In this case post-split compaction picks a subset of files whose file number is
+  // limited by post_split_compaction_file_number_upper_bound exclusively and whose total size is
+  // less or equal than FLAGS_post_split_compaction_input_size_threshold_bytes. The parameter is
+  // not taken into account if FLAGS_post_split_compaction_input_size_threshold_bytes is set to 0.
+  // The value of post_split_compaction_file_number_upper_bound is set to 0 when post-split
+  // compaction is done for all the files in the selected subset.
+  optional uint64 post_split_compaction_file_number_upper_bound = 11;
 }
 
 // The super-block keeps track of the Raft group.

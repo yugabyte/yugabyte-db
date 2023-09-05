@@ -7710,6 +7710,9 @@
         "description" : {
           "type" : "string"
         },
+        "name" : {
+          "type" : "string"
+        },
         "permissionValidOnResource" : {
           "type" : "boolean"
         },
@@ -7782,6 +7785,10 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "usedForXCluster" : {
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "uuid" : {
           "description" : "PITR config UUID",
@@ -9260,6 +9267,16 @@
     },
     "RestoreResp" : {
       "properties" : {
+        "backupCreatedOnDate" : {
+          "description" : "Backup details.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "backupType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
         "createTime" : {
           "description" : "Restore creation time.",
           "example" : "2022-12-12T13:07:18Z",
@@ -9312,7 +9329,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
+      "required" : [ "backupType", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {

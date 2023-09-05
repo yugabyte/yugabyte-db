@@ -19,10 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AccessKeyRotationUtil;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,6 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.Environment;
 
 @Singleton
 @Slf4j
@@ -49,6 +47,8 @@ public class UniverseMetricProvider implements MetricsProvider {
   @Inject MetricService metricService;
 
   @Inject AccessManager accessManager;
+
+  @Inject Environment environment;
 
   @Inject Config config;
 
@@ -78,6 +78,7 @@ public class UniverseMetricProvider implements MetricsProvider {
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
 
     Map<String, InstanceType> mapInstanceTypes = new HashMap<String, InstanceType>();
+    String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     for (Customer customer : Customer.getAll()) {
       /*
       To prevent excessive memory usage when dealing with multiple providers
@@ -120,10 +121,11 @@ public class UniverseMetricProvider implements MetricsProvider {
                   : null;
           universeGroup.metric(
               createUniverseMetric(
-                  customer,
-                  universe,
-                  PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
-                  taskType != null ? taskType.getCode() : 0));
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
+                      taskType != null ? taskType.getCode() : 0)
+                  .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion));
           universeGroup.metric(
               createUniverseMetric(
                   customer,

@@ -1,5 +1,6 @@
-export const ON_PREM_UNLISTED_LOCATION = 'Unlisted';
+export const ON_PREM_CUSTOM_LOCATION = 'Custom Location';
 export const ON_PREM_LOCATIONS = {
+  [ON_PREM_CUSTOM_LOCATION]: { latitude: 0, longitude: 0 },
   Australia: { latitude: -29, longitude: 148 },
   Brazil: { latitude: -22, longitude: -43 },
   China: { latitude: 31.2, longitude: 121.5 },
@@ -19,6 +20,5 @@ export const ON_PREM_LOCATIONS = {
   'EU North - Stockholm': { latitude: 59.3, longitude: 18 },
   'EU South - Milan': { latitude: 45.5, longitude: 9.2 },
   'Middle East - Bahrain': { latitude: 26, longitude: 50.5 },
-  'South Africa - Johannesburg': { latitude: -26.2, longitude: 28.04 },
-  [ON_PREM_UNLISTED_LOCATION]: { latitude: 0, longitude: 0 }
+  'South Africa - Johannesburg': { latitude: -26.2, longitude: 28.04 }
 } as const;

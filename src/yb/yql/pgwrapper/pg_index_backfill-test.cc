@@ -109,6 +109,17 @@ class PgIndexBackfillTest : public LibPqTestBase {
     return true;
   }
 
+  Status WaitForIndexStateFlags(const IndexStateFlags& index_state_flags,
+                                const std::string& index_name = kIndexName) {
+    RETURN_NOT_OK(WaitFor(
+        [this, &index_name, &index_state_flags] {
+          return IsAtTargetIndexStateFlags(index_name, index_state_flags);
+        },
+        30s,
+        Format("get index state flags: $0", index_state_flags)));
+    return Status::OK();
+  }
+
   Status WaitForIndexProgressOutput(const std::string columns, const std::string expected_result) {
     return WaitFor(
       [this, &columns, &expected_result]() -> Result<bool> {
@@ -124,6 +135,15 @@ class PgIndexBackfillTest : public LibPqTestBase {
       },
       30s,
       Format("Wait for index progress columns $0 to be $1", columns, expected_result));
+  }
+
+  Status WaitForIndexScan(const std::string& query) {
+    return WaitFor(
+        [this, &query] {
+          return conn_->HasIndexScan(query);
+        },
+        30s,
+        "Wait for IndexScan");
   }
 
   bool HasClientTimedOut(const Status& s);
@@ -1280,12 +1300,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   // Index scan to verify contents of index table.
   const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-  ASSERT_OK(WaitFor(
-      [this, &query] {
-        return conn_->HasIndexScan(query);
-      },
-      30s,
-      "Wait for IndexScan"));
+  ASSERT_OK(WaitForIndexScan(query));
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   int lines = PQntuples(res.get());
   ASSERT_EQ(1, lines);
@@ -1343,12 +1358,7 @@ TEST_F_EX(PgIndexBackfillTest,
       int key = std::get<1>(tup);
       const auto& label = std::get<2>(tup);
 
-      ASSERT_OK(WaitFor(
-          [this, &index_state_flags] {
-            return IsAtTargetIndexStateFlags(kIndexName, index_state_flags);
-          },
-          30s,
-          Format("get index state flags: $0", index_state_flags)));
+      ASSERT_OK(WaitForIndexStateFlags(index_state_flags));
       LOG(INFO) << "running UPDATE on i = " << key;
       ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
       LOG(INFO) << "done running UPDATE on i = " << key;
@@ -1372,12 +1382,7 @@ TEST_F_EX(PgIndexBackfillTest,
         "WITH j_idx AS (SELECT * FROM $0 ORDER BY j) SELECT j FROM j_idx WHERE i = $1",
         kTableName,
         key);
-    ASSERT_OK(WaitFor(
-        [this, &query] {
-          return conn_->HasIndexScan(query);
-        },
-        30s,
-        "Wait for IndexScan"));
+    ASSERT_OK(WaitForIndexScan(query));
     PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
     int lines = PQntuples(res.get());
     ASSERT_EQ(1, lines);
@@ -1495,12 +1500,7 @@ TEST_F_EX(PgIndexBackfillTest,
       const IndexStateFlags index_state_flags{IndexStateFlag::kIndIsLive};
 
       LOG(INFO) << "Wait for indislive index state flag";
-      ASSERT_OK(WaitFor(
-          [this, &index_state_flags] {
-            return IsAtTargetIndexStateFlags(kIndexName, index_state_flags);
-          },
-          30s,
-          Format("get index state flags: $0", index_state_flags)));
+      ASSERT_OK(WaitForIndexStateFlags(index_state_flags));
 
       LOG(INFO) << "Do delete and insert";
       ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
@@ -2170,6 +2170,53 @@ TEST_F_EX(PgIndexBackfillTest,
       kTestDatabaseName, num_rows_indexed_table)));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   thread_holder_.Stop();
+}
+
+// Make sure transaction is not aborted by getting safe time.  Simulate the following:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//   CREATE INDEX
+//   - indislive
+//   - indisready
+//                                                BEGIN
+//                                                UPDATE a row of the indexed table
+//   - backfill
+//     - get safe time for read
+//                                                COMMIT
+//     - do the actual backfill
+//   - indisvalid
+// TODO(#19000): enable for TSAN.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(NoAbortTxn),
+          PgIndexBackfillBlockDoBackfill) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
+                                 kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+  });
+  ASSERT_OK(WaitForIndexStateFlags(
+      IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady}));
+  // Reset connection to eliminate cache/heartbeat-delay issues of indislive=t, indisready=t.
+  conn_->Reset();
+
+  LOG(INFO) << "Begin txn";
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = 5 WHERE i = 3", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.Stop();
+
+  LOG(INFO) << "Validate data";
+  const std::string query = Format("SELECT * FROM $0 ORDER BY j", kTableName);
+  ASSERT_OK(WaitForIndexScan(query));
+  ASSERT_EQ("1, 2; 3, 5", ASSERT_RESULT(conn_->FetchAllAsString(query)));
 }
 
 } // namespace pgwrapper

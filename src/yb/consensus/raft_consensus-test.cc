@@ -269,9 +269,8 @@ class RaftConsensusTest : public YBTest {
 
     string peer_uuid = config_.peers(num_peers - 1).permanent_uuid();
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    ASSERT_OK(ConsensusMetadata::Create(fs_manager_.get(), kTestTablet, peer_uuid,
-                                       config_, initial_term, &cmeta));
+    std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+        fs_manager_.get(), kTestTablet, peer_uuid, config_, initial_term));
 
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);

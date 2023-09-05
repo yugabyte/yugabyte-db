@@ -169,15 +169,14 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto read_intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, &read_intent_types](
-            dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice, KeyBytes* key,
-            dockv::LastKey) {
+        [&result, intent_types = dockv:: GetIntentTypesForRead(isolation_level, row_mark_type)](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
+          auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
           return ApplyIntent(
               RefCntPrefix(key->AsSlice()),
-              ancestor_doc_key ? MakeWeak(read_intent_types) : read_intent_types,
+              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
               &result.lock_batch);
         }, partial_range_key_intents));
   }
@@ -324,31 +323,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();
-}
-
-IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard lock(mutex_);
-  return map_[txn_id]++;
-}
-
-void ExternalTxnIntentsState::EraseEntries(
-    const ExternalTxnApplyState& apply_external_transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& apply : apply_external_transactions) {
-    map_.erase(apply.first);
-  }
-}
-
-void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& transaction : transactions) {
-    map_.erase(transaction);
-  }
-}
-
-size_t ExternalTxnIntentsState::EntryCount() {
-  std::lock_guard lock(mutex_);
-  return map_.size();
 }
 
 Status EnumerateIntents(

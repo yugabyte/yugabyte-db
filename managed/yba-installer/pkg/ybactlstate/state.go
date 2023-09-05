@@ -12,19 +12,25 @@ const (
 )
 
 type State struct {
-	Version         string        `json:"version"`
-	RootInstall     string        `json:"root_install"`
-	Username        string        `json:"username"`
-	Postgres        PostgresState `json:"postgres"`
-	Ybdb            YbdbState     `json:"ybdb"`
-	CurrentStatus   status        `json:"current_status"`
+	Version         string                   `json:"version"`
+	RootInstall     string                   `json:"root_install"`
+	Username        string                   `json:"username"`
+	Postgres        PostgresState            `json:"postgres"`
+	Ybdb            YbdbState                `json:"ybdb"`
+	CurrentStatus   status                   `json:"current_status"`
+	Replicated      ReplicatedMigrationState `json:"replicated_migration"`
 	_internalFields internalFields
 }
 
 type PostgresState struct {
 	UseExisting bool `json:"UseExisting"`
 	IsEnabled   bool `json:"enabled"`
-	LdapEnabled	bool `json:"ldap_enabled"`
+	LdapEnabled bool `json:"ldap_enabled"`
+}
+
+type ReplicatedMigrationState struct {
+	PrometheusFileUser  uint32 `json:"prometheus_file_user"`
+	PrometheusFileGroup uint32 `json:"prometheus_file_group"`
 }
 
 func New() *State {
@@ -40,6 +46,7 @@ func New() *State {
 		Ybdb: YbdbState{
 			IsEnabled: viper.GetBool("ybdb.install.enabled"),
 		},
+		Replicated:    ReplicatedMigrationState{},
 		CurrentStatus: UninstalledStatus,
 		_internalFields: internalFields{
 			ChangeID:      0,

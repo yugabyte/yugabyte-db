@@ -98,7 +98,7 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_int32(async_replication_idle_delay_ms);
-DECLARE_int32(async_replication_max_idle_wait);
+DECLARE_uint32(async_replication_max_idle_wait);
 DECLARE_int32(async_replication_polling_delay_ms);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
@@ -117,7 +117,7 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
 DECLARE_int32(ns_replication_sync_backoff_secs);
 DECLARE_int32(ns_replication_sync_retry_secs);
-DECLARE_int32(replication_failure_delay_exponent);
+DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(transaction_table_num_tablets);
@@ -136,6 +136,7 @@ DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
+DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 
 namespace yb {
 
@@ -3799,4 +3800,44 @@ TEST_F_EX(XClusterTest, FetchBootstrapCheckpointsFromLeaders, XClusterTestNoPara
   ASSERT_OK(VerifyNumRecordsOnConsumer(97));
 }
 
+TEST_F_EX(XClusterTest, RandomFailuresAfterApply, XClusterTestTransactionalOnly) {
+  // Fail one third of the Applies.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0.3;
+  constexpr int kNumTablets = 3;
+  constexpr int kBatchSize = 100;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, 3));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(kNumTablets));
+
+  // Write some non-transactional rows.
+  int batch_count = 0;
+  for (int i = 0; i < 5; i++) {
+    ASSERT_OK(InsertRowsInProducer(batch_count * kBatchSize, (batch_count + 1) * kBatchSize));
+    batch_count++;
+  }
+  ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
+  ASSERT_OK(VerifyRowsMatch());
+
+  // Write some transactional rows.
+  for (int i = 0; i < 5; i++) {
+    ASSERT_OK(InsertTransactionalBatchOnProducer(
+        batch_count * kBatchSize, (batch_count + 1) * kBatchSize));
+    batch_count++;
+  }
+  ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
+  ASSERT_OK(VerifyRowsMatch());
+
+  // Write some transactional rows with multiple batches.
+  auto [session, txn] =
+      ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+
+  for (int i = 0; i < 5; i++) {
+    ASSERT_OK(
+        InsertIntentsOnProducer(session, batch_count * kBatchSize, (batch_count + 1) * kBatchSize));
+    batch_count++;
+  }
+  ASSERT_OK(txn->CommitFuture().get());
+  ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
+  ASSERT_OK(VerifyRowsMatch());
+}
 }  // namespace yb

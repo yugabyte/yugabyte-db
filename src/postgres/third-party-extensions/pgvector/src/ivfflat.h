@@ -3,6 +3,7 @@
 
 #include "postgres.h"
 
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #if PG_VERSION_NUM < 110000
 #error "Requires PostgreSQL 11+"
 #endif
@@ -78,10 +79,12 @@
 
 /* Variables */
 extern int	ivfflat_probes;
+#endif
 
 /* Exported functions */
 PGDLLEXPORT void _PG_init(void);
 
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 typedef struct VectorArrayData
 {
 	int			length;
@@ -247,4 +250,5 @@ void		ivfflatrescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderby
 bool		ivfflatgettuple(IndexScanDesc scan, ScanDirection dir);
 void		ivfflatendscan(IndexScanDesc scan);
 
+#endif
 #endif

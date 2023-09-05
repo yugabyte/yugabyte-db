@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,6 +34,7 @@ var replicatedMigrationStart = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to initialize state " + err.Error())
 		}
+
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl: " + err.Error())
 		}
@@ -49,10 +52,12 @@ var replicatedMigrationStart = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		// Mark install state
+		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
+			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
+		}
 		state.CurrentStatus = ybactlstate.MigratingStatus
 		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("before replicated migration, failed to update state: " + err.Error())
+			log.Fatal("failed to update state: " + err.Error())
 		}
 
 		// Dump replicated settings
@@ -60,6 +65,29 @@ var replicatedMigrationStart = &cobra.Command{
 		config, err := replCtl.AppConfigExport()
 		if err != nil {
 			log.Fatal("failed to export replicated app config: " + err.Error())
+		}
+
+		// Get the uid and gid used by the prometheus container. This is used for rollback.
+		entry := config.Get("installRoot")
+		var replicatedInstallRoot string
+		if entry == replicatedctl.NilConfigEntry {
+			replicatedInstallRoot = "/opt/yugabyte"
+		} else {
+			replicatedInstallRoot = entry.Value
+		}
+		checkFile := filepath.Join(replicatedInstallRoot, "prometheusv2/queries.active")
+		info, err := os.Stat(checkFile)
+		if err != nil {
+			log.Fatal("Could not read " + checkFile + " to get group and user: " + err.Error())
+		}
+		statInfo := info.Sys().(*syscall.Stat_t)
+		state.Replicated.PrometheusFileUser = statInfo.Uid
+		state.Replicated.PrometheusFileGroup = statInfo.Gid
+
+		// Mark install state
+		state.CurrentStatus = ybactlstate.MigratingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("before replicated migration, failed to update state: " + err.Error())
 		}
 
 		// Migrate config
@@ -191,8 +219,8 @@ var replicatedMigrationStart = &cobra.Command{
 		common.PrintStatus(statuses...)
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 
-		// Update install state
-		state.CurrentStatus = ybactlstate.InstalledStatus
+		// Update state
+		state.CurrentStatus = ybactlstate.MigrateStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())
 		}
@@ -214,6 +242,18 @@ Are you sure you want to continue?`
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("failed to YBA Installer state: " + err.Error())
+		}
+		if !state.CurrentStatus.TransitionValid(ybactlstate.FinishingStatus) {
+			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
+		}
+		state.CurrentStatus = ybactlstate.FinishingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("Failed to save state: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			if err := services[name].FinishReplicatedMigrate(); err != nil {
 				log.Fatal("could not finish replicated migration for " + name + ": " + err.Error())
@@ -221,6 +261,10 @@ Are you sure you want to continue?`
 		}
 		if err := replflow.Uninstall(); err != nil {
 			log.Fatal("unable to uninstall replicated: " + err.Error())
+		}
+		state.CurrentStatus = ybactlstate.InstalledStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("Failed to save state: " + err.Error())
 		}
 	},
 }
@@ -241,6 +285,86 @@ var replicatedMigrationConfig = &cobra.Command{
 	},
 }
 
+/*
+ * Rollback will perform the following steps:
+ * 1. Stop services started by yba-ctl
+ * 2. Reset prometheus directory ownership
+ * 3. Restart replicated app
+ * 4. Remove any yba-installer yugaware install
+ */
+var replicatedRollbackCmd = &cobra.Command{
+	Use: "rollback",
+	Short: "allows rollback from an unfinished migrate back to replicated install. Any changes " +
+		"made since migrate will not be available after rollback",
+	Long: "After a replicated migrate has been started and before the finish command runs, allows " +
+		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
+		"migrate will not be reflected after the rollback completes",
+	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("failed to YBA Installer state: " + err.Error())
+		}
+		if !state.CurrentStatus.TransitionValid(ybactlstate.RollbackStatus) {
+			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
+		}
+		state.CurrentStatus = ybactlstate.RollbackStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("Failed to save state: " + err.Error())
+		}
+		if err := rollbackMigrations(state); err != nil {
+			log.Fatal("rollback failed: " + err.Error())
+		}
+	},
+}
+
+func rollbackMigrations(state *ybactlstate.State) error {
+	log.Info("Stopping services")
+	for _, name := range serviceOrder {
+		if err := services[name].Stop(); err != nil {
+			log.Fatal("Could not stop " + name + ": " + err.Error())
+		}
+	}
+
+	// Update Prometheus directory ownership here
+	prom := services[PrometheusServiceName].(Prometheus)
+	err := prom.RollbackMigration(
+		state.Replicated.PrometheusFileUser,
+		state.Replicated.PrometheusFileUser)
+	if err != nil {
+		log.Fatal("Failed to rollback prometheus migration: " + err.Error())
+	}
+
+	log.Info("Starting yugaware in replicated")
+	replClient := replicatedctl.New(replicatedctl.Config{})
+	if err := replClient.AppStart(); err != nil {
+		return fmt.Errorf("failed to start yugaware: %w", err)
+	}
+
+	// 20 retries at 30 seconds each
+	var success = false
+	for i := 0; i < 20; i++ {
+		if status, err := replClient.AppStatus(); err == nil {
+			result := status[0]
+			if result.State == "started" {
+				log.Info("Replicated app started.")
+				success = true
+				break
+			}
+		} else {
+			log.Warn(fmt.Sprintf("Error getting app status: %s", err.Error()))
+		}
+		log.Info("replicated app not yet started, waiting...")
+		time.Sleep(30 * time.Second)
+	}
+	if !success {
+		return fmt.Errorf("Failed to restart yugaware in replicated")
+	}
+
+	log.Info("Removing yba-installer yugaware install")
+	common.Uninstall(serviceOrder, true)
+	return nil
+}
+
 func init() {
 	replicatedMigrationStart.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip by name")
@@ -248,6 +372,6 @@ func init() {
 		"path to license file")
 
 	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig,
-		replicatedMigrateFinish)
+		replicatedMigrateFinish, replicatedRollbackCmd)
 	rootCmd.AddCommand(baseReplicatedMigration)
 }

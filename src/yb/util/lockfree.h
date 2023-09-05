@@ -177,8 +177,8 @@ class WriteOnceWeakPtr {
   }
 
   // This always returns a const T*, because the object is not guaranteed to exist, and the return
-  // value of this function should only be used for debugging.
-  const T* raw_ptr() const {
+  // value of this function should only be used for logging/debugging.
+  const T* raw_ptr_for_logging() const {
     // This uses the fact that the weak pointer stores the raw pointer as its first word, and avoids
     // storing the raw pointer separately. This is true for libc++ and libstdc++.
     return IsInitialized() ? *reinterpret_cast<const T* const*>(&weak_ptr_) : nullptr;

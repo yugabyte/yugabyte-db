@@ -35,6 +35,9 @@
  */
 extern bool yb_is_client_ysqlconnmgr;
 
+/* TODO (janand): Write a function to read/change yb_logical_client_shmem_key */
+extern int yb_logical_client_shmem_key;
+
 /*
  * Check whether the connection is made from Ysql Connection Manager.
  */
@@ -71,3 +74,5 @@ extern void YbHandleSetSessionParam(int yb_client_id);
  * packet is sent to the Ysql Connection Manager.
  */
 extern void YbCreateClientId();
+
+extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);

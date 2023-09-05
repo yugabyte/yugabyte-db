@@ -102,9 +102,8 @@ void ConsensusMetadataTest::AssertValuesEqual(const ConsensusMetadata& cmeta,
 TEST_F(ConsensusMetadataTest, TestCreateLoad) {
   // Create the file.
   {
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
-                                        config_, kInitialTerm, &cmeta));
+    std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+        &fs_manager_, kTabletId, fs_manager_.uuid(), config_, kInitialTerm));
     ASSERT_VALUES_EQUAL(*cmeta, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
   }
 
@@ -125,9 +124,8 @@ TEST_F(ConsensusMetadataTest, TestFailedLoad) {
 // Check that changes are not written to disk until Flush() is called.
 TEST_F(ConsensusMetadataTest, TestFlush) {
   const int64_t kNewTerm = 4;
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
-                                      config_, kInitialTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      &fs_manager_, kTabletId, fs_manager_.uuid(), config_, kInitialTerm));
   cmeta->set_current_term(kNewTerm);
 
   // We are sort of "breaking the rules" by having multiple ConsensusMetadata
@@ -168,9 +166,8 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   const auto op_id = OpId(1, 1);
   config1.set_opid_index(op_id.index);
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid,
-                                      config1, kInitialTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(
+      ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid, config1, kInitialTerm));
 
   // Not a participant.
   ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
@@ -213,9 +210,8 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
   committed_config.set_opid_index(1);
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid,
-                                      committed_config, kInitialTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      &fs_manager_, kTabletId, peer_uuid, committed_config, kInitialTerm));
 
   uuids.push_back(peer_uuid);
   RaftConfigPB pending_config = BuildConfig(uuids);
@@ -273,9 +269,8 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
 
   RaftConfigPB committed_config = BuildConfig(uuids); // We aren't a member of this config...
   committed_config.set_opid_index(1);
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, "e",
-                                      committed_config, 1, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta =
+      ASSERT_RESULT(ConsensusMetadata::Create(&fs_manager_, kTabletId, "e", committed_config, 1));
 
   uuids.push_back("e");
   RaftConfigPB pending_config = BuildConfig(uuids);
