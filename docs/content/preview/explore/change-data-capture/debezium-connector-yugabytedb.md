@@ -1139,7 +1139,7 @@ For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the 
 The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. Once the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
 
 ### Prerequisites
-* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../admin/yb-admin#create_change_data_stream).
+* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../admin/yb-admin#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations
