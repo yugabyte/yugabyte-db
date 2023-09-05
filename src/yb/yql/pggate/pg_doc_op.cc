@@ -276,10 +276,12 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
-    if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::SYSTEM) {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogRead);
-    } else {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageRead);
+    if (!IsWrite()) {
+      if (ResolveRelationType(*pgsql_ops_.front(), table_) == TableType::SYSTEM) {
+        pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogRead);
+      } else {
+        pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageRead);
+      }
     }
 
     uint64_t wait_time = 0;
@@ -297,7 +299,9 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
 
-    pg_session_->UnsetWaitEventInfo();
+    if (!IsWrite()) {
+      pg_session_->UnsetWaitEventInfo();
+    }
 
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
