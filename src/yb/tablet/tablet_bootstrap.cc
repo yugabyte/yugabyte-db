@@ -664,8 +664,27 @@ class TabletBootstrap {
     // happening concurrently as we haven't opened the tablet yet.
     const bool has_ss_tables = VERIFY_RESULT(tablet->HasSSTables());
 
+    // Tablet meta data may require some updates after tablet is opened.
+    RETURN_NOT_OK(MaybeUpdateMetaAfterTabletHasBeenOpened(*tablet));
+
     tablet_ = std::move(tablet);
     return has_ss_tables;
+  }
+
+  // Makes updates to tablet meta if required.
+  Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
+    // post split compaction algorithm by explicitly setting the value for
+    // post_split_compaction_file_number_upper_bound.
+    if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
+        !meta_->parent_data_compacted() &&
+        !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
+      meta_->set_post_split_compaction_file_number_upper_bound(
+          tablet.regular_db()->GetNextFileNumber());
+      RETURN_NOT_OK(meta_->Flush());
+    }
+
+    return Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir

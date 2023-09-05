@@ -2748,7 +2748,7 @@ namespace cdc {
         301 /* start */, 401 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-    test_cluster()->mini_master(0)->tablet_peer()->tablet()->TEST_ForceRocksDBCompact();
+    CHECK_OK(test_cluster()->mini_master(0)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
 
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
