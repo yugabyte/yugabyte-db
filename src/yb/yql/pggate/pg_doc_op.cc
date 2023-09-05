@@ -362,9 +362,9 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     auto relation_type = ResolveRelationType(*pgsql_ops_.front(), table_);
     pg_session_->metrics().WriteRequest(relation_type);
     if (relation_type == TableType::SYSTEM) {
-      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageWrite);
-    } else {
       pg_session_->SetWaitEventInfo(util::WaitStateCode::CatalogWrite);
+    } else {
+      pg_session_->SetWaitEventInfo(util::WaitStateCode::StorageWrite);
     }
   }
   return Status::OK();
