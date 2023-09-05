@@ -118,11 +118,23 @@ Result<DecodedIntentValue> DecodeIntentValue(
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
-IntentTypeSet GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
+struct ReadIntentTypeSets {
+  IntentTypeSet read;
+  IntentTypeSet row_mark;
+};
 
-IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
+[[nodiscard]] ReadIntentTypeSets GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
 
-inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
+[[nodiscard]] IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
+
+YB_STRONGLY_TYPED_BOOL(IsRowLock);
+
+[[nodiscard]] inline IntentTypeSet GetIntentTypes(
+    const ReadIntentTypeSets& intents, IsRowLock is_row_lock) {
+  return is_row_lock ? intents.row_mark : intents.read;
+}
+
+[[nodiscard]] inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
   static constexpr auto kWeakIntentMask = (1 << kStrongIntentFlag) - 1;
 
   const auto value = inp.ToUIntPtr();
@@ -163,10 +175,10 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 using EnumerateIntentsCallback = boost::function<
-    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey)>;
+    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey, IsRowLock)>;
 
 Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 

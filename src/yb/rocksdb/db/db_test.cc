@@ -4730,6 +4730,8 @@ class ModelDB: public DB {
 
   SequenceNumber GetLatestSequenceNumber() const override { return 0; }
 
+  uint64_t GetNextFileNumber() const override { return 0; }
+
   ColumnFamilyHandle* DefaultColumnFamily() const override {
     return nullptr;
   }

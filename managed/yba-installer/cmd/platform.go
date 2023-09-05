@@ -211,7 +211,7 @@ func (plat Platform) untarDevopsAndYugawarePackages() error {
 
 	files, err := os.ReadDir(packageFolderPath)
 	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
+		return fmt.Errorf("unable to find packages to untar: %w", err)
 	}
 
 	for _, f := range files {
@@ -221,13 +221,13 @@ func (plat Platform) untarDevopsAndYugawarePackages() error {
 			devopsTgzPath := packageFolderPath + "/" + devopsTgzName
 			rExtract, errExtract := os.Open(devopsTgzPath)
 			if errExtract != nil {
-				log.Fatal("Error in starting the File Extraction process.")
+				return fmt.Errorf("Error in starting the File Extraction process: %w", err)
 			}
 
 			log.Debug("Extracting archive at " + devopsTgzPath)
 			if err := tar.Untar(rExtract, packageFolderPath+"/devops",
 				tar.WithMaxUntarSize(-1)); err != nil {
-				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", devopsTgzPath, err.Error()))
+				return fmt.Errorf("failed to extract file %s, error: %w", devopsTgzPath, err)
 			}
 			log.Debug("Completed extracting archive at " + devopsTgzPath +
 				" -> " + packageFolderPath + "/devops")
@@ -238,17 +238,16 @@ func (plat Platform) untarDevopsAndYugawarePackages() error {
 			yugawareTgzPath := packageFolderPath + "/" + yugawareTgzName
 			rExtract, errExtract := os.Open(yugawareTgzPath)
 			if errExtract != nil {
-				log.Fatal("Error in starting the File Extraction process.")
+				return fmt.Errorf("Error in starting the File Extraction process: %w", err)
 			}
 
 			log.Debug("Extracting archive at " + yugawareTgzPath)
 			if err := tar.Untar(rExtract, packageFolderPath+"/yugaware",
 				tar.WithMaxUntarSize(-1)); err != nil {
-				log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", yugawareTgzPath, err.Error()))
+				return fmt.Errorf("failed to extract file %s, error: %w", yugawareTgzPath, err)
 			}
 			log.Debug("Completed extracting archive at " + yugawareTgzPath +
 				" -> " + packageFolderPath + "/yugaware")
-
 		}
 	}
 	return nil
@@ -260,15 +259,16 @@ func (plat Platform) copyYbcPackages() error {
 
 	matches, err := filepath.Glob(ybcPattern)
 	if err != nil {
-		log.Fatal(
-			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
-				plat.PlatformPackages, err.Error()))
+		return fmt.Errorf("Could not find ybc components in %s. Failed with err %w",
+			plat.PlatformPackages, err.Error())
 	}
 
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
-		// TODO: Check if file does not already exist?
-		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/ybc/release/"+fileName)
+		dest := common.GetBaseInstall() + "/data/yb-platform/ybc/release/" + fileName
+		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
+			common.CopyFile(f, dest)
+		}
 	}
 	return nil
 }
@@ -302,7 +302,10 @@ func (plat Platform) copyNodeAgentPackages() error {
 
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
-		common.CopyFile(f, common.GetBaseInstall()+"/data/yb-platform/node-agent/releases/"+fileName)
+		dest := common.GetBaseInstall() + "/data/yb-platform/node-agent/releases/" + fileName
+		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
+			common.CopyFile(f, dest)
+		}
 	}
 	return nil
 }
@@ -549,9 +552,23 @@ func (plat Platform) MigrateFromReplicated() error {
 		return err
 	}
 
-	// TODO: need to pull keys from replicated.
-	if err := createPemFormatKeyAndCert(); err != nil {
-		return err
+	pemVal, err := plat.pemFromDocker()
+	if err != nil {
+		log.Debug("no cert found from replicated, creating self signed")
+		if err := createPemFormatKeyAndCert(); err != nil {
+			return err
+		}
+	} else {
+		serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
+		pemFile, err := common.Create(serverPemPath)
+		if err != nil {
+			log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
+			return err
+		}
+		defer pemFile.Close()
+		if _, err := pemFile.WriteString(pemVal); err != nil {
+			return fmt.Errorf("failed to write pem file at %s: %w", serverPemPath, err)
+		}
 	}
 
 	//Create the platform.log file so that we can start platform as
@@ -684,4 +701,15 @@ func (plat Platform) CreateCronJob() error {
 		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
 		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 	return nil
+}
+
+// pemFromDocker will read the pem file for https from server.pem. This only works for 2.16 and up.
+func (plat Platform) pemFromDocker() (string, error) {
+	out := shell.Run("docker", "exec", "yugaware", "cat",
+		"/opt/yugabyte/yugaware/conf/server.pem")
+	if !out.Succeeded() {
+		out.LogDebug()
+		return "", fmt.Errorf("failed to get pem file from container: %w", out.Error)
+	}
+	return out.StdoutString(), nil
 }

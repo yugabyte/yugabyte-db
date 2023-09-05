@@ -13,6 +13,9 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -452,6 +455,17 @@ public class PlacementInfoUtil {
     // Modifying placementInfo if needed.
     if (cluster.placementInfo == null || recalculatePlacement) {
       if (clusterOpType == ClusterOperationType.CREATE) {
+        int intentZones = cluster.userIntent.replicationFactor;
+        int intentRegionsCount = (int) cluster.userIntent.regionList.stream().distinct().count();
+        RuntimeConfGetter confGetter =
+            StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+        CloudType cloudType = cluster.userIntent.providerType;
+
+        if (confGetter.getGlobalConf(GlobalConfKeys.useSingleZone)
+            && intentRegionsCount == 1
+            && !(cloudType == CloudType.onprem || cloudType == CloudType.kubernetes)) {
+          intentZones = 1;
+        }
         List<NodeDetails> otherClustersNodes =
             taskParams.nodeDetailsSet.stream()
                 .filter(n -> !Objects.equals(n.placementUuid, cluster.uuid))
@@ -460,7 +474,7 @@ public class PlacementInfoUtil {
             getPlacementInfo(
                 cluster.clusterType,
                 cluster.userIntent,
-                cluster.userIntent.replicationFactor,
+                intentZones,
                 defaultRegionUUID,
                 removedZones,
                 new AvailableNodeTracker(cluster.uuid, taskParams.clusters, otherClustersNodes));

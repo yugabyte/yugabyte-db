@@ -13,6 +13,8 @@ import {
   ROTATE_CLIENT_NODE_CERT_FIELD_NAME,
   NODE_NODE_CERT_FIELD_NAME,
   CLIENT_NODE_CERT_FIELD_NAME,
+  ENABLE_NODE_NODE_ENCRYPTION_NAME,
+  ENABLE_CLIENT_NODE_ENCRYPTION_NAME,
   FORM_RESET_VALUES,
   EncryptionInTransitFormValues,
   useEITStyles,
@@ -53,15 +55,19 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const { control, watch, handleSubmit, setValue } = formMethods;
 
   //initial values
   const encryptionEnabled = INITIAL_VALUES.enableUniverseEncryption;
+  const enableNodeToNodeEncryptInitial = INITIAL_VALUES.enableNodeToNodeEncrypt;
+  const enableClientToNodeEncryptInitial = INITIAL_VALUES.enableClientToNodeEncrypt;
   const clientRootCAInitial = INITIAL_VALUES.clientRootCA;
   const rootCAInitial = INITIAL_VALUES.rootCA;
 
   //watch field values
   const enableUniverseEncryption = watch(EIT_FIELD_NAME);
+  const enableNodeToNodeEncrypt = watch(ENABLE_NODE_NODE_ENCRYPTION_NAME);
+  const enableClientToNodeEncrypt = watch(ENABLE_CLIENT_NODE_ENCRYPTION_NAME);
   const rotateNToN = watch(ROTATE_NODE_NODE_CERT_FIELD_NAME);
   const rotateCToN = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
   const rootCA = watch(NODE_NODE_CERT_FIELD_NAME);
@@ -89,6 +95,10 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
 
   const constructPayload = (values: EncryptionInTransitFormValues) => {
     let { enableUniverseEncryption, rollingUpgrade, upgradeDelay, ...payload } = values;
+    const tlsToggled =
+      encryptionEnabled !== enableUniverseEncryption ||
+      enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
+      enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
     if (!values.enableUniverseEncryption) payload = { ...payload, ...FORM_RESET_VALUES };
 
     if (values.enableNodeToNodeEncrypt === false) {
@@ -125,7 +135,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     }
 
     //Rolling Upgrade
-    if (values.rollingUpgrade) {
+    if (values.rollingUpgrade && !tlsToggled) {
       payload.sleepAfterMasterRestartMillis = values.upgradeDelay * 1000;
       payload.sleepAfterTServerRestartMillis = values.upgradeDelay * 1000;
       payload.upgradeOption = 'Rolling';
@@ -196,6 +206,13 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                     <span>
                       <YBToggleField
                         name={EIT_FIELD_NAME}
+                        onChange={(e) => {
+                          setValue(EIT_FIELD_NAME, e.target.checked);
+                          if (!encryptionEnabled && e.target.checked) {
+                            setValue(ENABLE_NODE_NODE_ENCRYPTION_NAME, e.target.checked);
+                            setValue(ENABLE_CLIENT_NODE_ENCRYPTION_NAME, e.target.checked);
+                          }
+                        }}
                         inputProps={{
                           'data-testid': 'EnableEncryptionInTransit-Toggle'
                         }}
@@ -222,7 +239,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                     label={t('universeActions.encryptionInTransit.certAuthority')}
                     value="CACert"
                   />
-                  {encryptionEnabled && (
+                  {encryptionEnabled && (enableNodeToNodeEncrypt || enableClientToNodeEncrypt) && (
                     <Tab
                       label={t('universeActions.encryptionInTransit.serverCert')}
                       value="ServerCert"

@@ -258,11 +258,11 @@ class BootstrapTest : public LogTestBase {
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
     peer->set_member_type(consensus::PeerMemberType::VOTER);
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),
-                                                    meta->fs_manager()->uuid(),
-                                                    config, kMinimumTerm, &cmeta),
-                          "Unable to create consensus metadata");
+    std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+        ConsensusMetadata::Create(
+            meta->fs_manager(), meta->raft_group_id(), meta->fs_manager()->uuid(), config,
+            kMinimumTerm),
+        "Unable to create consensus metadata");
 
     RETURN_NOT_OK_PREPEND(RunBootstrapOnTestTablet(meta, tablet, boot_info),
                           "Unable to bootstrap test tablet");

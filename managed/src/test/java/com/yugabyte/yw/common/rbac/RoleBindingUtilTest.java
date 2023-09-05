@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.rbac;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -32,6 +34,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
   private RoleBindingUtil roleBindingUtil;
   private Customer customer;
+  private Universe universe;
   private Users user;
   private Role role;
 
@@ -39,6 +42,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
   public void setup() {
     roleBindingUtil = new RoleBindingUtil(null);
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
+    universe = ModelFactory.createUniverse(customer.getId());
     user = ModelFactory.testUser(customer);
     role =
         Role.create(
@@ -163,5 +167,97 @@ public class RoleBindingUtilTest extends FakeDBApplication {
       assertTrue(rd.getResourceType().equals(ResourceType.DEFAULT));
     }
     assertEquals(1, allowAllCount);
+  }
+
+  @Test
+  public void testValidateResourceDefinitionNonDefaultResourceType() {
+    // Assert that exception is thrown if both of the fields 'allowAll' or 'resourceUUIDSet' are
+    // filled.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(true)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe.getUniverseUUID())))
+            .build();
+    assertPlatformException(
+        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition1));
+
+    // Assert that no exception is thrown if any one of the fields 'allowAll' or 'resourceUUIDSet'
+    // is filled.
+
+    ResourceDefinition resourceDefinition2 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe.getUniverseUUID())))
+            .build();
+    roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition2);
+
+    // Assert that no exception is thrown if any one of the fields 'allowAll' or 'resourceUUIDSet'
+    // is filled.
+    ResourceDefinition resourceDefinition3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(true)
+            .resourceUUIDSet(new HashSet<>())
+            .build();
+    roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition3);
+
+    // Assert that exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
+    // filled.
+    ResourceDefinition resourceDefinition4 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>())
+            .build();
+    assertPlatformException(
+        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4));
+  }
+
+  @Test
+  public void testValidateResourceDefinitionDefaultResourceType() {
+    // Assert that exception is thrown if both of the fields 'allowAll' or 'resourceUUIDSet' are
+    // filled.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.DEFAULT)
+            .allowAll(true)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(UUID.randomUUID())))
+            .build();
+    assertPlatformException(
+        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition1));
+
+    // Assert that no exception is thrown if only 'resourceUUIDSet' is given for default resource
+    // type with only customer UUID in the resource set.
+    // This is the only correct resource definition for DEFAULT resource types.
+    ResourceDefinition resourceDefinition2 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.DEFAULT)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .build();
+    roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition2);
+
+    // Assert that exception is thrown if 'allowAll' is true and 'resourceUUIDSet' is empty.
+    ResourceDefinition resourceDefinition3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.DEFAULT)
+            .allowAll(true)
+            .resourceUUIDSet(new HashSet<>())
+            .build();
+    assertPlatformException(
+        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition3));
+
+    // Assert that exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
+    // filled.
+    ResourceDefinition resourceDefinition4 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.DEFAULT)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>())
+            .build();
+    assertPlatformException(
+        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4));
   }
 }

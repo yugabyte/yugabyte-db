@@ -2,6 +2,7 @@
   {
     "resourceType": "DEFAULT",
     "action": "CREATE",
+    "name": "Create Resource",
     "description": "Default permission to create a resource instance.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": [
@@ -14,6 +15,7 @@
   {
     "resourceType": "DEFAULT",
     "action": "READ",
+    "name": "View Resource",
     "description": "Default permission to read a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": []
@@ -21,6 +23,7 @@
   {
     "resourceType": "DEFAULT",
     "action": "UPDATE",
+    "name": "Update Resource",
     "description": "Default permission to update a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
@@ -33,6 +36,7 @@
   {
     "resourceType": "DEFAULT",
     "action": "DELETE",
+    "name": "Delete Resource",
     "description": "Default permission to delete a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
@@ -45,6 +49,7 @@
   {
     "resourceType": "DEFAULT",
     "action": "SUPER_ADMIN_ACTIONS",
+    "name": "Super Admin Actions",
     "description": "Gives all the super admin permissions like HA, runtime configs, etc.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": []

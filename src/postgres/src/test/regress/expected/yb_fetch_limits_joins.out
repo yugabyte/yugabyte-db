@@ -90,7 +90,7 @@ SELECT explain_join_tsmall_tlarge();
          Storage Table Read Requests: 99
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
          Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
-         Storage Table Read Requests: 2
+         Storage Table Read Requests: 1
 (7 rows)
 
 SELECT explain_join_tlarge_tsmall();

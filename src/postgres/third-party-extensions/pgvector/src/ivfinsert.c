@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include <float.h>
@@ -213,3 +214,4 @@ ivfflatinsert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 
 	return false;
 }
+#endif

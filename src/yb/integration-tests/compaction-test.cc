@@ -1032,7 +1032,7 @@ TEST_F(ScheduledFullCompactionsTest, OldestTabletsAreScheduledFirst) {
   ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kThreadsPlusQueue);
 
   // Try to manually schedule one of the compactions. Should fail.
-  ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerFullCompactionIfNeeded(
+  ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerManualCompactionIfNeeded(
         rocksdb::CompactionReason::kScheduledFullCompaction));
 
   // Let the compactions finish.

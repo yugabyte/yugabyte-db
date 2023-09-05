@@ -21,10 +21,10 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 
 | Type | Consistency | Read Latency | Write Latency | Best For |
 | :--- | :--- | :--- | :--- | :--- |
-| Multi zone | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
-| Replicate across regions | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
-| Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
-| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
+| [Multi zone](#single-region-multi-zone-cluster) | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
+| [Replicate across regions](#replicate-across-regions) | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
+| [Partition by region](#partition-by-region) | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
+| [Read replica](#read-replicas) | Strong in primary, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
 
 For more information on replication and deployment strategies for YugabyteDB, see the following:
 

@@ -8,6 +8,25 @@ import (
 	"strconv"
 )
 
+/* StateWorkflows:
+**Install**
+Uninstall -> installing -> installed
+               failure \_> cleaning
+
+**Upgrade**
+Legacy yba-ctl upgrade starts at no status. Typical upgrades start at Installed
+NoStatus  \
+          -> Upgrading -> Installed
+Installed /   failure \_> Cleaning
+
+**Replicated Migrating**
+Uninstall -> Migrating -> Migrate -> Finishing -> Installed
+                    |           |     failure \_> Finishing (Retry)
+										|	          \_> Rollback (Customer wants back to replicated)
+										\_> Rollback (Failure)
+Rollback -> Uninstalled (Rollback leads to an uninstall of yba-installer, Replicated still exists)
+*/
+
 var InvalidStatusError error = errors.New("invalid status")
 
 type status int
@@ -20,7 +39,10 @@ const (
 	CleaningStatus                  // In the process of running clean
 	SoftCleanStatus                 // A soft clean has been performed (data still remains)
 	UninstalledStatus               // No yba software or data is installed
-	MigratingStatus									// Migration is in progress
+	MigratingStatus                 // Begin replication migration
+	MigrateStatus                   // Migration has begun, but finish not yet called.
+	RollbackStatus                  // Rollback before finishing a migration
+	FinishingStatus                 // Finish the migration
 	endStatus                       // Not a real status, used for validation
 )
 
@@ -31,7 +53,9 @@ var toStatus = map[string]status{
 	"Cleaning":     CleaningStatus,
 	"Soft Cleaned": SoftCleanStatus,
 	"Uninstalled":  UninstalledStatus,
-	"Migrating": 		MigratingStatus,
+	"Migrating":    MigratingStatus,
+	"Rollback":     RollbackStatus,
+	"Finishing":    FinishingStatus,
 }
 
 // String value of the status
@@ -51,6 +75,10 @@ func (s status) String() string {
 		return "Uninstalled"
 	case MigratingStatus:
 		return "Migrating"
+	case RollbackStatus:
+		return "Rollback"
+	case FinishingStatus:
+		return "Finishing"
 	default:
 		return "unknown status " + strconv.Itoa(int(s))
 	}
@@ -89,20 +117,31 @@ func (s *status) UnmarshalJSON(b []byte) error {
 // TransitionValid checks if the next status is valid from the current status
 func (s status) TransitionValid(next status) bool {
 	switch s {
+	// NoStatus is only for cases of upgrading from ybactl that did not yet have state implemented
 	case NoStatus:
 		return next == UpgradingStatus || next == CleaningStatus
 	case InstalledStatus:
 		return next == UpgradingStatus || next == CleaningStatus
 	case InstallingStatus:
-		return next == InstalledStatus || next == CleaningStatus || next == UninstalledStatus
+		return next == InstalledStatus || next == CleaningStatus || next == InstallingStatus
 	case UpgradingStatus:
-		return next == InstalledStatus || next == CleaningStatus || next == UninstalledStatus
+		return next == InstalledStatus || next == CleaningStatus
 	case CleaningStatus:
 		return next == SoftCleanStatus
 	case SoftCleanStatus:
 		return next == InstallingStatus
 	case UninstalledStatus:
-		return next == InstallingStatus
+		return next == InstallingStatus || next == MigratingStatus
+	case MigratingStatus:
+		return next == RollbackStatus || next == MigrateStatus
+	case MigrateStatus:
+		return next == RollbackStatus || next == FinishingStatus
+	// RollbackStatus should do a clean on its on. Failure here should either be another rollback
+	// or support call.
+	case RollbackStatus:
+		return next == RollbackStatus || next == CleaningStatus
+	case FinishingStatus:
+		return next == InstalledStatus || next == FinishingStatus
 	default:
 		return false
 	}

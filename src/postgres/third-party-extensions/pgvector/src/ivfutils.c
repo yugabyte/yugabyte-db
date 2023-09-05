@@ -1,3 +1,4 @@
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "postgres.h"
 
 #include "ivfflat.h"
@@ -223,3 +224,4 @@ IvfflatUpdateList(Relation index, GenericXLogState *state, ListInfo listInfo,
 		UnlockReleaseBuffer(buf);
 	}
 }
+#endif

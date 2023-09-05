@@ -24,6 +24,7 @@
 
 #include "yb/docdb/lock_batch.h"
 
+#include "yb/dockv/intent.h"
 #include "yb/util/enums.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
@@ -38,18 +39,13 @@ using dockv::IntentTypeSet;
 
 namespace {
 
-// Lock state stores number of locks acquired for each intent type.
-// Count for each intent type resides in sequential bits (block) in lock state.
-// For example count of lock on particular intent type could be received as:
-// (lock_state >> kIntentTypeShift[type]) & kSingleIntentMask.
-
-// We have 64 bits in LockState and 4 types of intents. So 16 bits is max number of bits
-// that we could reserve for block of single intent type.
+// We have 64 bits in LockState and 4 types of intents. So 16 bits is the max number of bits
+// that we could reserve for a block of single intent type.
 const size_t kIntentTypeBits = 16;
-// kSingleIntentMask represents the LockState which, when &'d with another LockState, would result
-// in the LockState tracking only the count for intent type represented by the region of bits that
-// is "least significant", as in furthest to the right.
-const LockState kSingleIntentMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
+// kFirstIntentTypeMask represents the LockState which, when &'d with another LockState, would
+// result in the LockState tracking only the count for intent type represented by the region of bits
+// that is the "first" or "least significant", as in furthest to the right.
+const LockState kFirstIntentTypeMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
 
 bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
   auto lhs_value = to_underlying(lhs);
@@ -62,7 +58,7 @@ bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
 }
 
 LockState IntentTypeMask(
-    dockv::IntentType intent_type, LockState single_intent_mask = kSingleIntentMask) {
+    dockv::IntentType intent_type, LockState single_intent_mask = kFirstIntentTypeMask) {
   return single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
 }
 
@@ -85,15 +81,15 @@ std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateConflicts() {
   return result;
 }
 
-// Generate array of LockState's with one entry for each possible subset of intent type set.
-// The entry is combination of single_intent_mask for intents from set.
-std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateByMask(LockState single_intent_mask) {
-  DCHECK_EQ(single_intent_mask & kSingleIntentMask, single_intent_mask);
+// Generate array of LockState's with one entry for each possible subset of intent type set, where
+// each intent type has the provided count.
+std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateLockStatesWithCount(uint64_t count) {
+  DCHECK_EQ(count & kFirstIntentTypeMask, count);
   std::array<LockState, dockv::kIntentTypeSetMapSize> result;
   for (size_t idx = 0; idx != dockv::kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
-      result[idx] |= IntentTypeMask(intent_type, single_intent_mask);
+      result[idx] |= IntentTypeMask(intent_type, count);
     }
   }
   return result;
@@ -115,11 +111,11 @@ const IntentTypeSetMap kIntentTypeSetConflicts = GenerateConflicts();
 
 // Maps IntentTypeSet to the LockState representing one count for each intent type in the set. Can
 // be used to "add one" occurence of an IntentTypeSet to an existing key's LockState.
-const IntentTypeSetMap kIntentTypeSetAdd = GenerateByMask(1);
+const IntentTypeSetMap kIntentTypeSetAdd = GenerateLockStatesWithCount(1);
 
 // Maps IntentTypeSet to the LockState representing max count for each intent type in the set. Can
 // be used to extract a LockState corresponding to having only that set's elements counts present.
-const IntentTypeSetMap kIntentTypeSetMask = GenerateByMask(kSingleIntentMask);
+const IntentTypeSetMap kIntentTypeSetMask = GenerateLockStatesWithCount(kFirstIntentTypeMask);
 
 bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   for (auto intent1 : lhs) {
@@ -130,6 +126,11 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
     }
   }
   return false;
+}
+
+uint16_t GetCountOfIntents(const LockState& num_waiting, dockv::IntentType intent_type) {
+  return (num_waiting >> (to_underlying(intent_type) * kIntentTypeBits))
+      & kFirstIntentTypeMask;
 }
 
 struct LockedBatchEntry {
@@ -157,6 +158,18 @@ struct LockedBatchEntry {
                   ref_count, num_holding.load(std::memory_order_acquire),
                   num_waiters.load(std::memory_order_acquire));
   }
+
+  std::string ToDebugString() const {
+    auto holding = num_holding.load(std::memory_order_acquire);
+    return Format("{ ref_count: $0 num_weak_read_holders: $1 num_weak_write_holders: $2 "
+                    "num_strong_read_holders: $3 num_strong_write_holders: $4 num_waiters: $5 }",
+                  ref_count,
+                  GetCountOfIntents(holding, dockv::IntentType::kWeakRead),
+                  GetCountOfIntents(holding, dockv::IntentType::kWeakWrite),
+                  GetCountOfIntents(holding, dockv::IntentType::kStrongRead),
+                  GetCountOfIntents(holding, dockv::IntentType::kStrongWrite),
+                  num_waiters.load(std::memory_order_acquire));
+  }
 };
 
 class SharedLockManager::Impl {
@@ -168,6 +181,8 @@ class SharedLockManager::Impl {
     std::lock_guard lock(global_mutex_);
     LOG_IF(DFATAL, !locks_.empty()) << "Locks not empty in dtor: " << yb::ToString(locks_);
   }
+
+  void DumpStatusHtml(std::ostream& out);
 
  private:
   typedef std::unordered_map<RefCntPrefix, LockedBatchEntry*, RefCntPrefixHash> LockEntryMap;
@@ -188,6 +203,19 @@ class SharedLockManager::Impl {
   std::vector<std::unique_ptr<LockedBatchEntry>> lock_entries_ GUARDED_BY(global_mutex_);
   std::vector<LockedBatchEntry*> free_lock_entries_ GUARDED_BY(global_mutex_);
 };
+
+void SharedLockManager::Impl::DumpStatusHtml(std::ostream& out) {
+  out << "<table>" << std::endl;
+  out << "<tr><th>Prefix |</th><th>| LockBatchEntry</th></tr>" << std::endl;
+  std::lock_guard l(global_mutex_);
+  for (const auto& [prefix, entry] : locks_) {
+    out << "<tr>"
+          << "<td>" << (prefix.size() > 0 ? prefix.ToString() : "[empty]") << "</td>"
+          << "<td>" << entry->ToDebugString() << "</td>"
+        << "</tr>";
+  }
+  out << "</table>" << std::endl;
+}
 
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
@@ -230,10 +258,16 @@ bool LockedBatchEntry::Lock(IntentTypeSet lock_type, CoarseTimePoint deadline) {
         // Note -- even if we wait here, we don't need to be aware for the purposes of deadlock
         // detection since this eventually succeeds (in which case thread gets to queue) or times
         // out (thereby eliminating any possibly untraced deadlock).
+        VLOG(4) << "Waiting to acquire lock type: " << type_idx
+                << " with num_holding: " << old_value << ", num_waiters: " << num_waiters
+                << " with deadline: " << deadline.time_since_epoch();
         if (cond_var.wait_until(lock, deadline) == std::cv_status::timeout) {
           return false;
         }
       } else {
+        VLOG(4) << "Waiting to acquire lock type: " << type_idx
+                << " with num_holding: " << old_value << ", num_waiters: " << num_waiters
+                << " without deadline";
         // TODO(wait-queues): Hitting this branch with wait queues could cause deadlocks if
         // we never reach the wait queue and register the "waiting for" relationship. We should add
         // a DCHECK that wait queues are not enabled in this branch, or remove the branch.
@@ -354,6 +388,10 @@ bool SharedLockManager::Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoi
 
 void SharedLockManager::Unlock(const LockBatchEntries& key_to_intent_type) {
   impl_->Unlock(key_to_intent_type);
+}
+
+void SharedLockManager::DumpStatusHtml(std::ostream& out) {
+  impl_->DumpStatusHtml(out);
 }
 
 }  // namespace docdb

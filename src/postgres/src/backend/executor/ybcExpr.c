@@ -243,6 +243,16 @@ bool yb_can_pushdown_func(Oid funcid)
 			return true;
 	}
 
+	/*
+	 * Check whether this function is on a list of hand-picked functions
+	 * that cannot be pushed down.
+	 */
+	for (int i = 0; i < yb_funcs_unsafe_for_pushdown_count; ++i)
+	{
+		if (funcid == yb_funcs_unsafe_for_pushdown[i])
+			return false;
+	}
+
 	/* Examine misc function attributes that may affect pushability */
 	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(tuple))
