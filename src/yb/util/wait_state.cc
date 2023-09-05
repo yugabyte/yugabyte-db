@@ -282,6 +282,10 @@ bool WaitsForThread(WaitStateCode c) {
     case WaitStateCode::ActiveOnCPU:
     case WaitStateCode::PgPerformHandling:
     case WaitStateCode::SysCatalogTableSyncWrite:
+    // We need this as per log. Not really sure I understand the details.
+    case WaitStateCode::MVCCWaitForSafeTime:
+    case WaitStateCode::ApplyingRaftEdits:
+
      return true;
     default:
       return false;
