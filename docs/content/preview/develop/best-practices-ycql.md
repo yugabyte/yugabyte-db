@@ -25,7 +25,7 @@ Indexes use multi-shard transactional capability of YugabyteDB and are global an
 
 YCQL supports [unique indexes](../../api/ycql/ddl_create_index#unique-index). A unique index disallows duplicate values from being inserted into the indexed columns.
 
-## Covered indexes
+## Covering indexes
 
 When querying by a secondary index, the original table is consulted to get the columns that aren't specified in the index. This can result in multiple random reads across the main table.
 
@@ -37,7 +37,7 @@ This turns a (possible) random read from the main table to just a filter on the 
 
 For operations like `UPDATE ... IF EXISTS` and `INSERT ... IF NOT EXISTS` that require an atomic read-modify-write, Apache Cassandra uses LWT which requires 4 round-trips between peers. These operations are supported in YugabyteDB a lot more efficiently, because of YugabyteDB's CP (in the CAP theorem) design based on strong consistency, and require only a single Raft-round trip between peers. Number and counter types work the same and don't need a separate "counters" table.
 
-## JSONB document data type
+## JSONB
 
 YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
@@ -58,14 +58,12 @@ YCQL supports automatic expiration of data using the [TTL feature](../../api/ycq
 If configuring TTL for a time series dataset or any dataset with a table-level TTL, it is recommended for CPU and space efficiency to expire older files directly by using TTL-specific configuration options. More details can be found in [Efficient data expiration for TTL](../learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl).
 
 {{<note title="Note">}}
-
-TTL is not applicable to transactional tables and hence is not supported in that context.
-
+TTL does not apply to transactional tables and hence is not supported in that context.
 {{</note>}}
 
 ## Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster and partition aware and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster and partition-aware and support `jsonb` columns.
 
 ## Leverage connection pooling in the YCQL client
 
@@ -75,11 +73,11 @@ See also [Connection pooling](https://docs.datastax.com/en/developer/java-driver
 
 ## Use prepared statements
 
-Whenever possible, use prepared statements to ensure that YugabyteDB partition-aware drivers can route queries to the tablet leader, to improve throughput, and to eliminate the need for a server to parse the query on each operation.
+Whenever possible, use prepared statements to ensure that YugabyteDB partition-aware drivers can route queries to the tablet leader, to improve throughput, and eliminate the need for a server to parse the query on each operation.
 
 ## Use batching for higher throughput
 
-Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation. Each batch operation has higher latency compared to single rows operations but has higher throughput overall.
+Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation. Each batch operation has higher latency compared to single-row operations but has higher throughput overall.
 
 ## Column and row sizes
 
@@ -101,8 +99,6 @@ If your collections are immutable, or you update the whole collection in full, c
 
 `partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
-## Miscellaneous
-
-## Use `TRUNCATE` to empty tables instead of `DELETE`
+## Use TRUNCATE to empty tables instead of DELETE
 
 `TRUNCATE` deletes the database files that store the table and is very fast. While `DELETE` inserts a `delete marker` for each row in transactions and they are removed from storage when a compaction runs.

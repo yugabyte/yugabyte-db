@@ -16,6 +16,14 @@ type: docs
 
 {{<api-tabs>}}
 
+## Use Application patterns
+
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, you need to think through various scenarios. It would be better to choose a suitable design pattern for your application from a suite of battle-tested design paradigms like [Global database](../build-global-apps/global-database), [Multi-master](../build-global-apps/active-active-multi-master), [Standby cluster](../build-global-apps/active-active-single-master), [Duplicate Indexes](../build-global-apps/duplicate-indexes) etc. You can also mix and match these patterns as per your needs.
+
+{{<tip>}}
+For more details see, [Build Global Applications](../build-global-apps)
+{{</tip>}}
+
 ## Faster reads with Covering Indexes
 
 When a query uses an index to look up rows faster, the columns that are not present in the index are fetched from the original table. This will result in additional round trips to the main table leading to increased latency.
@@ -66,7 +74,7 @@ UPDATE txndemo SET v = v + 3 WHERE k=1 RETURNING v;
 For more details see, [Fast single-row transactions](../../learn/transactions/transactions-performance-ysql/#fast-single-row-transactions)
 {{</tip>}}
 
-## Delete older data easily with partitioning
+## Delete older data quickly with partitioning
 
 Use [Table partitioning](../../explore/ysql-language-features/advanced-features/partitions/) to split your data into multiple partitions according to date so that you can quickly delete older data by simply dropping the partition.
 
@@ -74,52 +82,46 @@ Use [Table partitioning](../../explore/ysql-language-features/advanced-features/
 For more details see, [Partition data by time](../common-patterns/timeseries/partitioning-by-time/)
 {{</tip>}}
 
-
 ## Load balance and Failover using YugabyteDB drivers
 
-YugabyteDB’s [Smart Driver for YSQL](../../drivers-orms/smart-drivers/) provides advanced cluster-aware load-balancing capabilities that will enable your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails
+YugabyteDB’s [Smart Driver](../../drivers-orms/smart-drivers/) provides advanced cluster-aware load-balancing capabilities that will enable your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails
 
 {{<tip>}}
 For more details see, [Load Balancing with Smart Driver](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#load-balancing-with-smart-driver)
 {{</tip>}}
 
+## Scale your application with connection pools
 
-## Leverage connection pooling in the YCQL client
+Setup different pools with different load balancing policies as needed for your application to scale by using popular pooling solutions such as HikariCP and Tomcat along with YugabyteDB [Smart Drivers](../../drivers-orms/smart-drivers/).
 
-A single client (for example, a multi-threaded application) should ideally use a single cluster object. The single cluster object typically holds underneath the covers a configurable number of connections to YB-TServers. Typically 1 or 2 connections per YB-TServer suffices to serve even 64-128 application threads. The same connection can be used for multiple outstanding requests, also known as multiplexing.
+{{<tip>}}
+For more details see, [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling)
+{{</tip>}}
 
-See also [Connection pooling](https://docs.datastax.com/en/developer/java-driver/4.6/manual/core/pooling/) in the DataStax Java Driver documentation.
+## Re-use query plans with prepared statements
 
-## Use prepared statements
+Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
 
-Whenever possible, use prepared statements to ensure that YugabyteDB partition-aware drivers can route queries to the tablet leader, to improve throughput, and to eliminate the need for a server to parse the query on each operation.
+{{<tip>}}
+For more details see, [Prepared statements in PL/pgSQL](https://dev.to/aws-heroes/postgresql-prepared-statements-in-pl-pgsql-jl3)
+{{</tip>}}
 
-## Use batching for higher throughput
+## Large scans and batch jobs
 
-Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation. Each batch operation has higher latency compared to single rows operations but has higher throughput overall.
+Use `BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE` for batch or long-running jobs, which need a consistent snapshot of the database without interfering or being interfered with by other transactions.
 
-## Column and row sizes
+{{<tip>}}
+For more details see, [Long running scans](http://localhost:1313/preview/develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs)
+{{</tip>}}
 
-For consistent latency/performance, keep columns in the 2 MB range or less.
+## Paralleling across tablets
 
-Big columns add up when selecting multiple columns or full rows. For consistent latency and performance, keep the size of individual rows in the 32 MB range or less.
+For large/batch `SELECT`s or `DELETE`s that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
 
-## Don't use big collections
+{{<tip>}}
+For more details see, [Distributed Deletes/Selects](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries)
+{{</tip>}}
 
-Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages). While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. In particular, some list operations (insert at an index and remove elements) require a read-before-write.
+## TRUNCATE instead of DELETE
 
-## Collections with many elements
-
-Each element inside a collection ends up as a [separate key value](../../architecture/docdb/persistence#ycql-collection-type-example) in DocDB adding per-element overhead.
-
-If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
-
-## Use partition_hash for large table scans
-
-`partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
-
-## Miscellaneous
-
-## Use `TRUNCATE` to empty tables instead of `DELETE`
-
-`TRUNCATE` deletes the database files that store the table and is very fast. While `DELETE` inserts a `delete marker` for each row in transactions and they are removed from storage when a compaction runs.
+[TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a `delete marker` for each row in transactions that are later removed from storage during compaction runs.
