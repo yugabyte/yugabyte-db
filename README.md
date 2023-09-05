@@ -48,13 +48,15 @@ To limit the number of relations audit logged for `SELECT` and `DML` statements,
 
 ## PostgreSQL Version Compatibility
 
-pgAudit was developed to support PostgreSQL 9.5 or greater.
+pgAudit supports PostgreSQL 11 or greater.
 
-In order to support new functionality introduced in each PostgreSQL release, pgAudit maintains a separate branch for each PostgreSQL major version (currently PostgreSQL 9.5 - 15) which will be maintained in a manner similar to the PostgreSQL project.
+In order to support new functionality introduced in each PostgreSQL release, pgAudit maintains a separate branch for each PostgreSQL major version (currently PostgreSQL 11 - 16) which will be maintained in a manner similar to the PostgreSQL project.
 
-Aside from bug fixes, no further development is planned for stable branches. New development, if any, will be strictly for next unreleased major version of PostgreSQL.
+Aside from bug fixes, no further development is allowed for stable branches. New development, if any, will be strictly for the next unreleased major version of PostgreSQL.
 
 pgAudit versions relate to PostgreSQL major versions as follows:
+
+- **pgAudit v16.X** is intended to support PostgreSQL 16.
 
 - **pgAudit v1.7.X** is intended to support PostgreSQL 15.
 
@@ -65,12 +67,6 @@ pgAudit versions relate to PostgreSQL major versions as follows:
 - **pgAudit v1.4.X** is intended to support PostgreSQL 12.
 
 - **pgAudit v1.3.X** is intended to support PostgreSQL 11.
-
-- **pgAudit v1.2.X** is intended to support PostgreSQL 10.
-
-- **pgAudit v1.1.X** is intended to support PostgreSQL 9.6.
-
-- **pgAudit v1.0.X** is intended to support PostgreSQL 9.5.
 
 ## Compile and Install
 
