@@ -80,6 +80,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
@@ -1016,6 +1017,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
     return SaveToDiskUnlocked(pb, VERIFY_RESULT(FilePath()));
   }
 
+  SCOPED_WAIT_STATUS(util::WaitStateCode::SaveRaftGroupMetadataToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),

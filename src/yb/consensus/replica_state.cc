@@ -123,6 +123,7 @@ Status ReplicaState::StartUnlocked(const OpIdPB& last_id_in_wal) {
 }
 
 Status ReplicaState::LockForStart(UniqueLock* lock) const {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   CHECK_EQ(state_, kInitialized) << "Illegal state for Start()."
@@ -137,6 +138,7 @@ bool ReplicaState::IsLocked() const {
 }
 
 ReplicaState::UniqueLock ReplicaState::LockForRead() const {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   return UniqueLock(update_lock_);
 }
@@ -148,6 +150,7 @@ Status ReplicaState::LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg)
 }
 
 Status ReplicaState::LockForReplicate(UniqueLock* lock) const {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -168,6 +171,7 @@ Status ReplicaState::CheckIsActiveLeaderAndHasLease() const {
 
 Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) const {
   TRACE_EVENT0("consensus", "ReplicaState::LockForMajorityReplicatedIndexUpdate");
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
 
@@ -272,7 +276,7 @@ Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_
 
 Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
   TRACE_EVENT0("consensus", "ReplicaState::LockForConfigChange");
-
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   // Can only change the config on running replicas.
@@ -286,6 +290,7 @@ Status ReplicaState::LockForConfigChange(UniqueLock* lock) const {
 
 Status ReplicaState::LockForUpdate(UniqueLock* lock) const {
   TRACE_EVENT0("consensus", "ReplicaState::LockForUpdate");
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -297,6 +302,7 @@ Status ReplicaState::LockForUpdate(UniqueLock* lock) const {
 
 Status ReplicaState::LockForShutdown(UniqueLock* lock) {
   TRACE_EVENT0("consensus", "ReplicaState::LockForShutdown");
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   UniqueLock l(update_lock_);
   if (state_ != kShuttingDown && state_ != kShutDown) {
@@ -544,6 +550,7 @@ void ReplicaState::DumpPendingOperationsUnlocked() {
 
 Status ReplicaState::CancelPendingOperations() {
   {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
     ThreadRestrictions::AssertWaitAllowed();
     UniqueLock lock(update_lock_);
     if (state_ != kShuttingDown) {
@@ -1128,6 +1135,7 @@ ReplicaState::State ReplicaState::state() const {
 }
 
 string ReplicaState::ToString() const {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateTakeUpdateLock);
   ThreadRestrictions::AssertWaitAllowed();
   ReplicaState::UniqueLock lock(update_lock_);
   return ToStringUnlocked();
@@ -1363,6 +1371,7 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ReplicaStateWaitForMajorityReplicatedHtLeaseExpiration);
     util::WaitStateInfo::AssertWaitAllowed();
     if (deadline == CoarseTimePoint::max()) {
       cond_.wait(l, predicate);

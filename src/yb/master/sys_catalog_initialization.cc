@@ -28,6 +28,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/wait_state.h"
 
 using std::string;
 
@@ -91,6 +92,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
   const string metadata_changes_file = JoinPathSegments(
       dest_path,
       kSysCatalogSnapshotTabletMetadataChangesFile);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WriteSysCatalogSnapshotToDisk);
   RETURN_NOT_OK(WritePBContainerToPath(
       Env::Default(),
       metadata_changes_file,

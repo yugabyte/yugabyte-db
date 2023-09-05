@@ -62,6 +62,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/wait_state.h"
 
 DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "
@@ -315,6 +316,7 @@ Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
       "AutoFlags config file path not initialized. Please check the --fs_data_dirs parameter.");
 
   // OVERWRITE mode will atomically replace the old contents of the file with the new data.
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WriteAutoFlagsConfigToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(
       env_, auto_flags_config_path_, *msg, pb_util::OVERWRITE, pb_util::SYNC));
 
@@ -596,6 +598,7 @@ Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
                                         const string& path) {
   // The instance metadata is written effectively once per TS, so the
   // durability cost is negligible.
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WriteInstanceMetadataToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(env_, path,
                                                 metadata,
                                                 pb_util::NO_OVERWRITE,

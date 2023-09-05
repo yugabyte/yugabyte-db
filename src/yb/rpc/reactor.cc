@@ -78,6 +78,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 
@@ -420,6 +421,7 @@ Status Reactor::QueueEventOnFilteredConnections(
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::DumpRunningRpcWaitOnReactor);
   return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
     ReactorThreadRoleGuard guard;
     for (const ConnectionPtr& conn : reactor->server_conns_) {

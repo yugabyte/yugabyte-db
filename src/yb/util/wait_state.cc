@@ -233,9 +233,17 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::TxnResolveSealedStatus:
     case WaitStateCode::PgClientSessionStartExchange:
     case WaitStateCode::WaitForYsqlBackendsCatalogVersion:
-
     case WaitStateCode::YBCSyncLeaderMasterRpc:
     case WaitStateCode::YBCFindMasterProxy:
+    case WaitStateCode::ReplicaStateTakeUpdateLock:
+    case WaitStateCode::ReplicaStateWaitForMajorityReplicatedHtLeaseExpiration:
+    case WaitStateCode::DumpRunningRpcWaitOnReactor:
+    case WaitStateCode::TakeRWCLock:
+    case WaitStateCode::SysCatalogTableSyncWrite:
+    case WaitStateCode::RaftWaitingForQuorum:
+    // We may be taking locks while running in ActiveOnCPU. Distinct wait states
+    // have only been created for places where we are waiting on a condition variable.
+    case WaitStateCode::ActiveOnCPU:
      return true;
     default:
       return false;
@@ -249,6 +257,12 @@ bool WaitsForIO(WaitStateCode c) {
     case WaitStateCode::ApplyingRaftEdits:
     case WaitStateCode::BlockCacheReadFromDisk:
     case WaitStateCode::CloseFile:
+    case WaitStateCode::ConsensusMetaFlush:
+    case WaitStateCode::RetryableRequestsSaveToDisk:
+    case WaitStateCode::WriteAutoFlagsConfigToDisk:
+    case WaitStateCode::WriteInstanceMetadataToDisk:
+    case WaitStateCode::WriteSysCatalogSnapshotToDisk:
+    case WaitStateCode::SaveRaftGroupMetadataToDisk:
      return true;
     default:
       return false;
@@ -262,6 +276,12 @@ bool WaitsForThread(WaitStateCode c) {
     case WaitStateCode::LookingUpTablet:
     case WaitStateCode::ResponseQueued:
     case WaitStateCode::Unused:
+    // We could be transitioning from one thread to another. We don't expect
+    // theread scheduling to take a lot of time, so no distinct wait state has
+    // been defined.
+    case WaitStateCode::ActiveOnCPU:
+    case WaitStateCode::PgPerformHandling:
+    case WaitStateCode::SysCatalogTableSyncWrite:
      return true;
     default:
       return false;

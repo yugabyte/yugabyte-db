@@ -104,6 +104,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals; // NOLINT
 using namespace yb::size_literals;
@@ -705,6 +706,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     auto time = CoarseMonoClock::now();
     auto deadline = time + FLAGS_sys_catalog_write_timeout_ms * 1ms;
     static constexpr auto kWarningInterval = 5s;
+    SCOPED_WAIT_STATUS(util::WaitStateCode::SysCatalogTableSyncWrite);
     while (!latch->WaitUntil(std::min(deadline, time + kWarningInterval))) {
       ++num_iterations;
       const auto waited_so_far = num_iterations * kWarningInterval;
