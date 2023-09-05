@@ -11,11 +11,11 @@
 // under the License.
 //
 
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 
 #include "yb/docdb/key_bounds.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_util.h"
@@ -105,8 +105,7 @@ bool TryCreateOptimizedTabletMapping(
 
 Status ComputeTabletMapping(
     const std::map<std::string, KeyRange>& producer_tablet_keys,
-    const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    cdc::StreamEntryPB* stream_entry) {
+    const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry) {
   stream_entry->set_local_tserver_optimized(false);
   auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
   mutable_map->clear();
@@ -130,8 +129,8 @@ Status ComputeTabletMapping(
       docdb::KeyBounds key_bounds(consumer_key_range.start_key, consumer_key_range.end_key);
       if (key_bounds.IsWithinBounds(producer_middle_key)) {
         DCHECK(dockv::PartitionSchema::HasOverlap(
-            producer_key_range.start_key, producer_key_range.end_key,
-            consumer_key_range.start_key, consumer_key_range.end_key));
+            producer_key_range.start_key, producer_key_range.end_key, consumer_key_range.start_key,
+            consumer_key_range.end_key));
         consumer_tablet_id = consumer_tablet.first;
         break;
       }
@@ -142,8 +141,7 @@ Status ComputeTabletMapping(
           IllegalState,
           "Could not find any consumer tablets with overlapping key range for producer tablet $0, "
           "partition_key_start: $1 and partition_key_end: $2",
-          producer_tablet_id,
-          Slice(producer_key_range.start_key).ToDebugHexString(),
+          producer_tablet_id, Slice(producer_key_range.start_key).ToDebugHexString(),
           Slice(producer_key_range.end_key).ToDebugHexString());
       DLOG(FATAL) << s;
       return s;
@@ -176,16 +174,13 @@ Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys) {
   return Status::OK();
 }
 
-Status InitCDCStream(
-    const std::string& producer_table_id,
-    const std::string& consumer_table_id,
-    const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    cdc::StreamEntryPB* stream_entry,
-    std::shared_ptr<CDCRpcTasks>
-        cdc_rpc_tasks) {
+Status InitXClusterStream(
+    const std::string& producer_table_id, const std::string& consumer_table_id,
+    const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry,
+    std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks) {
   // Get the tablets in the producer table.
   auto producer_table_locations =
-      VERIFY_RESULT(cdc_rpc_tasks->GetTableLocations(producer_table_id));
+      VERIFY_RESULT(xcluster_rpc_tasks->GetTableLocations(producer_table_id));
 
   stream_entry->set_consumer_table_id(consumer_table_id);
   stream_entry->set_producer_table_id(producer_table_id);
@@ -235,8 +230,8 @@ Status UpdateTabletMappingOnConsumerSplit(
   // Only process this tablet if it present, if not we have already processed it.
   if (mutable_map->erase(split_tablet_ids.source)) {
     for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
-      const auto& child = (i % 2) ? split_tablet_ids.children.first
-                                  : split_tablet_ids.children.second;
+      const auto& child =
+          (i % 2) ? split_tablet_ids.children.first : split_tablet_ids.children.second;
       *(*mutable_map)[child].add_tablets() = producer_tablets.tablets(i);
     }
   }
@@ -247,11 +242,8 @@ Status UpdateTabletMappingOnConsumerSplit(
 
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    const SplitTabletIds& split_tablet_ids,
-    const string& split_key,
-    bool* found_source,
-    bool* found_all_split_childs,
-    cdc::StreamEntryPB* stream_entry) {
+    const SplitTabletIds& split_tablet_ids, const string& split_key, bool* found_source,
+    bool* found_all_split_childs, cdc::StreamEntryPB* stream_entry) {
   // Find the parent tablet in the tablet mapping.
   *found_source = false;
   *found_all_split_childs = false;

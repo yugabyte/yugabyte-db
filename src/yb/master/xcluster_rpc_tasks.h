@@ -34,14 +34,14 @@ namespace client {
 class YBClient;
 class YBTableName;
 
-} // namespace client
+}  // namespace client
 
 namespace rpc {
 
 class Messenger;
 class SecureContext;
 
-} // namespace rpc
+}  // namespace rpc
 
 namespace master {
 class TableIdentifierPB;
@@ -49,12 +49,12 @@ class TabletLocationsPB;
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 typedef Callback<void(Result<TableBootstrapIdsMap>)> BootstrapProducerCallback;
 
-class CDCRpcTasks {
+class XClusterRpcTasks {
  public:
-  static Result<std::shared_ptr<CDCRpcTasks>> CreateWithMasterAddrs(
+  static Result<std::shared_ptr<XClusterRpcTasks>> CreateWithMasterAddrs(
       const cdc::ReplicationGroupId& producer_id, const std::string& master_addrs);
 
-  ~CDCRpcTasks();
+  ~XClusterRpcTasks();
 
   Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> GetTableLocations(
       const std::string& table_id);
@@ -63,8 +63,7 @@ class CDCRpcTasks {
   // TODO: Make this async.
   Status BootstrapProducer(
       const NamespaceIdentifierPB& producer_namespace,
-      const std::vector<client::YBTableName>& tables,
-      BootstrapProducerCallback callback);
+      const std::vector<client::YBTableName>& tables, BootstrapProducerCallback callback);
   Result<SnapshotInfoPB> CreateSnapshot(
       const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id);
   client::YBClient* client() const { return yb_client_.get(); }
@@ -81,4 +80,4 @@ class CDCRpcTasks {
 };
 
 }  // namespace master
-} // namespace yb
+}  // namespace yb

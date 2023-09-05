@@ -28,7 +28,7 @@ namespace cdc {
 
 class StreamEntryPB;
 
-} // namespace cdc
+}  // namespace cdc
 
 namespace master {
 
@@ -40,31 +40,25 @@ struct KeyRange {
   std::string end_key;
 };
 
-struct CDCConsumerStreamInfo {
+struct XClusterConsumerStreamInfo {
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
   TableId consumer_table_id;
   TableId producer_table_id;
 };
 
-Status InitCDCStream(
-    const TableId& producer_table_id,
-    const TableId& consumer_table_id,
-    const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    cdc::StreamEntryPB* stream_entry,
-    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
+Status InitXClusterStream(
+    const TableId& producer_table_id, const TableId& consumer_table_id,
+    const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry,
+    std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks);
 
 Status UpdateTabletMappingOnConsumerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    const SplitTabletIds& split_tablet_ids,
-    cdc::StreamEntryPB* stream_entry);
+    const SplitTabletIds& split_tablet_ids, cdc::StreamEntryPB* stream_entry);
 
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    const SplitTabletIds& split_tablet_ids,
-    const std::string& split_key,
-    bool* found_source,
-    bool* found_all_split_childs,
-    cdc::StreamEntryPB* stream_entry);
+    const SplitTabletIds& split_tablet_ids, const std::string& split_key, bool* found_source,
+    bool* found_all_split_childs, cdc::StreamEntryPB* stream_entry);
 
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb

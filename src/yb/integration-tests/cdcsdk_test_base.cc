@@ -44,7 +44,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"

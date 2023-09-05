@@ -13,7 +13,7 @@
 //
 //
 
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -43,8 +43,7 @@ using yb::tserver::TabletServerServiceProxy;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 
-namespace yb {
-namespace cdc {
+namespace yb::rpc::xcluster {
 
 namespace {
 std::string WriteRequestPBToString(const WriteRequestPB &req) {
@@ -58,42 +57,30 @@ std::string WriteRequestPBToString(const WriteRequestPB &req) {
 
 class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
-  GetCompatibleSchemaVersionRpc(CoarseTimePoint deadline,
-              client::internal::RemoteTablet *tablet,
-              client::YBClient *client,
-              tserver::GetCompatibleSchemaVersionRequestPB *req,
-              GetSchemaVersionMappingsCDCRecordCallback callback,
-              bool use_local_tserver)
+  GetCompatibleSchemaVersionRpc(
+      CoarseTimePoint deadline, client::internal::RemoteTablet *tablet, client::YBClient *client,
+      tserver::GetCompatibleSchemaVersionRequestPB *req,
+      GetCompatibleSchemaVersionCallback callback, bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
-        invoker_(use_local_tserver /* local_tserver_only */,
-                 false /* consistent_prefix */,
-                 client,
-                 this,
-                 this,
-                 tablet,
-                 /* table =*/nullptr,
-                 mutable_retrier(),
-                 trace_.get()),
-                 callback_(std::move(callback)) {
+        invoker_(
+            use_local_tserver /* local_tserver_only */, false /* consistent_prefix */, client, this,
+            this, tablet, nullptr /* table */, mutable_retrier(), trace_.get()),
+        callback_(std::move(callback)) {
     req_.Swap(req);
   }
 
-  virtual ~GetCompatibleSchemaVersionRpc() {
-    CHECK(called_);
-  }
+  virtual ~GetCompatibleSchemaVersionRpc() { CHECK(called_); }
 
-  void SendRpc() override {
-    invoker_.Execute(tablet_id());
-  }
+  void SendRpc() override { invoker_.Execute(tablet_id()); }
 
   void InvokeCallback(const Status &status) {
     if (!called_) {
       called_ = true;
       callback_(status, std::move(req_), std::move(resp_));
     } else {
-      LOG(WARNING) << "Multiple invocation of GetCompatibleSchemaVersionRpc: "
-                   << status << " : " << resp_.DebugString();
+      LOG(WARNING) << "Multiple invocation of GetCompatibleSchemaVersionRpc: " << status << " : "
+                   << resp_.DebugString();
     }
   }
 
@@ -112,22 +99,20 @@ class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::
 
  private:
   void SendRpcToTserver(int attempt_num) override {
-    InvokeAsync(invoker_.proxy().get(),
-                PrepareController(),
-                std::bind(&GetCompatibleSchemaVersionRpc::Finished, this, Status::OK()));
+    InvokeAsync(
+        invoker_.proxy().get(), PrepareController(),
+        std::bind(&GetCompatibleSchemaVersionRpc::Finished, this, Status::OK()));
   }
 
-  const std::string &tablet_id() const {
-    return req_.tablet_id();
-  }
+  const std::string &tablet_id() const { return req_.tablet_id(); }
 
   std::string ToString() const override {
     return Format("GetCompatibleSchemaVersionRpc: $0, retrier: $1", req_, retrier());
   }
 
-  void InvokeAsync(TabletServerServiceProxy *proxy,
-                   rpc::RpcController *controller,
-                   rpc::ResponseCallback callback) {
+  void InvokeAsync(
+      TabletServerServiceProxy *proxy, rpc::RpcController *controller,
+      rpc::ResponseCallback callback) {
     proxy->GetCompatibleSchemaVersionAsync(req_, &resp_, controller, std::move(callback));
   }
 
@@ -135,53 +120,37 @@ class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::
   client::internal::TabletInvoker invoker_;
   tserver::GetCompatibleSchemaVersionRequestPB req_;
   tserver::GetCompatibleSchemaVersionResponsePB resp_;
-  GetSchemaVersionMappingsCDCRecordCallback callback_;
+  GetCompatibleSchemaVersionCallback callback_;
   bool called_ = false;
 };
 
 rpc::RpcCommandPtr CreateGetCompatibleSchemaVersionRpc(
-    CoarseTimePoint deadline,
-    client::internal::RemoteTablet *tablet,
-    client::YBClient* client,
-    tserver::GetCompatibleSchemaVersionRequestPB* req,
-    GetSchemaVersionMappingsCDCRecordCallback callback,
+    CoarseTimePoint deadline, client::internal::RemoteTablet *tablet, client::YBClient *client,
+    tserver::GetCompatibleSchemaVersionRequestPB *req, GetCompatibleSchemaVersionCallback callback,
     bool use_local_tserver) {
   return std::make_shared<GetCompatibleSchemaVersionRpc>(
       deadline, tablet, client, req, std::move(callback), use_local_tserver);
 }
 
-class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
+class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
-  CDCWriteRpc(CoarseTimePoint deadline,
-              client::internal::RemoteTablet *tablet,
-              const std::shared_ptr<client::YBTable>& table,
-              client::YBClient *client,
-              WriteRequestPB *req,
-              WriteCDCRecordCallback callback,
-              bool use_local_tserver)
+  XClusterWriteRpc(
+      CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
+      const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+      XClusterWriteCallback callback, bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
-        invoker_(use_local_tserver /* local_tserver_only */,
-                 false /* consistent_prefix */,
-                 client,
-                 this,
-                 this,
-                 tablet,
-                 table,
-                 mutable_retrier(),
-                 trace_.get()),
+        invoker_(
+            use_local_tserver /* local_tserver_only */, false /* consistent_prefix */, client, this,
+            this, tablet, table, mutable_retrier(), trace_.get()),
         callback_(std::move(callback)),
         table_(table) {
     req_.Swap(req);
   }
 
-  virtual ~CDCWriteRpc() {
-    CHECK(called_);
-  }
+  virtual ~XClusterWriteRpc() { CHECK(called_); }
 
-  void SendRpc() override {
-    invoker_.Execute(tablet_id());
-  }
+  void SendRpc() override { invoker_.Execute(tablet_id()); }
 
   void Finished(const Status &status) override {
     Status new_status = status;
@@ -190,8 +159,8 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
       // as stale so that when we retry the ApplyChanges call, we will refresh the partitions and
       // apply changes to the proper tablets.
       if (new_status.IsNotFound() ||
-          client::internal::ErrorCode(response_error())
-              == tserver::TabletServerErrorPB::TABLET_SPLIT ||
+          client::internal::ErrorCode(response_error()) ==
+              tserver::TabletServerErrorPB::TABLET_SPLIT ||
           client::ClientError(new_status) == client::ClientErrorCode::kTablePartitionListIsStale) {
         table_->MarkPartitionsAsStale();
       }
@@ -201,9 +170,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void Failed(const Status &status) override {}
 
-  void Abort() override {
-    rpc::Rpc::Abort();
-  }
+  void Abort() override { rpc::Rpc::Abort(); }
 
   const TabletServerErrorPB *response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
@@ -211,17 +178,15 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
  private:
   void SendRpcToTserver(int attempt_num) override {
-    InvokeAsync(invoker_.proxy().get(),
-                PrepareController(),
-                std::bind(&CDCWriteRpc::Finished, this, Status::OK()));
+    InvokeAsync(
+        invoker_.proxy().get(), PrepareController(),
+        std::bind(&XClusterWriteRpc::Finished, this, Status::OK()));
   }
 
-  const std::string &tablet_id() const {
-    return req_.tablet_id();
-  }
+  const std::string &tablet_id() const { return req_.tablet_id(); }
 
   std::string ToString() const override {
-    return Format("CDCWriteRpc: $0, retrier: $1", WriteRequestPBToString(req_), retrier());
+    return Format("XClusterWriteRpc: $0, retrier: $1", WriteRequestPBToString(req_), retrier());
   }
 
   void InvokeCallback(const Status &status) {
@@ -229,14 +194,14 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
       called_ = true;
       callback_(status, std::move(resp_));
     } else {
-      LOG(WARNING) << "Multiple invocation of CDCWriteRpc: " << status.ToString() << " : "
+      LOG(WARNING) << "Multiple invocation of XClusterWriteRpc: " << status.ToString() << " : "
                    << WriteRequestPBToString(req_);
     }
   }
 
-  void InvokeAsync(TabletServerServiceProxy *proxy,
-                   rpc::RpcController *controller,
-                   rpc::ResponseCallback callback) {
+  void InvokeAsync(
+      TabletServerServiceProxy *proxy, rpc::RpcController *controller,
+      rpc::ResponseCallback callback) {
     proxy->WriteAsync(req_, &resp_, controller, std::move(callback));
   }
 
@@ -244,20 +209,16 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   client::internal::TabletInvoker invoker_;
   WriteRequestPB req_;
   WriteResponsePB resp_;
-  WriteCDCRecordCallback callback_;
+  XClusterWriteCallback callback_;
   bool called_ = false;
-  const std::shared_ptr<client::YBTable>& table_;
+  const std::shared_ptr<client::YBTable> &table_;
 };
 
-rpc::RpcCommandPtr CreateCDCWriteRpc(
-    CoarseTimePoint deadline,
-    client::internal::RemoteTablet* tablet,
-    const std::shared_ptr<client::YBTable>& table,
-    client::YBClient* client,
-    WriteRequestPB* req,
-    WriteCDCRecordCallback callback,
-    bool use_local_tserver) {
-  return std::make_shared<CDCWriteRpc>(
+rpc::RpcCommandPtr CreateXClusterWriteRpc(
+    CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
+    const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+    XClusterWriteCallback callback, bool use_local_tserver) {
+  return std::make_shared<XClusterWriteRpc>(
       deadline, tablet, table, client, req, std::move(callback), use_local_tserver);
 }
 
@@ -265,32 +226,22 @@ rpc::RpcCommandPtr CreateCDCWriteRpc(
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
+class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
-  CDCReadRpc(
-      CoarseTimePoint deadline,
-      client::internal::RemoteTablet *tablet,
-      client::YBClient *client,
-      GetChangesRequestPB *req,
-      GetChangesCDCRpcCallback callback)
+  GetChangesRpc(
+      CoarseTimePoint deadline, client::internal::RemoteTablet *tablet, client::YBClient *client,
+      cdc::GetChangesRequestPB *req, GetChangesRpcCallback callback)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
         invoker_(
-            false /* local_tserver_only */,
-            false /* consistent_prefix */,
-            client,
-            this,
-            this,
-            tablet,
-            /* table =*/nullptr,
-            mutable_retrier(),
-            trace_.get(),
+            false /* local_tserver_only */, false /* consistent_prefix */, client, this, this,
+            tablet, nullptr /* table */, mutable_retrier(), trace_.get(),
             master::IncludeInactive::kTrue),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }
 
-  virtual ~CDCReadRpc() { CHECK(called_); }
+  virtual ~GetChangesRpc() { CHECK(called_); }
 
   void SendRpc() override { invoker_.Execute(tablet_id()); }
 
@@ -314,13 +265,13 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
       if (resp_.error().has_code()) {
         // Map CDC Errors to TabletServer Errors.
         switch (resp_.error().code()) {
-          case CDCErrorPB::TABLET_NOT_FOUND:
+          case cdc::CDCErrorPB::TABLET_NOT_FOUND:
             last_error_.set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
             return &last_error_;
-          case CDCErrorPB::LEADER_NOT_READY:
+          case cdc::CDCErrorPB::LEADER_NOT_READY:
             last_error_.set_code(tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
@@ -337,21 +288,20 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void SendRpcToTserver(int attempt_num) override {
     // should be fast because the proxy cache has EndPoint from the tablet lookup.
-    cdc_proxy_ = std::make_shared<CDCServiceProxy>(
+    cdc_proxy_ = std::make_shared<cdc::CDCServiceProxy>(
         &invoker_.client().proxy_cache(), invoker_.ProxyEndpoint());
 
-    auto self = std::static_pointer_cast<CDCReadRpc>(shared_from_this());
+    auto self = std::static_pointer_cast<GetChangesRpc>(shared_from_this());
     InvokeAsync(
-        cdc_proxy_.get(),
-        PrepareController(),
-        std::bind(&CDCReadRpc::Finished, self, Status::OK()));
+        cdc_proxy_.get(), PrepareController(),
+        std::bind(&GetChangesRpc::Finished, self, Status::OK()));
   }
 
  private:
   const std::string &tablet_id() const { return req_.tablet_id(); }
 
   std::string ToString() const override {
-    return Format("CDCReadRpc: $0, retrier: $1", req_, retrier());
+    return Format("XClusterGetChangesRpc: $0, retrier: $1", req_, retrier());
   }
 
   void InvokeCallback(const Status &status) {
@@ -361,38 +311,33 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
       // resp_ will no longer be modified or accessed.
       callback_(status, std::move(resp_));
     } else {
-      LOG(WARNING) << "Multiple invocation of CDCReadRpc: " << status.ToString() << " : "
+      LOG(WARNING) << "Multiple invocation of XClusterGetChangesRpc: " << status.ToString() << " : "
                    << req_.DebugString();
     }
   }
 
   void InvokeAsync(
-      CDCServiceProxy *cdc_proxy, rpc::RpcController *controller, rpc::ResponseCallback callback) {
+      cdc::CDCServiceProxy *cdc_proxy, rpc::RpcController *controller,
+      rpc::ResponseCallback callback) {
     cdc_proxy->GetChangesAsync(req_, &resp_, controller, std::move(callback));
   }
 
   TracePtr trace_;
   client::internal::TabletInvoker invoker_;
 
-  GetChangesRequestPB req_;
-  GetChangesResponsePB resp_;
-  GetChangesCDCRpcCallback callback_;
+  cdc::GetChangesRequestPB req_;
+  cdc::GetChangesResponsePB resp_;
+  GetChangesRpcCallback callback_;
 
-  std::shared_ptr<CDCServiceProxy> cdc_proxy_;
+  std::shared_ptr<cdc::CDCServiceProxy> cdc_proxy_;
   mutable tserver::TabletServerErrorPB last_error_;
   bool called_ = false;
 };
 
-MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesCDCRpc(
-    CoarseTimePoint deadline,
-    client::internal::RemoteTablet* tablet,
-    client::YBClient* client,
-    GetChangesRequestPB* req,
-    GetChangesCDCRpcCallback callback) {
-  return std::make_shared<CDCReadRpc>(
-      deadline, tablet, client, req, std::move(callback));
+MUST_USE_RESULT rpc::RpcCommandPtr CreateGetChangesRpc(
+    CoarseTimePoint deadline, client::internal::RemoteTablet *tablet, client::YBClient *client,
+    cdc::GetChangesRequestPB *req, GetChangesRpcCallback callback) {
+  return std::make_shared<GetChangesRpc>(deadline, tablet, client, req, std::move(callback));
 }
 
-
-} // namespace cdc
-} // namespace yb
+}  // namespace yb::rpc::xcluster

@@ -1193,11 +1193,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch);
 
   Status InitXClusterConsumer(
-      const std::vector<CDCConsumerStreamInfo>& consumer_info,
-      const std::string& master_addrs,
+      const std::vector<XClusterConsumerStreamInfo>& consumer_info, const std::string& master_addrs,
       const cdc::ReplicationGroupId& producer_universe_uuid,
-      std::shared_ptr<CDCRpcTasks>
-          cdc_rpc_tasks);
+      std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks);
 
   void HandleCreateTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
 
@@ -2065,7 +2063,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     SysUniverseReplicationBootstrapEntryPB::State state;
 
     // Connection to producer universe.
-    std::shared_ptr<CDCRpcTasks> cdc_rpc_task;
+    std::shared_ptr<XClusterRpcTasks> xcluster_rpc_task;
 
     // Delete CDC streams.
     std::vector<xrepl::StreamId> bootstrap_ids;
@@ -2750,13 +2748,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       StreamUpdateInfos;
 
   void GetCDCStreamCallback(
-      const xrepl::StreamId& bootstrap_id,
-      std::shared_ptr<TableId> table_id,
+      const xrepl::StreamId& bootstrap_id, std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-      const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& table,
-      std::shared_ptr<CDCRpcTasks> cdc_rpc,
-      const Status& s,
+      const cdc::ReplicationGroupId& replication_group_id, const TableId& table,
+      std::shared_ptr<XClusterRpcTasks> xcluster_rpc, const Status& s,
       std::shared_ptr<StreamUpdateInfos> stream_update_infos,
       std::shared_ptr<std::mutex> update_infos_lock);
 
@@ -2924,9 +2919,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Compute the list of producer table IDs that have a name-matching consumer table.
   Result<std::vector<TableId>> XClusterFindProducerConsumerOverlap(
-      std::shared_ptr<CDCRpcTasks> producer_cdc_rpc,
-      NamespaceIdentifierPB* producer_namespace,
-      NamespaceIdentifierPB* consumer_namespace,
+      std::shared_ptr<XClusterRpcTasks> producer_xcluster_rpc,
+      NamespaceIdentifierPB* producer_namespace, NamespaceIdentifierPB* consumer_namespace,
       size_t* num_non_matched_consumer_tables);
 
   // True when the cluster is a consumer of a NS-level replication stream.
