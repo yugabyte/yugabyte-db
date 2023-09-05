@@ -95,7 +95,8 @@
         "changeCTNCertWarning": "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.",
         "disableEncryptionWarning": "Rotating certificates (Certificate Authority or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
         "rootCAModifiedWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
-        "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
+        "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit."
       }
     },
     "commonErrors": {
@@ -775,7 +776,7 @@
             "email": "User Email",
             "emailPlaceholder": "Add email",
             "password": "Password",
-            "confirmPassword":"Confirm Password"
+            "confirmPassword": "Confirm Password"
           }
         },
         "edit": {
@@ -784,7 +785,7 @@
         },
         "list": {
           "rowsCount": "{{count}} Users",
-          "createUser" : "Create User",
+          "createUser": "Create User",
           "search": "search by user email",
           "table": {
             "email": "User Email",
@@ -799,7 +800,7 @@
       },
       "policy": {
         "universeSelection": {
-          "noRole":"Once you select the role, you can select the Universes here.",
+          "noRole": "Once you select the role, you can select the Universes here.",
           "editSelection": "Edit Selection",
           "allFutureUniverses": "All present and future Universes.",
           "universes": "Universes",

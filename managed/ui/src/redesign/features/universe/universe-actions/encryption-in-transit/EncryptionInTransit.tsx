@@ -26,6 +26,7 @@ import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
 import { YBLoading } from '../../../../../components/common/indicators';
+import { createErrorMessage } from '../../universe-form/utils/helpers';
 
 //EAR Component
 interface EncryptionInTransitProps {
@@ -87,8 +88,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       onSuccess: () => {
         onClose();
       },
-      onError: () => {
-        toast.error(t('common.genericFailure'), TOAST_OPTIONS);
+      onError: (e) => {
+        toast.error(createErrorMessage(e), TOAST_OPTIONS);
       }
     }
   );
@@ -99,7 +100,11 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       encryptionEnabled !== enableUniverseEncryption ||
       enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
       enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
-    if (!values.enableUniverseEncryption) payload = { ...payload, ...FORM_RESET_VALUES };
+    if (
+      !values.enableUniverseEncryption ||
+      (values.rootAndClientRootCASame && values.enableNodeToNodeEncrypt === false)
+    )
+      payload = { ...payload, ...FORM_RESET_VALUES };
 
     if (values.enableNodeToNodeEncrypt === false) {
       payload['rootCA'] = null;
@@ -147,11 +152,18 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   };
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    try {
-      let payload = constructPayload(values);
-      setEIT.mutateAsync(payload);
-    } catch (e) {
-      console.error(e);
+    if (
+      values.enableUniverseEncryption &&
+      !(values.enableNodeToNodeEncrypt || values.enableClientToNodeEncrypt)
+    ) {
+      toast.warn(t('universeActions.encryptionInTransit.enableEITWarning'), TOAST_OPTIONS);
+    } else {
+      try {
+        let payload = constructPayload(values);
+        setEIT.mutateAsync(payload);
+      } catch (e) {
+        console.error(e);
+      }
     }
   });
 

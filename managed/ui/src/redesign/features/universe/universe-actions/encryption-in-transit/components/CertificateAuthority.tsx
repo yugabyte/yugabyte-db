@@ -116,68 +116,80 @@ export const CertificateAuthority: FC<CertificateAuthorityProps> = ({ initialVal
               }
             />
           </Box>
-        </Box>
-
-        <Divider />
-
-        {!rootAndClientRootCASame && (
-          <Box className={classes.subContainer}>
-            <Box display="flex" alignItems="center" justifyContent="space-between">
-              <Box>
-                <Typography variant="h6">
-                  {t('universeActions.encryptionInTransit.enableCNEncryption')}
-                </Typography>
-              </Box>
-              <Box>
-                <YBTooltip
-                  title={
-                    disableEncryptToggle
-                      ? t('universeActions.encryptionInTransit.disableEncryptionWarning')
-                      : ''
-                  }
-                  placement="top"
-                >
-                  <span>
-                    <YBToggleField
-                      name={ENABLE_CLIENT_NODE_ENCRYPTION_NAME}
-                      inputProps={{
-                        'data-testid': 'EnableEncryptionInTransit-Toggle'
-                      }}
-                      control={control}
-                      disabled={disableEncryptToggle}
-                    />
-                  </span>
-                </YBTooltip>
-              </Box>
-            </Box>
+          {rootAndClientRootCASame && clientRootCA !== rootCA && (
             <Box mt={2}>
-              <CertificateField
-                name={CertTypes.clientRootCA}
-                disabled={!enableCNEncryption || rotationDisabled}
-                label={
-                  encryptionEnabled && clientRootCA
-                    ? t('universeActions.encryptionInTransit.rotateCA')
-                    : t('universeActions.encryptionInTransit.selectCA')
-                }
-                activeCert=""
-                tooltipMsg={
-                  rotationDisabled
-                    ? t('universeActions.encryptionInTransit.disableEncryptionWarning')
-                    : ''
-                }
-              />
-            </Box>
-            <Box
-              mt={2}
-              hidden={!(encryptionEnabled && clientRootCA && clientRootCA !== clientRootCAInitial)}
-            >
               <YBAlert
                 text={t('universeActions.encryptionInTransit.changeCTNCertWarning')}
                 variant={AlertVariant.Warning}
                 open={true}
               />
             </Box>
-          </Box>
+          )}
+        </Box>
+
+        {!rootAndClientRootCASame && (
+          <>
+            <Divider />
+            <Box className={classes.subContainer}>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box>
+                  <Typography variant="h6">
+                    {t('universeActions.encryptionInTransit.enableCNEncryption')}
+                  </Typography>
+                </Box>
+                <Box>
+                  <YBTooltip
+                    title={
+                      disableEncryptToggle
+                        ? t('universeActions.encryptionInTransit.disableEncryptionWarning')
+                        : ''
+                    }
+                    placement="top"
+                  >
+                    <span>
+                      <YBToggleField
+                        name={ENABLE_CLIENT_NODE_ENCRYPTION_NAME}
+                        inputProps={{
+                          'data-testid': 'EnableEncryptionInTransit-Toggle'
+                        }}
+                        control={control}
+                        disabled={disableEncryptToggle}
+                      />
+                    </span>
+                  </YBTooltip>
+                </Box>
+              </Box>
+              <Box mt={2}>
+                <CertificateField
+                  name={CertTypes.clientRootCA}
+                  disabled={!enableCNEncryption || rotationDisabled}
+                  label={
+                    encryptionEnabled && clientRootCA
+                      ? t('universeActions.encryptionInTransit.rotateCA')
+                      : t('universeActions.encryptionInTransit.selectCA')
+                  }
+                  activeCert=""
+                  tooltipMsg={
+                    rotationDisabled
+                      ? t('universeActions.encryptionInTransit.disableEncryptionWarning')
+                      : ''
+                  }
+                />
+              </Box>
+              <Box
+                mt={2}
+                hidden={
+                  !(encryptionEnabled && clientRootCA && clientRootCA !== clientRootCAInitial)
+                }
+              >
+                <YBAlert
+                  text={t('universeActions.encryptionInTransit.changeCTNCertWarning')}
+                  variant={AlertVariant.Warning}
+                  open={true}
+                />
+              </Box>
+            </Box>
+          </>
         )}
       </Box>
     </>
