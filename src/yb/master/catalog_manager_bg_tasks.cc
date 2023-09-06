@@ -306,6 +306,10 @@ void CatalogManagerBgTasks::Run() {
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
 
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
+                  "Failed SetUniverseUuidIfNeeded Task");
+
       was_leader_ = true;
     } else {
       // leader_status is not ok.
