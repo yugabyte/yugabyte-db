@@ -652,18 +652,19 @@ Status MiniCluster::WaitForAllTabletServers() {
 
 Status MiniCluster::WaitForTabletServerCount(size_t count) {
   vector<shared_ptr<master::TSDescriptor> > descs;
-  return WaitForTabletServerCount(count, &descs);
+  return WaitForTabletServerCount(count, &descs, false);
 }
 
 Status MiniCluster::WaitForTabletServerCount(size_t count,
-                                             vector<shared_ptr<TSDescriptor> >* descs) {
+                                             vector<shared_ptr<TSDescriptor> >* descs,
+                                             bool live_only) {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       (*leader)->ts_manager().GetAllDescriptors(descs);
-      if (descs->size() == count) {
+      if (live_only || descs->size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
@@ -673,7 +674,9 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
             auto ts = mini_tablet_server->server();
             if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
                 ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-              match_count++;
+              if (!live_only || desc->IsLive()) {
+                match_count++;
+              }
               break;
             }
           }
