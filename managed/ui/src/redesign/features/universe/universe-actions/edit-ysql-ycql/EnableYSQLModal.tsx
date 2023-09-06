@@ -162,6 +162,11 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       onSubmit={handleFormSubmit}
       submitTestId="EnableYSQLModal-Submit"
       cancelTestId="EnableYSQLModal-Close"
+      buttonProps={{
+        primary: {
+          disabled: !primaryCluster?.userIntent?.enableYSQL
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -477,6 +482,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                   text={
                     <Box display="flex">
                       <Typography variant="body2" className={classes.errorNote}>
+                        <b>{t('common.note')}</b>&nbsp;
                         {t('universeActions.editYSQLSettings.disableYSQLWarning2')}
                       </Typography>
                     </Box>
