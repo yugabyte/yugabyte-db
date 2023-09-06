@@ -73,6 +73,8 @@ public class AuditService {
           "$..KUBECONFIG_CONTENT",
           // onprem and certificate private keys
           "$..keyContent",
+          "$..certContent",
+          "$..customServerCertData",
           "$..['customServerCertData.serverKeyContent']",
           // S3 storage credentials
           "$..AWS_ACCESS_KEY_ID",
