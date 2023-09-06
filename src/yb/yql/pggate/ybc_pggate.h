@@ -151,7 +151,14 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t *last_val,
                                bool *is_called);
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle);
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle);
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle);
 
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
