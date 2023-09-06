@@ -497,7 +497,7 @@ DoesOidExistInRelation(Oid oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(oid));
 
-	/* see notes in GetNewOid about using SnapshotAny */
+	/* see notes above about using SnapshotAny */
 	scan = systable_beginscan(relation, indexId, true, SnapshotAny, 1, &key);
 
 	collides = HeapTupleIsValid(systable_getnext(scan));
@@ -506,75 +506,6 @@ DoesOidExistInRelation(Oid oid,
 
 	return collides;
 }
-
-#ifdef NEIL
-// NEIL: Old function that Postgres doesn't use, but YB does.
-/*
- * GetNewOid
- *		Generate a new OID that is unique within the given relation.
- *
- * Caller must have a suitable lock on the relation.
- *
- * Uniqueness is promised only if the relation has a unique index on OID.
- * This is true for all system catalogs that have OIDs, but might not be
- * true for user tables.  Note that we are effectively assuming that the
- * table has a relatively small number of entries (much less than 2^32)
- * and there aren't very long runs of consecutive existing OIDs.  Again,
- * this is reasonable for system catalogs but less so for user tables.
- *
- * Since the OID is not immediately inserted into the table, there is a
- * race condition here; but a problem could occur only if someone else
- * managed to cycle through 2^32 OIDs and generate the same OID before we
- * finish inserting our row.  This seems unlikely to be a problem.  Note
- * that if we had to *commit* the row to end the race condition, the risk
- * would be rather higher; therefore we use SnapshotAny in the test, so that
- * we will see uncommitted rows.  (We used to use SnapshotDirty, but that has
- * the disadvantage that it ignores recently-deleted rows, creating a risk
- * of transient conflicts for as long as our own MVCC snapshots think a
- * recently-deleted row is live.  The risk is far higher when selecting TOAST
- * OIDs, because SnapshotToast considers dead rows as active indefinitely.)
- */
-Oid
-GetNewOid(Relation relation)
-{
-	Oid			oidIndex;
-
-	/* NEIL_OID - Needs work. OID is now a regular column */
-	/* If relation doesn't have OIDs at all, caller is confused */
-	Assert(relation->rd_rel->relhasoids);
-
-	/* In bootstrap mode, we don't have any indexes to use */
-	if (IsBootstrapProcessingMode())
-		return GetNewObjectId();
-
-	/* The relcache will cache the identity of the OID index for us */
-	oidIndex = RelationGetOidIndex(relation);
-
-	/* If no OID index, just hand back the next OID counter value */
-	if (!OidIsValid(oidIndex))
-	{
-		/*
-		 * In YugaByte we convert the OID index into a primary key.
-		 */
-		if (!IsYugaByteEnabled())
-		{
-			/*
-			 * System catalogs that have OIDs should *always* have a unique OID
-			 * index; we should only take this path for user tables. Give a
-			 * warning if it looks like somebody forgot an index.
-			 */
-			if (IsSystemRelation(relation))
-				elog(WARNING,
-				     "generating possibly-non-unique OID for \"%s\"",
-				     RelationGetRelationName(relation));
-		}
-		return GetNewObjectId();
-	}
-
-	/* Otherwise, use the index to find a nonconflicting OID */
-	return GetNewOidWithIndex(relation, oidIndex, ObjectIdAttributeNumber);
-}
-#endif
 
 /*
  * GetNewOidWithIndex

@@ -1359,57 +1359,6 @@ storeObjectDescription(StringInfo descs,
 	pfree(objdesc);
 }
 
-#ifdef YB_TODO
-/* YB_TODO(neil) Check if this function is still needed */
-static bool
-isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
-{
-	/*
-	if (YBIsPinnedObjectsCacheAvailable())
-		return YBIsSharedObjectPinned(classId, objectId);
-	*/
-	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
-		return YbIsObjectPinned(classId, objectId,
-								true /* shared_dependency */);
-
-	bool		result = false;
-	ScanKeyData key[2];
-	SysScanDesc scan;
-	HeapTuple	tup;
-
-	ScanKeyInit(&key[0],
-				Anum_pg_shdepend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(classId));
-	ScanKeyInit(&key[1],
-				Anum_pg_shdepend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(objectId));
-
-	scan = systable_beginscan(sdepRel, SharedDependReferenceIndexId, true,
-							  NULL, 2, key);
-
-	/*
-	 * Since we won't generate additional pg_shdepend entries for pinned
-	 * objects, there can be at most one entry referencing a pinned object.
-	 * Hence, it's sufficient to look at the first returned tuple; we don't
-	 * need to loop.
-	 */
-	tup = systable_getnext(scan);
-	if (HeapTupleIsValid(tup))
-	{
-		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
-
-		if (shdepForm->deptype == SHARED_DEPENDENCY_PIN)
-			result = true;
-	}
-
-	systable_endscan(scan);
-
-	return result;
-}
-#endif
-
 /*
  * shdepDropOwned
  *
