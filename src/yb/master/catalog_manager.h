@@ -46,6 +46,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
@@ -1434,6 +1435,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void ReenableTabletSplitting(const std::string& feature) override;
 
   Status RunXClusterBgTasks();
+
+  Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
 
   void StartCDCParentTabletDeletionTaskIfStopped();
 
