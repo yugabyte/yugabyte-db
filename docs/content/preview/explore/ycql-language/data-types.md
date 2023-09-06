@@ -287,7 +287,6 @@ CREATE TABLE on_hand (
 );
 ```
 
-### 3. Insert a row
 
 1. Insert a row as follows:
 
