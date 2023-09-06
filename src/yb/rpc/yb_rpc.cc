@@ -341,8 +341,7 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
     }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
-      .ToMicroseconds());
-      // .ToMilliseconds());
+      .ToMilliseconds());
   return true;
 }
 
