@@ -136,152 +136,56 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
         let running = false;
 
         if (phase != null) {
-          // Export schema phase
-          if (phase === MigrationPhase["Export Schema"]) {
-            if (
-              stepIndex === MigrationStep["Migrate Data"] ||
-              stepIndex === MigrationStep["Verify"]
-            ) {
-              // Migrate data and Verify will be pending and disabled
-              notStarted = true;
-              disabled = true;
-            } else if (stepIndex === MigrationStep["Plan and Assess"]) {
-              // Plan and assess will be pending
-              notStarted = true;
-            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
-              // Migrate schema will be running
-              running = true;
-            }
-          }
-
-          // Analyze schema phase
-          else if (phase === MigrationPhase["Analyze Schema"]) {
-            if (
-              stepIndex === MigrationStep["Migrate Data"] ||
-              stepIndex === MigrationStep["Verify"]
-            ) {
-              // Migrate data and Verify will be pending and disabled
-              disabled = true;
-              notStarted = true;
-            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
-              // Migrate schema will be running
-              running = true;
-            } else if (stepIndex === MigrationStep["Plan and Assess"]) {
-              // Plan and assess will be completed
-              completed = true;
-            }
-          }
-
-          // Export data phase
-          else if (phase === MigrationPhase["Export Data"]) {
-            if (stepIndex === MigrationStep["Plan and Assess"]) {
-              // Plan and assess will be completed
-              completed = true;
-            } else if (
-              stepIndex === MigrationStep["Migrate Schema"] ||
-              stepIndex === MigrationStep["Migrate Data"]
-            ) {
-              // Migrate schema and Migrate data will be running
-              running = true;
-            } else if (stepIndex === MigrationStep["Verify"]) {
-              // Verify will be pending and disabled
-              disabled = true;
-              notStarted = true;
-            }
-          }
-
-          // Import schema phase
-          else if (phase === MigrationPhase["Import Schema"]) {
-            if (stepIndex === MigrationStep["Plan and Assess"]) {
-              // Plan and assess will be completed
-              completed = true;
-            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
-              // Migrate schema will be running
-              running = true;
-            } else if (stepIndex === MigrationStep["Migrate Data"]) {
-              // Migrate data will be pending but we can't accurately say what the state would be here
-              // It will be handled correctly by the extra checks down below
-              notStarted = true;
-            } else if (stepIndex === MigrationStep["Verify"]) {
-              // Verify will be pending and disabled
-              disabled = true;
-              notStarted = true;
-            }
-          }
-
-          // Import data phase
-          else if (phase === MigrationPhase["Import Data"]) {
-            if (stepIndex <= MigrationStep["Migrate Schema"]) {
-              // Plan and assess and Migrate schema will be completed
-              completed = true;
-            } else if (stepIndex === MigrationStep["Migrate Data"]) {
-              // Migrate data will be running
-              running = true;
-            } else if (stepIndex === MigrationStep["Verify"]) {
-              // Verify will be pending and disabled
-              disabled = true;
-              notStarted = true;
-            }
-          }
-
-          // Verify phase
-          else if (phase === MigrationPhase["Verify"]) {
+          if (phase === MigrationPhase["Verify"]) {
             // Everything will be completed
             completed = true;
-          }
-
-          // Extra check overrides based on other migration APIs
-          if (
-            stepIndex === MigrationStep["Plan and Assess"] &&
-            phase > MigrationPhase["Export Schema"]
-          ) {
-            if (migrationAssessmentData?.data?.assesment_status === true) {
-              notStarted = false;
-              disabled = false;
-              running = false;
-              completed = true;
-            }
-          } else if (
-            stepIndex === MigrationStep["Migrate Schema"] &&
-            phase >= MigrationPhase["Analyze Schema"]
-          ) {
-            if (migrationSchemaData?.data?.overall_status === "complete") {
-              notStarted = false;
-              disabled = false;
-              running = false;
-              completed = true;
-            }
-          } else if (
-            stepIndex === MigrationStep["Migrate Data"] &&
-            phase >= MigrationPhase["Export Data"]
-          ) {
-            if (!migrationMetricsData?.metrics?.length) {
-              disabled = false;
-              running = false;
-              completed = false;
-              notStarted = true;
-            } else {
-              const importedMetrics = migrationMetricsData?.metrics
-                ?.filter((metrics) => metrics.migration_phase === MigrationPhase["Import Data"])
-                .map((data) => ({
-                  importPercentage:
-                    data.count_live_rows && data.count_total_rows
-                      ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
-                      : 0,
-                }));
-
-              if (
-                importedMetrics &&
-                Math.floor(
-                  importedMetrics.reduce((acc, { importPercentage }) => acc + importPercentage, 0) /
-                    (importedMetrics.length || 1)
-                ) === 100
-              ) {
-                notStarted = false;
-                disabled = false;
-                running = false;
+          } else {
+            // We have not reached the verify phase
+            if (stepIndex === MigrationStep["Plan and Assess"]) {
+              if (migrationAssessmentData?.data?.assesment_status === true) {
                 completed = true;
+              } else {
+                notStarted = true;
               }
+            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+              if (migrationSchemaData?.data?.overall_status === "complete") {
+                completed = true;
+              } else if (migrationSchemaData?.data?.overall_status === "in-progress") {
+                running = true;
+              } else {
+                notStarted = true;
+              }
+            } else if (stepIndex === MigrationStep["Migrate Data"]) {
+              if (!migrationMetricsData?.metrics?.length) {
+                notStarted = true;
+              } else {
+                const importedMetrics = migrationMetricsData?.metrics
+                  ?.filter((metrics) => metrics.migration_phase === MigrationPhase["Import Data"])
+                  .map((data) => ({
+                    importPercentage:
+                      data.count_live_rows && data.count_total_rows
+                        ? Math.floor((data.count_live_rows / data.count_total_rows) * 100)
+                        : 0,
+                  }));
+                const importPercentage = importedMetrics
+                  ? Math.floor(
+                      importedMetrics.reduce(
+                        (acc, { importPercentage }) => acc + importPercentage,
+                        0
+                      ) / (importedMetrics.length || 1)
+                    )
+                  : 0;
+
+                if (importPercentage === 100) {
+                  completed = true;
+                } else {
+                  running = true;
+                }
+              }
+            } else if (stepIndex === MigrationStep["Verify"]) {
+              // Verify will be pending and disabled
+              notStarted = true;
+              disabled = true;
             }
           }
         }

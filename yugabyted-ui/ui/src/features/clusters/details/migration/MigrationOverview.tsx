@@ -91,13 +91,16 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
           ...data,
           landing_step:
             data.migration_phase === MigrationPhase["Export Schema"] ||
-            data.migration_phase === MigrationPhase["Analyze Schema"] ||
             data.migration_phase === MigrationPhase["Import Schema"]
               ? MigrationStep["Migrate Schema"]
               : data.migration_phase === MigrationPhase["Import Data"] ||
                 data.migration_phase === MigrationPhase["Export Data"]
               ? MigrationStep["Migrate Data"]
-              : MigrationStep["Verify"],
+              : data.migration_phase === MigrationPhase["Analyze Schema"]
+              ? MigrationStep["Plan and Assess"]
+              : data.migration_phase === MigrationPhase["Verify"]
+              ? MigrationStep["Verify"]
+              : 0,
         };
       }),
     [migrationDataList]
