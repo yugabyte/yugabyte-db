@@ -119,7 +119,10 @@ public class ImportController extends AuthenticatedController {
     this.taskExecutor = taskExecutor;
   }
 
-  @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
+  @Deprecated
+  @ApiOperation(
+      value = "Deprecated: Do not use, this will be removed soon. Import a universe",
+      response = ImportUniverseFormData.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
