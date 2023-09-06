@@ -2449,6 +2449,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->state() != SysNamespaceEntryPB::RUNNING) {
+        continue;
+      }
+
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
