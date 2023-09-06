@@ -532,7 +532,7 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
 
   static const auto TEST_METRIC_NAME_1 = "test_metric_name_1";
   static const auto TEST_METRIC_NAME_2 = "test_metric_name_2";
-  static const int TWO = 2;
+  static const std::string TWO = "2";
 
   std::stringstream output;
   PrometheusWriter writer(&output, ExportHelpAndType::kFalse, AggregationMetricLevel::kStream);
@@ -546,18 +546,16 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
   ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 1u, AggregationFunction::kMax));
   ASSERT_OK(writer.WriteSingleEntry(attr, TEST_METRIC_NAME_1, 2u, AggregationFunction::kMax));
   ASSERT_OK(writer.FlushAggregatedValues(1, TEST_METRIC_NAME_1));
-  std::ostringstream expected_1;
-  std::ostringstream expected_2;
-
-  expected_1 << TEST_METRIC_NAME_1
-           << "{stream_id=\"stream_1\"," << LABLE_1 << "=\"" << LABLE_1_VAL
-                                                            << "\"} " << TWO;
-  expected_2 << TEST_METRIC_NAME_1
-             << "{" << LABLE_1 << "=\"" << LABLE_1_VAL <<"\",stream_id=\"stream_1\"} " << TWO;
+  std::vector<std::string> patterns1 = {
+      TEST_METRIC_NAME_1, "stream_id=\"stream_1\"", Format("$0=\"$1\"", LABLE_1, LABLE_1_VAL),
+          "metric_type=\"cdc\"", TWO};
   auto pw_output = dumpPrometheusWriterOutput(writer);
-  ASSERT_TRUE(
-      (pw_output.find(expected_1.str()) != string::npos) ||
-      (pw_output.find(expected_2.str()) != string::npos));
+  auto verify_patterns = [&pw_output](std::vector<std::string>& patterns) {
+    for (const auto& pattern : patterns) {
+      ASSERT_TRUE(pw_output.find(pattern) != string::npos);
+    }
+  };
+  verify_patterns(patterns1);
 
   std::stringstream output_2;
   PrometheusWriter writer_2(&output_2, ExportHelpAndType::kFalse, AggregationMetricLevel::kStream);
@@ -565,17 +563,11 @@ TEST_F(MetricsTest, TestStreamLevelAggregation) {
   ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
   ASSERT_OK(writer_2.WriteSingleEntry(attr, TEST_METRIC_NAME_2, 1u, AggregationFunction::kSum));
   ASSERT_OK(writer_2.FlushAggregatedValues(1, TEST_METRIC_NAME_2));
-  expected_1.str(std::string());
-  expected_2.str(std::string());
-
-  expected_1 << TEST_METRIC_NAME_2 << "{stream_id=\"stream_1\"," << LABLE_1 << "=\"" << LABLE_1_VAL
-           << "\"} " << TWO;
-  expected_2 << TEST_METRIC_NAME_2 << "{" << LABLE_1 << "=\"" << LABLE_1_VAL << "\","
-             << "stream_id=\"stream_1\"} " << TWO;
+  std::vector<std::string> patterns2 = {
+      TEST_METRIC_NAME_2, "stream_id=\"stream_1\"", Format("$0=\"$1\"", LABLE_1, LABLE_1_VAL),
+          "metric_type=\"cdc\"", TWO};
   pw_output = dumpPrometheusWriterOutput(writer_2);
-  ASSERT_TRUE(
-      (pw_output.find(expected_1.str()) != string::npos) ||
-      (pw_output.find(expected_2.str()) != string::npos));
+  verify_patterns(patterns2);
 }
 
 int StringOccurence(const string& s, const string& target) {
