@@ -644,8 +644,19 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return ToYBCStatus(pgapi->DeleteSequenceTuple(db_oid, seq_oid));
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropSequence(database_oid, sequence_oid, handle));
+}
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropSequence(handle));
+}
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropDBSequences(database_oid, handle));
 }
 
 // Table Operations -------------------------------------------------------------------------------

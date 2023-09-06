@@ -217,8 +217,6 @@ class PgApiImpl {
                            int64_t *last_val,
                            bool *is_called);
 
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
   void DeleteStatement(PgStatement *handle);
 
   // Search for type_entity.
@@ -401,6 +399,15 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
+
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
