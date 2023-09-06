@@ -1255,6 +1255,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   DISALLOW_COPY_AND_ASSIGN(CDCStreamInfo);
 };
 
+typedef scoped_refptr<CDCStreamInfo> CDCStreamInfoPtr;
+
 class UniverseReplicationInfoBase {
  public:
   Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
