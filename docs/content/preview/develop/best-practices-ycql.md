@@ -1,10 +1,9 @@
 ---
 title: Best practices for YCQL applications
-headerTitle: Best practices - YCQL
+headerTitle: Best practices
 linkTitle: Best practices
-description: Tips and tricks to build YCQL applications for high performance and availability
+description: Tips and tricks to build YCQL applications
 headcontent: Tips and tricks to build YCQL applications for high performance and availability
-
 menu:
   preview:
     identifier: best-practices-ycql
@@ -58,12 +57,12 @@ YCQL supports automatic expiration of data using the [TTL feature](../../api/ycq
 If configuring TTL for a time series dataset or any dataset with a table-level TTL, it is recommended for CPU and space efficiency to expire older files directly by using TTL-specific configuration options. More details can be found in [Efficient data expiration for TTL](../learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl).
 
 {{<note title="Note">}}
-TTL does not apply to transactional tables and hence is not supported in that context.
+TTL does not apply to transactional tables and so, its unsupported in that context.
 {{</note>}}
 
 ## Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster and partition-aware and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](../../drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
 
 ## Leverage connection pooling in the YCQL client
 
@@ -77,7 +76,7 @@ Whenever possible, use prepared statements to ensure that YugabyteDB partition-a
 
 ## Use batching for higher throughput
 
-Use batching for writing a set of operations. This will send all operations in a single RPC call instead of using multiple RPC calls, one per operation. Each batch operation has higher latency compared to single-row operations but has higher throughput overall.
+Use batching for writing a set of operations to send all operations in a single RPC call instead of using multiple RPC calls, one per operation. Each batch operation has higher latency compared to single-row operations but has higher throughput overall.
 
 ## Column and row sizes
 
@@ -99,6 +98,6 @@ If your collections are immutable, or you update the whole collection in full, c
 
 `partition_hash` function can be used for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
-## Use TRUNCATE to empty tables instead of DELETE
+## TRUNCATE tables instead of DELETE
 
-`TRUNCATE` deletes the database files that store the table and is very fast. While `DELETE` inserts a `delete marker` for each row in transactions and they are removed from storage when a compaction runs.
+`TRUNCATE` deletes the database files that store the table and is much faster that `DELETE` which inserts a `delete marker` for each row in transactions and they are removed from storage when a compaction runs.
