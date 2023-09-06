@@ -65,10 +65,10 @@ DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
 }
 
 DocReadContext& DocDBRocksDBUtil::doc_read_context() {
-  if (!doc_read_context_) {
-    doc_read_context_ = std::make_shared<DocReadContext>(
-        DocReadContext::TEST_Create(CreateSchema()));
-  }
+  std::call_once(doc_reader_context_init_once_, [this]() {
+      doc_read_context_ = std::make_shared<DocReadContext>(
+          DocReadContext::TEST_Create(CreateSchema()));
+  });
   return *doc_read_context_;
 }
 
@@ -566,10 +566,8 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
   if (schema_version == kLatestSchemaVersion) {
     schema_version = 0;
   }
-  ANNOTATE_IGNORE_READS_BEGIN();
   auto& packing = VERIFY_RESULT_REF(
       doc_read_context().schema_packing_storage.GetPacking(schema_version));
-  ANNOTATE_IGNORE_READS_END();
   return CompactionSchemaInfo {
     .table_type = TableType::YQL_TABLE_TYPE,
     .schema_version = schema_version,
