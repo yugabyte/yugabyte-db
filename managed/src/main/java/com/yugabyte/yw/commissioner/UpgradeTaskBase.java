@@ -262,7 +262,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
 
-      createNodePrecheckTasks(node, processTypes, subGroupType);
+      createNodePrecheckTasks(node, processTypes, subGroupType, context.targetSoftwareVersion);
 
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
@@ -732,6 +732,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean runBeforeStopping;
     boolean processInactiveMaster;
     @Builder.Default boolean skipStartingProcesses = false;
+    String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
   }
 }
