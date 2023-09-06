@@ -5,7 +5,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Tabs, Tab } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { YBModal, YBToggleField, YBTooltip } from '../../../../components';
+import { YBAlert, YBModal, YBToggleField, YBTooltip, AlertVariant } from '../../../../components';
 import {
   TOAST_AUTO_DISMISS_INTERVAL,
   EIT_FIELD_NAME,
@@ -36,6 +36,19 @@ interface EncryptionInTransitProps {
 }
 
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
+
+const NonRollingBanner: FC = () => {
+  const { t } = useTranslation();
+  return (
+    <Box mt={2}>
+      <YBAlert
+        text={t('universeActions.encryptionInTransit.disableEITWarning')}
+        variant={AlertVariant.Warning}
+        open={true}
+      />
+    </Box>
+  );
+};
 
 export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClose, universe }) => {
   const { t } = useTranslation();
@@ -74,10 +87,16 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   const rootCA = watch(NODE_NODE_CERT_FIELD_NAME);
   const clientRootCA = watch(CLIENT_NODE_CERT_FIELD_NAME);
 
+  //Disable encryption in transit toggle if (a)->one of server cert rotations enabled OR (b)->one of root certs are modiified
   const disableEITToggle =
     rotateNToN ||
     rotateCToN ||
     (encryptionEnabled && (rootCA !== rootCAInitial || clientRootCA !== clientRootCAInitial));
+  //EIT or CNEncrytion or NNEncryption toggle is turned on or off
+  const tlsToggled =
+    encryptionEnabled !== enableUniverseEncryption ||
+    enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
+    enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
 
   //methods
   const handleChange = (_: any, tab: string) => setTab(tab);
@@ -96,10 +115,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
 
   const constructPayload = (values: EncryptionInTransitFormValues) => {
     let { enableUniverseEncryption, rollingUpgrade, upgradeDelay, ...payload } = values;
-    const tlsToggled =
-      encryptionEnabled !== enableUniverseEncryption ||
-      enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
-      enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
+
     if (
       !values.enableUniverseEncryption ||
       (values.rootAndClientRootCASame && values.enableNodeToNodeEncrypt === false)
@@ -156,6 +172,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       values.enableUniverseEncryption &&
       !(values.enableNodeToNodeEncrypt || values.enableClientToNodeEncrypt)
     ) {
+      //If encryption is enabled at global level, but if one of NN OR CN toggle is not turned on
       toast.warn(t('universeActions.encryptionInTransit.enableEITWarning'), TOAST_OPTIONS);
     } else {
       try {
@@ -179,8 +196,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       title={t('universeActions.encryptionInTransit.title')}
       onClose={onClose}
       onSubmit={handleFormSubmit}
-      submitTestId="EncryptionAtRest-Submit"
-      cancelTestId="EncryptionAtRest-Close"
+      submitTestId="EncryptionInTransit-Submit"
+      cancelTestId="EncryptionInTransit-Close"
     >
       {isLoading ? (
         <YBLoading text={' '} />
@@ -193,7 +210,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             display="flex"
             width="100%"
             flexDirection="column"
-            data-testid="EncryptionAtRest-Modal"
+            data-testid="EncryptionInTransit-Modal"
           >
             <Box
               display="flex"
@@ -238,7 +255,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             </Box>
 
             {enableUniverseEncryption && (
-              <Box mt={4}>
+              <Box mt={4} className={classes.eitTabContainer}>
                 <Tabs
                   value={currentTab}
                   indicatorColor="primary"
@@ -262,9 +279,10 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                 {currentTab === 'ServerCert' && (
                   <RotateServerCerts initialValues={INITIAL_VALUES} />
                 )}
-                <RollingUpgrade />
+                {!tlsToggled && <RollingUpgrade />}
               </Box>
             )}
+            {tlsToggled && <NonRollingBanner />}
           </Box>
         </FormProvider>
       )}
