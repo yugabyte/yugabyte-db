@@ -23,5 +23,6 @@ public class AuditServiceTest {
     JsonNode redacted = AuditService.filterSecretFields(formData);
     assertEquals(
         SECRET_REPLACEMENT, redacted.get("customServerCertData.serverKeyContent").asText());
+    assertEquals(SECRET_REPLACEMENT, redacted.get("certContent").asText());
   }
 }
