@@ -277,7 +277,7 @@ CREATE TYPE inventory_item (
 );
 ```
 
-### 2. Create table with a composite type
+1. Create a table with a composite type as follows:
 
 ```sql
 CREATE TABLE on_hand (
