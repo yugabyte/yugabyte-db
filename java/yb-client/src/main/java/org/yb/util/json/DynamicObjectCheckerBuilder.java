@@ -55,7 +55,14 @@ final class DynamicObjectCheckerBuilder<T extends ObjectCheckerBuilder>
       return method.invoke(this, args);
     }
     if (declaringClass.equals(clazz)) {
-      checkers.put(propertyNames.get(method.getName()), makeChecker(args[0]));
+      if (args.length == 1) {
+        checkers.put(propertyNames.get(method.getName()), makeChecker(args[0]));
+      } else {
+        String nameParameter = String.class.cast(args[0]);
+        checkers.put(
+            getParameterizedPropertyName(propertyNames.get(method.getName()), nameParameter),
+            makeChecker(args[1]));
+      }
       return proxy;
     }
     return null;
@@ -72,11 +79,22 @@ final class DynamicObjectCheckerBuilder<T extends ObjectCheckerBuilder>
       throw new IllegalArgumentException(
           String.format("'%s' must have '%s' return type", methodName, clazz.getName()));
     }
-    if (method.getParameterTypes().length != 1) {
+    if (method.getParameterTypes().length > 2) {
       throw new IllegalArgumentException(
-          String.format("'%s' must have single argument", methodName));
+          String.format("'%s' must have one or two arguments", methodName));
     }
-    Class<?> argType = method.getParameterTypes()[0];
+
+    Class<?> argType;
+    if (method.getParameterTypes().length == 2) {
+      if (!method.getParameterTypes()[0].equals(String.class)) {
+        throw new IllegalArgumentException(
+            String.format("'%s' first argument must be String", methodName));
+      }
+      argType = method.getParameterTypes()[1];
+    } else {
+      argType = method.getParameterTypes()[0];
+    }
+
     if (!isAllowedArgType(argType)) {
       throw new IllegalArgumentException(
           String.format(
@@ -94,6 +112,10 @@ final class DynamicObjectCheckerBuilder<T extends ObjectCheckerBuilder>
     ensureMethodIsValid(method);
     PropertyName name = method.getAnnotation(PropertyName.class);
     return name == null ? buildPropertyName(method.getName()) : name.value();
+  }
+
+  private String getParameterizedPropertyName(String propertyName, String parameter) {
+    return String.format("%s %s", propertyName, parameter);
   }
 
   private static String buildPropertyName(String methodName) {

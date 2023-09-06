@@ -3557,6 +3557,10 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
+
+	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+		instr->storage_metrics[i] += exec_stats->storage_metrics[i];
+	}
 }
 
 static YBCPgExecReadWriteStats
@@ -3580,6 +3584,10 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
+
+	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+		result->storage_metrics[i] = current->storage_metrics[i] - old->storage_metrics[i];
+	}
 }
 
 static void
@@ -3596,6 +3604,12 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 
 	if (include_catalog_stats)
 		old->catalog = current->catalog;
+
+	if (yb_session_stats.current_state.metrics_capture) {
+		for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+			old->storage_metrics[i] = current->storage_metrics[i];
+		}
+	}
 }
 
 void
@@ -3650,6 +3664,12 @@ void
 YbToggleSessionStatsTimer(bool timing_on)
 {
 	yb_session_stats.current_state.is_timing_required = timing_on;
+}
+
+void
+YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture)
+{
+	yb_session_stats.current_state.metrics_capture = metrics_capture;
 }
 
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)

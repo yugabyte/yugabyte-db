@@ -99,8 +99,9 @@ struct TableHolder {
 
 class PgsqlReadOpWithPgTable : private TableHolder, public PgsqlReadOp {
  public:
-  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local)
-      : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local) {}
+  PgsqlReadOpWithPgTable(ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local,
+                         PgsqlMetricsCaptureType metrics_capture)
+      : TableHolder(descr), PgsqlReadOp(arena, *table_, is_region_local, metrics_capture) {}
 
   PgTable& table() {
     return table_;
@@ -260,7 +261,9 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     const auto table_id = it->table_id;
     auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
     bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
-    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(arena.get(), desc, is_region_local);
+    auto metrics_capture = session->metrics().metrics_capture();
+    auto read_op = std::make_shared<PgsqlReadOpWithPgTable>(
+        arena.get(), desc, is_region_local, metrics_capture);
 
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(to_underlying(PgSystemAttrNum::kYBTupleId));

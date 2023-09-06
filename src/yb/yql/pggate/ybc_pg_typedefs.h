@@ -18,6 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/yql/pggate/pg_metrics_list.h"
+
 #ifdef __cplusplus
 
 #define YB_DEFINE_HANDLE_TYPE(name) \
@@ -28,8 +30,11 @@
     } \
     typedef class yb::pggate::name *YBC##name;
 
+#define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
+
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name;
+#define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
 #ifdef __cplusplus
@@ -442,11 +447,20 @@ typedef struct PgExecStats {
 
   uint64_t num_flushes;
   uint64_t flush_wait;
+
+  uint64_t storage_metrics[YB_PGGATE_IDENTIFIER(YB_ANALYZE_METRIC_COUNT)];
 } YBCPgExecStats;
+
+// Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
+typedef enum PgMetricsCaptureType {
+  YB_YQL_METRICS_CAPTURE_NONE = 0,
+  YB_YQL_METRICS_CAPTURE_ALL = 1,
+} YBCPgMetricsCaptureType;
 
 typedef struct PgExecStatsState {
   YBCPgExecStats stats;
   bool is_timing_required;
+  YBCPgMetricsCaptureType metrics_capture;
 } YBCPgExecStatsState;
 
 typedef struct PgUuid {
