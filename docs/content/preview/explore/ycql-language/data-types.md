@@ -286,45 +286,38 @@ A user defined type is a collection of data types similar to a `struct` in a pro
 The following example shows how to create and use a user defined type.
 
 1. Create a user defined type.
+    ```sql
+    CREATE TYPE inventory_item (
+       name text,
+       supplier_id integer,
+       price float
+    );
+    ```
 
-```sql
-CREATE TYPE inventory_item (
-   name text,
-   supplier_id integer,
-   price float
-);
-```
+1. Create a table with a user defined type as follows:
+     ```sql
+     CREATE TABLE on_hand (
+        item_id UUID PRIMARY KEY,
+        item inventory_item,
+        count integer
+     );
+     ```
 
-2. Create a table with a user defined type as follows:
+1. Insert a row as follows:
+    ```sql
+    INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
+    ```
+1. To select data from the `on_hand` example table, execute the following:
+    ```sql
+    SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
+    ```
 
-```sql
-CREATE TABLE on_hand (
-   item_id UUID PRIMARY KEY,
-   item inventory_item,
-   count integer
-);
-```
+    Expect the following output:
 
-
-3. Insert a row as follows:
-
-```sql
-INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
-```
-
-
-4. To select data from the `on_hand` example table, execute the following:
-
-```sql
-SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
-```
-
-Expect the following output:
-
-```output
- item_id                              | item                                               | count
---------------------------------------+----------------------------------------------------+-------
- 28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
-
-(1 rows)
-```
+    ```output
+     item_id                              | item                                               | count
+    --------------------------------------+----------------------------------------------------+-------
+     28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
+    
+    (1 rows)
+    ```

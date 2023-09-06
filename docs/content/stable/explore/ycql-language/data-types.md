@@ -69,7 +69,7 @@ The following numeric types are supported:
 | FLOAT \| DOUBLE  | 64-bit, inexact, floating-point number |
 | DECIMAL        | Exact, arbitrary-precision number, no upper-bound on decimal precision |
 
-The following example creates a table with integer type columns and inserting rows into it:
+The following example creates a table with integer type columns and inserts rows into it:
 
 ```sql
 CREATE TABLE albums (
@@ -83,7 +83,7 @@ INSERT INTO albums (album_id, title, play_time, library_record)
 values (3223372036854775808,'Funhouse', 3600,2146483645 );
 ```
 
-Similarly, the following example shows how to create a table with floating-point typed columns and how to insert a row into that table:
+Similarly, the following example shows how to create a table with floating-point typed columns and insert a row into that table:
 
 ```sql
 CREATE TABLE floating_point_test (
@@ -150,7 +150,7 @@ versions of UUIDs:
 | UUID | [Version 4](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)) UUID |
 | TIMEUUID | [Version 1](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_1_(date-time_and_MAC_address)) UUID |
 
-`TIMEUUID` is typically used when time ordered unique identifiers are required in time-series use
+`TIMEUUID` is typically used when time-ordered unique identifiers are required in time-series use
 cases.
 
 The following example creates a table with the UUID types:
@@ -283,46 +283,41 @@ Collections](../../../api/ycql/type_collection) for more details.
 
 A user defined type is a collection of data types similar to a `struct` in a programming language.
 
-1. Create a user defined type
+The following example shows how to create and use a user defined type.
 
-```sql
-CREATE TYPE inventory_item (
-   name text,
-   supplier_id integer,
-   price float
-);
-```
+1. Create a user defined type.
+    ```sql
+    CREATE TYPE inventory_item (
+       name text,
+       supplier_id integer,
+       price float
+    );
+    ```
 
-2. Create a table with a user defined type as follows:
+1. Create a table with a user defined type as follows:
+     ```sql
+     CREATE TABLE on_hand (
+        item_id UUID PRIMARY KEY,
+        item inventory_item,
+        count integer
+     );
+     ```
 
-```sql
-CREATE TABLE on_hand (
-   item_id UUID PRIMARY KEY,
-   item inventory_item,
-   count integer
-);
-```
+1. Insert a row as follows:
+    ```sql
+    INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
+    ```
+1. To select data from the `on_hand` example table, execute the following:
+    ```sql
+    SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
+    ```
 
+    Expect the following output:
 
-3. Insert a row as follows:
-
-```sql
-INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
-```
-
-
-4. To select data from the `on_hand` example table, execute the following:
-
-```sql
-SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
-```
-
-Expect the following output:
-
-```output
- item_id                              | item                                               | count
---------------------------------------+----------------------------------------------------+-------
- 28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
-
-(1 rows)
-```
+    ```output
+     item_id                              | item                                               | count
+    --------------------------------------+----------------------------------------------------+-------
+     28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
+    
+    (1 rows)
+    ```
