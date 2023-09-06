@@ -295,7 +295,7 @@ INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69
 ```
 
 
-To select data from the `on_hand` example table, execute the following:
+1. To select data from the `on_hand` example table, execute the following:
 
 ```sql
 SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
