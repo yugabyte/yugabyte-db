@@ -338,6 +338,24 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -348,7 +366,7 @@ public class NodeUniverseManager extends DevopsBase {
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
-    if (cluster.userIntent.isYSQLAuthEnabled()) {
+    if (authEnabled) {
       bashCommand.add("$(dirname \"$(ls -t /tmp/.yb.*/.s.PGSQL.* | head -1)\")");
     } else {
       bashCommand.add(node.cloudInfo.private_ip);

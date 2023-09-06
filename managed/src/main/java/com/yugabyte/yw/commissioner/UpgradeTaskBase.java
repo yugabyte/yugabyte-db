@@ -332,7 +332,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           createWaitForServersTasks(singletonNodeList, processType)
               .setSubTaskGroupType(subGroupType);
           if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
-            createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
+            createWaitForServersTasks(
+                    singletonNodeList, ServerType.YSQLSERVER, context.getUserIntent())
                 .setSubTaskGroupType(subGroupType);
           }
 
@@ -815,6 +816,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    // Set this field to access client userIntent during runtime as
+    // usually universeDetails are updated only at the end of task.
+    UniverseDefinitionTaskParams.UserIntent userIntent;
     @Builder.Default boolean skipStartingProcesses = false;
     Consumer<NodeDetails> postAction;
   }

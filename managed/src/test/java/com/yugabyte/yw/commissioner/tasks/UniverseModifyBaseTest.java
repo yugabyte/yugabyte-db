@@ -94,7 +94,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
     // Create hooks
     hook1 =
         Hook.create(
