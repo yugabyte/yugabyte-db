@@ -150,7 +150,7 @@ versions of UUIDs:
 | UUID | [Version 4](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)) UUID |
 | TIMEUUID | [Version 1](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_1_(date-time_and_MAC_address)) UUID |
 
-`TIMEUUID`s are typically used when time ordered unique identifiers are required in time-series use
+`TIMEUUID` is typically used when time-ordered unique identifiers are required in time-series use
 cases.
 
 The following example creates a table with the UUID types:
@@ -254,8 +254,8 @@ ycqlsh> select * from user_profile;
 
 (1 rows)
 ```
-The above example appends the new element to an existing list. Prepending is also possible as shown
-below:
+The preceding example appends the new element to an existing list. Prepending is also possible, as
+follows:
 
 ```sql
 UPDATE user_profile
@@ -275,7 +275,7 @@ ycqlsh> select * from user_profile;
 (1 rows)
 ```
 
-Working with `SET` and `MAP` is similar to the above example except the these types do not have a
+`SET` and `MAP` work similarly, except that these types do not have a
 notion of prepending and the syntax for literals is slightly different. See [YCQL
 Collections](../../../api/ycql/type_collection) for more details.
 
