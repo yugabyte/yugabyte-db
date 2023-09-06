@@ -1,4 +1,6 @@
-// Migration Phases (Statuses from Voyager)
+/**
+ * Migration Phases (Statuses from Voyager)
+ */
 export enum MigrationPhase {
   "Export Schema" = 0,
   "Analyze Schema" = 1,
@@ -11,7 +13,9 @@ export const migrationPhases = Object.keys(MigrationPhase)
   .map((key) => MigrationPhase[key as any])
   .filter((value) => typeof value === "string");
 
-// Migration Steps (Cards shown in the UI)
+/**
+ * Migration Steps (Cards shown in the UI)
+ */
 export enum MigrationStep {
   "Plan and Assess" = 0,
   "Migrate Schema" = 1,

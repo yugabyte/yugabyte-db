@@ -172,11 +172,8 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             }
           }
 
-          // Export data and Import schema phase
-          else if (
-            phase === MigrationPhase["Export Data"] ||
-            phase === MigrationPhase["Import Schema"]
-          ) {
+          // Export data phase
+          else if (phase === MigrationPhase["Export Data"]) {
             if (stepIndex === MigrationStep["Plan and Assess"]) {
               // Plan and assess will be completed
               completed = true;
@@ -186,6 +183,25 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             ) {
               // Migrate schema and Migrate data will be running
               running = true;
+            } else if (stepIndex === MigrationStep["Verify"]) {
+              // Verify will be pending and disabled
+              disabled = true;
+              notStarted = true;
+            }
+          }
+
+          // Import schema phase
+          else if (phase === MigrationPhase["Import Schema"]) {
+            if (stepIndex === MigrationStep["Plan and Assess"]) {
+              // Plan and assess will be completed
+              completed = true;
+            } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+              // Migrate schema will be running
+              running = true;
+            } else if (stepIndex === MigrationStep["Migrate Data"]) {
+              // Migrate data will be pending but we can't accurately say what the state would be here
+              // It will be handled correctly by the extra checks down below
+              notStarted = true;
             } else if (stepIndex === MigrationStep["Verify"]) {
               // Verify will be pending and disabled
               disabled = true;
@@ -215,20 +231,34 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           }
 
           // Extra check overrides based on other migration APIs
-          if (stepIndex === MigrationStep["Plan and Assess"]) {
+          if (
+            stepIndex === MigrationStep["Plan and Assess"] &&
+            phase > MigrationPhase["Export Schema"]
+          ) {
             if (migrationAssessmentData?.data?.assesment_status === true) {
               notStarted = false;
               disabled = false;
+              running = false;
               completed = true;
             }
-          } else if (stepIndex === MigrationStep["Migrate Schema"]) {
+          } else if (
+            stepIndex === MigrationStep["Migrate Schema"] &&
+            phase >= MigrationPhase["Analyze Schema"]
+          ) {
             if (migrationSchemaData?.data?.overall_status === "complete") {
               notStarted = false;
               disabled = false;
+              running = false;
               completed = true;
             }
-          } else if (stepIndex === MigrationStep["Migrate Data"]) {
+          } else if (
+            stepIndex === MigrationStep["Migrate Data"] &&
+            phase >= MigrationPhase["Export Data"]
+          ) {
             if (!migrationMetricsData?.metrics?.length) {
+              disabled = false;
+              running = false;
+              completed = false;
               notStarted = true;
             } else {
               const importedMetrics = migrationMetricsData?.metrics
@@ -249,6 +279,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
               ) {
                 notStarted = false;
                 disabled = false;
+                running = false;
                 completed = true;
               }
             }

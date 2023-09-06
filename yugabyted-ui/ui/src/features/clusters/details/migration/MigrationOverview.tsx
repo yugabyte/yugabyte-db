@@ -163,8 +163,6 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
         )}
       </Box>
 
-      {isErrorMigrationTasks && <GenericFailure />}
-
       {isLoadingMigrationTasks && (
         <Box textAlign="center" pt={4} pb={4} width="100%">
           <LinearProgress />
@@ -185,10 +183,14 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
                       {t("clusterDetail.performance.actions.refresh")}
                     </YBButton>
                   </Box>
-                  <MigrationList
-                    migrationData={migrationData}
-                    onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
-                  />
+                  {isErrorMigrationTasks ? (
+                    <GenericFailure />
+                  ) : (
+                    <MigrationList
+                      migrationData={migrationData}
+                      onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
+                    />
+                  )}
                 </Box>
               </Paper>
             </Box>

@@ -67,17 +67,15 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
   const {
     data,
     isFetching: isFetchingAPI,
-    refetch: refetchMigrationAssesmentDetails,
     isError: isErrorMigrationAssessmentDetails,
   } = useGetVoyagerMigrationAssesmentDetailsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-
   const assessmentAPI = React.useMemo(() => {
     const assessmentData = (data as MigrationAssesmentInfo) || {};
-    assessmentData.top_suggestions = assessmentData.top_suggestions?.filter(s => s.trim());
-    assessmentData.top_errors = assessmentData.top_errors?.filter(s => s.trim());
+    assessmentData.top_suggestions = assessmentData.top_suggestions?.filter((s) => s.trim());
+    assessmentData.top_errors = assessmentData.top_errors?.filter((s) => s.trim());
     return assessmentData;
   }, [data]);
 
@@ -125,14 +123,7 @@ export const MigrationPlanAssess: FC<MigrationPlanAssessProps> = ({
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton
-          variant="ghost"
-          startIcon={<RefreshIcon />}
-          onClick={() => {
-            refetchMigrationAssesmentDetails();
-            onRefetch();
-          }}
-        >
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>

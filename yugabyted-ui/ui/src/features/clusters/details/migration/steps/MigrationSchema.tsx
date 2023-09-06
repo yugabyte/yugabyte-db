@@ -156,7 +156,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   const {
     data,
     isFetching: isFetchingAPI,
-    refetch: refetchMigrationSchemaTasks,
     isError: isErrorMigrationSchemaTasks,
   } = useGetVoyagerMigrateSchemaTasksQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
@@ -252,14 +251,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton
-          variant="ghost"
-          startIcon={<RefreshIcon />}
-          onClick={() => {
-            refetchMigrationSchemaTasks();
-            onRefetch();
-          }}
-        >
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>

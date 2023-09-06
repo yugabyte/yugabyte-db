@@ -83,7 +83,6 @@ export const MigrationData: FC<MigrationProps> = ({
   const {
     data,
     isFetching: isFetchingAPI,
-    refetch: refetchMigrationMetrics,
     isError: isErrorMigrationMetrics,
   } = useGetVoyagerDataMigrationMetricsQuery({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
@@ -176,14 +175,7 @@ export const MigrationData: FC<MigrationProps> = ({
         <Typography variant="h4" className={classes.heading}>
           {heading}
         </Typography>
-        <YBButton
-          variant="ghost"
-          startIcon={<RefreshIcon />}
-          onClick={() => {
-            refetchMigrationMetrics();
-            onRefetch();
-          }}
-        >
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>
