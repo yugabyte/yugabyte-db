@@ -289,7 +289,7 @@ CREATE TABLE on_hand (
 
 ### 3. Insert a row
 
-To insert a row as follows:
+1. Insert a row as follows:
 
 ```sql
 INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
