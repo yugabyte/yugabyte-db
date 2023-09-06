@@ -1374,7 +1374,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       GetReplicationStatusResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+  typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
@@ -1391,24 +1391,24 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableStreamIdsMap& table_to_unprocessed_streams_map);
 
   // Find all the CDC streams that have been marked as DELETED.
-  Status FindCDCStreamsMarkedAsDeleting(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
+  Status FindCDCStreamsMarkedAsDeleting(std::vector<CDCStreamInfoPtr>* streams);
 
   // Find all the CDC streams that have been marked as provided state.
   Status FindCDCStreamsMarkedForMetadataDeletion(
-      std::vector<scoped_refptr<CDCStreamInfo>>* streams, SysCDCStreamEntryPB::State state);
+      std::vector<CDCStreamInfoPtr>* streams, SysCDCStreamEntryPB::State state);
 
   // Delete specified CDC streams.
-  Status CleanUpDeletedCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+  Status CleanUpDeletedCDCStreams(const std::vector<CDCStreamInfoPtr>& streams);
 
   void GetValidTabletsAndDroppedTablesForStream(
-      const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams,
+      const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
   Status RemoveStreamFromXClusterProducerConfig(const std::vector<CDCStreamInfo*>& streams);
 
   // Delete specified CDC streams metadata.
-  Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+  Status CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfoPtr>& streams);
 
   using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
@@ -2649,19 +2649,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp);
 
   // Return all CDC streams.
-  void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
+  void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status MarkCDCStreamsForMetadataCleanup(
-      const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state);
+      const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State state);
 
   // Find CDC streams for a table.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableUnlocked(
+  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableUnlocked(
       const TableId& table_id, const cdc::CDCRequestSource cdc_request_source) const
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table to clean its metadata.
-  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTableToDeleteMetadata(
+  std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableToDeleteMetadata(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(
@@ -3059,7 +3059,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       GUARDED_BY(should_send_universe_key_registry_mutex_);
 
   // CDC Stream map: xrepl::StreamId -> CDCStreamInfo.
-  typedef std::unordered_map<xrepl::StreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
+  typedef std::unordered_map<xrepl::StreamId, CDCStreamInfoPtr> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
 
   mutable MutexType cdcsdk_unprocessed_table_mutex_;
