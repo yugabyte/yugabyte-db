@@ -98,6 +98,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
@@ -3479,7 +3480,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     table_id = table->id();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
+        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid for table " << table_id;
         auto const att_name_typid_map = VERIFY_RESULT(GetPgAttNameTypidMap(table));
         vector<uint32_t> type_oids;
         for (const auto& entry : att_name_typid_map) {
@@ -3517,8 +3518,10 @@ Status CatalogManager::BackfillMetadataForCDC(
       // it is present or not. It is a safeguard against
       // https://phabricator.dev.yugabyte.com/D17099 which fills the pgschema_name in memory if it
       // is not present without backfilling it to master's disk or tservers.
-      if (backfill_required || !table->has_pgschema_name()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name";
+      // Skip this check for colocated parent tables as they do not have pgschema names.
+      if (!IsColocationParentTableId(table_id) &&
+          (backfill_required || table->pgschema_name().empty())) {
+        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
         VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
@@ -4683,23 +4686,26 @@ Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* r
 
     // TODO: Submit the task to a thread pool.
     // Capture everything by value to increase their refcounts.
-    std::thread async_task([this, table_id, stream_id, deadline, data_lock, task_completed,
-                            table_bootstrap_required, finished_tasks, total_tasks, promise] {
-      bool bootstrap_required = false;
-      auto status = IsTableBootstrapRequired(
-          table_id, stream_id, deadline, &bootstrap_required);
-      std::lock_guard<std::mutex> lock(*data_lock);
-      if (*task_completed) {
-        return; // Prevent calling set_value below twice.
-      }
-      (*table_bootstrap_required)[table_id] = bootstrap_required;
-      if (!status.ok() || ++(*finished_tasks) == total_tasks) {
-        // Short-circuit if error already encountered.
-        *task_completed = true;
-        promise->set_value(status);
-      }
-    });
-    async_task.detach();
+    scoped_refptr<Thread> async_task;
+    RETURN_NOT_OK(Thread::Create(
+        "catalog_manager_ent", "is_bootstrap_required",
+        [this, table_id, stream_id, deadline, data_lock, task_completed, table_bootstrap_required,
+         finished_tasks, total_tasks, promise] {
+          bool bootstrap_required = false;
+          auto status =
+              IsTableBootstrapRequired(table_id, stream_id, deadline, &bootstrap_required);
+          std::lock_guard lock(*data_lock);
+          if (*task_completed) {
+            return;  // Prevent calling set_value below twice.
+          }
+          (*table_bootstrap_required)[table_id] = bootstrap_required;
+          if (!status.ok() || ++(*finished_tasks) == total_tasks) {
+            // Short-circuit if error already encountered.
+            *task_completed = true;
+            promise->set_value(status);
+          }
+        },
+        &async_task));
   }
 
   // Wait until the first promise is raised, and prepare response.
@@ -5026,7 +5032,8 @@ Status CatalogManager::ValidateTableSchema(
 
     // Check that schema name matches for YSQL tables, if the field is empty, fill in that
     // information during GetTableSchema call later.
-    if (is_ysql_table && t.has_pgschema_name() &&
+    bool has_valid_pgschema_name = !t.pgschema_name().empty();
+    if (is_ysql_table && has_valid_pgschema_name &&
         t.pgschema_name() != source_schema.SchemaName()) {
       continue;
     }
@@ -5038,10 +5045,8 @@ Status CatalogManager::ValidateTableSchema(
            Substitute("Error while getting table schema: $0", status.ToString()));
 
     // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !t.has_pgschema_name()) {
-      std::string target_schema_name = resp->schema().has_pgschema_name()
-          ? resp->schema().pgschema_name()
-          : "";
+    if (is_ysql_table && !has_valid_pgschema_name) {
+      std::string target_schema_name = resp->schema().pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
@@ -5067,8 +5072,9 @@ Status CatalogManager::ValidateTableSchema(
     break;
   }
 
-  SCHECK(table->has_table_id(), NotFound,
-         Substitute("Could not find matching table for $0", info->table_name.ToString()));
+  SCHECK(table->has_table_id(), NotFound, Substitute(
+      "Could not find matching table for $0$1", info->table_name.ToString(),
+      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the

@@ -54,6 +54,7 @@ DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 
+DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 namespace yb {
 
 using client::YBClient;
@@ -285,9 +286,13 @@ Result<YBTableName> TwoDCTestBase::CreateYsqlTable(
     }
   }
   EXPECT_OK(conn.Execute(query));
+
+  // Only check the schema name if it is set AND we created the table with a valid pgschema_name.
+  bool verify_schema_name =
+      !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
   return GetYsqlTable(
       cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
-      !schema_name.empty() /* verify_schema_name*/);
+      verify_schema_name);
 }
 
 Status TwoDCTestBase::CreateYsqlTable(
