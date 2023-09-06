@@ -83,7 +83,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    Cluster cluster = universe.getUniverseDetails().getClusterByNodeUUID(currentNode.nodeUuid);
+    Cluster cluster = universe.getCluster(currentNode.placementUuid);
     int iterationNum = 0;
     Stopwatch stopwatch = Stopwatch.createStarted();
     Duration maxSubtaskTimeout = taskParams().maxWaitTime;
