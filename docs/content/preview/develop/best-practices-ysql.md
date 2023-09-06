@@ -122,4 +122,4 @@ For more details, see [distributed parallel queries](../../api/ysql/exprs/func_y
 
 ## TRUNCATE tables instead of DELETE
 
-[TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a `delete marker` for each row in transactions that are later removed from storage during compaction runs.
+[TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.

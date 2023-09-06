@@ -100,4 +100,4 @@ If your collections are immutable, or you update the whole collection in full, c
 
 ## TRUNCATE tables instead of DELETE
 
-`TRUNCATE` deletes the database files that store the table and is much faster that `DELETE` which inserts a `delete marker` for each row in transactions and they are removed from storage when a compaction runs.
+[TRUNCATE](../../api/ycql/dml_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ycql/dml_delete/) which inserts a _delete marker_ for each row in transactions and they are removed from storage when a compaction runs.
