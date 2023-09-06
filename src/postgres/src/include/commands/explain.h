@@ -16,6 +16,7 @@
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
 #include "parser/parse_node.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef enum ExplainFormat
 {
@@ -32,6 +33,8 @@ typedef struct YbExplainExecStats
 	YbPgRpcStats flush;
 	double		 write_count;
 	double		 catalog_write_count;
+
+	double	     storage_metrics[YB_ANALYZE_METRIC_COUNT];
 } YbExplainExecStats;
 
 typedef struct ExplainState
@@ -45,6 +48,7 @@ typedef struct ExplainState
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
 	bool		rpc;			/* print RPC stats */
+	bool		debug;			/* print debug information */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */

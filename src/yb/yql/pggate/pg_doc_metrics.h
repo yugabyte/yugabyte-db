@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "yb/common/pgsql_protocol.messages.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 
@@ -36,6 +38,7 @@ class PgDocMetrics {
   void ReadRequest(TableType relation, uint64_t wait_time);
   void WriteRequest(TableType relation);
   void FlushRequest(uint64_t wait_time);
+  void RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics);
 
   // A helper function to compute the wait time of a function
   template <class Functor>
@@ -43,6 +46,10 @@ class PgDocMetrics {
       const Functor& functor, uint64_t* duration, bool use_high_res_timer = true) {
     DurationWatcher watcher(duration, !state_.is_timing_required, use_high_res_timer);
     return functor();
+  }
+
+  PgsqlMetricsCaptureType metrics_capture() const {
+    return static_cast<PgsqlMetricsCaptureType>(state_.metrics_capture);
   }
 
  private:
@@ -66,4 +73,4 @@ class PgDocMetrics {
   DISALLOW_COPY_AND_ASSIGN(PgDocMetrics);
 };
 
-}  // namespace yb::pggate
+} // namespace yb::pggate
