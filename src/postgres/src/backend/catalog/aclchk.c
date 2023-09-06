@@ -3319,9 +3319,6 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 
 		CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
 
-		/* YB_TODO(neil@yugabyte)
-		 * We need to redesign "TableGroup" feature and not using table with oids.
-		 */
 		/* Update the shared dependency ACL info */
 		updateAclDependencies(YbTablegroupRelationId,
 							  ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->oid,
