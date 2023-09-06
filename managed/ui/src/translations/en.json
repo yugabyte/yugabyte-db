@@ -26,7 +26,8 @@
       "delete": "Delete",
       "back": "Back",
       "selectAll": "Select All",
-      "selected": "Selected"
+      "selected": "Selected",
+      "note": "Note :"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -60,7 +61,7 @@
         "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
         "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
         "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
-        "disableYSQLWarning2": "<b>Note :</b> Once you perform this operation, You cannot enable it again."
+        "disableYSQLWarning2": "Once you perform this operation, You cannot enable it again."
       },
       "editYCQLSettings": {
         "modalTitle": "Edit YCQL configuration",
