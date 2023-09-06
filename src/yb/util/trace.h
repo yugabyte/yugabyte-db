@@ -52,7 +52,6 @@
 
 DECLARE_bool(use_monotime_for_traces);
 DECLARE_int32(tracing_level);
-DECLARE_bool(log_null_traces);
 
 // Adopt a Trace on the current thread for the duration of the current
 // scope. The old current Trace is restored when the scope is exited.
@@ -75,9 +74,7 @@ DECLARE_bool(log_null_traces);
       const bool use_fine_ts = GetAtomicFlag(&FLAGS_use_monotime_for_traces); \
       auto time = (use_fine_ts ? ToCoarse(MonoTime::Now()) : CoarseMonoClock::Now()); \
       TRACE_TO_WITH_TIME(trace, time, format, ##substitutions); \
-    } else if (GetAtomicFlag(&FLAGS_log_null_traces)) { \
-      VLOG(level) << yb::Format(format, ##substitutions); \
-    }\
+    } \
   } while (0)
 
 #define TRACE_TO(trace, format, substitutions...) \

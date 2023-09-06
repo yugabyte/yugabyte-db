@@ -56,9 +56,6 @@ using std::string;
 DEFINE_RUNTIME_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
 
-DEFINE_RUNTIME_bool(log_null_traces, false, "Flag to enable/disable log when CurrentTrace is null.");
-TAG_FLAG(log_null_traces, advanced);
-
 DEFINE_RUNTIME_int32(sampled_trace_1_in_n, 1000,
     "Flag to enable/disable sampled tracing. 0 disables.");
 TAG_FLAG(sampled_trace_1_in_n, advanced);

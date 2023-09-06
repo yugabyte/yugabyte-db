@@ -242,6 +242,7 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::SysCatalogTableSyncWrite:
     case WaitStateCode::RaftWaitingForQuorum:
     case WaitStateCode::WaitOnTxn:
+    case WaitStateCode::PGWaitingOnDocdb:
     // We may be taking locks while running in ActiveOnCPU. Distinct wait states
     // have only been created for places where we are waiting on a condition variable.
     case WaitStateCode::ActiveOnCPU:
@@ -286,6 +287,7 @@ bool WaitsForThread(WaitStateCode c) {
     // We need this as per log. Not really sure I understand the details.
     case WaitStateCode::MVCCWaitForSafeTime:
     case WaitStateCode::ApplyingRaftEdits:
+    case WaitStateCode::PGWaitingOnDocdb:
 
      return true;
     default:
@@ -333,8 +335,8 @@ void WaitStateInfo::AssertIOAllowed() {
       inserted = does_io.try_emplace(state, true).second;
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
-    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    // LOG_IF(INFO, !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, inserted && !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, inserted && !WaitsForIO(state)) << " at\n" << yb::GetStackTrace();
     // DCHECK(WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
   }
 }
@@ -349,8 +351,10 @@ void WaitStateInfo::AssertWaitAllowed() {
       inserted = does_wait.try_emplace(state, true).second;
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
-    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    // LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
+    LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
     // DCHECK(WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
   }
 }
@@ -368,7 +372,7 @@ void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode
             << " was previously " << util::ToString(prev) << " set on " << thread_name_;
     thread_name_ = std::move(cur_thread_name);
     thread_id_ = tid;
-    // LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
+    LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
     // DCHECK(WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
   }
 }
