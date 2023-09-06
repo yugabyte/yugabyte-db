@@ -162,6 +162,11 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       onSubmit={handleFormSubmit}
       submitTestId="EnableYSQLModal-Submit"
       cancelTestId="EnableYSQLModal-Close"
+      buttonProps={{
+        primary: {
+          disabled: !primaryCluster?.userIntent?.enableYSQL
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
