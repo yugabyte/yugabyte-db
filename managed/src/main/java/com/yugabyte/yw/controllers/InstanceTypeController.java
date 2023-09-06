@@ -99,7 +99,8 @@ public class InstanceTypeController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
+  public Result list(
+      UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     if (arch == null) {

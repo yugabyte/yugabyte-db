@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSE
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -354,5 +355,34 @@ public class HashicorpEARServiceUtil {
         HashicorpVaultConfigParams.HC_VAULT_ENGINE,
         HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
         HashicorpVaultConfigParams.HC_VAULT_KEY_NAME);
+  }
+
+  // Test encrypt and decrypt for Hashicorp KMS config with fake data
+  public static void testEncryptDecrypt(
+      VaultSecretEngineBase vaultSecretEngine, String engineKey, UUID configUUID) {
+    // Test if able to encrypt.
+    LOG.info("testEncryptDecrypt called for connfigUUID {}", configUUID);
+    try {
+      byte[] randomUniverseKey = new byte[32];
+      SecureRandom.getInstanceStrong().nextBytes(randomUniverseKey);
+      LOG.info("Testing encrypt");
+      byte[] randomEncryptedBytes = vaultSecretEngine.encryptString(engineKey, randomUniverseKey);
+      // Test if able to decrypt.
+      LOG.info("Testing decrypt");
+      byte[] decryptedBytes = vaultSecretEngine.decryptString(engineKey, randomEncryptedBytes);
+
+      if (!Arrays.equals(decryptedBytes, randomUniverseKey)) {
+        throw new RuntimeException(
+            String.format(
+                "Could not get decrypted bytes in Hashicorp KMS config '%s'.", configUUID));
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred in testEncryptDecrypt key in Hashicorp KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
   }
 }
