@@ -303,7 +303,7 @@
     showSection = true
 
 [[home]]
-  name = "Features"
+  name = "Key benefits"
   weight = 2
   identifier = "features"
   url = "/preview/features/"
@@ -313,7 +313,7 @@
 
 [[home]]
   name = "Quick Start"
-  weight = 2
+  weight = 3
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [home.params]
@@ -323,7 +323,7 @@
 
 [[home]]
   name = "YugabyteDB"
-  weight = 2
+  weight = 4
   identifier = "yugabytedb"
   url = "/preview/"
   [home.params]
@@ -331,7 +331,7 @@
 
 [[home]]
   name = "YugabyteDB Anywhere"
-  weight = 3
+  weight = 5
   identifier = "yugabytedb-anywhere"
   url = "/preview/yugabyte-platform/"
   [home.params]
@@ -339,7 +339,7 @@
 
 [[home]]
   name = "YugabyteDB Managed"
-  weight = 4
+  weight = 6
   identifier = "yugabytedb-managed"
   url = "/preview/yugabyte-cloud/"
   [home.params]
@@ -347,7 +347,7 @@
 
 [[home]]
   name = "YugabyteDB Voyager"
-  weight = 5
+  weight = 7
   identifier = "migrate"
   url = "/preview/yugabyte-voyager/"
   [home.params]
@@ -373,7 +373,7 @@
     showSection = true
 
 [[preview]]
-  name = "Features"
+  name = "Key benefits"
   weight = 3
   identifier = "features"
   url = "/preview/features/"
@@ -383,7 +383,7 @@
 
 [[preview]]
   name = "Quick Start"
-  weight = 3
+  weight = 4
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
@@ -392,7 +392,7 @@
 
 [[preview]]
   name = "Explore"
-  weight = 4
+  weight = 5
   identifier = "explore"
   url = "/preview/explore/"
   [preview.params]
@@ -400,7 +400,7 @@
 
 [[preview]]
   name = "Develop"
-  weight = 5
+  weight = 6
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
