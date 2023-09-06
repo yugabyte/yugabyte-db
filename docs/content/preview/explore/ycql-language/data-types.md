@@ -36,7 +36,7 @@ To test YugabyteDB support for character types, create a table that has columns 
 CREATE TABLE char_types (
   id int PRIMARY KEY,
   a TEXT,
-  b VARCHAR,
+  b VARCHAR
 );
 ```
 
