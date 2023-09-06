@@ -283,7 +283,9 @@ Collections](../../../api/ycql/type_collection) for more details.
 
 A user defined type is a collection of data types similar to a `struct` in a programming language.
 
-1. Create a user defined type
+The following example shows how to create and use a user defined type.
+
+1. Create a user defined type.
 
 ```sql
 CREATE TYPE inventory_item (
