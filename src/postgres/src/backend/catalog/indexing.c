@@ -357,10 +357,6 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 
 	CatalogTupleCheckConstraints(heapRel, tup);
 
-	/* YB_TODO(neil & sushant@yugabyte)
-	 * Work out a solution for the OID situation in catalog insert.
-	 */
-
 	/* Keep ybctid consistent across all databases. */
 	Datum ybctid = 0;
 

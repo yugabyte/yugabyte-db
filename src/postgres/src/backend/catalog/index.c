@@ -1497,6 +1497,17 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 	}
 
 	/*
+	 * Get whether the indexed table is colocated
+	 * (either via database or a tablegroup).
+	 * If the indexed table is colocated, then this index is colocated as well.
+	 */
+	bool is_colocated =
+		IsYBRelation(heapRelation) &&
+		!IsBootstrapProcessingMode() &&
+		!YbIsConnectedToTemplateDb() &&
+		YbGetTableProperties(heapRelation)->is_colocated;
+
+	/*
 	 * Now create the new index.
 	 *
 	 * For a partition index, we adjust the partition dependency later, to
@@ -1524,10 +1535,9 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  NULL,
 							  NULL,
 							  true /* skip_index_backfill */,
-							  /* YB_TODO(neil) What is corect value for colocated? */
-							  false /* is_colocated */,
-							  InvalidOid /* tablegroupId */,
-							  InvalidOid /* colocationId */);
+							  is_colocated,
+							  InvalidOid /* tablegroupId, TODO: fill this appropriately when adding support for reindex */,
+							  InvalidOid /* colocationId, TODO: fill this appropriately when adding support for reindex */);
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);

@@ -54,15 +54,4 @@ extern void CatalogTupleDelete(Relation heapRel, HeapTuple tup);
 
 extern void YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert);
 
-/* YB_TODO(neil)
- * Postgres 15 either changes or moves these code elsewhere
- */
-/*
- * These macros are just to keep the C compiler from spitting up on the
- * upcoming commands for Catalog.pm.
- *
- * #define DECLARE_INDEX(name,oid,decl) extern int no_such_variable
- * #define DECLARE_UNIQUE_INDEX(name,oid,decl) extern int no_such_variable
- */
-
 #endif							/* INDEXING_H */

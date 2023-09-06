@@ -603,29 +603,6 @@ changeDependencyFor(Oid classId, Oid objectId,
 	return count;
 }
 
-#ifdef YB_TODO
-/* YB_TODO(neil) double check this code. This function has been redefined. */
-/*
- * isObjectPinned()
- *
- * Test if an object is required for basic database functionality.
- * Caller must already have opened pg_depend.
- *
- * The passed subId, if any, is ignored; we assume that only whole objects
- * are pinned (and that this implies pinning their components).
- */
-static bool
-isObjectPinned(const ObjectAddress *object, Relation rel)
-{
-	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
-		return YbIsObjectPinned(object->classId, object->objectId,
-								false /* shared_dependency */);
-
-	bool		ret = false;
-	......
-}
-#endif
-
 /*
  * Adjust all dependency records to come from a different object of the same type
  *
@@ -781,11 +758,6 @@ changeDependenciesOn(Oid refClassId, Oid oldRefObjectId,
 static bool
 isObjectPinned(const ObjectAddress *object)
 {
-	#ifdef YB_TODO
-	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
-		return YbIsObjectPinned(object->classId, object->objectId,
-								false /* shared_dependency */);
-	#endif
 	return IsPinnedObject(object->classId, object->objectId);
 }
 
