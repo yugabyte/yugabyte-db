@@ -90,6 +90,7 @@ DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -109,10 +110,15 @@ class MasterTest : public MasterTestBase {
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
     TSToMasterCommonPB common, TSRegistrationPB registration) {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   TSHeartbeatRequestPB req;
   TSHeartbeatResponsePB resp;
   req.mutable_common()->Swap(&common);
   req.mutable_registration()->Swap(&registration);
+  req.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
   return resp;
 }
@@ -177,6 +183,148 @@ TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Recevied Empty UUID");
 }
 
+class MasterTestSkipUniverseUuidCheck : public MasterTest {
+  void SetUp() override {
+    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    MasterTest::SetUp();
+  }
+};
+
+TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
+  // Start the master with FLAGS_master_enable_universe_uuid_heartbeat_check set to false,
+  // restart master, and set this flag to true (to simulate autoflag behavior). Ensure that after
+  // setting the flag to true, universe_uuid is eventually set.
+  master::SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  ASSERT_EQ(config.universe_uuid(), "");
+
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  FLAGS_master_enable_universe_uuid_heartbeat_check = true;
+
+  config.Clear();
+  ASSERT_OK(WaitFor([&]() {
+    if (!mini_master_->catalog_manager().GetClusterConfig(&config).ok()) {
+      return false;
+    }
+    return !config.universe_uuid().empty();
+  }, MonoDelta::FromSeconds(30), "Wait for universe_uuid set in cluster config"));
+}
+
+TEST_F(MasterTest, TestUniverseUuidDisabled) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  {
+    // Try a heartbeat with an invalid universe_uuid passed into the request. When
+    // FLAGS_master_enable_universe_uuid_heartbeat_check is false, the response should still be
+    // valid.
+    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    auto fake_uuid = Uuid::Generate();
+    req.set_universe_uuid(fake_uuid.ToString());
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
+TEST_F(MasterTest, TestUniverseUuidMismatch) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  {
+    // Try a heartbeat with an invalid universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    auto fake_uuid = Uuid::Generate();
+    req.set_universe_uuid(fake_uuid.ToString());
+    auto status = proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController());
+    ASSERT_FALSE(status.ok());
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "wrong universe_uuid");
+  }
+}
+
+TEST_F(MasterTest, TestNoUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with no universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    // The response should contain the universe_uuid.
+    ASSERT_EQ(resp.universe_uuid(), universe_uuid);
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::INVALID_REQUEST);
+  }
+}
+
+TEST_F(MasterTest, TestEmptyStringUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with an empty universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid("");
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    // The response should contain the universe_uuid, but the response should have an error.
+    ASSERT_EQ(resp.universe_uuid(), universe_uuid);
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::INVALID_REQUEST);
+  }
+}
+
+TEST_F(MasterTest, TestMatchingUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with the correct universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   const char *kTsUUID = "my-ts-uuid";
 
@@ -184,11 +332,16 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_TRUE(resp.needs_reregister());
@@ -212,6 +365,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
@@ -241,6 +395,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
@@ -253,6 +408,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     TabletReportPB* tr = req.mutable_tablet_report();
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
@@ -268,6 +424,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     TabletReportPB* tr = req.mutable_tablet_report();
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);

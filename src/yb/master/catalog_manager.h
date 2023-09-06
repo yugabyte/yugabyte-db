@@ -1021,6 +1021,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     return { HybridTime(), HybridTime() };
   }
 
+  Status SetUniverseUuidIfNeeded();
+
   void WriteTableToSysCatalog(const TableId& table_id);
 
   void WriteTabletToSysCatalog(const TabletId& tablet_id);

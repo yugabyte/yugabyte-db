@@ -405,6 +405,13 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->tablet_manager()->GenerateTabletReport(req.mutable_tablet_report(),
                                                     !sending_full_report_ /* include_bootstrap */);
   }
+
+  auto universe_uuid = VERIFY_RESULT(
+      server_->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata());
+  if (!universe_uuid.empty()) {
+    req.set_universe_uuid(universe_uuid);
+  }
+
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
@@ -450,17 +457,26 @@ Status Heartbeater::Thread::TryHeartbeat() {
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                           "Failed to send heartbeat");
     MonoTime end_time = MonoTime::Now();
+    if (!resp.universe_uuid().empty()) {
+      auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
+      RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
+    }
+
     if (resp.has_error()) {
-      if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
-        return StatusFromPB(resp.error().status());
-      } else {
-        DCHECK(!resp.leader_master());
-        // Treat a not-the-leader error code as leader_master=false.
-        if (resp.leader_master()) {
-          LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
-                                   << resp.error().code() << " code.";
-          resp.set_leader_master(false);
+      switch (resp.error().code()) {
+        case master::MasterErrorPB::NOT_THE_LEADER: {
+          DCHECK(!resp.leader_master());
+          // Treat a not-the-leader error code as leader_master=false.
+          if (resp.leader_master()) {
+            LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
+                                    << resp.error().code() << " code.";
+            resp.set_leader_master(false);
+          }
+          break;
         }
+        default:
+          return StatusFromPB(resp.error().status());
+
       }
     }
 

@@ -459,10 +459,15 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
     FLAGS_num_test_tablets, &resp));
 
+  master::SysClusterConfigEntryPB config;
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   // Grab TS#1 and Generate a Full Report for it.
   auto ts_server = cluster_->mini_tablet_server(0)->server();
   master::TSHeartbeatRequestPB hb_req;
   hb_req.mutable_common()->mutable_ts_instance()->CopyFrom(ts_server->instance_pb());
+  hb_req.set_universe_uuid(universe_uuid);
   ts_server->tablet_manager()->StartFullTabletReport(hb_req.mutable_tablet_report());
   ASSERT_GT(hb_req.tablet_report().updated_tablets_size(),
             FLAGS_heartbeat_rpc_timeout_ms / FLAGS_TEST_inject_latency_during_tablet_report_ms);
@@ -477,6 +482,7 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   master::TSHeartbeatResponsePB hb_resp;
   hb_req.mutable_tablet_report()->set_is_incremental(true);
   hb_req.mutable_tablet_report()->set_sequence_number(1);
+  hb_req.set_universe_uuid(universe_uuid);
   Status heartbeat_status;
   // Regression testbed often has stalls at this timing granularity.  Allow a couple hiccups.
   for (int tries = 0; tries < 3; ++tries) {

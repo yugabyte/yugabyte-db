@@ -38,6 +38,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/common/common_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
@@ -258,6 +259,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
+  Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
  protected:
   virtual Status RegisterServices();

@@ -271,6 +271,10 @@ void CatalogManagerBgTasks::Run() {
       // Run background tasks related to XCluster & CDC Schema.
       WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
 
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(),
+                  "Failed SetUniverseUuidIfNeeded Task");
+
       was_leader_ = true;
     } else {
       // leader_status is not ok.

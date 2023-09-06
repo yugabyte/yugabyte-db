@@ -321,6 +321,10 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
+  // This field is only generated internally by the master leader in PrepareDefaultClusterConfig (as
+  // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
+  // the VisitSysCatalog path.
+  optional string universe_uuid = 8;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.

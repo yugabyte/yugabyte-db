@@ -28,6 +28,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -44,6 +45,10 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_pause_before_remote_bootstrap);
 DECLARE_int32(committed_config_change_role_timeout_sec);
+DECLARE_string(TEST_master_universe_uuid);
+DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 namespace yb {
 
@@ -58,6 +63,28 @@ class MasterHeartbeatITest : public YBTableTestBase {
  protected:
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
+
+TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
+  // First ensure that if a tserver heartbeats to a different cluster, heartbeats fail and
+  // eventually, master marks servers as dead. Mock a different cluster by setting the flag
+  // TEST_master_universe_uuid.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
+  master::TSDescriptorVector ts_descs;
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+
+  // When the flag is unset, ensure that master leader can register tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+
+  // Ensure that state for universe_uuid is persisted across restarts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  for (int i = 0; i < 3; i++) {
+    ASSERT_OK(mini_cluster_->mini_tablet_server(i)->Restart());
+  }
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+}
+
 
 TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
