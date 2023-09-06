@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/common_util.h"
+
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
@@ -217,6 +219,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override {}
+
+  Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
  protected:
   virtual Status RegisterServices();

@@ -640,5 +640,19 @@ scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
   return nullptr;
 }
 
+Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid) {
+  auto instance_universe_uuid_str = VERIFY_RESULT(
+      fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
+  auto instance_universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(instance_universe_uuid_str));
+  if (!instance_universe_uuid.IsNil()) {
+    // If there is a mismatch between the received uuid and instance uuid, return an error.
+    SCHECK_EQ(universe_uuid, instance_universe_uuid, IllegalState,
+        Format("Received mismatched universe_uuid $0 from master when instance metadata "
+               "uuid is $1", universe_uuid.ToString(), instance_universe_uuid.ToString()));
+    return Status::OK();
+  }
+  return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
+}
+
 }  // namespace tserver
 }  // namespace yb

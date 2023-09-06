@@ -252,6 +252,10 @@ void CatalogManagerBgTasks::Run() {
 
       // Restart CDCSDK and XCluster parent tablet deletion bg task.
       catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
+
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(),
+                  "Failed SetUniverseUuidIfNeeded Task");
     } else {
       // Reset Metrics when leader_status is not ok.
       catalog_manager_->ResetMetrics();

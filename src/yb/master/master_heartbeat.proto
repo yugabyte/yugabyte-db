@@ -190,6 +190,8 @@ message TSHeartbeatRequestPB {
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 
   repeated TabletLeaderMetricsPB leader_info = 19;
+
+  optional string universe_uuid = 22;
 }
 
 message TSHeartbeatResponsePB {
@@ -244,6 +246,8 @@ message TSHeartbeatResponsePB {
   // Version of transaction tables and their placements, so that the TS knows when
   // to update the cached list of status tablet ids in the transaction manager.
   optional uint64 transaction_tables_version = 18;
+
+  optional string universe_uuid = 25;
 }
 
 service MasterHeartbeat {

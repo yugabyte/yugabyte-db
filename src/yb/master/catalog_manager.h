@@ -960,6 +960,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void WriteTabletToSysCatalog(const TabletId& tablet_id);
 
+  Status SetUniverseUuidIfNeeded();
+
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
