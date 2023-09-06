@@ -83,7 +83,7 @@ INSERT INTO albums (album_id, title, play_time, library_record)
 values (3223372036854775808,'Funhouse', 3600,2146483645 );
 ```
 
-Similarly, the following example shows how to create a table with floating-point typed columns and how to insert a row into that table:
+Similarly, the following example shows how to create a table with floating-point typed columns and insert a row into that table:
 
 ```sql
 CREATE TABLE floating_point_test (
