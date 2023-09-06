@@ -116,6 +116,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
@@ -596,6 +597,8 @@ DEFINE_test_flag(string, block_alter_table, "",
     "If non-empty, the specified alter table step is blocked. Possible values are "
     "\"alter_schema\" (blocks the schema from being altered) and \"completion\","
     "(blocks the service completion of the alter table request)");
+
+DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 DECLARE_int32(heartbeat_interval_ms);
 
@@ -1547,6 +1550,12 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   LOG_WITH_PREFIX(INFO)
       << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
+  if (GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+    auto universe_uuid = Uuid::Generate().ToString();
+    LOG_WITH_PREFIX(INFO) << Format("Setting universe_uuid to $0 on new universe", universe_uuid);
+    config.set_universe_uuid(universe_uuid);
+  }
+
   // Create in memory object.
   cluster_config_ = std::make_shared<ClusterConfigInfo>();
 
@@ -1558,6 +1567,29 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
+  if (!GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+    return Status::OK();
+  }
+
+  auto cluster_config = ClusterConfig();
+  SCHECK(cluster_config, IllegalState, "Cluster config is not initialized");
+
+  auto l = cluster_config->LockForWrite();
+  if (!l.data().pb.universe_uuid().empty()) {
+    return Status::OK();
+  }
+
+  auto universe_uuid = Uuid::Generate().ToString();
+  LOG_WITH_PREFIX(INFO) << Format("Setting universe_uuid to $0 on existing universe",
+                                  universe_uuid);
+
+  l.mutable_data()->pb.set_universe_uuid(universe_uuid);
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
+  l.Commit();
   return Status::OK();
 }
 
