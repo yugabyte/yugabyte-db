@@ -586,6 +586,7 @@ static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -640,6 +641,26 @@ PLpgSQL_plugin  plugin_funcs = {
 	NULL,
 	NULL,
 };
+
+/*
+ * pg_hint_ExecutorEnd
+ *
+ * Force a hint to be retrieved when we are at the top of a PL recursion
+ * level.  This can become necessary to handle hints in queries executed
+ * in the extended protocol, where the executor can be executed multiple
+ * times in a portal, but it could be possible to fail the hint retrieval.
+ */
+static void
+pg_hint_ExecutorEnd(QueryDesc *queryDesc)
+{
+	if (plpgsql_recurse_level <= 0)
+		current_hint_retrieved = false;
+
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
+}
 
 /*
  * Module load callbacks
@@ -730,6 +751,8 @@ _PG_init(void)
 	join_search_hook = pg_hint_plan_join_search;
 	prev_set_rel_pathlist = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
+	prev_ExecutorEnd = ExecutorEnd_hook;
+	ExecutorEnd_hook = pg_hint_ExecutorEnd;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -751,6 +774,7 @@ _PG_fini(void)
 	planner_hook = prev_planner;
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
+	ExecutorEnd_hook = prev_ExecutorEnd;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
