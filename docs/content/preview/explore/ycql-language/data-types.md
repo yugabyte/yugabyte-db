@@ -294,7 +294,6 @@ CREATE TABLE on_hand (
 INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
 ```
 
-### 4. Select data
 
 To select data from the `on_hand` example table, execute the following:
 
