@@ -35,7 +35,7 @@ const initialStateFeatureInTest = {
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
   enableConfigureDBApi: true,
-  enableCACertRotation: false
+  enableCACertRotation: true
 };
 
 const initialStateFeatureReleased = {
