@@ -195,6 +195,24 @@ bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> ent
     return false;
 }
 
+bool MetricRegistry::HasRegexFilterChanged(const MetricPrometheusOptions& opts) const {
+  return cached_server_blacklist_ != opts.server_blacklist ||
+         cached_server_whitelist_ != opts.server_whitelist ||
+         cached_table_blacklist_ != opts.table_blacklist ||
+         cached_table_whitelist_ != opts.table_whitelist;
+}
+
+// Replace all cached regex filter.
+void MetricRegistry::UpdateCachedRegexFilter(
+    const MetricPrometheusOptions& opts,
+    const MetricAggregationMap& metric_filter) {
+  cached_server_blacklist_ = opts.server_blacklist;
+  cached_server_whitelist_ = opts.server_whitelist;
+  cached_table_blacklist_ = opts.table_blacklist;
+  cached_table_whitelist_ = opts.table_whitelist;
+  metric_filter_ = metric_filter;
+}
+
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
@@ -225,13 +243,20 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                          MetricPrometheusOptions opts) const {
+                                          MetricPrometheusOptions opts) {
   EntityMap entities;
   MetricAggregationMap metric_filter;
   opts.CreateRegexs();
+  bool new_regex_filter;
   {
     std::lock_guard l(lock_);
     entities = entities_;
+    new_regex_filter = HasRegexFilterChanged(opts);
+    // If the incoming filters the same as cached filters,
+    // reuse cached metric_filter. Otherwise, rebuild the metric_filter.
+    if (!new_regex_filter) {
+      metric_filter = metric_filter_;
+    }
   }
 
   for (const EntityMap::value_type& e : entities) {
@@ -241,6 +266,11 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
 
     WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts, &metric_filter),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
+  }
+
+  if (opts.cache_filters && new_regex_filter) {
+    std::lock_guard l(lock_);
+    UpdateCachedRegexFilter(opts, metric_filter);
   }
   RETURN_NOT_OK(writer->FlushAggregatedValues());
 
