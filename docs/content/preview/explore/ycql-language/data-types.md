@@ -21,18 +21,25 @@ The [JSONB document data type](../../json-support/jsonb-ycql/) is described in a
 
 The following character types are supported:
 
-* `varchar`: String of unicode characters of unlimited length
-* `text`: String of unicode characters of unlimited length
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| VARCHAR        | String of unicode characters of unlimited length          |
+| TEXT           | String of unicode characters of unlimited length          |
 
 `varchar` and `text` are aliases.
 
 The following Apache Cassandra character types are not supported:
 
-* `ascii`: Use `text` or `varchar`
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| ASCII          | Use TEXT or VARCHAR                                       |
 
 To test YugabyteDB support for character types, create a table that has columns with the following types specified:
 
 ```sql
+CREATE KEYSPACE types_test;
+USE types_test;
+
 CREATE TABLE char_types (
   id int PRIMARY KEY,
   a TEXT,
@@ -52,13 +59,15 @@ INSERT INTO char_types (id, a, b) VALUES (
 
 The following numeric types are supported:
 
-* `TINYINT`: 1-byte signed integer that has a range from -128 to 127.
-* `SMALLINT`: a 2-byte signed integer that has a range from -32,768 to 32,767.
-* `INT`|`INTEGER`: a 4-byte integer that has a range from -2,147,483,648 to 2,147,483,647.
-* `BIGINT`: a 8-byte integer that has a range from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807.
-* `VARINT`: Arbitrary-precision integer.
-* `FLOAT`|`DOUBLE`: 64-bit, inexact, floating-point number.
-* `DECIMAL`: Exact, arbitrary-precision number, no upper-bound on decimal precision.
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| TINYINT        | 1-byte signed integer that has a range from -128 to 127  |
+| SMALLINT       | 2-byte signed integer that has a range from -32,768 to 32,767 |
+| INT \| INTEGER | 4-byte integer that has a range from -2,147,483,648 to 2,147,483,647 |
+| BIGINT         | 8-byte integer that has a range from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 |
+| VARINT         | Arbitrary-precision integer |
+| FLOAT \| DOUBLE  | 64-bit, inexact, floating-point number |
+| DECIMAL        | Exact, arbitrary-precision number, no upper-bound on decimal precision |
 
 The following example creates a table with integer type columns and inserting rows into it:
 
@@ -88,11 +97,13 @@ VALUES (92233720368547.75807, 5.36152342);
 
 ## Date and time
 
-Temporal data types allow us to store date and time data. The following date and time types are supported in PostgreSQL and YugabyteDB:
+Temporal data types allow us to store date and time data. The following date and time types are supported in YugabyteDB:
 
-* `DATE`: stores the dates only
-* `TIME`: stores the time of day values with nanosecond precision
-* `TIMESTAMP`: stores both date and time values with milliseconds precision
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| DATE | stores the dates only|
+| TIME | stores the time of day values with nanosecond precision|
+| TIMESTAMP | stores both date and time values with milliseconds precision|
 
 The following example creates a table with the temporal types:
 
@@ -100,7 +111,7 @@ The following example creates a table with the temporal types:
 CREATE TABLE temporal_types (
   date_type DATE PRIMARY KEY,
   time_type TIME,
-  timestamp_type TIMESTAMP,
+  timestamp_type TIMESTAMP
 );
 ```
 
@@ -110,7 +121,7 @@ The following example inserts a row into the table:
 INSERT INTO temporal_types (
   date_type, time_type, timestamp_type)
 VALUES
-  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25-07');
+  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25');
 ```
 
 The following shows the inserted data:
@@ -120,9 +131,10 @@ ycqlsh> select * from temporal_types;
 ```
 
 ```output
- date_type  | time_type |   timestamp_type    
-------------+-----------+---------------------
- 2010-06-28 | 12:32:12  | 2016-06-22 19:10:25 
+ date_type  | time_type          | timestamp_type
+------------+--------------------+---------------------------------
+ 2000-06-28 | 06:23:00.000000000 | 2016-06-23 00:10:25.000000+0000
+
 (1 rows)
 ```
 
@@ -133,8 +145,10 @@ unique identifiers without coordination from a central authority since that can 
 These IDs are then used to identify unique rows in a database table. YugabyteDB supports two
 versions of UUIDs:
 
-* `UUID`: a [version 4](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)) UUID
-* `TIMEUUID`: a [version 1](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_1_(date-time_and_MAC_address)) UUID
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| UUID | [Version 4](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)) UUID |
+| TIMEUUID | [Version 1](https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_1_(date-time_and_MAC_address)) UUID |
 
 `TIMEUUID`s are typically used when time ordered unique identifiers are required in time-series use
 cases.
@@ -178,9 +192,11 @@ ycqlsh> select * from iot;
 A collection data type allows storage of multi-valued columns. YugabyteDB supports the following
 types of collections:
 
-* `LIST`: Collection of ordered elements. Allows duplicates.
-* `SET`: Collection of unique elements. Order may not be maintained.
-* `MAP`: Collection of key-value pairs. Order may not be maintained. Keys must be unique.
+|   Type         |                      Description                          |
+| :------------- | :-------------------------------------------------------- |
+| LIST | Collection of ordered elements. Allows duplicates. |
+| SET | Collection of unique elements. Order may not be maintained. |
+| MAP | Collection of key-value pairs. Order may not be maintained. Keys must be unique. |
 
 The following example creates a table with the collection types:
 
@@ -267,7 +283,7 @@ Collections](../../../api/ycql/type_collection) for more details.
 
 A user defined type is a collection of data types similar to a `struct` in a programming language.
 
-### 1. Create a composite type
+1. Create a user defined type
 
 ```sql
 CREATE TYPE inventory_item (
@@ -277,7 +293,7 @@ CREATE TYPE inventory_item (
 );
 ```
 
-1. Create a table with a composite type as follows:
+2. Create a table with a user defined type as follows:
 
 ```sql
 CREATE TABLE on_hand (
@@ -288,14 +304,14 @@ CREATE TABLE on_hand (
 ```
 
 
-1. Insert a row as follows:
+3. Insert a row as follows:
 
 ```sql
 INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
 ```
 
 
-1. To select data from the `on_hand` example table, execute the following:
+4. To select data from the `on_hand` example table, execute the following:
 
 ```sql
 SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
