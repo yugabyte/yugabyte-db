@@ -1,8 +1,9 @@
 ---
-title: Steps to migrate your database using YugabyteDB Voyager
+title: Steps to perform offline migration of your database using YugabyteDB Voyager
 headerTitle: Migration steps
 linkTitle: Migrate
-description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
+headcontent: Run the steps to ensure a successful migration using YugabyteDB Voyager.
+description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: migrate-steps
@@ -11,7 +12,20 @@ menu:
 type: docs
 ---
 
-This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../migrate-steps/" class="nav-link active">
+      Offline migration
+    </a>
+  </li>
+  <li >
+    <a href="../live-migrate/" class="nav-link">
+      Live migration
+    </a>
+  </li>
+</ul>
+
+This page describes the steps to perform and verify a successful offline migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
 - Check the [unsupported features](../known-issues/#unsupported-features) and [known issues](../known-issues/#known-issues).
