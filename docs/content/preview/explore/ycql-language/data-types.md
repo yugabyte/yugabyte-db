@@ -69,7 +69,7 @@ The following numeric types are supported:
 | FLOAT \| DOUBLE  | 64-bit, inexact, floating-point number |
 | DECIMAL        | Exact, arbitrary-precision number, no upper-bound on decimal precision |
 
-The following example creates a table with integer type columns and inserting rows into it:
+The following example creates a table with integer type columns and inserts rows into it:
 
 ```sql
 CREATE TABLE albums (
