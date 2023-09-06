@@ -128,6 +128,9 @@ Status PrometheusWriter::WriteSingleEntry(
     break;
   }
   case AggregationMetricLevel::kTable:
+    if (metric_type_it->second == "table") {
+      return FlushSingleEntry(attr, name, value);
+    }
     AddAggregatedEntry(tablet_id_it->second, attr, name, value, aggregation_function);
     break;
   }
