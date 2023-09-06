@@ -20867,6 +20867,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/import" : {
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "importUniverse",
         "parameters" : [ {
@@ -20891,7 +20892,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Import a universe",
+        "summary" : "Deprecated: Do not use, this will be removed soon. Import a universe",
         "tags" : [ "Universe actions" ]
       }
     },
