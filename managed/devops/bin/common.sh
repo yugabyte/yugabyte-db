@@ -130,7 +130,7 @@ if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
   readonly YB_VIRTUALENV_BASENAME=venv
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
-  readonly FROZEN_PYMODULES_FILE="$yb_devops_home/python3_modules_requirements_frozen.txt"
+  readonly FROZEN_MODULES_FILE="$yb_devops_home/python3_modules_requirements_frozen.txt"
   readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
   readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
   readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
