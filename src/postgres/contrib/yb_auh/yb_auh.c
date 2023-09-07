@@ -180,14 +180,14 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
   PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
-  if (nodes_head != NULL && procCount != 0) 
+  if (nodes_head != NULL && procCount != 0)
   {
     sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
   }
-  while (current != NULL) 
+  while (current != NULL)
   {
     PGProcAUHEntryList proc = current->data;
-    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    if (random() < sample_rate * MAX_RANDOM_VALUE)
     {
       auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                       proc.wait_event_info, "", proc.top_level_node_id,
@@ -196,7 +196,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
     }
     current = current->next;
   }
-  freeLinkedList(nodes_head); 
+  freeLinkedList(nodes_head);
 }
 
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
@@ -207,13 +207,18 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   float8 sample_rate= 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
+    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
+      const char *wait_event_aux = "\0";
+      if (should_export_table_id(rpcs[i].wait_status_code))
+        wait_event_aux = rpcs[i].aux_info.table_id;
+      else if (should_export_tablet_id(rpcs[i].wait_status_code))
+        wait_event_aux = rpcs[i].aux_info.tablet_id;
+
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
-                    (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
-                    rpcs[i].metadata.top_level_node_id,
+                    wait_event_aux, rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
@@ -338,7 +343,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
-  LWLockRelease(auh_entry_array_lock); 
+  LWLockRelease(auh_entry_array_lock);
 }
 
 static void

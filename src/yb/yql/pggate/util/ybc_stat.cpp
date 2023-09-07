@@ -21,6 +21,39 @@ const char* yb_stat_get_wait_event(uint32_t wait_event_info) {
   return ToCString(enum_value);
 }
 
+bool yb_should_export_tablet_id(uint32_t wait_event_info) {
+  auto enum_value = static_cast<yb::util::WaitStateCode>(wait_event_info);
+  switch(enum_value) {
+    case yb::util::WaitStateCode::StartFlush:
+    case yb::util::WaitStateCode::StartCompaction:
+    case yb::util::WaitStateCode::OpenFile:
+    case yb::util::WaitStateCode::CloseFile:
+    case yb::util::WaitStateCode::DeleteFile:
+    case yb::util::WaitStateCode::WriteToFile:
+    case yb::util::WaitStateCode::StartSubcompactionThreads:
+    case yb::util::WaitStateCode::WaitOnSubcompactionThreads:
+        return true;
+    default:
+        return false;
+  }
+}
+
+bool yb_should_export_table_id(uint32_t wait_event_info) {
+  auto enum_value = static_cast<yb::util::WaitStateCode>(wait_event_info);
+  switch(enum_value) {
+    case yb::util::WaitStateCode::StorageRead:
+    case yb::util::WaitStateCode::StorageWrite:
+    case yb::util::WaitStateCode::CatalogRead:
+    case yb::util::WaitStateCode::CatalogWrite:
+    case yb::util::WaitStateCode::CQLRead:
+    case yb::util::WaitStateCode::CQLWrite:
+    case yb::util::WaitStateCode::CQLActiveOnCPU:
+        return true;
+    default:
+        return false;
+  }
+}
+
 }
 }
 
@@ -127,6 +160,18 @@ const char *
 ybcstat_get_wait_event(uint32_t wait_event_info)
 {
     return yb::pggate::yb_stat_get_wait_event(wait_event_info);
+}
+
+bool
+should_export_tablet_id(uint32_t wait_event_info)
+{
+    return yb::pggate::yb_should_export_tablet_id(wait_event_info);
+}
+
+bool
+should_export_table_id(uint32_t wait_event_info)
+{
+    return yb::pggate::yb_should_export_table_id(wait_event_info);
 }
 
 }
