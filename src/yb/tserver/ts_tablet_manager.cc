@@ -1674,7 +1674,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .retryable_requests_manager = &retryable_requests_manager,
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
       .consensus_meta = cmeta.get(),
-      .pre_log_rollover_callback = [peer_weak_ptr, &kLogPrefix]() {
+      .pre_log_rollover_callback = [peer_weak_ptr, kLogPrefix]() {
         auto peer = peer_weak_ptr.lock();
         if (peer) {
           Status s = peer->SubmitFlushRetryableRequestsTask();
