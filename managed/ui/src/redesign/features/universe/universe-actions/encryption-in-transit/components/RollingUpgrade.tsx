@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, FocusEvent } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
@@ -14,7 +14,7 @@ import {
 export const RollingUpgrade: FC = () => {
   const { t } = useTranslation();
   const classes = useEITStyles();
-  const { control } = useFormContext<EncryptionInTransitFormValues>();
+  const { control, setValue } = useFormContext<EncryptionInTransitFormValues>();
 
   return (
     <Box mt={3}>
@@ -24,6 +24,9 @@ export const RollingUpgrade: FC = () => {
           name={USE_ROLLING_UPGRADE_FIELD_NAME}
           label={t('universeActions.encryptionInTransit.useRollingUpgrade')}
           labelProps={{ className: classes.eitLabels }}
+          inputProps={{
+            'data-testid': 'UseRollingUpgrade-Checkbox'
+          }}
         />
       </Box>
 
@@ -38,6 +41,14 @@ export const RollingUpgrade: FC = () => {
           name={ROLLING_UPGRADE_DELAY_FIELD_NAME}
           className={clsx(classes.inputField, classes.upgradeDelayInput)}
           type="number"
+          data-testid="UpgradeDelay-Input"
+          inputProps={{
+            min: 0
+          }}
+          onBlur={(e: FocusEvent<HTMLInputElement>) => {
+            const inputVal = (e.target.value as unknown) as number;
+            inputVal <= 0 && setValue(ROLLING_UPGRADE_DELAY_FIELD_NAME, 240);
+          }}
         />
       </Box>
     </Box>

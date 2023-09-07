@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { Theme, makeStyles } from '@material-ui/core';
-import { Cluster, UniverseDetails } from '../../universe-form/utils/dto';
+import { UniverseDetails } from '../../universe-form/utils/dto';
 import { getPrimaryCluster } from '../../universe-form/utils/helpers';
 
 //styles
@@ -12,6 +12,11 @@ export const useEITStyles = makeStyles((theme: Theme) => ({
   },
   enableEITContainer: {
     padding: theme.spacing(2),
+    '& .MuiFormControlLabel-root': {
+      marginRight: 0
+    }
+  },
+  eitTabContainer: {
     '& .MuiFormControlLabel-root': {
       marginRight: 0
     }
