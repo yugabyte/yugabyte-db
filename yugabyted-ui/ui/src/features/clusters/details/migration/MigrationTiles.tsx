@@ -6,6 +6,8 @@ import clsx from "clsx";
 import { STATUS_TYPES, YBStatus, YBTooltip } from "@app/components";
 import { MigrationPhase, MigrationStep, migrationPhases, migrationSteps } from "./migration";
 import {
+  MigrateSchemaTaskInfo,
+  MigrationAssesmentInfo,
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
   useGetVoyagerMigrationAssesmentDetailsQuery,
@@ -142,15 +144,15 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           } else {
             // We have not reached the verify phase
             if (stepIndex === MigrationStep["Plan and Assess"]) {
-              if (migrationAssessmentData?.data?.assesment_status === true) {
+              if ((migrationAssessmentData as MigrationAssesmentInfo)?.assesment_status === true) {
                 completed = true;
               } else {
                 notStarted = true;
               }
             } else if (stepIndex === MigrationStep["Migrate Schema"]) {
-              if (migrationSchemaData?.data?.overall_status === "complete") {
+              if ((migrationSchemaData as MigrateSchemaTaskInfo)?.overall_status === "complete") {
                 completed = true;
-              } else if (migrationSchemaData?.data?.overall_status === "in-progress") {
+              } else if ((migrationSchemaData as MigrateSchemaTaskInfo)?.overall_status === "in-progress") {
                 running = true;
               } else {
                 notStarted = true;

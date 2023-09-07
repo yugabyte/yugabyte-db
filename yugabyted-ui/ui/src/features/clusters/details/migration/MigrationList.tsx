@@ -62,7 +62,7 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
 };
 
 interface MigrationListProps {
-  migrationData: Migration[];
+  migrationData?: Migration[];
   onSelectMigration: (migration: Migration) => void;
 }
 
@@ -153,7 +153,7 @@ export const MigrationList: FC<MigrationListProps> = ({ migrationData, onSelectM
     },
   ];
 
-  if (migrationData.length === 0) {
+  if (!migrationData?.length) {
     return <MigrationsGetStarted />;
   }
 

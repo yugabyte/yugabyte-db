@@ -172,7 +172,7 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
         </Box>
       )}
 
-      {!isLoadingMigrationTasks && migrationData && (
+      {!isLoadingMigrationTasks && (
         <>
           {!selectedMigration ? (
             <Box>
