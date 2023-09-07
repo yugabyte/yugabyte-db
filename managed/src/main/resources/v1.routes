@@ -359,8 +359,10 @@ POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    c
 # Disaster Recovery API
 POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.get(cUUID: java.util.UUID, drUUID: java.util.UUID)
+PUT     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.edit(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/failover                          com.yugabyte.yw.controllers.DrConfigController.failover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.delete(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
-
+GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          com.yugabyte.yw.controllers.DrConfigController.getSafetime(cUUID: java.util.UUID, drUUID: java.util.UUID)
 
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -597,7 +599,7 @@ POST /customers/:cUUID/rbac/role_binding/:userUUID                             c
 # UI Only API
 GET /customers/:cUUID/rbac/user/:userUUID                                      com.yugabyte.yw.controllers.RBACController.getUserResourcePermissions(cUUID: java.util.UUID, userUUID: java.util.UUID, resourceType: String ?= null)
 
-# Telemetry Provider APIs 
+# Telemetry Provider APIs
 GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)
 GET /customers/:cUUID/telemetry_provider                                       com.yugabyte.yw.controllers.TelemetryProviderController.listTelemetryProviders(cUUID: java.util.UUID)
 POST /customers/:cUUID/telemetry_provider                                      com.yugabyte.yw.controllers.TelemetryProviderController.createTelemetryProvider(cUUID: java.util.UUID, request: Request)

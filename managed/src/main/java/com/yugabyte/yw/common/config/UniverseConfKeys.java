@@ -851,6 +851,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and it is not specified in the task parameters",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultSnapshotInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.pitr.default_snapshot_interval",
+          ScopeType.UNIVERSE,
+          "Default PITR snapshot interval for txn xCluster",
+          "The default snapshot interval used to create PITR configs for transactional "
+              + "xCluster replication; it will be used when there is no existing PITR configs "
+              + "and it is not specified in the task parameters",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
       new ConfKeyInfo<>(
           "yb.upgrade.skip_finalize",
@@ -875,4 +885,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to configure YCQL DB API from UI",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.wait_for_replication_drain_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for the WaitForReplicationDrain subtask",
+          "The minimum amount of time that the waitForReplicationDrain subtask waits for the "
+              + "replication streams to completely drain from the source to the target universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

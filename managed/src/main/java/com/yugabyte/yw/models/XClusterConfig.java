@@ -179,6 +179,10 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   private DrConfig drConfig;
 
+  @ApiModelProperty(
+      value = "Whether this xCluster config is used as a secondary config for a DR config")
+  private boolean secondary;
+
   @OneToMany
   @JoinTable(
       name = "xcluster_pitr",

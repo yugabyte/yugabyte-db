@@ -172,7 +172,6 @@ public class PitrController extends AuthenticatedController {
   public Result listPitrConfigs(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
-
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
@@ -244,6 +243,8 @@ public class PitrController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    log.info("Received restore PITR config request");
+
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 

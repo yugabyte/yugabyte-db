@@ -2580,19 +2580,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createCreatePitrConfigTask(
+      Universe universe,
       String keyspaceName,
       TableType tableType,
       long retentionPeriodSeconds,
+      long snapshotIntervalSeconds,
       @Nullable XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
     CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
-    createPitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
-    createPitrConfigParams.customerUUID = Customer.get(getUniverse().getCustomerId()).getUuid();
+    createPitrConfigParams.setUniverseUUID(universe.getUniverseUUID());
+    createPitrConfigParams.customerUUID = Customer.get(universe.getCustomerId()).getUuid();
     createPitrConfigParams.name = null;
     createPitrConfigParams.keyspaceName = keyspaceName;
     createPitrConfigParams.tableType = tableType;
     createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
     createPitrConfigParams.xClusterConfig = xClusterConfig;
+    createPitrConfigParams.intervalInSeconds = snapshotIntervalSeconds;
 
     CreatePitrConfig task = createTask(CreatePitrConfig.class);
     task.initialize(createPitrConfigParams);
@@ -2602,9 +2605,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createCreatePitrConfigTask(
-      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+      Universe universe,
+      String keyspaceName,
+      TableType tableType,
+      long retentionPeriodSeconds,
+      long snapshotIntervalSeconds) {
     return createCreatePitrConfigTask(
-        keyspaceName, tableType, retentionPeriodSeconds, null /* xClusterConfig */);
+        universe,
+        keyspaceName,
+        tableType,
+        retentionPeriodSeconds,
+        snapshotIntervalSeconds,
+        null /* xClusterConfig */);
+  }
+
+  protected SubTaskGroup createRestoreSnapshotScheduleTask(
+      Universe universe, PitrConfig pitrConfig, long restoreTimeMs) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreSnapshotSchedule");
+    RestoreSnapshotScheduleParams params = new RestoreSnapshotScheduleParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.pitrConfigUUID = pitrConfig.getUuid();
+    params.restoreTimeInMillis = restoreTimeMs;
+    RestoreSnapshotSchedule task = createTask(RestoreSnapshotSchedule.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
@@ -4046,6 +4072,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createPromoteSecondaryConfigToMainConfigTask(
+      XClusterConfig xClusterConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("PromoteSecondaryConfigToMainConfig");
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams();
+    params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    params.xClusterConfig = xClusterConfig;
+    PromoteSecondaryConfigToMainConfig task = createTask(PromoteSecondaryConfigToMainConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected SubTaskGroup createResetXClusterConfigEntryTask(XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ResetXClusterConfigEntry");
     XClusterConfigTaskParams resetXClusterConfigEntryParams = new XClusterConfigTaskParams();
@@ -4104,6 +4143,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void createDeleteXClusterConfigSubtasks(
       XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
+    // If target universe is destroyed, ignore creating this subtask.
+    if (xClusterConfig.getTargetUniverseUUID() != null) {
+      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+        // Set back the target universe role to Active.
+        createChangeXClusterRoleTask(
+                xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
+    }
+
     // Delete the replication CDC streams on the target universe.
     createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
@@ -4137,13 +4186,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
       }
-
-      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        // Set back the target universe role to Active.
-        createChangeXClusterRoleTask(
-                xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-      }
     }
 
     if (keepEntry) {
@@ -4156,9 +4198,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  protected void createDeleteXClusterConfigSubtasks(
-      XClusterConfig xClusterConfig, boolean forceDelete) {
-    createDeleteXClusterConfigSubtasks(xClusterConfig, false /* keepEntry */, forceDelete);
+  protected SubTaskGroup createDeleteDrConfigEntryTask(DrConfig drConfig) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteDrConfigEntry");
+    DrConfigTaskParams params = new DrConfigTaskParams();
+    params.setUniverseUUID(drConfig.getActiveXClusterConfig().getTargetUniverseUUID());
+    params.setDrConfig(drConfig);
+
+    DeleteDrConfigEntry task = createTask(DeleteDrConfigEntry.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
