@@ -307,6 +307,7 @@ public class BackupGarbageCollector {
             cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
             cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
             backup.delete();
+            deletedSuccessfully = true;
             log.info("Backup {} is successfully deleted", backupUUID);
             break;
           case NFS:
@@ -320,6 +321,7 @@ public class BackupGarbageCollector {
               }
               if (success) {
                 backup.delete();
+                deletedSuccessfully = true;
                 log.info("Backup {} is successfully deleted", backupUUID);
               } else {
                 backup.transitionState(BackupState.FailedToDelete);
