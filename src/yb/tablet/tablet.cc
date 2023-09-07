@@ -246,6 +246,9 @@ DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
 DEFINE_test_flag(bool, skip_post_split_compaction, false,
                  "Skip processing post split compaction.");
 
+DEFINE_test_flag(bool, pause_before_getting_safe_time, false,
+                 "Pause before doing Tablet::DoGetSafeTime");
+
 DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "Enables exclusive mode for post-split compaction for a tablet: all scheduled and "
        "unscheduled compactions are run before post-split compaction and no other compaction "
@@ -3249,6 +3252,7 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
     return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
   }
