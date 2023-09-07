@@ -169,14 +169,13 @@ Time Span (ms) | Resolution (ms)
 
 ### Show latency percentiles
 
-Use the `yb_get_percentile` function to show percentiles for a given histogram. This function takes a JSONB histogram (including `yb_latency_histogram`) and a target percentile (as an integer) as input.
+Use the `yb_get_percentile` function to show percentiles for a given histogram. This function takes a JSONB histogram (including `yb_latency_histogram`) and a target percentile (double precision) as input.
 
 ```sql
 \df yb_get_percentile
 ```
 
 ```output
-                                         List of functions
    Schema   |       Name        | Result data type |           Argument data types           | Type
 ----------- +-------------------+------------------+-----------------------------------------+------
  pg_catalog | yb_get_percentile | double precision | hist jsonb, percentile double precision | func
@@ -217,6 +216,8 @@ SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1},
                1.2
 (1 row)
 ```
+
+The following example displays the P99, P95, and P90 latency by augmenting the `pg_stat_statements` output for a specific query:
 
 ```sql
 SELECT query, calls, total_time, min_time, max_time, mean_time, rows, 
