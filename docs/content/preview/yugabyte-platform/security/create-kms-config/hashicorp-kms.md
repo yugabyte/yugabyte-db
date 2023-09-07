@@ -138,7 +138,8 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **Hashicorp Vault**.
     - **Vault Address** — Enter the web address of your vault. For example, `http://127.0.0.1:8200`
-    - **Secret Token** — Enter the token you obtained from the vault.
+    - **Authentication Type** — Choose the authentication method to use, Token or AppRole. For Token, enter the token you obtained from the vault. For AppRole, provide the role and secret IDs for the namespace.
+    - **Key Name** - Enter the key name.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
     - **Mount Path** — Specify the path to the secret engine in the vault. The default value is `transit/`.
 
