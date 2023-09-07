@@ -859,4 +859,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip Auto-flags promotions and ysql upgrade during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowConfigureYSQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ysql",
+          ScopeType.UNIVERSE,
+          "Configure YSQL DB API",
+          "Allow users to configure YSQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ycql",
+          ScopeType.UNIVERSE,
+          "Configure YCQL DB API",
+          "Allow users to configure YCQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }
