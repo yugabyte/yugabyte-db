@@ -210,7 +210,6 @@ export const MigrationData: FC<MigrationProps> = ({
                 <AccordionTitleComponent
                   title={t("clusterDetail.voyager.exportData")}
                   status={
-                    phase < MigrationPhase["Export Data"] ||
                     migrationExportProgressData.length === 0
                       ? STATUS_TYPES.PENDING
                       : totalExportProgress === 100
@@ -219,7 +218,10 @@ export const MigrationData: FC<MigrationProps> = ({
                   }
                 />
               }
-              defaultExpanded={phase <= MigrationPhase["Export Data"]}
+              defaultExpanded={
+                phase === MigrationPhase["Export Data"] ||
+                (migrationExportProgressData.length > 0 && totalExportProgress < 100)
+              }
             >
               <Box flex={1} minWidth={0}>
                 <Box mx={2} mb={5} mt={2}>
@@ -249,7 +251,6 @@ export const MigrationData: FC<MigrationProps> = ({
                 <AccordionTitleComponent
                   title={t("clusterDetail.voyager.importData")}
                   status={
-                    phase < MigrationPhase["Import Data"] ||
                     migrationImportProgressData.length === 0
                       ? STATUS_TYPES.PENDING
                       : totalImportProgress === 100
@@ -259,7 +260,8 @@ export const MigrationData: FC<MigrationProps> = ({
                 />
               }
               defaultExpanded={
-                phase === MigrationPhase["Import Data"] || phase === MigrationPhase["Import Schema"]
+                phase === MigrationPhase["Import Data"] ||
+                (migrationImportProgressData.length > 0 && totalImportProgress < 100)
               }
             >
               <Box flex={1} minWidth={0}>
