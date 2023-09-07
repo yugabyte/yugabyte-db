@@ -227,6 +227,7 @@ param \${id}
  * These are tokens that are used as operators and language constructs in
  * Cypher, and some of them are structural characters in JSON.
  */
+concat   "||"
 lt_gt    "<>"
 lt_eq    "<="
 gt_eq    ">="
@@ -638,6 +639,14 @@ ag_token token;
     update_location();
     token.type = AG_TOKEN_PARAMETER;
     token.value.s = yytext + 1;
+    token.location = get_location();
+    return token;
+}
+
+{concat} {
+    update_location();
+    token.type = AG_TOKEN_CONCAT;
+    token.value.s = yytext;
     token.location = get_location();
     return token;
 }

@@ -33,7 +33,7 @@
 #include "utils/agtype.h"
 
 static void ereport_op_str(const char *op, agtype *lhs, agtype *rhs);
-static agtype *agtype_concat(agtype *agt1, agtype *agt2);
+static agtype *agtype_concat_impl(agtype *agt1, agtype *agt2);
 static agtype_value *iterator_concat(agtype_iterator **it1,
                                      agtype_iterator **it2,
                                      agtype_parse_state **state);
@@ -162,7 +162,7 @@ Datum agtype_add(PG_FUNCTION_ARGS)
             (AGT_ROOT_IS_OBJECT(lhs) && AGT_ROOT_IS_OBJECT(rhs)))
             ereport_op_str("+", lhs, rhs);
 
-        agt = AGTYPE_P_GET_DATUM(agtype_concat(lhs, rhs));
+        agt = AGTYPE_P_GET_DATUM(agtype_concat_impl(lhs, rhs));
 
         PG_RETURN_DATUM(agt);
     }
@@ -1156,7 +1156,26 @@ Datum agtype_exists_all(PG_FUNCTION_ARGS)
     PG_RETURN_BOOL(true);
 }
 
-static agtype *agtype_concat(agtype *agt1, agtype *agt2)
+PG_FUNCTION_INFO_V1(agtype_concat);
+
+Datum agtype_concat(PG_FUNCTION_ARGS)
+{
+    agtype *agt_lhs = AG_GET_ARG_AGTYPE_P(0);
+    agtype *agt_rhs = AG_GET_ARG_AGTYPE_P(1);
+
+    /*
+     * Jsonb returns NULL for PG Null, but not for jsonb's NULL value,
+     * so we do the same.
+     */
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_NULL();
+    }
+
+    AG_RETURN_AGTYPE_P(agtype_concat_impl(agt_lhs, agt_rhs));
+}
+
+static agtype *agtype_concat_impl(agtype *agt1, agtype *agt2)
 {
     agtype_parse_state *state = NULL;
     agtype_value *res;
@@ -1172,9 +1191,13 @@ static agtype *agtype_concat(agtype *agt1, agtype *agt2)
     if (AGT_ROOT_IS_OBJECT(agt1) == AGT_ROOT_IS_OBJECT(agt2))
     {
         if (AGT_ROOT_COUNT(agt1) == 0 && !AGT_ROOT_IS_SCALAR(agt2))
+        {
             return agt2;
+        }
         else if (AGT_ROOT_COUNT(agt2) == 0 && !AGT_ROOT_IS_SCALAR(agt1))
+        {
             return agt1;
+        }
     }
 
     it1 = agtype_iterator_init(&agt1->root);
@@ -1210,22 +1233,31 @@ static agtype_value *iterator_concat(agtype_iterator **it1,
     if (rk1 == WAGT_BEGIN_OBJECT && rk2 == WAGT_BEGIN_OBJECT)
     {
         /*
-         * Append the all tokens from v1 to res, except last WAGT_END_OBJECT
+         * Append all tokens from v1 to res, except last WAGT_END_OBJECT
          * (because res will not be finished yet).
          */
         push_agtype_value(state, r1, NULL);
+
         while ((r1 = agtype_iterator_next(it1, &v1, true)) != WAGT_END_OBJECT)
+        {
+            Assert(r1 == WAGT_KEY || r1 == WAGT_VALUE);
             push_agtype_value(state, r1, &v1);
+        }
 
         /*
-         * Append the all tokens from v2 to res, include last WAGT_END_OBJECT
-         * (the concatenation will be completed).
+         * Append all tokens from v2 to res, except last WAGT_END_OBJECT
          */
-        while ((r2 = agtype_iterator_next(it2, &v2, true)) != 0)
-            res = push_agtype_value(state, r2,
-                                    r2 != WAGT_END_OBJECT ? &v2 : NULL);
-    }
+        while ((r2 = agtype_iterator_next(it2, &v2, true)) != WAGT_END_OBJECT)
+        {
+            Assert(r2 == WAGT_KEY || r2 == WAGT_VALUE);
+            push_agtype_value(state, r2, &v2);
+        }
 
+        /*
+         * Append the last token WAGT_END_OBJECT to complete res
+         */
+        res = push_agtype_value(state, WAGT_END_OBJECT, NULL);
+    }
     /*
      * Both elements are arrays (either can be scalar).
      */
@@ -1242,11 +1274,10 @@ static agtype_value *iterator_concat(agtype_iterator **it1,
         while ((r2 = agtype_iterator_next(it2, &v2, true)) != WAGT_END_ARRAY)
         {
             Assert(r2 == WAGT_ELEM);
-            push_agtype_value(state, WAGT_ELEM, &v2);
+            push_agtype_value(state, r2, &v2);
         }
 
-        res = push_agtype_value(state, WAGT_END_ARRAY,
-                                NULL /* signal to sort */);
+        res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
     }
     /* have we got array || object or object || array? */
     else if (((rk1 == WAGT_BEGIN_ARRAY && !(*it1)->is_scalar) &&
@@ -1264,36 +1295,120 @@ static agtype_value *iterator_concat(agtype_iterator **it1,
         if (prepend)
         {
             push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
-            while ((r1 = agtype_iterator_next(it_object, &v1, true)) != 0)
-                push_agtype_value(state, r1,
-                                  r1 != WAGT_END_OBJECT ? &v1 : NULL);
 
-            while ((r2 = agtype_iterator_next(it_array, &v2, true)) != 0)
-                res = push_agtype_value(state, r2,
-                                        r2 != WAGT_END_ARRAY ? &v2 : NULL);
+            while ((r1 = agtype_iterator_next(it_object, &v1, true)) !=
+                    WAGT_END_OBJECT)
+            {
+                Assert(r1 == WAGT_KEY || r1 == WAGT_VALUE);
+                push_agtype_value(state, r1, &v1);
+            }
+
+            push_agtype_value(state, WAGT_END_OBJECT, NULL);
+
+            while ((r2 = agtype_iterator_next(it_array, &v2, true)) !=
+                    WAGT_END_ARRAY)
+            {
+                Assert(r2 == WAGT_ELEM);
+                push_agtype_value(state, r2, &v2);
+            }
+
+            res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
         }
         else
         {
             while ((r1 = agtype_iterator_next(it_array, &v1, true)) !=
                    WAGT_END_ARRAY)
+            {
+                Assert(r1 == WAGT_ELEM);
                 push_agtype_value(state, r1, &v1);
+            }
 
             push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
-            while ((r2 = agtype_iterator_next(it_object, &v2, true)) != 0)
-                push_agtype_value(state, r2,
-                                  r2 != WAGT_END_OBJECT ? &v2 : NULL);
+
+            while ((r2 = agtype_iterator_next(it_object, &v2, true)) !=
+                    WAGT_END_OBJECT)
+            {
+                Assert(r2 == WAGT_KEY || r2 == WAGT_VALUE);
+                push_agtype_value(state, r2,&v2);
+            }
+
+            push_agtype_value(state, WAGT_END_OBJECT, NULL);
 
             res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
         }
     }
+    else if (rk1 == WAGT_BEGIN_OBJECT)
+    {
+        /*
+         * We have object || array.
+         */
+        Assert(rk1 == WAGT_BEGIN_OBJECT);
+        Assert(rk2 == WAGT_BEGIN_ARRAY);
+
+        push_agtype_value(state, WAGT_BEGIN_ARRAY, NULL);
+        push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
+
+        while ((r1 = agtype_iterator_next(it1, &v1, true)) != WAGT_END_OBJECT)
+        {
+            Assert(r1 == WAGT_KEY || r1 == WAGT_VALUE);
+            push_agtype_value(state, r1, &v1);
+        }
+
+        push_agtype_value(state, WAGT_END_OBJECT, NULL);
+
+        while ((r2 = agtype_iterator_next(it2, &v2, true)) != WAGT_END_ARRAY)
+        {
+            if (v2.type < AGTV_VERTEX || v2.type > AGTV_PATH)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                         errmsg("invalid right operand for agtype "
+                                "concatenation")));
+            }
+
+            Assert(r2 == WAGT_ELEM);
+
+            push_agtype_value(state, r2, &v2);
+        }
+
+        res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
+    }
     else
     {
         /*
-         * This must be scalar || object or object || scalar, as that's all
-         * that's left. Both of these make no sense, so error out.
+         * We have array || object.
          */
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("invalid concatenation of agtype objects")));
+        Assert(rk1 == WAGT_BEGIN_ARRAY);
+        Assert(rk2 == WAGT_BEGIN_OBJECT);
+
+        push_agtype_value(state, WAGT_BEGIN_ARRAY, NULL);
+
+        while ((r1 = agtype_iterator_next(it1, &v1, true)) != WAGT_END_ARRAY)
+        {
+            if (v1.type < AGTV_VERTEX || v1.type > AGTV_PATH)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("invalid left operand for agtype "
+                               "concatenation")));
+            }
+
+            Assert(r1 == WAGT_ELEM);
+
+            push_agtype_value(state, r1, &v1);
+        }
+
+        push_agtype_value(state, WAGT_BEGIN_OBJECT, NULL);
+
+        while ((r2 = agtype_iterator_next(it2, &v2, true)) != WAGT_END_OBJECT)
+        {
+            Assert(r2 == WAGT_KEY || r2 == WAGT_VALUE);
+            push_agtype_value(state, r2, &v2);
+        }
+
+        push_agtype_value(state, WAGT_END_OBJECT, NULL);
+
+        res = push_agtype_value(state, WAGT_END_ARRAY, NULL);
     }
 
     return res;

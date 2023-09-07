@@ -99,6 +99,7 @@ REGRESS = scan \
           analyze \
           graph_generation \
           name_validation \
+          jsonb_operators \
           drop
 
 srcdir=`pwd`

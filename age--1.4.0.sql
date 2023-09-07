@@ -1391,6 +1391,20 @@ CREATE OPERATOR ^ (
   RIGHTARG = agtype
 );
 
+CREATE FUNCTION ag_catalog.agtype_concat(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR || (
+  FUNCTION = ag_catalog.agtype_concat,
+  LEFTARG = agtype,
+  RIGHTARG = agtype
+);
+
 CREATE FUNCTION ag_catalog.graphid_hash_cmp(graphid)
 RETURNS INTEGER
 LANGUAGE c

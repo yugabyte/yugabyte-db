@@ -75,7 +75,7 @@
 %token <string> PARAMETER
 
 /* operators that have more than 1 character */
-%token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE
+%token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE CONCAT
 
 /* keywords in alphabetical order */
 %token <keyword> ALL ANALYZE AND AS ASC ASCENDING
@@ -169,7 +169,7 @@
 %left XOR
 %right NOT
 %left '=' NOT_EQ '<' LT_EQ '>' GT_EQ
-%left '+' '-'
+%left '+' '-' CONCAT
 %left '*' '/' '%'
 %left '^'
 %nonassoc IN IS
@@ -1323,6 +1323,10 @@ expr:
     | expr GT_EQ expr
         {
             $$ = build_comparison_expression($1, $3, ">=", @2);
+        }
+    | expr CONCAT expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "||", $1, $3, @2);
         }
     | expr '+' expr
         {
