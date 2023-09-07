@@ -181,6 +181,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   void Enqueue(const InboundCallPtr& call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
+    SET_WAIT_STATUS_TO(call->wait_state(), util::WaitStateCode::PassiveOnCPU);
 
     auto task = call->BindTask(this);
     if (!task) {
@@ -251,7 +252,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
     SCOPED_ADOPT_WAIT_STATE(incoming->wait_state());
-    SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
     const char* error_message;
     if (PREDICT_FALSE(incoming->ClientTimedOut())) {

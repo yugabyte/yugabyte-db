@@ -191,6 +191,7 @@ void OperationDriver::ExecuteAsync() {
       std::this_thread::sleep_for(1ms * delay);
     }
   }
+  SET_WAIT_STATUS(util::WaitStateCode::PassiveOnCPU);
   auto s = preparer_->Submit(this);
 
   if (operation_) {

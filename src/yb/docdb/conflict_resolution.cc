@@ -448,6 +448,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     static const std::string kRequestReason = "conflict resolution"s;
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());
+    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxnResolve);
     for (auto& i : conflict_data_->RemainingTransactions()) {
       auto& transaction = i;
       TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
@@ -634,7 +635,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
-    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxn);
+    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxnConflict);
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
@@ -647,7 +648,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     ADOPT_TRACE(trace);
     SCOPED_ADOPT_WAIT_STATE(wait_state);
     TRACE(__func__);
-    SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status << " current trace is " << Trace::CurrentTrace()
       << " wait state is " << util::WaitStateInfo::CurrentWaitState().get();
     wait_for_iters_++;

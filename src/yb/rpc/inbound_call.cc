@@ -79,7 +79,8 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
   TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
-  wait_state_->set_state(util::WaitStateCode::Created);
+  // wait_state_->set_state(util::WaitStateCode::Created);
+  wait_state_->set_state(util::WaitStateCode::PassiveOnCPU);
 }
 
 InboundCall::~InboundCall() {

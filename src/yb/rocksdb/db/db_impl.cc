@@ -55,6 +55,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/atomic.h"
+#include "yb/util/wait_state.h"
 
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
@@ -3984,6 +3985,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
                                               ColumnFamilyData* cfd,
                                               SuperVersion* super_version,
                                               Arena* arena) {
+  SCOPED_WAIT_STATUS(yb::util::WaitStateCode::RocksDBReadIO);
   InternalIterator* internal_iter;
   assert(arena != nullptr);
   // Need to create internal iterator from the arena.

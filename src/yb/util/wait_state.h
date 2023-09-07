@@ -100,6 +100,7 @@ YB_DEFINE_ENUM_TYPE(
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
       (ActiveOnCPU)
+      (PassiveOnCPU)
        // Response Queued waiting for network transfer. -- Is this expected to take long?
        (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
 
@@ -125,11 +126,14 @@ YB_DEFINE_ENUM_TYPE(
     (SaveRaftGroupMetadataToDisk)
     (TakeRWCLock)
     (SysCatalogTableSyncWrite)
-    (WaitOnTxn)
+    (WaitOnTxnConflict)
+    (WaitOnTxnResolve)
+    (WaitOnShutdown)
 
     // OperationDriver
     ((RaftActiveOnCPU, YB_CONSENSUS))  // Raft request  being enqueued for preparer. -- never seen
       (WALLogSync) // waiting for WALEdits to be persisted.
+      (WaitOnWAL)
       (RaftWaitingForQuorum)
       (ApplyingRaftEdits)
       (ConsensusMetaFlush)
@@ -139,6 +143,7 @@ YB_DEFINE_ENUM_TYPE(
 
     ((RocksDBActiveOnCPU, YB_ROCKSDB))
        (BlockCacheReadFromDisk)
+       (RocksDBReadIO)
 
     // Flush and Compaction
     ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
@@ -321,6 +326,7 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AUHAuxInfo& aux) EXCLUDES(mutex_);
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
+  int64_t query_id() EXCLUDES(mutex_);
   void set_query_id(int64_t query_id) EXCLUDES(mutex_);
   void set_client_node_ip(const std::string &endpoint) EXCLUDES(mutex_);
   void set_top_level_node_id(const std::vector<uint64_t> &top_level_node_id) EXCLUDES(mutex_);

@@ -98,6 +98,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -494,6 +495,7 @@ bool TabletPeer::StartShutdown() {
 
 void TabletPeer::CompleteShutdown(
     const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnShutdown);
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();

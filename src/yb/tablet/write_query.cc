@@ -187,7 +187,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  // SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  SET_WAIT_STATUS(util::WaitStateCode::PassiveOnCPU);
   context_->Submit(self.release()->PrepareSubmit(), term_);
 }
 

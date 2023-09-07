@@ -821,8 +821,8 @@ class WaitQueue::Impl {
         RETURN_NOT_OK(SetupWaiterUnlocked(
             waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
             std::move(blocker_datas), std::move(blockers)));
-        SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxn);
         TRACE("pre-wait will block");
+        SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxnConflict);
         return true;
       } else {
         // It's possible that between checking above with a shared lock and checking again with a
