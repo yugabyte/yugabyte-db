@@ -119,15 +119,10 @@ Status PrometheusWriter::WriteSingleEntry(
     AddAggregatedEntry(metric_type_it->second, new_attr, name, value, aggregation_function);
     break;
   }
-  case AggregationMetricLevel::kStream:
-  {
-    if (attr.find("stream_id") != attr.end()) {
-        AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value,
-            aggregation_function);
-    }
-    break;
-  }
   case AggregationMetricLevel::kTable:
+    if (metric_type_it->second == "table") {
+      return FlushSingleEntry(attr, name, value);
+    }
     AddAggregatedEntry(tablet_id_it->second, attr, name, value, aggregation_function);
     break;
   }
