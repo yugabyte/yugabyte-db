@@ -142,6 +142,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
     when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockRuntimeConfig.getInt("yb.max_volume_count")).thenReturn(32);
     when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());

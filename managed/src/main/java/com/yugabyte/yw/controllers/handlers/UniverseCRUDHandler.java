@@ -265,6 +265,9 @@ public class UniverseCRUDHandler {
     //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if (userIntent.deviceInfo != null) {
+      userIntent.deviceInfo.validate();
+    }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
