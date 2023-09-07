@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.testCustomer;
@@ -36,17 +37,27 @@ import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.CustomerTask.TaskType;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -100,11 +111,30 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private String apiEndpoint;
   private XClusterConfigCreateFormData createFormData;
   private YBClient mockClient;
+  private Role role;
+  private ResourceDefinition rd1;
+  private ResourceDefinition rd2;
+
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
+  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
 
   @Before
   public void setUp() {
     customer = testCustomer("XClusterConfigController-test-customer");
     user = ModelFactory.testUser(customer);
+    role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .build();
+    rd2 = ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
 
     configName = "XClusterConfigController-test-config";
 
@@ -357,7 +387,6 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreate() {
 
     initClientGetTablesList();
-
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
@@ -388,6 +417,108 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateUsingNewRbacAuthzWithNeededPermissions() {
+    initClientGetTablesList();
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertOk(result);
+
+    assertNumXClusterConfigs(1);
+
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getByNameSourceTarget(configName, sourceUniverseUUID, targetUniverseUUID);
+    assertEquals(xClusterConfig.getName(), configName);
+    assertEquals(xClusterConfig.getStatus(), XClusterConfigStatusType.Initialized);
+    assertEquals(xClusterConfig.getTableIds(), exampleTables);
+
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", taskUUID.toString());
+    assertValue(resultJson, "resourceUUID", xClusterConfig.getUuid().toString());
+
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    assertNotNull(customerTask);
+    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.getSourceUniverseUUID())));
+    assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
+    assertThat(
+        customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
+    assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
+
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateUsingNewRbacAuthzWithNoPermissions() {
+    initClientGetTablesList();
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnTargetUniverse() {
+    initClientGetTablesList();
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceDefinition rd3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(sourceUniverseUUID)))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnSourceUniverse() {
+    initClientGetTablesList();
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceDefinition rd3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(targetUniverseUUID)))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testCreateUsingNewRbacAuthzWithIncompletePermission() {
+    initClientGetTablesList();
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1)));
+    ResourceDefinition rd3 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(targetUniverseUUID)))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
+    RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
+    Result result =
+        doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
   }
 
   @Test

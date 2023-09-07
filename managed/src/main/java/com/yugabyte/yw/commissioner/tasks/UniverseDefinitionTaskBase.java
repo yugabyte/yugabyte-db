@@ -1372,9 +1372,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
             final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
             final boolean isCpuCoreCountOutOfRange =
-                (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
+                (cpuCoreCount < UserIntent.MIN_CPU || cpuCoreCount > UserIntent.MAX_CPU);
             final boolean isMemoryGibOutOfRange =
-                (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
+                (memoryGib < UserIntent.MIN_MEMORY || memoryGib > UserIntent.MAX_MEMORY);
 
             if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
               throw new IllegalArgumentException(

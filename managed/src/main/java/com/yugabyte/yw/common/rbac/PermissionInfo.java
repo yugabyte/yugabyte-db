@@ -26,7 +26,7 @@ public class PermissionInfo {
     UNIVERSE("rbac/available_resource_permissions/universeResourcePermissions.json"),
     ROLE("rbac/available_resource_permissions/roleResourcePermissions.json"),
     USER("rbac/available_resource_permissions/userResourcePermissions.json"),
-    DEFAULT("rbac/available_resource_permissions/defaultResourcePermissions.json");
+    OTHER("rbac/available_resource_permissions/defaultResourcePermissions.json");
 
     @Getter public String permissionFilePath;
 
@@ -43,8 +43,8 @@ public class PermissionInfo {
           case USER:
             Users.getOrBadRequest(customerUUID, customerUUID);
             break;
-          case DEFAULT:
-            // Nothing to check explicitly for DEFAULT resources.
+          case OTHER:
+            // Nothing to check explicitly for OTHER resources.
             break;
           default:
             break;
@@ -70,8 +70,8 @@ public class PermissionInfo {
           allResourcesUUID =
               Users.getAll(customerUUID).stream().map(Users::getUuid).collect(Collectors.toSet());
           break;
-        case DEFAULT:
-          // Nothing to check explicitly for DEFAULT resources.
+        case OTHER:
+          // Nothing to check explicitly for OTHER resources.
           break;
         default:
           break;
@@ -97,6 +97,10 @@ public class PermissionInfo {
 
   @JsonProperty("action")
   public Action action;
+
+  // Human readable name for the permission. Used for UI.
+  @JsonProperty("name")
+  public String name;
 
   @JsonProperty("description")
   public String description;

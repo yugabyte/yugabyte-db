@@ -309,6 +309,10 @@ class StackableDB : public DB {
     return db_->GetLatestSequenceNumber();
   }
 
+  virtual uint64_t GetNextFileNumber() const override {
+    return db_->GetNextFileNumber();
+  }
+
   virtual Status GetSortedWalFiles(VectorLogPtr* files) override {
     return db_->GetSortedWalFiles(files);
   }

@@ -21,7 +21,7 @@ var migrateDbCmd = &cobra.Command{
 	yba-ctl.yml and and determines whether to migrate from YBDB to Postgres,
 	vice versa, or take no action. The process restarts the yb-platform service.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}

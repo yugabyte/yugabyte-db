@@ -1,50 +1,55 @@
 [
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "CREATE",
-    "description": "Default permission to create a resource instance.",
+    "name": "Create Resource",
+    "description": "Permission to create a resource instance.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "READ",
-    "description": "Default permission to read a resource instance.",
+    "name": "View Resource",
+    "description": "Permission to read a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": []
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "UPDATE",
-    "description": "Default permission to update a resource instance.",
+    "name": "Update Resource",
+    "description": "Permission to update a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "DELETE",
-    "description": "Default permission to delete a resource instance.",
+    "name": "Delete Resource",
+    "description": "Permission to delete a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "SUPER_ADMIN_ACTIONS",
+    "name": "Super Admin Actions",
     "description": "Gives all the super admin permissions like HA, runtime configs, etc.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": []

@@ -1955,6 +1955,24 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetXClusterSafeTimeResponse getXClusterSafeTime() throws Exception {
+    Deferred<GetXClusterSafeTimeResponse> d = asyncClient.getXClusterSafeTime();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds,
+      @Nullable Long targetTime) throws Exception {
+    Deferred<WaitForReplicationDrainResponse> d =
+        asyncClient.waitForReplicationDrain(streamIds, targetTime);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds) throws Exception {
+    return waitForReplicationDrain(streamIds, null /* targetTime */);
+  }
+
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */

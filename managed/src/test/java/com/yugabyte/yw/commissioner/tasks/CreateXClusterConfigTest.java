@@ -24,6 +24,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
@@ -65,6 +66,7 @@ import org.yb.WireProtocol;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
+import org.yb.client.BootstrapUniverseResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
@@ -120,10 +122,13 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams sourceUniverseDetails = sourceUniverse.getUniverseDetails();
     NodeDetails sourceUniverseNodeDetails = new NodeDetails();
     sourceUniverseNodeDetails.isMaster = true;
+    sourceUniverseNodeDetails.isTserver = true;
     sourceUniverseNodeDetails.state = NodeState.Live;
     sourceUniverseNodeDetails.cloudInfo = new CloudSpecificInfo();
     sourceUniverseNodeDetails.cloudInfo.private_ip = "1.1.1.1";
     sourceUniverseNodeDetails.cloudInfo.secondary_private_ip = "2.2.2.2";
+    sourceUniverseNodeDetails.placementUuid =
+        sourceUniverse.getUniverseDetails().getPrimaryCluster().uuid;
     sourceUniverseDetails.nodeDetailsSet.add(sourceUniverseNodeDetails);
     sourceUniverse.setUniverseDetails(sourceUniverseDetails);
     sourceUniverse.update();
@@ -158,6 +163,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
 
     mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
@@ -375,6 +381,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     initClientGetTablesList();
 
     try {
+      BootstrapUniverseResponse mockBootstrapUniverseResponse =
+          new BootstrapUniverseResponse(
+              0, "", null, ImmutableList.of(exampleStreamID2, exampleStreamID1));
+      when(mockClient.bootstrapUniverse(any(), any())).thenReturn(mockBootstrapUniverseResponse);
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
       when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
@@ -421,6 +431,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     HighAvailabilityConfig.create("test-cluster-key");
 
     try {
+      BootstrapUniverseResponse mockBootstrapUniverseResponse =
+          new BootstrapUniverseResponse(
+              0, "", null, ImmutableList.of(exampleStreamID2, exampleStreamID1));
+      when(mockClient.bootstrapUniverse(any(), any())).thenReturn(mockBootstrapUniverseResponse);
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
       when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
@@ -468,6 +482,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     String setupErrMsg = "failed to run setup rpc";
 
     try {
+      BootstrapUniverseResponse mockBootstrapUniverseResponse =
+          new BootstrapUniverseResponse(
+              0, "", null, ImmutableList.of(exampleStreamID2, exampleStreamID1));
+      when(mockClient.bootstrapUniverse(any(), any())).thenReturn(mockBootstrapUniverseResponse);
       AppStatusPB.Builder appStatusBuilder =
           AppStatusPB.newBuilder().setMessage(setupErrMsg).setCode(ErrorCode.UNKNOWN_ERROR);
       MasterErrorPB.Builder masterErrorBuilder =
@@ -496,8 +514,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(3).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(4).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(4).getDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString(setupErrMsg));
     assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
@@ -520,6 +538,10 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     String isSetupDoneErrMsg = "failed to run setup rpc";
 
     try {
+      BootstrapUniverseResponse mockBootstrapUniverseResponse =
+          new BootstrapUniverseResponse(
+              0, "", null, ImmutableList.of(exampleStreamID2, exampleStreamID1));
+      when(mockClient.bootstrapUniverse(any(), any())).thenReturn(mockBootstrapUniverseResponse);
       SetupUniverseReplicationResponse mockSetupResponse =
           new SetupUniverseReplicationResponse(0, "", null);
       when(mockClient.setupUniverseReplication(any(), any(), any(), any()))
@@ -549,8 +571,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(3).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getDetails().get("errorString").asText();
+    assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(4).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(4).getDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",

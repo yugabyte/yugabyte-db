@@ -23,8 +23,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -34,7 +32,6 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
@@ -87,12 +84,8 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
         tableName, tableRowCount - 1));
 
       String seqScanQuery = String.format("SELECT * FROM %s", tableName);
-      String ybSeqScanQuery = String.format("/*+ SeqScan(%s) */ SELECT * FROM %s",
-                                            tableName, tableName);
 
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
-                        Checkers.equal(51), tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN,
                         Checkers.equal(51), tableRowCount);
     }
   }
@@ -121,15 +114,11 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       statement.execute(String.format("create index on %s (v asc)", tableName));
 
       String seqScanQuery = String.format("SELECT * FROM %s", tableName);
-      String ybSeqScanQuery = String.format("/*+ SeqScan(%s) */ SELECT * FROM %s",
-                                            tableName, tableName);
       String indexScanQuery = String.format("SELECT * FROM %s WHERE k > 0", tableName);
       String indexOnlyScanQuery = String.format("SELECT v FROM %s WHERE v > ''", tableName);
 
       setRowAndSizeLimit(statement, 1024, 0);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
-                        Checkers.equal(98), tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN,
                         Checkers.equal(98), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
                         Checkers.equal(98), tableRowCount);
@@ -138,8 +127,6 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
 
       setRowAndSizeLimit(statement, 0, 0);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
-                        Checkers.equal(1), tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN,
                         Checkers.equal(1), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
                         Checkers.equal(1), tableRowCount);
@@ -150,8 +137,6 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       setRowAndSizeLimit(statement, 0, 512);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
                         Checkers.equal(25), tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN,
-                        Checkers.equal(25), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
                         Checkers.equal(25), tableRowCount);
       checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
@@ -159,8 +144,6 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
 
       setRowAndSizeLimit(statement, 0, 1024);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
-                        Checkers.equal(13), tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN,
                         Checkers.equal(13), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
                         Checkers.equal(13), tableRowCount);

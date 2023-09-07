@@ -388,13 +388,11 @@ void RpcServerBase::MetricsLoggingThread() {
     buf << "metrics " << GetCurrentTimeMicros() << " ";
 
     // Collect the metrics JSON string.
-    MetricEntityOptions entity_opts;
-    entity_opts.metrics.push_back("*");
     MetricJsonOptions opts;
     opts.include_raw_histograms = true;
 
     JsonWriter writer(&buf, JsonWriter::COMPACT);
-    Status s = metric_registry_->WriteAsJson(&writer, entity_opts, opts);
+    Status s = metric_registry_->WriteAsJson(&writer, opts);
     if (!s.ok()) {
       WARN_NOT_OK(s, "Unable to collect metrics to log");
       next_log.AddDelta(kWaitBetweenFailures);
@@ -630,7 +628,8 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics?reset_histograms=false");
+  DisplayIconTile(output, "fa-line-chart", "Metrics",
+      "/prometheus-metrics?reset_histograms=false&cache_filters=false");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.

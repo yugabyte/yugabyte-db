@@ -1307,7 +1307,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			pname = sname = "Seq Scan";
 			break;
 		case T_YbSeqScan:
-			pname = sname = "YB Seq Scan";
+			pname = sname = "Seq Scan";
 			break;
 		case T_SampleScan:
 			pname = sname = "Sample Scan";
@@ -1365,7 +1365,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				case CMD_SELECT:
 					/* Don't need to expose implementation details */
 					if (IsYBRelation(((ScanState*) planstate)->ss_currentRelation))
-						sname = pname = "Seq Scan";
+						sname = pname = "YB Foreign Scan";
 					else
 						pname = "Foreign Scan";
 					operation = "Select";

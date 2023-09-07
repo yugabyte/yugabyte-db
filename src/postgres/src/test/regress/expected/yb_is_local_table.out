@@ -217,11 +217,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tab
 ---------------------------------------------
  Append
    ->  Seq Scan on multikey1_local
-         Filter: yb_is_local_table(tableoid)
          Remote Filter: (a < 2)
+         Filter: yb_is_local_table(tableoid)
    ->  Seq Scan on multikey_default_local
-         Filter: yb_is_local_table(tableoid)
          Remote Filter: (a < 2)
+         Filter: yb_is_local_table(tableoid)
 (7 rows)
 
 -- Query with both partition keys.
@@ -230,8 +230,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local
 ----------------------------------------------
  Append
    ->  Seq Scan on multikey3_local
-         Filter: yb_is_local_table(tableoid)
          Remote Filter: ((b < 1) AND (a = 2))
+         Filter: yb_is_local_table(tableoid)
 (4 rows)
 
 -- Query with null check.
@@ -240,8 +240,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE b is null AND yb_is_local_table
 ---------------------------------------------
  Append
    ->  Seq Scan on multikey_default_local
-         Filter: yb_is_local_table(tableoid)
          Remote Filter: (b IS NULL)
+         Filter: yb_is_local_table(tableoid)
 (4 rows)
 
 -- Sanity Test for 3 types of JOINs.
@@ -268,8 +268,8 @@ SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_
          Sort Key: t1.a
          ->  Append
                ->  Seq Scan on prt1_p2_local t1
-                     Filter: yb_is_local_table(tableoid)
                      Remote Filter: (a < 450)
+                     Filter: yb_is_local_table(tableoid)
    ->  Sort
          Sort Key: t2.b
          ->  Append

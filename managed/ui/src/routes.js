@@ -30,7 +30,6 @@ import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
-import Importer from './pages/Importer';
 import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
@@ -237,7 +236,6 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route path="/universes/import" component={Importer} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}

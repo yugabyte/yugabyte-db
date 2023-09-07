@@ -9,19 +9,19 @@
 
 import { Permission } from '../permission';
 
-export const IRoleType = {
+export const RoleType = {
   SYSTEM: 'System',
   CUSTOM: 'Custom'
 } as const;
 
-export interface IRole {
+export interface Role {
   roleUUID: string;
   name: string;
   description: string;
   customerUUID: string;
   createdOn: string;
   updatedOn: string;
-  roleType: typeof IRoleType[keyof typeof IRoleType];
+  roleType: typeof RoleType[keyof typeof RoleType];
   permissionDetails: {
     permissionList: Permission[];
   };
