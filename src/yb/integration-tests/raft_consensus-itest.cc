@@ -96,6 +96,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
@@ -176,7 +177,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   }
 
   void ScanReplica(TabletServerServiceProxy* replica_proxy,
-                   vector<string>* results) {
+                   vector<string>* results,
+                   YBConsistencyLevel consistency_level = YBConsistencyLevel::CONSISTENT_PREFIX) {
 
     ReadRequestPB req;
     ReadResponsePB resp;
@@ -184,7 +186,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     rpc.set_timeout(MonoDelta::FromSeconds(10));  // Squelch warnings.
 
     req.set_tablet_id(tablet_id_);
-    req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    req.set_consistency_level(consistency_level);
     auto batch = req.add_ql_batch();
     batch->set_schema_version(0);
     int id = kFirstColumnId;
@@ -3711,6 +3713,86 @@ TEST_F(RaftConsensusITest, GetSafeTimeBeforeNoOpReplicated) {
 
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
                                   tablet_id_, 5));
+}
+
+// Test new leader starts accepting writes before old leader finishes all reads.
+// See more in https://github.com/yugabyte/yugabyte-db/issues/18121
+TEST_F(RaftConsensusITest, OldLeaderLeaseTooOldOnNewLeader) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 1));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ht_lease_duration_ms", "5000"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("leader_lease_duration_ms", "5000"));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto other_follower_idx = (leader_idx + 2) % 3;
+
+  ASSERT_NO_FATALS(
+      WriteOpsToLeader(/* num_writes = */ 1, /* size_bytes = */ 1, /* accept_failure = */ false));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 2));
+
+  // Pause one follower, and wait until the old leader lease on it is expired.
+  const auto follower = cluster_->tablet_server(follower_idx);
+  ASSERT_OK(
+      cluster_->SetFlag(follower, "TEST_follower_reject_update_consensus_requests", "true"));
+  ASSERT_OK(follower->Pause());
+  SleepFor(5s);
+
+  const auto old_leader = cluster_->tablet_server(leader_idx);
+  // To reject NoOp of the new term.
+  ASSERT_OK(
+      cluster_->SetFlag(old_leader, "TEST_follower_reject_update_consensus_requests", "true"));
+  std::vector<string> results;
+  ASSERT_NO_FATALS(WaitForRowCount(
+      tablet_servers_[old_leader->uuid()]->tserver_proxy.get(), 1, &results));
+
+  // Pause the other follower and step down the current leader.
+  const auto other_follower = cluster_->tablet_server(other_follower_idx);
+  ASSERT_OK(cluster_->SetFlag(
+      other_follower, "TEST_request_vote_respond_leader_still_alive", "true"));
+
+  ASSERT_OK(cluster_->SetFlag(old_leader, "TEST_pause_before_getting_safe_time", "true"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    vector<string> results;
+    ASSERT_NO_FATALS(ScanReplica(tablet_servers_[old_leader->uuid()]->tserver_proxy.get(),
+                                 &results,
+                                 YBConsistencyLevel::STRONG));
+  });
+  SleepFor(1s);
+
+  ASSERT_OK(follower->Resume());
+  ASSERT_OK(LeaderStepDown(
+      tablet_servers_[old_leader->uuid()].get(),
+      tablet_id_, tablet_servers_[follower->uuid()].get(),
+      10s));
+  ASSERT_OK(WaitUntilLeader(
+    tablet_servers_[follower->uuid()].get(), tablet_id_, 10s,
+    consensus::LeaderLeaseCheckMode::DONT_NEED_LEASE));
+
+  // Pause the old leader and let the new leader replicate NoOp to the other follower.
+  ASSERT_OK(old_leader->Pause());
+
+  // Wait for the NoOp of new term has been replicated on the other follower.
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      3, tablet_servers_[other_follower->uuid()].get(), tablet_id_, 10s));
+  ASSERT_NO_FATALS(
+      WriteOpsToLeader(/* num_writes = */ 1, /* size_bytes = */ 2, /* accept_failure = */ false));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      4, tablet_servers_[other_follower->uuid()].get(), tablet_id_, 10s));
+
+  // Resume the old leader and resume DoGetSafeTime on it. It will get a safe time with kNow
+  // and update max_safe_time_returned_with_lease_.
+  ASSERT_OK(old_leader->Resume());
+  ASSERT_OK(cluster_->SetFlag(old_leader, "TEST_pause_before_getting_safe_time", "false"));
+  thread_holder.WaitAndStop(10s);
+  ASSERT_OK(
+      cluster_->SetFlag(old_leader, "TEST_follower_reject_update_consensus_requests", "false"));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      4, tablet_servers_[old_leader->uuid()].get(), tablet_id_, 10s));
 }
 
 }  // namespace tserver

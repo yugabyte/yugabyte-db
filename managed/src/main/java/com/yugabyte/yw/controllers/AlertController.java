@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.AlertManager.SendNotificationResult;
 import com.yugabyte.yw.common.AlertManager.SendNotificationStatus;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
@@ -31,6 +32,8 @@ import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDesc
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.TestAlertSettings;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -50,7 +53,17 @@ import com.yugabyte.yw.models.filters.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.*;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -89,6 +102,12 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertTemplateVariableService alertTemplateVariableService;
 
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -102,6 +121,12 @@ public class AlertController extends AuthenticatedController {
       response = Alert.class,
       responseContainer = "List",
       nickname = "listOfAlerts")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -112,6 +137,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "List active alerts", response = Alert.class, responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listActive(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -128,6 +159,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result countAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -147,6 +184,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -164,6 +207,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result acknowledge(UUID customerUUID, UUID alertUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -187,6 +236,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result acknowledgeByFilter(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -206,6 +261,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get an alert configuration", response = AlertConfiguration.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -225,6 +286,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertTemplateApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertTemplates(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -252,6 +319,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -278,6 +351,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -298,6 +377,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createAlertConfiguration(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -325,6 +410,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -351,6 +442,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete an alert configuration", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -366,6 +463,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -386,6 +489,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createAlertChannel(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannelFormData data = parseJsonAndValidate(request, AlertChannelFormData.class);
@@ -402,6 +511,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
@@ -416,6 +531,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
@@ -434,6 +555,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete an alert channel", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
@@ -452,6 +579,12 @@ public class AlertController extends AuthenticatedController {
       value = "List all alert channels",
       response = AlertChannel.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
@@ -461,6 +594,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplatesExt.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
     Customer.getOrBadRequest(customerUUID);
     ChannelType channelType = parseChannelType(channelTypeStr);
@@ -475,6 +614,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertChannelTemplates",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setAlertChannelTemplates(
       UUID customerUUID, String channelTypeStr, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -490,6 +635,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete alert channel templates", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertChannelTemplates(
       UUID customerUUID, String channelTypeStr, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -505,6 +656,12 @@ public class AlertController extends AuthenticatedController {
       value = "List all alert channel templates",
       response = AlertChannelTemplatesExt.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertChannelTemplates(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertChannelTemplateService.listWithDefaults(customerUUID));
@@ -517,6 +674,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createAlertDestination(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertDestinationFormData data =
@@ -538,6 +701,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get an alert destination", response = AlertDestination.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
@@ -551,6 +720,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateAlertDestination(
       UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -573,6 +748,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete an alert destination", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertDestination(
       UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -590,6 +771,12 @@ public class AlertController extends AuthenticatedController {
       value = "List alert destinations",
       response = AlertDefinition.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertDestinations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertDestinationService.listByCustomer(customerUUID));
@@ -599,6 +786,12 @@ public class AlertController extends AuthenticatedController {
       value = "Get alert template settings",
       response = AlertTemplateSettings.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertTemplateSettings(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -619,6 +812,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateSettingsFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result editAlertTemplateSettings(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -637,6 +836,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete an alert template settings", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertTemplateSettings(
       UUID customerUUID, UUID settingsUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -654,6 +859,12 @@ public class AlertController extends AuthenticatedController {
   @ApiOperation(
       value = "List alert template variables",
       response = AlertTemplateVariablesList.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAlertTemplateVariables(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -676,6 +887,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result editAlertTemplateVariables(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -694,6 +911,12 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete an alert template variables", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteAlertTemplateVariables(
       UUID customerUUID, UUID variablesUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -717,6 +940,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result alertNotificationPreview(UUID customerUUID, Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

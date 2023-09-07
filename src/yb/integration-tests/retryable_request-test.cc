@@ -207,7 +207,8 @@ TEST_F_EX(
 
   ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return tablet_peer->TEST_IsFlushingRetryableRequests();
+    return tablet_peer->TEST_RetryableRequestsFlusherState() ==
+        tablet::RetryableRequestsFlushState::kFlushing;
   }, 10s, "Start flushing retryable requests"));
 
   // If flusher is not shutdown correctly from Tablet::CompleteShutdown, will get error:

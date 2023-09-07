@@ -27,7 +27,117 @@ tags:
     description: APIs for cluster CRUD
   - name: cluster-info
     description: APIs for getting information about an existing cluster
+  - name: voyager-info
+    description: APIs for getting information about Voyager migrations
+  - name: voyager-metrics
+    description: APIs for getting Voyager data migrations metrics
 paths:
+  /migrations:
+    get:
+      summary: Get the list of Voyager migrations
+      description: Get the list of Voyager migrations
+      operationId: GetVoyagerMigrationTasks
+      tags:
+        - voyager-info
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+        - name: migration_phase
+          in: query
+          description: specify the migration phase for which details are required
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        '200':
+          $ref: '#/components/responses/VoyagerMigrationsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /migration_assesment:
+    get:
+      summary: Get Voyager data migration metrics
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrationAssesmentDetails
+      tags:
+        - voyager-info
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/VoyagerAssesmentResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /migrate_schema:
+    get:
+      summary: Get Voyager data migration metrics
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrateSchemaTasks
+      tags:
+        - voyager-info
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/MigrateSchemaResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /migration_metrics:
+    get:
+      summary: Get Voyager data migration metrics
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerDataMigrationMetrics
+      tags:
+        - voyager-metrics
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/VoyagerDataMigrationMetricsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /cluster:
     get:
       summary: Get a cluster
@@ -401,6 +511,175 @@ paths:
           $ref: '#/components/responses/ApiError'
 components:
   schemas:
+    VoyagerMigrationDetails:
+      title: Voyager task details
+      description: Information regarding a specific voyager migration task
+      type: object
+      properties:
+        migration_uuid:
+          type: string
+          format: uuid
+        migration_name:
+          type: string
+        migration_phase:
+          type: integer
+        invocation_sequence:
+          type: integer
+        source_db:
+          type: string
+        complexity:
+          type: string
+        database_name:
+          type: string
+        schema_name:
+          type: string
+        status:
+          type: string
+        invocation_timestamp:
+          type: string
+    VoyagerMigrationsInfo:
+      title: YB Voyager migrations Info
+      description: YB Voyager migrations Info
+      type: object
+      properties:
+        migrations:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoyagerMigrationDetails'
+    ApiError:
+      title: API Error
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            detail:
+              description: Error message
+              type: string
+            status:
+              description: Error code
+              type: integer
+    AssesmentComplexityInfo:
+      title: Assesment complexity details
+      description: Assesment complexity details
+      type: object
+      properties:
+        schema:
+          type: string
+        sql_objects_count:
+          type: integer
+        table_count:
+          type: integer
+        complexity:
+          type: string
+    MigrationAssesmentInfo:
+      title: Details for Voyager migrations assesment
+      description: Details for Voyager migrations assesment
+      type: object
+      properties:
+        assesment_status:
+          type: boolean
+        top_errors:
+          type: array
+          items:
+            type: string
+        top_suggestions:
+          type: array
+          items:
+            type: string
+        complexity_overview:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssesmentComplexityInfo'
+    ErrorsAndSuggestionsDetails:
+      title: Errors and Suggestions details
+      description: Errors and suggestions details
+      type: object
+      properties:
+        objectType:
+          type: string
+        objectName:
+          type: string
+        reason:
+          type: string
+        sqlStatement:
+          type: string
+        filePath:
+          type: string
+        suggestion:
+          type: string
+        GH:
+          type: string
+    SqlObjectsDetails:
+      title: Sql Objects
+      description: Sql obejcts type and count
+      type: object
+      properties:
+        objectType:
+          type: string
+        totalCount:
+          type: integer
+        invalidCount:
+          type: integer
+        objectNames:
+          type: string
+        objectDetails:
+          type: string
+    MigrateSchemaTaskInfo:
+      title: Details for export schema, import schema and analyze schema steps
+      description: Voyager data migration metrics details
+      type: object
+      properties:
+        migration_uuid:
+          type: string
+          format: uuid
+        overall_status:
+          type: string
+        export_schema:
+          type: string
+        analyze_schema:
+          type: string
+        import_schema:
+          type: string
+        suggestions_errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+        sql_objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/SqlObjectsDetails'
+    VoyagerMigrateDataMetricsDetails:
+      title: Voyager Migrate Data Metrics details
+      description: Voyager data migration metrics details
+      type: object
+      properties:
+        migration_uuid:
+          type: string
+          format: uuid
+        table_name:
+          type: string
+        schema_name:
+          type: string
+        migration_phase:
+          type: integer
+        status:
+          type: integer
+        count_live_rows:
+          type: integer
+        count_total_rows:
+          type: integer
+        invocation_timestamp:
+          type: string
+    VoyagerMigrateDataMetrics:
+      title: YB Voyager Migrate Data metrics Info
+      description: List of YB Voyager Data migrations metrics
+      type: object
+      properties:
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetricsDetails'
     CloudEnum:
       title: Cloud Enum
       description: Which cloud the cluster is deployed in
@@ -616,19 +895,6 @@ components:
           $ref: '#/components/schemas/ClusterSpec'
         info:
           $ref: '#/components/schemas/ClusterDataInfo'
-    ApiError:
-      title: API Error
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            detail:
-              description: Error message
-              type: string
-            status:
-              description: Error code
-              type: integer
     LiveQueryResponseYSQLQueryItem:
       title: Live Query Response YSQL Query Item
       description: Schema for Live Query Response YSQL Query Item
@@ -1256,6 +1522,44 @@ components:
           schema:
             $ref: '#/components/schemas/ClusterSpec'
   responses:
+    VoyagerMigrationsResponse:
+      description: List of the Voyager migrations
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrationsInfo'
+    ApiError:
+      description: API Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    VoyagerAssesmentResponse:
+      description: Response for Plan and Asses page
+      content:
+        application/json:
+          schema:
+            title: API for Plan and Asses page
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/MigrationAssesmentInfo'
+    MigrateSchemaResponse:
+      description: Response for individual migration task
+      content:
+        application/json:
+          schema:
+            title: Individual Migration Task Info
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/MigrateSchemaTaskInfo'
+    VoyagerDataMigrationMetricsResponse:
+      description: Voyager data migration metrics response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetrics'
     ClusterResponse:
       description: Cluster response
       content:
@@ -1266,12 +1570,6 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/ClusterData'
-    ApiError:
-      description: API Error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
     LiveQueryResponse:
       description: Live Queries of a Cluster
       content:

@@ -310,22 +310,33 @@ public class UniverseResourceDetails {
             details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
           }
         }
-        if (node.cloudInfo != null
-            && node.cloudInfo.az != null
-            && node.cloudInfo.instance_type != null) {
+        if (node.cloudInfo != null && node.cloudInfo.az != null) {
           details.addAz(node.cloudInfo.az);
-          InstanceType instanceType =
-              context.getInstanceType(
-                  UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
-          if (instanceType == null) {
-            LOG.error(
-                "Couldn't find instance type "
-                    + node.cloudInfo.instance_type
-                    + " for provider "
-                    + userIntent.providerType);
+          // If we have resource spec use that.
+          if (userIntent.tserverK8SNodeResourceSpec != null) {
+            details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
+            details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+            // Check for master and add its resources too
+            if (userIntent.masterK8SNodeResourceSpec != null) {
+              details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
+              details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+            }
           } else {
-            details.addMemSizeGB(instanceType.getMemSizeGB());
-            details.addNumCores(instanceType.getNumCores());
+            if (node.cloudInfo.instance_type != null) {
+              InstanceType instanceType =
+                  context.getInstanceType(
+                      UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
+              if (instanceType == null) {
+                LOG.error(
+                    "Couldn't find instance type "
+                        + node.cloudInfo.instance_type
+                        + " for provider "
+                        + userIntent.providerType);
+              } else {
+                details.addMemSizeGB(instanceType.getMemSizeGB());
+                details.addNumCores(instanceType.getNumCores());
+              }
+            }
           }
         }
       }

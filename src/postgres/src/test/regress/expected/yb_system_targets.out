@@ -5,9 +5,9 @@ INSERT INTO t_temp VALUES (1,1);
 -- check system columns in YbSeqScan (#18485)
 explain (costs off)
 /*+ SeqScan(t_normal) */ SELECT tableoid::regclass, * FROM t_normal;
-       QUERY PLAN
--------------------------
- YB Seq Scan on t_normal
+      QUERY PLAN
+----------------------
+ Seq Scan on t_normal
 (1 row)
 
 /*+ SeqScan(t_normal) */ SELECT tableoid::regclass, * FROM t_normal;

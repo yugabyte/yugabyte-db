@@ -1,15 +1,18 @@
 package ybactlstate
 
 import (
+	"errors"
+	"os"
+
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 func Initialize() (*State, error) {
 	state, err := LoadState()
 	if err != nil {
-		return nil, err
-	}
-	if state == nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
 		log.Debug("fresh install, creating initial state")
 		state = New()
 	} else {

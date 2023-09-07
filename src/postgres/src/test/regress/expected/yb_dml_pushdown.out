@@ -925,8 +925,8 @@ EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01
 --------------------------------------------------
  Update on single_row_function_test
    ->  Seq Scan on single_row_function_test
-         Filter: (date_pk = now())
          Remote Filter: (k = (random())::integer)
+         Filter: (date_pk = now())
 (4 rows)
 
 DROP TABLE single_row_function_test;

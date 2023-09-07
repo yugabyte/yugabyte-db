@@ -33,7 +33,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"

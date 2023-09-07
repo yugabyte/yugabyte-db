@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -496,8 +497,10 @@ public class UniverseCRUDHandler {
       // Configure the defaultimageBundle in case not specified.
       if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
         if (provider.getImageBundles().size() > 0) {
-          ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-          if (bundle != null) {
+          List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+          if (bundles.size() > 0) {
+            ImageBundle bundle =
+                ImageBundleUtil.getDefaultBundleForUniverse(taskParams.arch, bundles);
             c.userIntent.imageBundleUUID = bundle.getUuid();
           }
         }
@@ -595,7 +598,12 @@ public class UniverseCRUDHandler {
             ReleaseManager.ReleaseMetadata ybReleaseMetadata =
                 releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
             AvailabilityZone az = AvailabilityZone.getOrBadRequest(nodeDetails.azUuid);
-            String ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
+            String ybServerPackage;
+            if (taskParams.arch != null) {
+              ybServerPackage = ybReleaseMetadata.getFilePath(taskParams.arch);
+            } else {
+              ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
+            }
             Pair<String, String> ybcPackageDetails =
                 Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
             ReleaseManager.ReleaseMetadata ybcReleaseMetadata =
@@ -611,7 +619,12 @@ public class UniverseCRUDHandler {
                       taskParams.getYbcSoftwareVersion()));
             }
 
-            String ybcPackage = ybcReleaseMetadata.getFilePath(az.getRegion());
+            String ybcPackage;
+            if (taskParams.arch != null) {
+              ybcPackage = ybcReleaseMetadata.getFilePath(taskParams.arch);
+            } else {
+              ybcPackage = ybcReleaseMetadata.getFilePath(az.getRegion());
+            }
             if (StringUtils.isBlank(ybcPackage)) {
               throw new PlatformServiceException(
                   BAD_REQUEST,
@@ -639,11 +652,19 @@ public class UniverseCRUDHandler {
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
       try {
-        if (userIntent.enableYSQLAuth) {
+        userIntent.defaultYsqlPassword = false;
+        userIntent.defaultYcqlPassword = false;
+        if (userIntent.enableYSQLAuth
+            && (!cloudEnabled || StringUtils.isNotBlank(userIntent.ysqlPassword))) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
+        } else if (userIntent.enableYSQLAuth) {
+          userIntent.defaultYsqlPassword = true;
         }
-        if (userIntent.enableYCQLAuth) {
+        if (userIntent.enableYCQLAuth
+            && (!cloudEnabled || StringUtils.isNotBlank(userIntent.ycqlPassword))) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
+        } else if (userIntent.enableYCQLAuth) {
+          userIntent.defaultYcqlPassword = true;
         }
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());

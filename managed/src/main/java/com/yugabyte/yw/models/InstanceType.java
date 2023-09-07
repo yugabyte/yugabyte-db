@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -310,6 +311,7 @@ public class InstanceType extends Model {
 
     public List<VolumeDetails> volumeDetailsList = new LinkedList<>();
     public PublicCloudConstants.Tenancy tenancy;
+    public Architecture arch;
 
     public void setVolumeDetailsList(int volumeCount, int volumeSizeGB, VolumeType volumeType) {
       for (int i = 0; i < volumeCount; i++) {
