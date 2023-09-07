@@ -34,7 +34,7 @@ AsyncSnapshotTransferTask::AsyncSnapshotTransferTask(
     const TabletId& consumer_tablet_id, const TabletId& producer_tablet_id,
     const TSInfoPB& producer_ts_info, const TxnSnapshotId& old_snapshot_id,
     const TxnSnapshotId& new_snapshot_id, LeaderEpoch epoch)
-    : RetrySpecificTSRpcTask(
+    : RetrySpecificTSRpcTaskWithTable(
           master, callback_pool, ts_uuid, table, std::move(epoch),
           /* async_task_throttler */ nullptr),
       task_manager_(task_manager),

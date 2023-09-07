@@ -1446,10 +1446,10 @@ TabletServerId GetSafeTimeForTablet::permanent_uuid() {
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                              const std::string& start_key,
                              LeaderEpoch epoch)
-    : RetryingTSRpcTask(backfill_tablet->master(),
+    : RetryingTSRpcTaskWithTable(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
-                        backfill_tablet->tablet()->table().get(),
+                        backfill_tablet->tablet()->table(),
                         std::move(epoch),
                         /* async_task_throttler */ nullptr),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),

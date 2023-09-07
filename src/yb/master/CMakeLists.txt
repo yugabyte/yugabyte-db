@@ -40,7 +40,7 @@ YRPC_GENERATE(
   PROTO_FILES
       master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
-      master_backup.proto
+      master_backup.proto master_test.proto
   MESSAGES_PROTO_FILES
       master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
@@ -102,6 +102,7 @@ set(MASTER_SRCS
   master_options.cc
   master_service_base.cc
   master_tablet_service.cc
+  master_test_service.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
@@ -121,6 +122,7 @@ set(MASTER_SRCS
   tablet_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
+  test_async_rpc_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   universe_key_registry_service.cc

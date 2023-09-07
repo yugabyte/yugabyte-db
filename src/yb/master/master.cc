@@ -62,6 +62,7 @@
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
@@ -170,6 +171,7 @@ Master::Master(const MasterOptions& opts)
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
+      test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -304,6 +306,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterTestService(this)));
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_tserver_svc_queue_length,
