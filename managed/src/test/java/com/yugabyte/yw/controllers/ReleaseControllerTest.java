@@ -73,6 +73,15 @@ public class ReleaseControllerTest extends FakeDBApplication {
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
+  public Result getReleaseArch(UUID customerUUID, Architecture arch) {
+    String uri = "/api/customers/" + customerUUID + "/releases";
+    if (arch != null) {
+      uri += String.format("?arch=%s", arch.toString());
+    }
+    System.out.println("uri here: " + uri);
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
   private Result getReleases(UUID customerUUID, boolean includeMetadata) {
     String uri = "/api/customers/" + customerUUID + "/releases";
     if (includeMetadata) {
@@ -470,6 +479,28 @@ public class ReleaseControllerTest extends FakeDBApplication {
     Set<String> versions = ImmutableSet.of();
     assertEquals(versions.size(), json.size());
     Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+  }
+
+  @Test
+  public void testGetReleasesByArch() {
+    mockNewReleaseData(true);
+    Result result = getReleaseArch(customer.getUuid(), Architecture.aarch64);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of("0.0.3", "0.0.5");
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+    result = getReleaseArch(customer.getUuid(), Architecture.x86_64);
+    json = Json.parse(contentAsString(result));
+    versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4");
+    assertEquals(versions.size(), json.size());
+    jsonIter = json.iterator();
     while (jsonIter.hasNext()) {
       assertTrue(versions.contains(jsonIter.next().asText()));
     }

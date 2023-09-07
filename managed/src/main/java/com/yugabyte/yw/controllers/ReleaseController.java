@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,7 +119,7 @@ public class ReleaseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  public Result list(UUID customerUUID, Boolean includeMetadata) {
+  public Result list(UUID customerUUID, Boolean includeMetadata, @Nullable String arch) {
     Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
 
@@ -126,16 +127,28 @@ public class ReleaseController extends AuthenticatedController {
     Map<String, Object> filtered =
         releases.entrySet().stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .filter(
+                f -> {
+                  if (arch != null) {
+                    return releaseManager
+                        .metadataFromObject(f.getValue())
+                        .matchesArchitecture(Architecture.valueOf(arch));
+                  }
+                  return true;
+                })
             .collect(
                 Collectors.toMap(Entry::getKey, entry -> CommonUtils.maskObject(entry.getValue())));
     return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
   @ApiOperation(
-      value = "List all releases valid in region",
+      value =
+          "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, "
+              + "Use /api/v1/customers/{cUUID}/releases/:arch instead",
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfRegionReleases")
+  @Deprecated
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -157,7 +170,7 @@ public class ReleaseController extends AuthenticatedController {
       LOG.info(
           "ReleaseController: Could not determine region {} architecture. Listing all releases.",
           region.getCode());
-      return list(customerUUID, includeMetadata);
+      return list(customerUUID, includeMetadata, null);
     }
 
     // Filter for active and matching region releases.

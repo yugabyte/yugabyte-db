@@ -1,6 +1,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -25,6 +26,8 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
+import javax.annotation.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -33,6 +36,7 @@ import play.mvc.Result;
     value = "Image Bundle Management",
     tags = "preview",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class ImageBundleController extends AuthenticatedController {
 
   @Inject ImageBundleHandler imageBundleHandler;
@@ -79,9 +83,20 @@ public class ImageBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  public Result list(UUID customerUUID, UUID providerUUID) {
+  public Result list(UUID customerUUID, UUID providerUUID, @Nullable String arch) {
     Provider.getOrBadRequest(customerUUID, providerUUID);
-    List<ImageBundle> imageBundles = ImageBundle.getAll(providerUUID);
+    List<ImageBundle> imageBundles;
+    if (arch == null) {
+      imageBundles = ImageBundle.getAll(providerUUID);
+    } else {
+      try {
+        Architecture.valueOf(arch);
+      } catch (IllegalArgumentException e) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Specify a valid arch type: %s", arch));
+      }
+      imageBundles = ImageBundle.getBundlesForArchType(providerUUID, arch);
+    }
     return PlatformResults.withData(imageBundles);
   }
 

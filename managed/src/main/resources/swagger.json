@@ -2931,6 +2931,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -4679,6 +4683,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -4995,7 +5003,7 @@
           "type" : "string"
         },
         "useAsDefault" : {
-          "description" : "Default Image Bundle",
+          "description" : "Default Image Bundle. A provider can have two defaults, one per architecture",
           "type" : "boolean"
         },
         "uuid" : {
@@ -5116,6 +5124,10 @@
     },
     "InstanceTypeDetails" : {
       "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "tenancy" : {
           "enum" : [ "Shared", "Dedicated", "Host" ],
           "type" : "string"
@@ -5127,7 +5139,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "tenancy", "volumeDetailsList" ],
+      "required" : [ "arch", "tenancy", "volumeDetailsList" ],
       "type" : "object"
     },
     "InstanceTypeKey" : {
@@ -5405,6 +5417,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "azOverrides" : {
           "additionalProperties" : {
@@ -8432,6 +8448,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -8713,6 +8733,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -9948,6 +9972,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -10445,6 +10473,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -10979,6 +11011,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11214,6 +11250,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -11529,6 +11569,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11749,6 +11793,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11961,6 +12009,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -12381,6 +12433,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -13001,6 +13057,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -18223,6 +18283,12 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -18436,6 +18502,12 @@
           "name" : "zone",
           "required" : false,
           "type" : "array"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -19314,6 +19386,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/releases" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "getListOfRegionReleases",
         "parameters" : [ {
@@ -19349,7 +19422,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all releases valid in region",
+        "summary" : "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
         "tags" : [ "Release management" ]
       }
     },
@@ -19679,6 +19752,12 @@
           "name" : "includeMetadata",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
