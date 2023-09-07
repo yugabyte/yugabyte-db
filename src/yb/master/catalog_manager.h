@@ -61,6 +61,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -667,7 +668,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   uint64_t GetTransactionTablesVersion() override;
 
-  Status WaitForTransactionTableVersionUpdateToPropagate(const LeaderEpoch& epoch);
+  Status WaitForTransactionTableVersionUpdateToPropagate();
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req, TSHeartbeatResponsePB* resp);
 
@@ -1037,9 +1038,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::string& split_partition_key) override;
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
-
-  Status TEST_SendTestRetryRequest(
-      const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
 
   PitrCount pitr_count() const override {
     return sys_catalog_->pitr_count();
@@ -2430,7 +2428,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::map<TableId, scoped_refptr<TableInfo>>* tables,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   struct ReportedTablet {
     TabletId tablet_id;
@@ -2448,7 +2446,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 

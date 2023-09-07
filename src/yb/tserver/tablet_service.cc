@@ -2977,7 +2977,7 @@ void TabletServiceAdminImpl::TestRetry(
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
     return;
   }
-  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  auto num_calls = TEST_num_test_retry_calls_.fetch_add(1) + 1;
   if (num_calls < req->num_retries()) {
     SetupErrorAndRespond(
         resp->mutable_error(),

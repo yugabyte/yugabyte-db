@@ -2846,13 +2846,6 @@ Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& ta
   return Status::OK();
 }
 
-Status CatalogManager::TEST_SendTestRetryRequest(
-    const PeerId& ts_id, const int32_t num_retries, StdStatusCallback callback) {
-  auto task = std::make_shared<AsyncTestRetry>(
-      master_, AsyncTaskPool(), ts_id, num_retries, std::move(callback), GetLeaderEpochInternal());
-  return ScheduleTask(task);
-}
-
 Status CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (drive_info.may_have_orphaned_post_split_data) {
@@ -6299,7 +6292,7 @@ Status CatalogManager::DeleteTableInMemory(
       transaction_table_ids_set_.erase(table->id());
     }
     RETURN_NOT_OK(IncrementTransactionTablesVersion());
-    RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate(epoch));
+    RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 
   TRACE(Substitute("Locking $0", object_type));
@@ -7752,7 +7745,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
     std::map<TableId, scoped_refptr<TableInfo>>* tables,
-    std::vector<RetryingTSRpcTaskPtr>* rpcs) {
+    std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
   ConsensusStatePB cstate = report.committed_consensus_state();
   bool tablet_was_mutated = false;
@@ -8019,7 +8012,7 @@ Status CatalogManager::ProcessTabletReportBatch(
     ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
-    std::vector<RetryingTSRpcTaskPtr>* rpcs) {
+    std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
 
   // Maps a table ID to its corresponding TableInfo.
@@ -8347,7 +8340,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         reported_tablets.end() - tablet_iter, FLAGS_catalog_manager_report_batch_size);
 
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
-    std::vector<RetryingTSRpcTaskPtr> rpcs;
+    std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
         ts_desc, full_report.is_incremental(), batch_begin, tablet_iter, epoch, full_report_update,
         &rpcs);
@@ -10114,7 +10107,7 @@ uint64_t CatalogManager::GetTransactionTablesVersion() {
   return l->pb.transaction_tables_config().version();
 }
 
-Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate(const LeaderEpoch& epoch) {
+Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate() {
   auto ts_descriptors = master_->ts_manager()->GetAllDescriptors();
   size_t num_descriptors = ts_descriptors.size();
 
@@ -10128,7 +10121,7 @@ Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate(const Lea
       latch.CountDown();
     };
     auto task = std::make_shared<AsyncUpdateTransactionTablesVersion>(
-        master_, AsyncTaskPool(), ts_uuid, GetTransactionTablesVersion(), epoch, callback);
+        master_, AsyncTaskPool(), ts_uuid, GetTransactionTablesVersion(), callback);
     auto s = ScheduleTask(task);
     if (!s.ok()) {
       statuses[i] = s;

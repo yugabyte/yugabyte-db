@@ -13,9 +13,11 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.service.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/flags.h"
