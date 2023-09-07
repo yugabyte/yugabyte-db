@@ -64,7 +64,7 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only.|
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
@@ -115,7 +115,7 @@ The valid *arguments* for analyze schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 | [--output-format](#output-format) <format> | One of `html`, `txt`, `json`, or `xml`. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -143,7 +143,7 @@ The valid *arguments* for export data are described in the following table:
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
@@ -192,7 +192,7 @@ The valid *arguments* for export data status are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 
 #### Example
@@ -223,7 +223,7 @@ The valid *arguments* for import schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -278,7 +278,7 @@ The valid *arguments* for import data are described in the following table:
 | [--disable-pb](#disable-pb) | Hide progress bars. |
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
@@ -328,7 +328,7 @@ The valid *arguments* for import data file are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during import data. |
 | [--data-dir](#data-dir) <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location. |
 | [--delimiter](#delimiter) | Character used as delimiter in rows of the table(s). Default: comma (,) for CSV file format and tab (\t) for TEXT file format. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
@@ -338,7 +338,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. Multiple files can be imported in one table; for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--quote-char](#quote-char) | Character used to quote the values (default double quotes `"`) only applicable to CSV file format. |
@@ -396,7 +396,7 @@ The valid *arguments* for import data status are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
 
 #### Example
@@ -404,6 +404,220 @@ The valid *arguments* for import data status are described in the following tabl
 ```sh
 yb-voyager import data status --export-dir /path/to/yb/export/dir
 ```
+
+### fall-forward setup
+
+Imports data to the fall-forward database, and streams new changes from the target YugabyteDB to the fall-forward database.
+
+#### Syntax
+
+```sh
+yb-voyager fall-forward setup [ <arguments> ... ]
+```
+
+The valid *arguments* for fall-forward setup are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during import data. (Default: 10000000) |
+| --continue-on-error | Ignores errors and continues data import. |
+| --disable-pb | Set to true to disable progress bar during data import (default false) |
+| --enable-upsert | Set to true to enable UPSERT mode on target tables, and false to disable UPSERT mode on target tables (Default: true) |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while importing data (ignored if `--table-list` is used) |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| --ff-db-host <hostname> | Host on which the fall-forward database server is running (Default: "127.0.0.1") |
+| --ff-db-name <name> | Name of the database in the fall-forward database server on which import needs to be done |
+| --ff-db-password <password> | Password to connect to the fall-forward database server |
+| --ff-db-port <port> | Port number of the fall-forward database server (Default: 1521) |
+| --ff-db-schema <schemaName> | Schema name of the fall-forward database |
+| --ff-db-sid <SID> | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
+| --ff-db-user <username>| Username to connect to the fall-forward database server |
+| --ff-ssl-cert <path>| Fall-forward database SSL Certificate path |
+| --ff-ssl-crl <list>| Fall-forward database SSL Root Certificate Revocation List (CRL) |
+| --ff-ssl-key <Keypath> | Fall-forward database SSL key path |
+| --ff-ssl-mode <SSLmode>| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| --ff-ssl-root-cert | Fall-forward database SSL Root Certificate path |
+| [-h, --help](#command-line-help) | Command line help for setup. |
+| [--oracle-home](#oracle-home) <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
+| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. (Default: 1) |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
+| --start-clean | Starts a fresh import to the fall-forward database |
+| [--table-list](#table-list) | Comma-separated list of the tables to import data. |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during the migration. (Default: false) |
+
+#### Example
+
+```sh
+yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
+        --ff-db-host hostname \
+        --ff-db-user username \
+        --ff-db-password password \ # Enclose the password in single quotes if it contains special characters.
+        --ff-db-name dbname \
+        --ff-db-schema schemaName \
+        --parallel-jobs connectionCount
+```
+
+### fall-forward synchronize
+
+Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB after cutover.
+
+#### Syntax
+
+```sh
+yb-voyager fall-forward synchronize [ <arguments> ... ]
+```
+
+The valid *arguments* for fall-forward synchronize are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| --disable-pb | Set to true to disable progress bar during data import (default false) |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while importing data (ignored if `--table-list` is used) |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for synchronize. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
+| [--table-list](#table-list) | Comma-separated list of the tables to export data. |
+| [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. (Default: "127.0.0.1")|
+| [--target-db-name](#target-db-name) <name> | Target database name on which import needs to be done.|
+| [--target-db-password](#target-db-password) <password>| Target database password to connect to the target YugabyteDB server. |
+| [--target-db-port](#target-db-port) <port> | Port number of the target database machine that runs the YugabyteDB YSQL API. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Target schema name in YugabyteDB. |
+| [--target-db-user](#target-db-user) <username> | Username of the target database. |
+| [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during migration (Default: false). |
+
+#### Example
+
+```sh
+yb-voyager fall-forward synchronize --export-dir /path/to/yb/export/dir \
+        --target-db-host hostname \
+        --target-db-port port \
+        --target-db-user username \
+        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name dbname \
+        --target-db-schema schemaName
+```
+
+### cutover initiate
+
+Initiate cutover to the target YugabyteDB.
+
+#### Syntax
+
+```sh
+yb-voyager cutover initiate [ <arguments> ... ]
+```
+
+The valid *arguments* for fall-forward synchronize are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for cutover initiate. |
+
+#### Example
+
+```sh
+yb-voyager cutover initiate --export-dir /path/to/yb/export/dir \
+```
+
+### cutover status
+
+Shows the status of the cutover state to YugabyteDB from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+
+#### Syntax
+
+```sh
+yb-voyager cutover status [ <arguments> ... ]
+```
+
+The valid *arguments* for cutover status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for cutover status. |
+
+#### Example
+
+```sh
+yb-voyager cutover status --export-dir /path/to/yb/export/dir \
+```
+
+### fall-forward switchover
+
+Initiate a switchover to the fall-forward database.
+
+### Syntax
+
+```sh
+yb-voyager fall-forward switchover [ <arguments> ... ]
+```
+
+The valid *arguments* for fall-forward switchover are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for switchover. |
+
+#### Example
+
+```sh
+yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir \
+```
+
+### fall-forward status
+
+Shows the status of the fall-forward switchover state to fall-forward database from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+
+#### Syntax
+
+```sh
+yb-voyager fall-forward status [ <arguments> ... ]
+```
+
+The valid *arguments* for fall-forward switchover status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for cutover status. |
+
+#### Example
+
+```sh
+yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \
+```
+
+### archive changes
+
+This command archives the streaming data from the source database.
+
+#### Syntax
+
+```sh
+yb-voyager archive changes [ <arguments> ... ]
+```
+
+The valid *arguments* for archive changes status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help for archive changes. |
+| --delete |  Delete exported data after moving it to the target database. (Default: false) |
+| --move-to <string> |   destination to move exported data to. |
+| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
+| [--verbose](#verbose) | Display extra information in the output. |
+| [-y, --yes](#yes) | Answer yes to all prompts during migration (Default: false). |
 
 ## Arguments
 

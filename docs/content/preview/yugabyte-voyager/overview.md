@@ -36,6 +36,14 @@ YugabyteDB Voyager has the following features:
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
 - Live migration with fall-forward is supported for Oracle (Tech Preview).
 
+## Migration types and support
+
+You can perform migration by choosing one of the following options:
+
+- [Offline migration](../migrate/migrate-steps/) - YugabyteDB Voyager for offline migration supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
+- [Live migration](../migrate/live-migrate/) - YugabyteDB Voyager for [live migration](../migrate/live-migrate/) and supports YugabyteDB stable versions 2.18.0.0 and later.
+- [Live migration with fall-forward](../migrate/live-fall-forward/) - YugabyteDB Voyager for [live migration with fall-forward](../migrate/live-fall-forward/) supports YugabyteDB stable versions 2.18.0.0 and later.
+
 ## Source databases
 
 YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, as described in the following table:
@@ -48,10 +56,6 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 ## Target database
 
-YugabyteDB Voyager for offline migration supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
-
-<!-- Need to add for live migration -->
-
 The following table describes the supported target databases based on your migration choice.
 
 | Migration type | Supported target databases |
@@ -60,17 +64,10 @@ The following table describes the supported target databases based on your migra
 | Live | [YugabyteDB](../../deploy/), [YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/), [YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
 | Live with fall-forward | [YugabyteDB](../../deploy/), [YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
 
+
 <!--
 | Product | Deployment instructions |
 | :--- | :--- |
 | YugabyteDB | [Deploy YugabyteDB](../../deploy/) |
 | YugabyteDB Anywhere | [Deploy a universe](../../yugabyte-platform/create-deployments/) |
 | YugabyteDB Managed | [Deploy a cluster](../../yugabyte-cloud/cloud-basics/) | -->
-
-## Migration types
-
-You can perform migration by choosing one of the following options:
-
-- [Offline migration](../migrate/migrate-steps/)
-- [Live migration](../migrate/live-migrate/)
-- [Live migration with fall-forward](../migrate/live-fall-forward/)

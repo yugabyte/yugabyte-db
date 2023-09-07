@@ -297,7 +297,7 @@ Keep monitoring the metrics displayed on export data and import data processes. 
 
 Perform the following steps as part of the cutover process:
 
-1. Quiesce your source database, that is stop writes.
+1. Quiesce your source database, that is stop application writes.
 1. Initiate cutover as follows:
 
     1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to initiate cutover with the following command:

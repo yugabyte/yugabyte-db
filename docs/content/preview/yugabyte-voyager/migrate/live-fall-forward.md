@@ -108,7 +108,7 @@ The export directory has the following sub-directories and files:
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
-- `yb-voyager.log` contains log messages.
+- `logs` directory contains the log files for each command.
 
 ## Prepare fall-forward database
 
@@ -290,3 +290,120 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 ### Fall-forward setup
 
+The fall-forward setup refers to replicating the snapshot data along with the changes exported from the source database to the fall-forward database as shown in the "After Cutover" illustration . The command to start the setup as follows:
+
+```sh
+yb-voyager fall-forward setup --export-dir <EXPORT-DIR> \
+--ff-db-host <HOST> \
+--ff-db-user <USERNAME> \
+--ff-db-password <PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+--ff-db-name <DB-NAME> \
+--ff-db-schema <SCHEMA-NAME> \
+--parallel-jobs <COUNT>
+```
+
+Similar to [import data](#import-data), during fall-forward:
+
+- The snapshot is first imported, following which, the change events are imported to the fall-forward database.
+- Some important metrics such as the number of events, events rate, and so on is displayed.
+- The setup is restartable.
+
+Additionally, when you run the `fall-forward setup`, the [import data status](#import-data-status) command also shows progress of importing all changes to the fall-forward database to get an overall progress of the data import operation and streaming changes to fall-forward DB with the following command:
+
+```sh
+yb-voyager import data status --export-dir <EXPORT_DIR> --ff-db-password <password>
+```
+
+### Archive changes
+
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, you can use the `archive changes` command as follows:
+
+```sh
+yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
+```
+
+### Cutover
+
+This is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
+
+Keep monitoring the metrics displayed on export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
+
+Perform the following steps as part of the cutover process:
+
+1. Quiesce your source database, that is stop application writes.
+1. Initiate cutover as follows:
+
+    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to initiate cutover with the following command:
+
+        ```sh
+        yb-voyager cutover initiate --export-dir <EXPORT_DIR>
+        ```
+
+    1. Proceed with the cutover process by doing the following:
+
+        1. Stop the export data process.
+        1. Stop the import data process after it has imported all the events to the target YugabyteDB.
+
+    1. Start synchronizing changes from the target YugabyteDB to the fall-forward database using the `fall-forward synchronize` command. Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the output.
+
+### Fall-forward switchover (Optional)
+
+During this phase, switch over your application from pointing it to the target YugabyteDB to pointing it to the fall-forward database. As this step optional step, perform it _only_ if the target YugabyteDB is not working as expected.
+
+Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-forwad setup` processes. After you notice that the import of events to the fall-forward database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
+
+Perform the following steps as part of the cutover process:
+
+1. Quiesce your source database, that is stop application writes.
+1. Initiate switchover as follows:
+
+    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to switchover using the following command:
+
+        ```sh
+        yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
+        ```
+
+    1. Proceed with the switchover process by doing the following:
+
+        1. Stop the fall-forward synchronize process.
+        1. Stop the  fall-forward setup process after it has imported all the events to the fall-forward database.
+
+1. Wait for the switchover process to complete. The status of the switchover process can be monitored by the following command:
+
+    ```sh
+    yb-voyager fall-forward status --export-dir <EXPORT_DIR>
+    ```
+
+1. Import indexes and triggers to the fall-forward database using the `import schema` command with an additional `--post-import-data` flag as follows:
+
+    ```sh
+    # Replace the argument values with those applicable for your migration.
+    yb-voyager import schema --export-dir <EXPORT_DIR> \
+            --ff-db-host <FALL-FORWARD_DB_HOST> \
+            --ff-db-user <FALL-FORWARD_DB_USER> \
+            --ff-db-password <FALL-FORWARD_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+            --ff-db-name <FALL-FORWARD_DB_NAME> \
+            --ff-db-user <FALL-FORWARD_DB_USER> \
+            --ff-db-schema <FALL-FORWARD_DB_SCHEMA> \
+            --post-import-data
+    ```
+
+    Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+
+1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and fall-forward databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
+
+    {{< warning title = "Caveat associated with rows reported by import data status" >}}
+
+Suppose you have a scenario where,
+
+- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- To resolve this issue, you delete some of the rows from the split files.
+- After retrying, the import data command completes successfully.
+
+In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+
+For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+
+    {{< /warning >}}
+
+1. Stop [archive changes](#archive-changes).
