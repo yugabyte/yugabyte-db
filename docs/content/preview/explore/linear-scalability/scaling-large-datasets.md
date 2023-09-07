@@ -80,11 +80,29 @@ To allow sufficient room for foreground operations on a low-end gp2 SSD volume-b
 
 On i3* instance types with directly attached nvme SSDs (which have much more disk IOPS and throughput), this observed variability should be minimal for a similar workload.
 
-## Other experiments
+## Customer usecases
 
-In a customer evaluation, Yugabyte DB was loaded with ~20 TB of compressed data (~50TB uncompressed) per node and Yugabyte DB was able to handle sustained 450K ops/sec with CPU utilization at ~40% maximum.
+### 20TB
 
-### Operational efficiency
+In a customer installation, Yugabyte DB has been loaded with `~20 TB` of compressed data (`~50TB` uncompressed) per node and Yugabyte DB was able to handle sustained `450K ops/sec` with CPU utilization at `~40%` maximum.
+
+### 80TB
+
+One of our customers uses YCQL interface to store and retrieve about `80TB` of event data from different vehicles clocked at `1.25 M Ops/s` with an avarage latency of `1.7s`. Their setup is:
+
+|                          |             |
+| -----------------------: | :---------- |
+|                    Nodes | 40          |
+|                    Zones | 5           |
+|       Replication Factor | 5           |
+|                      CPU | 64vCPU      |
+|                   Memory | 256GB RAM   |
+|                  Storage | 6x 4TB NVMe |
+|                Data Size | **80 TB**   |
+|        Data Density/node | **10 TB**   |
+| Data Size (+Replication) | **450TB**   |
+
+## Operational efficiency
 
 Scaling up and down with Yugabyte DB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compactions automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
 
