@@ -133,9 +133,6 @@ Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& d
 
 class PgMiniTest : public PgMiniTestBase {
  protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_direct_local_tablet_server_call) = false;
-  }
   // Have several threads doing updates and several threads doing large scans in parallel.
   // If deferrable is true, then the scans are in deferrable transactions, so no read restarts are
   // expected.
@@ -208,6 +205,13 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
     return client_service->TEST_SessionsCount() == expected_count;
   }, 4 * FLAGS_pg_client_session_expiration_ms * 1ms, "client session cleanup", 1s));
 }
+
+class PgMiniTestWaitFor : public PgMiniTest {
+  void SetUp() override {
+    PgMiniTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_direct_local_tablet_server_call) = false;
+  }
+};
 
 TEST_F(PgMiniTest, WaitFor) {
   auto conn = ASSERT_RESULT(Connect());
@@ -490,6 +494,28 @@ TEST_F(PgMiniTest, Simple) {
 
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(AUH)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION yb_auh;"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  constexpr int kLoops = 10;
+  for (int i = 0; i < kLoops; i++) {
+    LOG(INFO) << "Inserting. Loop " << i;
+    ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+    SleepFor(1s);
+  }
+
+  for (int i = 0; i < kLoops; i++) {
+    LOG(INFO) << "Selecting. Loop " << i;
+    auto value = ASSERT_RESULT(conn.FetchValue<std::string>(yb::Format("SELECT value FROM t WHERE key = $0", i)));
+    ASSERT_EQ(value, yb::Format("v-$0", i));
+    SleepFor(1s);
+  }
 }
 
 TEST_F(PgMiniTest, Tracing) {
