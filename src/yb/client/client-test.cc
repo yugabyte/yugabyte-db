@@ -168,6 +168,7 @@ constexpr int kNumTablets = 2;
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+const std::string kPgsqlSchemaName = "my_schema";
 
 } // namespace
 
@@ -2407,6 +2408,9 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
   schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schemaBuilder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
                                                 YQLDatabase::YQL_DATABASE_PGSQL,
@@ -2674,6 +2678,9 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
   schemaBuilder.AddColumn("value")->Type(yb::INT64);
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schemaBuilder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   ASSERT_OK(schemaBuilder.Build(&schema));
 

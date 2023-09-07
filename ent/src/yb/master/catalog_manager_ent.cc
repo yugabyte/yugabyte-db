@@ -98,6 +98,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -3353,7 +3354,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     auto l = table->LockForRead();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
+        LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid for table " << table_id;
         auto const att_name_typid_map = VERIFY_RESULT(GetPgAttNameTypidMap(table));
         vector<uint32_t> type_oids;
         for (const auto& entry : att_name_typid_map) {
@@ -3391,8 +3392,10 @@ Status CatalogManager::BackfillMetadataForCDC(
       // it is present or not. It is a safeguard against
       // https://phabricator.dev.yugabyte.com/D17099 which fills the pgschema_name in memory if it
       // is not present without backfilling it to master's disk or tservers.
-      if (backfill_required || !table->has_pgschema_name()) {
-        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name";
+      // Skip this check for colocated parent tables as they do not have pgschema names.
+      if (!IsColocationParentTableId(table_id) &&
+          (backfill_required || table->pgschema_name().empty())) {
+        LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
         string pgschema_name = VERIFY_RESULT(GetPgSchemaName(table));
         VLOG(1) << "For table: " << table->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
@@ -4763,7 +4766,8 @@ Status CatalogManager::ValidateTableSchema(
 
     // Check that schema name matches for YSQL tables, if the field is empty, fill in that
     // information during GetTableSchema call later.
-    if (is_ysql_table && t.has_pgschema_name() &&
+    bool has_valid_pgschema_name = !t.pgschema_name().empty();
+    if (is_ysql_table && has_valid_pgschema_name &&
         t.pgschema_name() != source_schema.SchemaName()) {
       continue;
     }
@@ -4777,10 +4781,8 @@ Status CatalogManager::ValidateTableSchema(
     }
 
     // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !t.has_pgschema_name()) {
-      std::string target_schema_name = resp->schema().has_pgschema_name()
-          ? resp->schema().pgschema_name()
-          : "";
+    if (is_ysql_table && !has_valid_pgschema_name) {
+      std::string target_schema_name = resp->schema().pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
@@ -4799,10 +4801,9 @@ Status CatalogManager::ValidateTableSchema(
     break;
   }
 
-  if (!table->has_table_id()) {
-    return STATUS(NotFound,
-        Substitute("Could not find matching table for $0", info->table_name.ToString()));
-  }
+  SCHECK(table->has_table_id(), NotFound, Substitute(
+      "Could not find matching table for $0$1", info->table_name.ToString(),
+      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the

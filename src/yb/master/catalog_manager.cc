@@ -540,6 +540,9 @@ DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "xCluster replication setup and are currently being bootstrapped for xCluster.");
 TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
 
+DEFINE_test_flag(bool, create_table_with_empty_pgschema_name, false,
+    "Create YSQL tables with an empty pgschema_name field in their schema.");
+
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
@@ -4751,6 +4754,10 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   // Use the Schema object passed in, since it has the column IDs already assigned,
   // whereas the user request PB does not.
   SchemaToPB(schema, metadata->mutable_schema());
+  if (FLAGS_TEST_create_table_with_empty_pgschema_name) {
+    // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
+    metadata->mutable_schema()->set_pgschema_name("");
+  }
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
   if (req.has_index_info()) {
@@ -6380,7 +6387,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
   // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
   if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      !resp->schema().has_pgschema_name() &&
+      resp->schema().pgschema_name().empty() &&
       !table->is_system() &&
       !IsSequencesSystemTable(*table) &&
       !table->IsColocationParentTable()) {

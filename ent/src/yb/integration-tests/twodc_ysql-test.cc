@@ -104,6 +104,7 @@ DECLARE_int32(log_max_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 
 namespace yb {
 
@@ -305,8 +306,13 @@ class TwoDCYsqlTest : public TwoDCTestBase, public testing::WithParamInterface<T
       }
     }
     EXPECT_OK(conn.Execute(query));
-    return GetTable(cluster, namespace_name, schema_name, table_name,
-                    true /* verify_table_name */, !schema_name.empty() /* verify_schema_name*/);
+
+    // Only check the schema name if it is set AND we created the table with a valid pgschema_name.
+    bool verify_schema_name =
+        !schema_name.empty() && !FLAGS_TEST_create_table_with_empty_pgschema_name;
+    return GetTable(
+        cluster, namespace_name, schema_name, table_name, true /* verify_table_name */,
+        verify_schema_name);
   }
 
   Status CreateTable(uint32_t idx, uint32_t num_tablets, Cluster* cluster,
@@ -1915,55 +1921,86 @@ TEST_P(TwoDCYsqlTest, TwoDCWithCDCSDKUpdateCDCInterval) {
   ValidateRecordsTwoDCWithCDCSDK(true, true, false);
 }
 
-TEST_P(TwoDCYsqlTest, SetupSameNameDifferentSchemaUniverseReplication) {
-  YB_SKIP_TEST_IN_TSAN();
-  constexpr int kNumTables = 3;
-  constexpr int kNTabletsPerTable = 3;
-  auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
+class XClusterPgSchemaNameTest : public TwoDCYsqlTest {
+ public:
+  void RunTest(bool empty_schema_name_on_producer, bool empty_schema_name_on_consumer) {
+    YB_SKIP_TEST_IN_TSAN();
+    constexpr int kNumTables = 3;
+    constexpr int kNTabletsPerTable = 3;
+    auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
 
-  // Create 3 producer tables with the same name but different schema-name.
-  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
-  std::vector<YBTableName> producer_table_names;
-  producer_tables.reserve(kNumTables);
-  producer_table_names.reserve(kNumTables);
-  for (int i = 0; i < kNumTables; i++) {
-    auto t = ASSERT_RESULT(CreateTable(
-        &producer_cluster_, kNamespaceName, Format("test_schema_$0", i),
-        "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
-    producer_table_names.push_back(t);
+    auto schema_name = [](int i) { return Format("test_schema_$0", i); };
 
-    std::shared_ptr<client::YBTable> producer_table;
-    ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
-    producer_tables.push_back(producer_table);
+    // Create 3 producer tables with the same name but different schema-name.
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<YBTableName> producer_table_names;
+    for (int i = 0; i < kNumTables; i++) {
+      FLAGS_TEST_create_table_with_empty_pgschema_name =
+          (i == 0) ? empty_schema_name_on_producer : false;
+      auto t = ASSERT_RESULT(CreateTable(
+          &producer_cluster_, kNamespaceName, schema_name(i), "test_table_1",
+          boost::none /* tablegroup */, kNTabletsPerTable));
+      // Need to set pgschema_name ourselves if it was not set due to flag.
+      t.set_pgschema_name(schema_name(i));
+      producer_table_names.push_back(t);
+
+      std::shared_ptr<client::YBTable> producer_table;
+      ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
+      producer_tables.push_back(producer_table);
+    }
+
+    // Create 3 consumer tables with similar setting but in reverse order to complicate the test.
+    std::vector<YBTableName> consumer_table_names;
+    consumer_table_names.reserve(kNumTables);
+    for (int i = kNumTables - 1; i >= 0; i--) {
+      FLAGS_TEST_create_table_with_empty_pgschema_name =
+          (i == 0) ? empty_schema_name_on_consumer : false;
+      auto t = ASSERT_RESULT(CreateTable(
+          &consumer_cluster_, kNamespaceName, schema_name(i), "test_table_1",
+          boost::none /* tablegroup */, kNTabletsPerTable));
+      t.set_pgschema_name(schema_name(i));
+      consumer_table_names.push_back(t);
+
+      std::shared_ptr<client::YBTable> consumer_table;
+      ASSERT_OK(consumer_client()->OpenTable(t, &consumer_table));
+    }
+    std::reverse(consumer_table_names.begin(), consumer_table_names.end());
+
+    // Setup universe replication for the 3 tables.
+    ASSERT_OK(SetupUniverseReplication(
+        producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+    master::GetUniverseReplicationResponsePB resp;
+    ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+    ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
+
+    // Write different numbers of records to the 3 producers, and verify that the
+    // corresponding receivers receive the records.
+    for (int i = 0; i < kNumTables; i++) {
+      WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]);
+      ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
+    }
+
+    ASSERT_OK(DeleteUniverseReplication(kUniverseId));
   }
+};
 
-  // Create 3 consumer tables with similar setting but in reverse order to complicate the test.
-  std::vector<YBTableName> consumer_table_names;
-  consumer_table_names.reserve(kNumTables);
-  for (int i = kNumTables - 1; i >= 0; i--) {
-    auto t = ASSERT_RESULT(CreateTable(
-        &consumer_cluster_, kNamespaceName, Format("test_schema_$0", i),
-        "test_table_1", boost::none /* tablegroup */, kNTabletsPerTable));
-    consumer_table_names.push_back(t);
+INSTANTIATE_TEST_CASE_P(
+    TwoDCTestParams, XClusterPgSchemaNameTest, ::testing::Values(TwoDCTestParams(0, true, true)));
 
-    std::shared_ptr<client::YBTable> consumer_table;
-    ASSERT_OK(consumer_client()->OpenTable(t, &consumer_table));
-  }
-  std::reverse(consumer_table_names.begin(), consumer_table_names.end());
-
-  // Setup universe replication for the 3 tables.
-  ASSERT_OK(SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
-
-  // Write different numbers of records to the 3 producers, and verify that the
-  // corresponding receivers receive the records.
-  for (int i = 0; i < kNumTables; i++) {
-    WriteWorkload(0, 2 * (i + 1), &producer_cluster_, producer_table_names[i]);
-    ASSERT_OK(VerifyWrittenRecords(producer_table_names[i], consumer_table_names[i]));
-  }
-
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+TEST_P(XClusterPgSchemaNameTest, SameNameDifferentSchemaMissingSchemaOnBoth) {
+  RunTest(true, true);
 }
+
+TEST_P(XClusterPgSchemaNameTest, SameNameDifferentSchemaMissingSchemaOnProducer) {
+  RunTest(false, true);
+}
+
+TEST_P(XClusterPgSchemaNameTest, SameNameDifferentSchemaMissingSchemaOnConsumer) {
+  RunTest(true, false);
+}
+
+TEST_P(XClusterPgSchemaNameTest, SameNameDifferentSchemaWithSchemaOnBoth) { RunTest(false, false); }
 
 } // namespace enterprise
 } // namespace yb
