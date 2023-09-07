@@ -30,52 +30,61 @@
 namespace yb::dockv {
 namespace {
 
-inline IntentTypeSet GetIntentTypeSet(
-    IsolationLevel level, RowMarkType row_mark, bool is_write) {
-  if (IsValidRowMarkType(row_mark)) {
-    // Mapping of postgres locking levels to DocDB intent types is described in details by the
-    // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
-    switch (row_mark) {
-      case RowMarkType::ROW_MARK_EXCLUSIVE:
-        // FOR UPDATE: strong read + strong write lock on the DocKey,
-        //             as if we're replacing or deleting the entire row in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-      case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
-        // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
-        //                    the entire row and then writing only a subset of columns in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
-      case RowMarkType::ROW_MARK_SHARE:
-        // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
-        return IntentTypeSet({IntentType::kStrongRead});
-      case RowMarkType::ROW_MARK_KEYSHARE:
-        // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
-        //               replaced / deleted, as if we're simply reading some of the column.
-        //               This is the type of locking that is used by foreign keys, so this will
-        //               prevent the referenced row from disappearing. The reason it does not
-        //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
-        //               an operation that reads the entire row and then writes a subset of columns
-        //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
-        //               be reading a different subset of columns (FOR KEY SHARE).
-        return IntentTypeSet({IntentType::kWeakRead});
-      default:
-        // We shouldn't get here because other row lock types are disabled at the postgres level.
-        LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
-        break;
-    }
-  }
-
+inline IntentTypeSet GetIntentTypes(IsolationLevel level, bool is_for_write = false) {
   switch (level) {
     case IsolationLevel::READ_COMMITTED:
     case IsolationLevel::SNAPSHOT_ISOLATION:
-      return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+      return is_for_write
+          ? IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite}) : IntentTypeSet();
     case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return is_write ? IntentTypeSet({IntentType::kStrongWrite})
-                      : IntentTypeSet({IntentType::kStrongRead});
+      return is_for_write
+          ? IntentTypeSet({IntentType::kStrongWrite}) : IntentTypeSet({IntentType::kStrongRead});
     case IsolationLevel::NON_TRANSACTIONAL:
       LOG(DFATAL) << "GetStrongIntentTypeSet invoked for non transactional isolation";
       return IntentTypeSet();
   }
   FATAL_INVALID_ENUM_VALUE(IsolationLevel, level);
+}
+
+inline IntentTypeSet GetIntentTypes(RowMarkType row_mark) {
+  if (!IsValidRowMarkType(row_mark)) {
+    return IntentTypeSet();
+  }
+
+  // Mapping of postgres locking levels to DocDB intent types is described in details by the
+  // following comment https://github.com/yugabyte/yugabyte-db/issues/1199#issuecomment-501041018
+  switch (row_mark) {
+    case RowMarkType::ROW_MARK_EXCLUSIVE:
+      // FOR UPDATE: strong read + strong write lock on the DocKey,
+      //             as if we're replacing or deleting the entire row in DocDB.
+      return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+    case RowMarkType::ROW_MARK_NOKEYEXCLUSIVE:
+      // FOR NO KEY UPDATE: strong read + weak write lock on the DocKey, as if we're reading
+      //                    the entire row and then writing only a subset of columns in DocDB.
+      return IntentTypeSet({IntentType::kStrongRead, IntentType::kWeakWrite});
+    case RowMarkType::ROW_MARK_SHARE:
+      // FOR SHARE: strong read on the DocKey, as if we're reading the entire row in DocDB.
+      return IntentTypeSet({IntentType::kStrongRead});
+    case RowMarkType::ROW_MARK_KEYSHARE:
+      // FOR KEY SHARE: weak read lock on the DocKey, preventing the entire row from being
+      //               replaced / deleted, as if we're simply reading some of the column.
+      //               This is the type of locking that is used by foreign keys, so this will
+      //               prevent the referenced row from disappearing. The reason it does not
+      //               conflict with the FOR NO KEY UPDATE above is conceptually the following:
+      //               an operation that reads the entire row and then writes a subset of columns
+      //               (FOR NO KEY UPDATE) does not have to conflict with an operation that could
+      //               be reading a different subset of columns (FOR KEY SHARE).
+      return IntentTypeSet({IntentType::kWeakRead});
+
+    case ROW_MARK_REFERENCE: [[fallthrough]];
+    case ROW_MARK_COPY: [[fallthrough]];
+    case ROW_MARK_ABSENT:
+      // We shouldn't get here because other row lock types are disabled at the postgres level.
+      LOG(DFATAL) << "Unsupported row lock of type " << RowMarkType_Name(row_mark);
+      return IntentTypeSet();
+  }
+
+  FATAL_INVALID_ENUM_VALUE(RowMarkType, row_mark);
 }
 
 } // namespace
@@ -155,20 +164,17 @@ Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value) {
   return DecodeTransactionId(intent_value);
 }
 
-IntentTypeSet AllStrongIntents() {
-  return IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
-}
-
-IntentTypeSet GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark) {
-  return GetIntentTypeSet(level, row_mark, /*is_write=*/ false);
+ReadIntentTypeSets GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark) {
+  return {.read = GetIntentTypes(level), .row_mark = GetIntentTypes(row_mark)};
 }
 
 IntentTypeSet GetIntentTypesForWrite(IsolationLevel level) {
-  return GetIntentTypeSet(level, RowMarkType::ROW_MARK_ABSENT, /*is_write=*/ true);
+  return GetIntentTypes(level, /*is_for_write=*/true);
 }
 
 bool HasStrong(IntentTypeSet inp) {
-  return (inp & AllStrongIntents()).Any();
+  static const IntentTypeSet all_strong_intents{IntentType::kStrongRead, IntentType::kStrongWrite};
+  return (inp & all_strong_intents).Any();
 }
 
 #define INTENT_VALUE_SCHECK(lhs, op, rhs, msg) \
@@ -417,23 +423,27 @@ Status EnumerateWeakIntents(
 }  // namespace
 
 Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key) {
+  static const Slice kRowLockValue{&dockv::ValueEntryTypeAsChar::kRowLock, 1};
+  const IsRowLock is_row_lock{intent_value == kRowLockValue};
   RETURN_NOT_OK(EnumerateWeakIntents(
       key,
-      [&functor](FullDocKey full_doc_key, KeyBytes* encoded_key_buffer) {
+      [&functor, is_row_lock](FullDocKey full_doc_key, KeyBytes* encoded_key_buffer) {
         return functor(
             AncestorDocKey::kTrue,
             full_doc_key,
             Slice() /* intent_value */,
             encoded_key_buffer,
-            LastKey::kFalse);
+            LastKey::kFalse,
+            is_row_lock);
       },
       encoded_key_buffer,
       partial_range_key_intents));
   return functor(
-      AncestorDocKey::kFalse, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
+      AncestorDocKey::kFalse, FullDocKey::kTrue, intent_value, encoded_key_buffer,
+      last_key, is_row_lock);
 }
 
 }  // namespace yb::dockv

@@ -28,6 +28,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private final MetricUrlProvider metricUrlProvider;
 
+  private final Map<String, String> headers = new HashMap<>();
   private final Map<String, String> queryParam = new HashMap<>();
   private final Map<String, String> additionalFilters = new HashMap<>();
   private int queryRangeSecs = 0;
@@ -38,11 +39,13 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   public MetricQueryExecutor(
       MetricUrlProvider metricUrlProvider,
       ApiHelper apiHelper,
+      Map<String, String> headers,
       Map<String, String> queryParam,
       Map<String, String> additionalFilters) {
     this(
         metricUrlProvider,
         apiHelper,
+        headers,
         queryParam,
         additionalFilters,
         MetricSettings.defaultSettings(queryParam.get("queryKey")),
@@ -52,12 +55,14 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   public MetricQueryExecutor(
       MetricUrlProvider metricUrlProvider,
       ApiHelper apiHelper,
+      Map<String, String> headers,
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
       MetricSettings metricSettings,
       boolean isRecharts) {
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
+    this.headers.putAll(headers);
     this.queryParam.putAll(queryParam);
     this.additionalFilters.putAll(additionalFilters);
     this.metricSettings = metricSettings;
@@ -84,7 +89,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     }
 
     log.trace("Executing metric query {}: {}", queryUrl, queryParam);
-    return apiHelper.getRequest(queryUrl, new HashMap<>(), queryParam);
+    return apiHelper.getRequest(queryUrl, headers, queryParam);
   }
 
   private String getDirectURL(String queryExpr) {

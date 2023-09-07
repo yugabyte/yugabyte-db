@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -109,9 +110,10 @@ public class CloudImageBundleSetup extends CloudTaskBase {
     } else if (imageBundles != null && imageBundles.size() > 0) {
       for (ImageBundle bundle : imageBundles) {
         ImageBundleDetails details = bundle.getDetails();
-        Architecture arch = details.getArch();
+        final Architecture arch = details.getArch();
         if (arch == null) {
-          arch = Architecture.x86_64;
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Image Bundle must be associated with an architecture.");
         }
         verifyImageBundleDetails(details, provider);
         if (cloudType.equals(CloudType.aws)) {
@@ -138,13 +140,19 @@ public class CloudImageBundleSetup extends CloudTaskBase {
         }
         if (bundle.getUseAsDefault()) {
           // Check for the existence of no other default image bundle for the provider.
-          ImageBundle defaultImageBundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-          if (defaultImageBundle != null) {
+          List<ImageBundle> defaultImageBundles =
+              ImageBundle.getDefaultForProvider(provider.getUuid());
+          Optional<ImageBundle> defaultImageBundle =
+              defaultImageBundles.stream()
+                  .filter(IBundle -> IBundle.getDetails().getArch().equals(arch))
+                  .findFirst();
+          if (defaultImageBundle.isPresent()) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
-                    "Provider %s already has %s as the default image bundle. Can't continue.",
-                    provider.getUuid(), defaultImageBundle.getUuid()));
+                    "Provider %s already has %s as the default image bundle for architecture"
+                        + "type %s. Can't continue.",
+                    provider.getUuid(), defaultImageBundle.get().getUuid(), arch.toString()));
           }
         }
         ImageBundle.create(provider, bundle.getName(), details, bundle.getUseAsDefault());

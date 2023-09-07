@@ -131,4 +131,25 @@ public class ImageBundleUtil {
       }
     }
   }
+
+  /*
+   * Returns the default image bundle associated with the universe. In case, the universe
+   * has `arch` specified as top level property we will filter the default based on the
+   * achitecture, else we will return the first one from the list of default bundles.
+   */
+  public static ImageBundle getDefaultBundleForUniverse(
+      Architecture arch, List<ImageBundle> defaultBundles) {
+    ImageBundle defaultBundle;
+    if (arch == null) {
+      defaultBundle = defaultBundles.get(0);
+    } else {
+      defaultBundle =
+          defaultBundles.stream()
+              .filter(bundle -> bundle.getDetails().getArch().equals(arch))
+              .findFirst()
+              .get();
+    }
+
+    return defaultBundle;
+  }
 }

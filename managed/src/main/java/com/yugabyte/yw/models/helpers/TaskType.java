@@ -57,6 +57,8 @@ public enum TaskType {
 
   CreatePitrConfig(com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class),
 
+  RestorePitrConfig(com.yugabyte.yw.commissioner.tasks.RestorePitrConfig.class),
+
   DeletePitrConfig(com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class),
 
   RestoreSnapshotSchedule(com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule.class),
@@ -184,6 +186,10 @@ public enum TaskType {
   CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
 
   DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
+
+  FailoverDrConfig(com.yugabyte.yw.commissioner.tasks.FailoverDrConfig.class),
+
+  EditDrConfig(com.yugabyte.yw.commissioner.tasks.EditDrConfig.class),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
@@ -329,6 +335,9 @@ public enum TaskType {
 
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
+  WaitForReplicationDrain(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain.class),
+
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
 
@@ -365,8 +374,13 @@ public enum TaskType {
 
   ReplicateNamespaces(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces.class),
+
   CheckXUniverseAutoFlags(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags.class),
+
+  PromoteSecondaryConfigToMainConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig
+          .class),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(

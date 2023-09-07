@@ -276,6 +276,10 @@ public class ReleaseManager {
 
     public String getFilePath(Region region) {
       Architecture arch = region.getArchitecture();
+      return getFilePath(arch);
+    }
+
+    public String getFilePath(Architecture arch) {
       // Must be old style region or release with no architecture (or packages).
       if (arch == null || packages == null || packages.isEmpty()) {
         return filePath;
@@ -298,6 +302,11 @@ public class ReleaseManager {
       if (arch == null || packages == null || packages.isEmpty()) {
         return true;
       }
+      List<Package> matched = matchPackages(arch);
+      return matched.size() > 0;
+    }
+
+    public Boolean matchesArchitecture(Architecture arch) {
       List<Package> matched = matchPackages(arch);
       return matched.size() > 0;
     }

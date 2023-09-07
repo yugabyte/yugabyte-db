@@ -566,7 +566,7 @@ explain (costs off)
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
         QUERY PLAN
 --------------------------
- YB Seq Scan on nr2
+ Seq Scan on nr2
    Remote Filter: (i = 1)
 (2 rows)
 

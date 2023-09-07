@@ -15,7 +15,7 @@
 #include <shared_mutex>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -471,7 +471,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
   }
 
   // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
-  *handle = cdc::CreateCDCWriteRpc(
+  *handle = rpc::xcluster::CreateXClusterWriteRpc(
       deadline, nullptr /* RemoteTablet */, table_, local_client_->client.get(),
       write_request.get(),
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
@@ -502,7 +502,7 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
 
   // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write
   // request.
-  *handle = cdc::CreateGetCompatibleSchemaVersionRpc(
+  *handle = rpc::xcluster::CreateGetCompatibleSchemaVersionRpc(
       deadline, nullptr, local_client_->client.get(), req,
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
           const Status& status, const GetCompatibleSchemaVersionRequestPB& req,

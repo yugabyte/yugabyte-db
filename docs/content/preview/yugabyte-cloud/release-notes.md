@@ -20,6 +20,17 @@ On this page:
 
 ## Change log
 
+### September 6, 2023
+
+**New Features**
+
+- Support for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key and rotating keys on encrypted clusters. Clusters must be using YugabyteDB v2.16.7 or later.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Datadog.
+
+**Database**
+
+- Innovation track updated to 2.18.2.1.
+
 ### August 15, 2023
 
 **Database**

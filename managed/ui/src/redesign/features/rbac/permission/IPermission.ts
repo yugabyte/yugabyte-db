@@ -24,7 +24,7 @@ export type ActionType = typeof Action[keyof typeof Action];
 
 export interface Permission {
   description: string;
-  permission: ActionType;
-  resource_type: ResourceType;
-  prerequisite_permissions: Pick<Permission, 'permission' | 'resource_type'>[];
+  action: ActionType;
+  resourceType: ResourceType;
+  prerequisitePermissions: Pick<Permission, 'action' | 'resourceType'>[];
 }

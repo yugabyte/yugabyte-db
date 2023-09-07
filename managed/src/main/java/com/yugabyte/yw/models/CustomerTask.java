@@ -264,6 +264,9 @@ public class CustomerTask extends Model {
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
 
+    @EnumValue("Failover")
+    Failover,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -410,6 +413,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
+        case Failover:
+          return completed ? "Failed over dr confing " : "Failing over dr confing ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:

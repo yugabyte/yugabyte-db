@@ -189,7 +189,32 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryInNodeShell(
+      Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean authEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        authEnabled);
+  }
+
+  public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
+
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.query);
@@ -200,7 +225,8 @@ public class YsqlQueryExecutor {
     try {
       shellResponse =
           nodeUniverseManager
-              .runYsqlCommand(node, universe, queryParams.db_name, queryString, timeoutSec)
+              .runYsqlCommand(
+                  node, universe, queryParams.db_name, queryString, timeoutSec, authEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));

@@ -24,7 +24,7 @@
 #include <boost/multi_index_container.hpp>
 
 #include "yb/cdc/cdc_producer.h"
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -2833,7 +2833,7 @@ void CDCServiceImpl::TabletLeaderGetChanges(
       STATUS(
           Aborted,
           Format(
-              "Could not create valid handle for GetChangesCDCRpc: tablet=$0, peer=$1",
+              "Could not create valid handle for GetChangesRpc: tablet=$0, peer=$1",
               req->tablet_id(),
               peer->permanent_uuid())),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, *context.get());
@@ -2847,11 +2847,9 @@ void CDCServiceImpl::TabletLeaderGetChanges(
   new_req.set_serve_as_proxy(false);
   CoarseTimePoint deadline = GetDeadline(*context, client());
 
-  *rpc_handle = CreateGetChangesCDCRpc(
-      deadline,
-      nullptr, /* RemoteTablet: will get this from 'new_req' */
-      client(),
-      &new_req,
+  *rpc_handle = rpc::xcluster::CreateGetChangesRpc(
+      deadline, nullptr, /* RemoteTablet: will get this from 'new_req' */
+      client(), &new_req,
       [this, resp, context, rpc_handle](const Status& status, GetChangesResponsePB&& new_resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
         *resp = std::move(new_resp);

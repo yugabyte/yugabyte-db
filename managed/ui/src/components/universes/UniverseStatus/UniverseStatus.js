@@ -34,6 +34,21 @@ export default class UniverseStatus extends Component {
     }
   }
 
+  retryTaskClicked = (currentTaskUUID) => {
+    this.props.retryCurrentTask(currentTaskUUID).then((response) => {
+      const status = response?.payload?.response?.status || response?.payload?.status;
+      if (status === 200 || status === 201) {
+        browserHistory.push('/tasks');
+      } else {
+        const taskResponse = response?.payload?.response;
+        const toastMessage = taskResponse?.data?.error
+          ? taskResponse?.data?.error
+          : taskResponse?.statusText;
+        toast.error(toastMessage);
+      }
+    });
+  };
+
   redirectToTaskLogs = (taskUUID, universeUUID) => {
     taskUUID
       ? browserHistory.push(`/tasks/${taskUUID}`)
@@ -129,6 +144,13 @@ export default class UniverseStatus extends Component {
               btnText={'View Details'}
               btnClass="btn btn-default view-task-details-btn"
               onClick={() => this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)}
+            />
+          )}
+          {shouldDisplayTaskButton && !universePendingTask && failedTask?.retryable && (
+            <YBButton
+              btnText={'Retry Task'}
+              btnClass="btn btn-default view-task-details-btn"
+              onClick={() => this.retryTaskClicked(failedTask.id)}
             />
           )}
         </div>

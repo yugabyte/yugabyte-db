@@ -8,12 +8,22 @@ import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.forms.*;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.CustomerTaskFormData;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -193,6 +203,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, null);
@@ -203,6 +219,12 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "List task",
       response = CustomerTaskFormData.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result tasksList(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     List<CustomerTaskFormData> flattenList = new ArrayList<CustomerTaskFormData>();
@@ -214,6 +236,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -223,6 +251,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get a task's status", response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result taskStatus(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -238,6 +272,12 @@ public class CustomerTaskController extends AuthenticatedController {
       responseContainer = "Map",
       response = Object.class)
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result failedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -249,6 +289,12 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get a list of task's failed subtasks", response = FailedSubtasks.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listFailedSubtasks(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -266,6 +312,18 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "Retry a Universe or Provider task",
       notes = "Retry a Universe or Provider task.",
       response = PlatformResults.YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
   public Result retryTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     CustomerTask customerTask = customerTaskManager.retryCustomerTask(customerUUID, taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
@@ -292,6 +350,18 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "Abort a task",
       notes = "Aborts a running task",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = "details.universeUUID",
+                sourceType = SourceType.DB,
+                dbClass = TaskInfo.class,
+                identifier = "tasks",
+                columnName = "uuid"))
+  })
   public Result abortTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     // Validate if task belongs to the user or not

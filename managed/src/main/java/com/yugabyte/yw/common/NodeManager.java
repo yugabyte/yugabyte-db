@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -767,6 +768,7 @@ public class NodeManager extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     Config config = runtimeConfigFactory.forUniverse(universe);
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
+    Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
@@ -792,7 +794,12 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+        if (arch != null) {
+          ybServerPackage = releaseMetadata.getFilePath(arch);
+        } else {
+          // Fallback to region in case arch is not present
+          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+        }
         if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
         } else if (releaseMetadata.gcs != null
@@ -830,7 +837,12 @@ public class NodeManager extends DevopsBase {
                 taskParam.getYbcSoftwareVersion()));
       }
 
-      ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      if (arch != null) {
+        ybcPackage = releaseMetadata.getFilePath(arch);
+      } else {
+        // Fallback to region in case arch is not present
+        ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      }
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
       }
@@ -1566,10 +1578,11 @@ public class NodeManager extends DevopsBase {
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
+    Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+      UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
       if (imageBundleUUID != null) {
         Region region = nodeTaskParam.getRegion();
         ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1719,7 +1732,7 @@ public class NodeManager extends DevopsBase {
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+            UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
             if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
               Region region = taskParam.getRegion();
               ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1806,7 +1819,7 @@ public class NodeManager extends DevopsBase {
           }
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+          UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
           if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
             Region region = taskParam.getRegion();
             ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1884,21 +1897,8 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
-          Integer postgres_max_mem_mb =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
-
-          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
-          // what the primary cluster has set.
-          Integer rr_max_mem_mb =
-              confGetter.getConfForScope(
-                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
-          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
-                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
-              && rr_max_mem_mb >= 0) {
-            postgres_max_mem_mb = rr_max_mem_mb;
-          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -2583,23 +2583,30 @@ public class NodeManager extends DevopsBase {
     return commandArgs;
   }
 
-  public String getYbServerPackageName(String ybSoftwareVersion, Region region) {
+  public String getYbServerPackageName(String ybSoftwareVersion, Region region, Architecture arch) {
     String ybServerPackage = null;
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getReleaseByVersion(ybSoftwareVersion);
     if (releaseMetadata != null) {
-      ybServerPackage = releaseMetadata.getFilePath(region);
+      if (arch != null) {
+        ybServerPackage = releaseMetadata.getFilePath(arch);
+      } else {
+        ybServerPackage = releaseMetadata.getFilePath(region);
+      }
     }
     return ybServerPackage;
   }
 
-  public UUID getImageBundleUUID(UserIntent userIntent, NodeTaskParams nodeTaskParam) {
+  public UUID getImageBundleUUID(
+      Architecture arch, UserIntent userIntent, NodeTaskParams nodeTaskParam) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
     } else if (nodeTaskParam.getProvider().getUuid() != null) {
-      ImageBundle bundle = ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
-      if (bundle != null) {
+      List<ImageBundle> bundles =
+          ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
         imageBundleUUID = bundle.getUuid();
       }
     }

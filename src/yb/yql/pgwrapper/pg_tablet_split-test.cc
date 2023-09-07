@@ -30,6 +30,7 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/filename.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -38,6 +39,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -54,25 +56,29 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
-DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_max_write_restart_attempts);
-DECLARE_bool(ysql_enable_packed_row);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 
+DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_skip_partitioning_version_validation);
+DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
-DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
-DECLARE_bool(TEST_skip_partitioning_version_validation);
-DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
+DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 
 using yb::test::Partitioning;
 using namespace std::literals;
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 // SQL helpers
 namespace {
@@ -163,12 +169,20 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
       return Status::OK();
     };
 
-    return InvokeSplitsAndWaitForCompletion(
+    return InvokeSplitsAndWaitForDataCompacted(
         table_id, [&selector](const auto& tablets) { return selector(tablets); });
+  }
+
+  Status WaitForIntentsAppliedAndFlush(tablet::TabletPeer* peer) {
+    SCHECK_NOTNULL(peer);
+    RETURN_NOT_OK(WaitForTableIntentsApplied(cluster_.get(), peer->tablet_metadata()->table_id()));
+    auto tablet = peer->shared_tablet();
+    SCHECK_NOTNULL(tablet);
+    return tablet->Flush(tablet::FlushMode::kSync);
   }
 };
 
-TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
+TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS;"));
@@ -321,7 +335,7 @@ TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   }
 }
 
-TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)) {
+TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
   // The intent of the test is to check that splitting is not happening when middle split key
   // matches one of the bounds (it actually can match only lower bound). Placed the test at this
   // file as it's hard to create a table of such structure with the functionality inside
@@ -392,17 +406,239 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
 }
 
+// Tests for post split compaction with limit by size and upper bound.
+// TODO(pscompact): add a test to check the impact of background compactions.
+TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
+  // Lower the limits and enabling packed rows explicitly to have a bit more predictable SST files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Disable automatic compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+
+  // Create custom RocksDB listener to analyse files in a compaction.
+  struct Listener : public rocksdb::EventListener {
+    void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+      LOG(INFO) << "Compaction completed: db = " << db
+                << ", job id = " << ci.job_id
+                << ", reason = " << ci.compaction_reason
+                << ", full = "   << ci.is_full_compaction
+                << ", no-op = "  << ci.is_no_op_compaction
+                << ", input files num = " << ci.input_files.size();
+      EXPECT_EQ(ci.compaction_reason, rocksdb::CompactionReason::kPostSplitCompaction);
+      if (ci.is_no_op_compaction) {
+        EXPECT_TRUE(ci.input_files.empty());
+      }
+      CompactedFiles files;
+      files.reserve(ci.input_files.size());
+      for (const auto& name : ci.input_files) {
+        uint64_t file_number = rocksdb::TableFileNameToNumber(name);
+        EXPECT_GT(file_number, 0);
+        files.push_back(file_number);
+      }
+      compactions_per_db[db].push_back(std::move(files));
+      compactions_done.CountDown();
+    }
+
+    using CompactedFiles = std::vector<uint64_t>;
+    using CompactionJob  = std::vector<CompactedFiles>;
+    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db;
+
+    // For each regular db we expect 4 post split compactions with files and 1 empty post split
+    // compaction, which is triggered to signal the whole post split compaction is done (all its
+    // iterations are done). For each intents db we expect 1 empty post split compaction as no
+    // intents are expected but post split compaction is also triggered for intents db. And it is
+    // expected two tablets ara going to post split compact.
+    CountDownLatch compactions_done { 2 * (4 + 1 + 1) };
+  } compactions_listener;
+
+  // Patch tablet options inside tablet manager, will be applied to newly created tablets.
+  for (size_t i = 0 ; i < NumTabletServers(); ++i) {
+    ANNOTATE_IGNORE_WRITES_BEGIN();
+    cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(
+        std::shared_ptr<rocksdb::EventListener>(&compactions_listener, [](auto*){}));
+    ANNOTATE_IGNORE_WRITES_END();
+  }
+
+  // Create a table and make a series of write followed by flushed to have several files.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  // The first and second files contain only new rows.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(1, 100) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(4051, 5000) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The third file contains several new rows and some of existing rows deleted.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(101, 150) AS i"));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM t WHERE v < 51"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(151, 2000) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The forth file contains several new rows and updates.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(2001, 4000) AS i"));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = -1 * k WHERE k < 101"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The fifth and sixth files contain several new rows.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(5001, 5100) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(4001, 4050) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The expectation at this point is that files #3 and #4 are the largest files and we're going
+  // to pick the limit higher than max size of #1 + #2 and #5 + #6 but lower than sum of #3 + #4.
+  // Such limit will allow to compact [#1, #2] into one file as well as [#5, #6] into a different
+  // single file. The order of files in the collection is preserved and sorted in accordance with
+  // with the record age, form the newest to oldest files.
+  auto parent_tablet = peers.front()->shared_tablet();
+  const auto parent_files = parent_tablet->regular_db()->GetLiveFilesMetaData();
+  const auto input_limit  = ASSERT_RESULT([&parent_files]() -> Result<uint64_t> {
+    SCHECK_EQ(6, parent_files.size(), IllegalState, "");
+    const uint64_t max_size = parent_files[2].total_size + parent_files[3].total_size;
+    const uint64_t min_size = std::max(parent_files[0].total_size + parent_files[1].total_size,
+                                       parent_files[4].total_size + parent_files[5].total_size);
+    SCHECK_LT(min_size + 1, max_size, IllegalState, "");
+    return min_size + 1;
+  }());
+  LOG(INFO) << "Selecting input size limit to " << input_limit
+            << " should allow to post split into 4 files.";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = input_limit;
+
+  // Prepare result for these 6 files.
+  std::string expected_data = []() {
+    std::stringstream ss;
+    for (auto k = 51; k <= 5100; ++k) {
+      ss << (k != 51 ? DefaultRowSeparator() : "");
+      ss << k << DefaultColumnSeparator();
+      ss << (k > 100 ? k : -k);
+    }
+    return ss.str();
+  }();
+
+  // Fetch all rows and check result.
+  auto actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+
+  // Remember the id of the newest file.
+  const auto parent_latest_file_id =
+      parent_tablet->regular_db()->GetLiveFilesMetaData().front().name_id;
+
+  // We want to pause post split compactions to write new data and get new files for children.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+
+  // Split and check data is expected. Post split compaction is not yet done, it is paused.
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+
+  // Write data which will be hosted in children as a new files. Remember the file number.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(5101, 5200) AS i"));
+  peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(2, peers.size());
+  uint64_t child_latest_file_id = 0;
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    ASSERT_OK(WaitForIntentsAppliedAndFlush(peer.get()));
+
+    // Sometime even sync flush is ended a bit earlier the version storage sees a new file. The
+    // latest insert statement must generate a new file for each child, so let's wait for it.
+    uint64_t latest_file_id = tablet->regular_db()->GetLiveFilesMetaData().front().name_id;
+    ASSERT_GT(latest_file_id, parent_latest_file_id);
+    if (child_latest_file_id == 0) {
+      child_latest_file_id = latest_file_id;
+      continue;
+    }
+
+    // Both children should have the same id for the newest file.
+    ASSERT_EQ(latest_file_id, child_latest_file_id);
+  }
+
+  // Update expected data to reflect new rows.
+  expected_data += []() {
+    std::stringstream ss;
+    for (auto k = 5101; k <= 5200; ++k) {
+      ss << DefaultRowSeparator() << k << DefaultColumnSeparator() << k;
+    }
+    return ss.str();
+  }();
+
+  // Resume post split compaciton and wait for a completion.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  ASSERT_OK(WaitForPeersPostSplitCompacted(
+      cluster_.get(), { peers.front()->tablet_id(), peers.back()->tablet_id() }));
+
+  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `parent_data_compacted` field,
+  // which is updated only when regular db instances are compacted as we are not so interested in
+  // intents db compactions. That's why the waiting loop can finish when the latest intents db
+  // post split compaction is still running or not yet started. But in this test we are going to
+  // track all compaction jobs, that's why let's wait for all expected compactions are done.
+  compactions_listener.compactions_done.WaitFor(15s * kTimeMultiplier);
+
+  // Analyse compactions. The order is preserved.
+  // 1) We expected 4 instances (1 regular db and 1 intents db per child).
+  ASSERT_EQ(4, compactions_listener.compactions_per_db.size());
+  for (const auto& jobs : compactions_listener.compactions_per_db) {
+    // 2) We expect at least one job.
+    ASSERT_FALSE(jobs.second.empty());
+    // Get type of DB.
+    bool is_intents = (jobs.first == peers.front()->shared_tablet()->intents_db() ||
+                       jobs.first == peers.back()->shared_tablet()->intents_db());
+    // 3) For intents we expect one empty job.
+    if (is_intents) {
+      ASSERT_EQ(1, jobs.second.size());
+      ASSERT_TRUE(jobs.second.front().empty());
+      continue;
+    }
+    // 4) For each regular db we expect 5 compaction jobs.
+    ASSERT_EQ(5, jobs.second.size());
+    // 5) First job should compact 2 oldest parent files.
+    ASSERT_EQ(2, jobs.second[0].size());
+    ASSERT_EQ(parent_files[5].name_id, jobs.second[0][0]);
+    ASSERT_EQ(parent_files[4].name_id, jobs.second[0][1]);
+    // 6) Second job should compact third oldest parent file.
+    ASSERT_EQ(1, jobs.second[1].size());
+    ASSERT_EQ(parent_files[3].name_id, jobs.second[1][0]);
+    // 7) Third job should compact forth oldest parent file.
+    ASSERT_EQ(1, jobs.second[2].size());
+    ASSERT_EQ(parent_files[2].name_id, jobs.second[2][0]);
+    // 8) Forth job should compact 2 newest parent files.
+    ASSERT_EQ(2, jobs.second[3].size());
+    ASSERT_EQ(parent_files[1].name_id, jobs.second[3][0]);
+    ASSERT_EQ(parent_files[0].name_id, jobs.second[3][1]);
+    // 9) Firth job should is empty job indicating post split compaction is done.
+    ASSERT_TRUE(jobs.second[4].empty());
+  }
+
+  // Check the number of files for each child is expected and the order of files should be
+  // preserved, where file with newer data but with smaller number should still be sorted to the
+  // front of the collection.
+  for (const auto& peer : peers) {
+    const auto files = peer->shared_tablet()->regular_db()->GetLiveFilesMetaData();
+    ASSERT_EQ(5, files.size());
+    for (size_t n = 0; n < files.size(); ++n) {
+      if (n == 0) {
+        ASSERT_EQ(child_latest_file_id, files[n].name_id);
+      } else {
+        ASSERT_LT(child_latest_file_id, files[n].name_id);
+      }
+    }
+  }
+
+  // Make sure we still have the expected data.
+  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+}
+
+
 class PgPartitioningVersionTest :
     public PgTabletSplitTest,
     public testing::WithParamInterface<uint32_t> {
  protected:
   using PartitionBounds = std::pair<std::string, std::string>;
-
-  void SetUp() override {
-    // Additional disabling is required due to initdb timeout in TSAN mode.
-    YB_SKIP_TEST_IN_TSAN();
-    PgTabletSplitTest::SetUp();
-  }
 
   Status SplitTableWithSingleTablet(
       const std::string& table_name, uint32_t expected_partitioning_version) {
@@ -420,7 +656,7 @@ class PgPartitioningVersionTest :
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
-    return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer->tablet_id());
+    return InvokeSplitTabletRpcAndWaitForDataCompacted(peer->tablet_id());
   }
 
   Result<TabletRecordsInfo> GetTabletRecordsInfo(
@@ -670,7 +906,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
-      ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
+      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
       // Keep current numbers of records persisted in tablets for further analyses.
@@ -781,7 +1017,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     LOG(INFO) << "Split key values: t0 = \"" << idx1_t0 << "\", i0 = " << idx1_i0;
 
     // Split unique index table (idx1).
-    ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
     ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Turn compaction off to make all subsequent deletes are kept in regular db.
@@ -912,7 +1148,7 @@ class PgRangePartitionedTableSplitTest : public PgTabletSplitTest {
   }
 };
 
-TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectMinMaxAfterSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectMinMaxAfterSplit) {
   constexpr auto kNumRows = 4000;
   constexpr auto kNumSplits = 3;
   const auto table_name = "t";
@@ -939,7 +1175,7 @@ TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectMinMaxAft
   }
 }
 
-TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectRangeAfterManualSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectRangeAfterManualSplit) {
   constexpr auto kNumRows = 4000;
   constexpr auto kNumSplits = 3;
   const auto table_name = "t";
@@ -969,8 +1205,7 @@ TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectRangeAfte
   }
 }
 
-TEST_F(PgRangePartitionedTableSplitTest,
-       YB_DISABLE_TEST_IN_TSAN(SelectMiddleRangeAfterManualSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
   // The intent of the test is to select a range that covers only a middle tablet, and to make sure
   // we get the expected result when middle tablet has been split.
   constexpr size_t kNumRows = 4000;
@@ -1016,7 +1251,7 @@ TEST_F(PgRangePartitionedTableSplitTest,
       }
 
       // Split middle tablet
-      ASSERT_OK(InvokeSplitsAndWaitForCompletion(
+      ASSERT_OK(InvokeSplitsAndWaitForDataCompacted(
           table_id, TabletSelector(1, SelectMiddleTabletPolicy())));
 
       // Prepare expected result.
@@ -1044,7 +1279,7 @@ class PgPartitioningTest :
     public testing::WithParamInterface<Partitioning> {
 };
 
-TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSplit)) {
+TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
   constexpr auto kNumRows = 2000U;
   constexpr auto kSplitsNumber = 3U;
   const std::string table_name = "test";
@@ -1123,10 +1358,6 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
 
 class PgLocksTabletSplitTest : public PgTabletSplitTest {
  protected:
-  void SetUp() override {
-    PgTabletSplitTest::SetUp();
-  }
-
   Result<PGConn> InitConnection(const std::string& table, int num_keys_to_lock) {
     const auto num_rows_str = "10000";
     auto conn = VERIFY_RESULT(Connect());
@@ -1301,5 +1532,4 @@ INSTANTIATE_TEST_CASE_P(
     PgPartitioningVersionTest,
     ::testing::Values(0U, 1U));
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper
