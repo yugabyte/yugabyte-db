@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.rbac;
 
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -42,11 +43,21 @@ public class ResourceGroup {
 
   private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
 
-  public static ResourceGroup getSystemDefaultResourceGroup() {
+  public static ResourceGroup getSystemDefaultResourceGroup(UUID customerUUID) {
     ResourceGroup defaultResourceGroup = new ResourceGroup();
     for (ResourceType resourceType : ResourceType.values()) {
-      ResourceDefinition resourceDefinition =
-          ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
+      ResourceDefinition resourceDefinition;
+      if (resourceType.equals(ResourceType.OTHER)) {
+        resourceDefinition =
+            ResourceDefinition.builder()
+                .resourceType(resourceType)
+                .allowAll(false)
+                .resourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)))
+                .build();
+      } else {
+        resourceDefinition =
+            ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
+      }
       defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
     }
     return defaultResourceGroup;
