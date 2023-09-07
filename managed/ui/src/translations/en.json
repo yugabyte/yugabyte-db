@@ -75,7 +75,8 @@
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
-        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
+        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times.",
+        "overridePortsLabel": "Override YCQL Default Ports"
       },
       "encryptionInTransit": {
         "title": "Manage encryption in-Transit",

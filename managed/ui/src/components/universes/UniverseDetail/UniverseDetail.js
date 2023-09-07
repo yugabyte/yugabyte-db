@@ -45,7 +45,6 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
-import { DBSettingsMenu } from '../DBSettingsModal/DBSettingsMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
@@ -94,11 +93,6 @@ class UniverseDetail extends Component {
   isRRFlagsEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
-  };
-
-  isEditDBSettingsEnabled = () => {
-    const { featureFlags } = this.props;
-    return featureFlags.test.enableConfigureDBApi || featureFlags.released.enableConfigureDBApi;
   };
 
   componentDidMount() {
@@ -288,7 +282,6 @@ class UniverseDetail extends Component {
 
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
-
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
       const onPremKey = accessKeys.data.find(
@@ -303,6 +296,14 @@ class UniverseDetail extends Component {
 
     const isAuthEnforced =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.universe.auth.is_enforced')
+        ?.value === 'true';
+
+    const isConfigureYSQLEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
+        ?.value === 'true';
+
+    const isConfigureYCQLEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ycql')
         ?.value === 'true';
 
     const type =
@@ -749,17 +750,24 @@ class UniverseDetail extends Component {
                           </span>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isEditDBSettingsEnabled() && (
+                      {!universePaused && isConfigureYSQLEnabled && (
                         <YBMenuItem
                           disabled={isUniverseStatusPending}
-                          onClick={() => showSubmenu('dbSettings')}
+                          onClick={showEnableYSQLModal}
                         >
                           <YBLabelWithIcon icon="fa fa-database fa-fw">
-                            Edit YSQL/YCQL Settings
+                            Edit YSQL Configuration
                           </YBLabelWithIcon>
-                          <span className="pull-right">
-                            <i className="fa fa-chevron-right submenu-icon" />
-                          </span>
+                        </YBMenuItem>
+                      )}
+                      {!universePaused && isConfigureYCQLEnabled && (
+                        <YBMenuItem
+                          disabled={isUniverseStatusPending}
+                          onClick={showEnableYCQLModal}
+                        >
+                          <YBLabelWithIcon icon="fa fa-database fa-fw">
+                            Edit YCQL Configuration
+                          </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
                       {!universePaused && (
@@ -919,15 +927,6 @@ class UniverseDetail extends Component {
                           manageKeyAvailability={manageKeyAvailability}
                         />
                       </>
-                    ),
-                    dbSettings: (backToMainMenu) => (
-                      <>
-                        <DBSettingsMenu
-                          backToMainMenu={backToMainMenu}
-                          showEnableYSQLModal={showEnableYSQLModal}
-                          showEnableYCQLModal={showEnableYCQLModal}
-                        />
-                      </>
                     )
                   }}
                 />
@@ -1030,6 +1029,7 @@ class UniverseDetail extends Component {
           }}
           enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
+          isItKubernetesUniverse={isItKubernetesUniverse}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>
