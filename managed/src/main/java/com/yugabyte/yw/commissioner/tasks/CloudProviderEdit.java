@@ -288,6 +288,7 @@ public class CloudProviderEdit extends CloudTaskBase {
         createImageBundleTask(provider, bundle);
       } else {
         ImageBundle existingBundle = existingImageBundles.get(bundle.getUuid());
+        bundle.setProvider(existingBundle.getProvider());
         if (bundle.isUpdateNeeded(existingBundle)) {
           imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle);
         }

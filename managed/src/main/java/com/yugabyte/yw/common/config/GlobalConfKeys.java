@@ -970,7 +970,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Duration> devopsCommandTimeout =
       new ConfKeyInfo<>(
           "yb.devops.command_timeout",
@@ -979,7 +978,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -988,4 +986,44 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Minimum YBDB version which supports YBC",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> metricsAuth =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth",
+          ScopeType.GLOBAL,
+          "Prometheus auth enabled",
+          "Enables basic authentication for Prometheus web UI/APIs access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsAuthUsername =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_username",
+          ScopeType.GLOBAL,
+          "Prometheus auth username",
+          "Username, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsAuthPassword =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_password",
+          ScopeType.GLOBAL,
+          "Prometheus auth password",
+          "Password, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.force_shutdown",
+          ScopeType.GLOBAL,
+          "Force YBC Shutdown during upgrade",
+          "For YBC Shutdown during upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useNewRbacAuthz =
+      new ConfKeyInfo<>(
+          "yb.rbac.use_new_authz",
+          ScopeType.GLOBAL,
+          "New RBAC Authz feature",
+          "New RBAC Authz feature with custom role creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

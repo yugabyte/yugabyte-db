@@ -113,7 +113,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     ybcUpgrade.scheduleRunner();
@@ -155,7 +158,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     new YbcUpgrade(
@@ -198,7 +204,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(1);
@@ -242,7 +251,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(4);
@@ -289,7 +301,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     ybcUpgrade.scheduleRunner();
@@ -308,7 +323,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
     when(mockYbcClientService.getNewClient(
@@ -363,7 +381,10 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .build();
     when(mockYbcClient.Upgrade(any())).thenReturn(resp);
     UpgradeResultResponse upgradeResultResponse =
-        UpgradeResultResponse.newBuilder().setStatus(ControllerStatus.COMPLETE).build();
+        UpgradeResultResponse.newBuilder()
+            .setStatus(ControllerStatus.COMPLETE)
+            .setCurrentYbcVersion(NEW_YBC_VERSION)
+            .build();
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(any(), anyInt(), any())).thenReturn(mockYbcClient);
     when(mockConfGetter.getConfForScope(

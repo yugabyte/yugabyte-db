@@ -26,8 +26,11 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.TableSpaceUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -49,6 +52,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -161,6 +169,12 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.TableDefinitionTaskParams",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -208,11 +222,23 @@ public class TablesController extends AuthenticatedController {
       nickname = "alterTable",
       response = Object.class,
       responseContainer = "Map")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID, Request request) {
     return TODO(request);
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -273,6 +299,7 @@ public class TablesController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map",
       hidden = true)
+  @AuthzPath
   public Result getColumnTypes() {
     ColumnDetails.YQLDataType[] dataTypes = ColumnDetails.YQLDataType.values();
     ObjectNode result = Json.newObject();
@@ -295,6 +322,7 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all defined column types.",
       response = ColumnDetails.YQLDataType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getYQLDataTypes() {
     return PlatformResults.withData(ColumnDetails.YQLDataType.values());
   }
@@ -356,6 +384,12 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all tables in the specified universe",
       response = TableInfoResp.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTables(
       UUID customerUUID,
       UUID universeUUID,
@@ -542,6 +576,12 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all namespaces in the specified universe",
       response = NamespaceInfoResp.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listNamespaces(
       UUID customerUUID, UUID universeUUID, boolean includeSystemNamespaces) {
     // Validate customer UUID
@@ -601,6 +641,12 @@ public class TablesController extends AuthenticatedController {
       value = "Describe a table",
       nickname = "describeTable",
       response = TableDefinitionTaskParams.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -648,6 +694,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.MultiTableBackupRequestParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID
@@ -731,6 +783,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.BackupTableParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   // Remove this too.
   public Result createBackup(
@@ -834,6 +892,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.BulkImportParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result bulkImport(
       UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
@@ -1032,6 +1096,12 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all tablespaces of a given universe",
       response = TableSpaceInfo.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -1104,6 +1174,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.CreateTablespaceParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result createTableSpaces(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID.

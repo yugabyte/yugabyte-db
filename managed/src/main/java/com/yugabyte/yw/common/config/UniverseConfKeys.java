@@ -167,6 +167,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum available memory required on DB nodes for software upgrade.",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.UNIVERSE,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -849,4 +859,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip Auto-flags promotions and ysql upgrade during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowConfigureYSQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ysql",
+          ScopeType.UNIVERSE,
+          "Configure YSQL DB API",
+          "Allow users to configure YSQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ycql",
+          ScopeType.UNIVERSE,
+          "Configure YCQL DB API",
+          "Allow users to configure YCQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }

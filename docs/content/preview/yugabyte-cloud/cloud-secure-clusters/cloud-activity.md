@@ -36,6 +36,7 @@ The following table lists the activity that is logged.
 | Cluster | Create Cluster<br>Delete Cluster<br>Edit Cluster<br>Upgrade Cluster<br>Pause Cluster<br>Resume Cluster |
 | Login Types | Edit Login Types |
 | Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
+| Export Configuration | Create export configuration<br>Edit export configuration<br>Delete export configuration |
 | Payment | Add Payment<br>Edit Payment<br>Delete Payment |
 | Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
 | User | Add User<br>Edit User<br>Remove User<br>Activate user |

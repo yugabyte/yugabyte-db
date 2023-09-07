@@ -123,7 +123,7 @@ func (s status) TransitionValid(next status) bool {
 	case InstalledStatus:
 		return next == UpgradingStatus || next == CleaningStatus
 	case InstallingStatus:
-		return next == InstalledStatus || next == CleaningStatus
+		return next == InstalledStatus || next == CleaningStatus || next == InstallingStatus
 	case UpgradingStatus:
 		return next == InstalledStatus || next == CleaningStatus
 	case CleaningStatus:

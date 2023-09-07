@@ -223,6 +223,16 @@ export default class MetricsPanel extends Component {
   }
 
   componentDidUpdate(prevProps) {
+    // Enables user to view granular data based on selected time range within the graph
+    if (this.props.isGranularMetricsEnabled) {
+      const metricKeyContainer = document.getElementById(prevProps.metricKey);
+      metricKeyContainer?.on('plotly_relayout', function (eventData) {
+        const startTime = Math.floor(new Date(eventData['xaxis.range[0]']).getTime() / 1000);
+        const endTime = Math.floor(new Date(eventData['xaxis.range[1]']).getTime() / 1000);
+        prevProps.updateTimestamp(startTime, endTime);
+      });
+    }
+
     if (
       this.props.containerWidth !== prevProps.containerWidth ||
       this.props.width !== prevProps.width

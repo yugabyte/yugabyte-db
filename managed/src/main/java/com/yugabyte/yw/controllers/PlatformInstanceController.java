@@ -13,13 +13,21 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
 import java.net.URL;
 import java.util.Objects;
@@ -40,6 +48,12 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject CustomerTaskManager taskManager;
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createInstance(UUID configUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -83,6 +97,12 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(instance);
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -116,6 +136,12 @@ public class PlatformInstanceController extends AuthenticatedController {
     return ok();
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLocal(UUID configUUID) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -127,6 +153,12 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(localInstance.get());
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result promoteInstance(
       UUID configUUID, UUID instanceUUID, String curLeaderAddr, Http.Request request)
       throws java.net.MalformedURLException {

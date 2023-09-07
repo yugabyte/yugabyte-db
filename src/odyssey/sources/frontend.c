@@ -1963,11 +1963,9 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 	od_instance_t *instance = client->global->instance;
 	od_route_t *route = client->route;
 	machine_msg_t *msg;
+	int rc = 0;
 
 	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
-	client->client_id = 0;
-
-	int rc = 0;
 
 	/* Send `SET SESSION PARAMETER` packet. */
 	rc = od_write(&server->io, msg);
@@ -1977,8 +1975,10 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 		return -1;
 	} else {
 		od_debug(&instance->logger, "clean shared memory", client, server,
-			 "Sent `SET SESSION PARAMETER` packet");
+			 "Sent `SET SESSION PARAMETER` packet for %d", client->client_id);
 	}
+
+	client->client_id = 0;
 
 	/* Wait for the KIWI_BE_READY_FOR_QUERY packet. */
 	for (;;) {

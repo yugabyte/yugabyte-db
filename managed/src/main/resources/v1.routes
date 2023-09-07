@@ -84,12 +84,12 @@ PUT     /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID/region_zones/
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 
 GET     /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String)
-GET     /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, zone: java.util.List[String] ?= java.util.Collections.emptyList())
+GET     /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, zone: java.util.List[String] ?= java.util.Collections.emptyList(), arch: String ?= null)
 POST    /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String, request: Request)
 
 POST    /customers/:cUUID/providers/:pUUID/image_bundle                        com.yugabyte.yw.controllers.ImageBundleController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
-GET     /customers/:cUUID/providers/:pUUID/image_bundle                        com.yugabyte.yw.controllers.ImageBundleController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/:pUUID/image_bundle                        com.yugabyte.yw.controllers.ImageBundleController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, arch: String ?= null)
 GET     /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID)
 PUT     /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID, request: Request)
@@ -155,7 +155,7 @@ POST    /customers/:cUUID/metrics                                              c
 PUT     /customers/:cUUID/features                                             com.yugabyte.yw.controllers.CustomerController.upsertFeatures(cUUID: java.util.UUID, request: Request)
 
 # Release management API
-GET     /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.list(cUUID: java.util.UUID, includeMetadata: java.lang.Boolean ?= false)
+GET     /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.list(cUUID: java.util.UUID, includeMetadata: java.lang.Boolean ?= false, arch: String ?= null)
 PUT     /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.refresh(cUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.create(cUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/releases/:name                                       com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String, request: Request)
@@ -310,7 +310,6 @@ POST    /customers/:cUUID/universes/:uniUUID/cdc_streams                       c
 DELETE  /customers/:cUUID/universes/:uniUUID/cdc_streams/:streamId             com.yugabyte.yw.controllers.UniverseCdcStreamController.deleteCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, streamId: String)
 
 # Universe performance suggestions
-
 GET     /customers/:cUUID/universes/:uniUUID/unused_indexes                    com.yugabyte.yw.controllers.UniversePerfController.getUnusedIndexes(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/query_distribution_suggestions    com.yugabyte.yw.controllers.UniversePerfController.getQueryDistributionSuggestions(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/range_hash                        com.yugabyte.yw.controllers.UniversePerfController.getRangeHash(cUUID: java.util.UUID, uniUUID: java.util.UUID)

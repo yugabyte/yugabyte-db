@@ -77,7 +77,7 @@ attach_shmem(int shmem_id, char **shmem_ptr)
 	*shmem_ptr = shmat(shmem_id, NULL, 0);
 	if (*shmem_ptr == (void *) -1)
 	{
-		ereport(ERROR, (errmsg("Error at shmat for shared memory segment with "
+		ereport(WARNING, (errmsg("Error at shmat for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
 							   shmem_id, strerror(errno))));
@@ -91,7 +91,7 @@ detach_shmem(int shmem_id, void *shmem_ptr)
 {
 	if (shmdt(shmem_ptr) == -1)
 	{
-		ereport(ERROR, (errmsg("Error at shmdt for shared memory segment with "
+		ereport(WARNING, (errmsg("Error at shmdt for shared memory segment with "
 							   "id '%d'. "
 							   "%s",
 							   shmem_id, strerror(errno))));
@@ -174,7 +174,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 		/* TODO (janand) GH #18302 Handle this exception at the Ysql Conn Mgr
 		 * side.
 		 */
-		ereport(ERROR, (errmsg("Unable to store session parameter '%s' in the "
+		ereport(WARNING, (errmsg("Unable to store session parameter '%s' in the "
 							   "shared memory. Length of session parameter "
 							   "(%d) exceeds the max limit(%d).",
 							   session_parameter_name,
@@ -226,7 +226,7 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	int result = shmctl(shmem_id, IPC_STAT, &buf);
 	if (result < 0)
 	{
-		ereport(ERROR, (errmsg("Error at shmctl for shared memory with key "
+		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
 							   shmem_id, strerror(errno))));
 		return -1;
@@ -236,7 +236,7 @@ yb_shmem_resize(const key_t shmem_id, const long new_array_size)
 	result = shmctl(shmem_id, IPC_SET, &buf);
 	if (result < 0)
 	{
-		ereport(ERROR, (errmsg("Error at shmctl for shared memory with key "
+		ereport(WARNING, (errmsg("Error at shmctl for shared memory with key "
 							   "'%d', while resizing the shared memory. %s",
 							   shmem_id, strerror(errno))));
 		return -1;
@@ -306,7 +306,7 @@ resize_shmem_if_needed(const key_t shmem_id)
 
 	if (resize_needed > 0 && (yb_shmem_resize(shmem_id, resize_needed) == -1))
 	{
-		ereport(ERROR, (errmsg("Error while resizing the shared memory segment "
+		ereport(WARNING, (errmsg("Error while resizing the shared memory segment "
 							   "with key %d (%s).",
 							   shmem_id, strerror(errno))));
 		return -1;
@@ -333,7 +333,7 @@ update_session_parameter_value(
 
 			if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 			{
-				ereport(ERROR, (errmsg("Value `%s` for session parameter `%s`, "
+				ereport(WARNING, (errmsg("Value `%s` for session parameter `%s`, "
 									   "exceeds the max allowable length",
 									   value, session_parameter_name)));
 				return ERROR_WHILE_STORING_SESSION_PARAMETER;
@@ -350,7 +350,7 @@ update_session_parameter_value(
 			return NEED_TO_ADD_NEW_ELEMENT_IN_SHMEM_ARRAY;
 	}
 
-	ereport(ERROR, (errmsg("Unable to add the session parameter `%s` in the "
+	ereport(WARNING, (errmsg("Unable to add the session parameter `%s` in the "
 						   "shared memory "
 						   ", needs to resize the array.",
 						   session_parameter_name)));
@@ -368,7 +368,7 @@ add_session_parameter(struct shmem_session_parameter *shmem_parameter_list,
 	char *value = GetConfigOptionByName(session_parameter_name, NULL, false);
 	if (strlen(value) >= SHMEM_MAX_STRING_LEN)
 	{
-		ereport(ERROR, (errmsg("Value `%s` for session parameter `%s`, exceeds "
+		ereport(WARNING, (errmsg("Value `%s` for session parameter `%s`, exceeds "
 							   "the max allowable length",
 							   value, session_parameter_name)));
 		return -1;
@@ -405,7 +405,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 
 			case ERROR_WHILE_STORING_SESSION_PARAMETER:
 				// Error while storing the session parameter
-				ereport(ERROR, (errmsg("Unable to store the session parameter "
+				ereport(WARNING, (errmsg("Unable to store the session parameter "
 									   "%s",
 									   session_parameter_name)));
 				break;
@@ -415,7 +415,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 				if (add_session_parameter(shmem_parameter_list,
 										  session_parameter_name,
 										  shmem_itr) < 0)
-					ereport(ERROR, (errmsg("Unable to store the session "
+					ereport(WARNING, (errmsg("Unable to store the session "
 										   "parameter %s",
 										   session_parameter_name)));
 				break;
@@ -452,6 +452,10 @@ YbUpdateSharedMemory()
 	}
 
 	int shmem_id = yb_logical_client_shmem_key;
+	yb_logical_client_shmem_key = -1;
+
+	if (yb_changed_session_parameters == NULL)
+		return;
 
 	if (resize_shmem_if_needed(shmem_id) < 0)
 		return;
@@ -566,7 +570,7 @@ DeleteSharedMemory(int client_shmem_key)
 	/* Shared memory related to the client id will be removed */
 	if (shmctl(client_shmem_key, IPC_RMID, NULL) == -1)
 	{
-		ereport(ERROR, (errmsg("Error at shmctl while trying to delete the "
+		ereport(WARNING, (errmsg("Error at shmctl while trying to delete the "
 							   "shared memory segment, %s",
 							   strerror(errno))));
 	}
@@ -614,7 +618,7 @@ GetRoleOid(char *user_name, bool *is_superuser)
 
 		if (!rform->rolcanlogin)
 		{
-			ereport(ERROR,
+			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("role \"%s\" is not permitted to log in",
 							user_name)));
@@ -640,7 +644,7 @@ YbCreateClientId(void)
 
 	if (user == InvalidOid || database == InvalidOid)
 	{
-		ereport(ERROR,
+		ereport(WARNING,
 				(errmsg("Unable to fetch user/database oid for the "
 							   "client connection.")));
 		return;

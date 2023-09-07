@@ -25,6 +25,10 @@
 namespace yb {
 namespace docdb {
 
+// Lock state stores the number of locks acquired for each intent type.
+// The count for each intent type resides in sequential bits (block) in lock state.
+// For example the count of locks on a particular intent type could be received as:
+// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
 typedef uint64_t LockState;
 
 // This class manages six types of locks on string keys. On each key, the possibilities are:
@@ -50,6 +54,8 @@ class SharedLockManager {
 
   // Whether or not the state is possible
   static std::string ToString(const LockState& state);
+
+  void DumpStatusHtml(std::ostream& out);
 
  private:
   class Impl;

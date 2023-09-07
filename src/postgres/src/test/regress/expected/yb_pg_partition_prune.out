@@ -389,8 +389,8 @@ explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here'
 -------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3_default
-         Filter: ((b)::text = ANY ('{not,in,here}'::text[]))
          Remote Filter: (a = 16)
+         Filter: ((b)::text = ANY ('{not,in,here}'::text[]))
 (4 rows)
 
 explain (costs off) select * from rlp where a = 16 and b < 'ab';
@@ -600,7 +600,7 @@ explain (costs off) select * from rlp where a >= 29;
 (11 rows)
 
 explain (costs off) select * from rlp where a < 1 or (a > 20 and a < 25);
-                         QUERY PLAN                      
+                         QUERY PLAN
 -------------------------------------------------------------
  Append
    ->  Seq Scan on rlp1
@@ -2544,8 +2544,8 @@ explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,0);
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on listp_1_1 (actual rows=0 loops=1)
-         Filter: (b = ANY (ARRAY[$1, $2]))
          Remote Filter: (($3 <> b) AND ($4 <> b))
+         Filter: (b = ANY (ARRAY[$1, $2]))
 (5 rows)
 
 -- Both partitions allowed by IN clause, then both excluded again by <> clauses.
@@ -2556,8 +2556,8 @@ explain (analyze, costs off, summary off, timing off)  execute q1 (1,2,2,1);
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on listp_1_1 (never executed)
-         Filter: (b = ANY (ARRAY[$1, $2]))
          Remote Filter: (($3 <> b) AND ($4 <> b))
+         Filter: (b = ANY (ARRAY[$1, $2]))
 (5 rows)
 
 -- Ensure Params that evaluate to NULL properly prune away all partitions

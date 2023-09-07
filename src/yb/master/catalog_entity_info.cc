@@ -40,7 +40,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -1275,25 +1275,25 @@ std::string CDCStreamInfo::ToString() const {
 // ================================================================================================
 // UniverseReplicationInfoBase
 // ================================================================================================
-Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfoBase::GetOrCreateCDCRpcTasks(
+Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCreateXClusterRpcTasks(
     google::protobuf::RepeatedPtrField<HostPortPB> producer_masters) {
   std::vector<HostPort> hp;
   HostPortsFromPBs(producer_masters, &hp);
   std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
 
   std::lock_guard l(lock_);
-  if (cdc_rpc_tasks_ != nullptr) {
+  if (xcluster_rpc_tasks_ != nullptr) {
     // Master Addresses changed, update YBClient with new retry logic.
     if (master_addrs_ != master_addrs) {
-      RETURN_NOT_OK(cdc_rpc_tasks_->UpdateMasters(master_addrs));
+      RETURN_NOT_OK(xcluster_rpc_tasks_->UpdateMasters(master_addrs));
       master_addrs_ = master_addrs;
     }
-    return cdc_rpc_tasks_;
+    return xcluster_rpc_tasks_;
   }
 
   auto rpc_task =
-      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
-  cdc_rpc_tasks_ = rpc_task;
+      VERIFY_RESULT(XClusterRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
+  xcluster_rpc_tasks_ = rpc_task;
   master_addrs_ = master_addrs;
   return rpc_task;
 }

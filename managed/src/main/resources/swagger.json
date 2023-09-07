@@ -2931,6 +2931,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -4679,6 +4683,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -4995,7 +5003,7 @@
           "type" : "string"
         },
         "useAsDefault" : {
-          "description" : "Default Image Bundle",
+          "description" : "Default Image Bundle. A provider can have two defaults, one per architecture",
           "type" : "boolean"
         },
         "uuid" : {
@@ -5116,6 +5124,10 @@
     },
     "InstanceTypeDetails" : {
       "properties" : {
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "tenancy" : {
           "enum" : [ "Shared", "Dedicated", "Host" ],
           "type" : "string"
@@ -5127,7 +5139,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "tenancy", "volumeDetailsList" ],
+      "required" : [ "arch", "tenancy", "volumeDetailsList" ],
       "type" : "object"
     },
     "InstanceTypeKey" : {
@@ -5405,6 +5417,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "azOverrides" : {
           "additionalProperties" : {
@@ -7700,7 +7716,7 @@
           "type" : "string"
         },
         "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         }
       },
@@ -7728,6 +7744,9 @@
         "description" : {
           "type" : "string"
         },
+        "name" : {
+          "type" : "string"
+        },
         "permissionValidOnResource" : {
           "type" : "boolean"
         },
@@ -7739,7 +7758,7 @@
           "uniqueItems" : true
         },
         "resourceType" : {
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         }
       },
@@ -7800,6 +7819,10 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "usedForXCluster" : {
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "uuid" : {
           "description" : "PITR config UUID",
@@ -8425,6 +8448,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -8663,7 +8690,7 @@
         },
         "resourceType" : {
           "description" : "Resource Type",
-          "enum" : [ "UNIVERSE", "ROLE", "USER", "DEFAULT" ],
+          "enum" : [ "UNIVERSE", "ROLE", "USER", "OTHER" ],
           "type" : "string"
         },
         "resourceUUIDSet" : {
@@ -8706,6 +8733,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -9328,6 +9359,16 @@
     },
     "RestoreResp" : {
       "properties" : {
+        "backupCreatedOnDate" : {
+          "description" : "Backup details.",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "backupType" : {
+          "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
+          "type" : "string"
+        },
         "createTime" : {
           "description" : "Restore creation time.",
           "example" : "2022-12-12T13:07:18Z",
@@ -9380,7 +9421,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
+      "required" : [ "backupType", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {
@@ -9931,6 +9972,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -10428,6 +10473,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -10962,6 +11011,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11197,6 +11250,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -11512,6 +11569,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11732,6 +11793,10 @@
         "allowInsecure" : {
           "type" : "boolean"
         },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
           "type" : "string"
@@ -11944,6 +12009,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -12364,6 +12433,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -12984,6 +13057,10 @@
       "properties" : {
         "allowInsecure" : {
           "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
         },
         "capability" : {
           "enum" : [ "READ_ONLY", "EDITS_ALLOWED" ],
@@ -18206,6 +18283,12 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -18419,6 +18502,12 @@
           "name" : "zone",
           "required" : false,
           "type" : "array"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -19297,6 +19386,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/releases" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "getListOfRegionReleases",
         "parameters" : [ {
@@ -19332,7 +19422,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all releases valid in region",
+        "summary" : "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
         "tags" : [ "Release management" ]
       }
     },
@@ -19662,6 +19752,12 @@
           "name" : "includeMetadata",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "arch",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -20850,6 +20946,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/import" : {
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "importUniverse",
         "parameters" : [ {
@@ -20874,7 +20971,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Import a universe",
+        "summary" : "Deprecated: Do not use, this will be removed soon. Import a universe",
         "tags" : [ "Universe actions" ]
       }
     },

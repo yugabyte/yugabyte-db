@@ -30,3 +30,6 @@ test: yb_alter_type
 test: yb_pg_rowtypes
 # Base types
 test: yb_base_type
+
+# Operator Class
+test: yb_operator_class

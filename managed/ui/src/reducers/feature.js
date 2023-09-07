@@ -36,7 +36,7 @@ const initialStateFeatureInTest = {
   enableNewRestoreModal: true,
   enableConfigureDBApi: false,
   enableRBAC: false,
-  enableCACertRotation: false
+  enableCACertRotation: true
 };
 
 const initialStateFeatureReleased = {

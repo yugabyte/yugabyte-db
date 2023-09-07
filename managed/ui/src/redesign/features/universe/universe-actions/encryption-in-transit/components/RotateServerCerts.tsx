@@ -37,13 +37,17 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
   const enableNodeToNodeEncrypt = watch(ENABLE_NODE_NODE_ENCRYPTION_NAME);
   const enableClientToNodeEncrypt = watch(ENABLE_CLIENT_NODE_ENCRYPTION_NAME);
   const rootAndClientRootCASame = watch(USE_SAME_CERTS_FIELD_NAME);
+  const selfSignedServerCertRotate = watch(ROTATE_NODE_NODE_CERT_FIELD_NAME);
+  const selfSignedClientCertRotate = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
 
+  //Disable both rotations if (a)->NN or CN encryption toggles are modified
   const rotationDisabled =
     encryptionEnabled &&
     (enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
       enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt);
-
+  //NN cert rotation is auto enabled when root cert is modified
   const rootCAModified = encryptionEnabled && rootCAInitial !== rootCA;
+  //CN cert rotation is auto enabled when root cert is modified
   const clientRootCAModified =
     encryptionEnabled &&
     (clientRootCAInitial !== clientRootCA || (rootAndClientRootCASame && rootCAModified));
@@ -75,6 +79,10 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
                   label={t('universeActions.encryptionInTransit.rotateNToNServerCert')}
                   labelProps={{ className: classes.eitLabels }}
                   disabled={rootCAModified || rotationDisabled}
+                  inputProps={{
+                    'data-testid': 'RotateNNCert-Checkbox'
+                  }}
+                  checked={rootCAModified || selfSignedServerCertRotate}
                 />
               </span>
             </YBTooltip>
@@ -102,6 +110,10 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
                   label={t('universeActions.encryptionInTransit.rotateCToNServerCert')}
                   labelProps={{ className: classes.eitLabels }}
                   disabled={clientRootCAModified || rotationDisabled}
+                  inputProps={{
+                    'data-testid': 'RotateCNCert-Checkbox'
+                  }}
+                  checked={clientRootCAModified || selfSignedClientCertRotate}
                 />
               </span>
             </YBTooltip>

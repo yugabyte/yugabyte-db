@@ -733,9 +733,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void checkAndCreateChangeAdminPasswordTask(Cluster primaryCluster) {
+    boolean changeYCQLAdminPass =
+        primaryCluster.userIntent.enableYCQL
+            && primaryCluster.userIntent.enableYCQLAuth
+            && !primaryCluster.userIntent.defaultYcqlPassword;
+    boolean changeYSQLAdminPass =
+        primaryCluster.userIntent.enableYSQL
+            && primaryCluster.userIntent.enableYSQLAuth
+            && !primaryCluster.userIntent.defaultYsqlPassword;
     // Change admin password for Admin user, as specified.
-    if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
-        || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
+    if (changeYCQLAdminPass || changeYSQLAdminPass) {
       createChangeAdminPasswordTask(
               primaryCluster,
               ysqlPassword,
@@ -1652,7 +1659,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
     return createWaitForServersTasks(
-        nodes, type, config.getDuration("yb.wait_for_server_timeout") /* default timeout */);
+        nodes,
+        type,
+        config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
+        null /* userIntent */);
+  }
+
+  public SubTaskGroup createWaitForServersTasks(
+      Collection<NodeDetails> nodes, ServerType type, UserIntent userIntent) {
+    return createWaitForServersTasks(
+        nodes,
+        type,
+        config.getDuration("yb.wait_for_server_timeout") /* default timeout */,
+        userIntent);
+  }
+
+  public SubTaskGroup createWaitForServersTasks(
+      Collection<NodeDetails> nodes, ServerType type, Duration timeout) {
+    return createWaitForServersTasks(nodes, type, timeout, null /* userIntent */);
   }
 
   /**
@@ -1661,9 +1685,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param nodes : a collection of nodes that need to be pinged.
    * @param type : Master or tserver type server running on these nodes.
    * @param timeout : time to wait for each rpc call to the server.
+   * @param userIntent : userIntent of the node.
    */
   public SubTaskGroup createWaitForServersTasks(
-      Collection<NodeDetails> nodes, ServerType type, Duration timeout) {
+      Collection<NodeDetails> nodes,
+      ServerType type,
+      Duration timeout,
+      @Nullable UserIntent userIntent) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServer");
     for (NodeDetails node : nodes) {
       WaitForServer.Params params = new WaitForServer.Params();
@@ -1671,6 +1699,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeName = node.nodeName;
       params.serverType = type;
       params.serverWaitTimeoutMs = timeout.toMillis();
+      params.userIntent = userIntent;
       WaitForServer task = createTask(WaitForServer.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);

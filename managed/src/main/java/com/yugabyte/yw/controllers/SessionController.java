@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.*;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -165,6 +166,7 @@ public class SessionController extends AbstractPlatformController {
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
     Customer cust = Customer.get(user.getCustomerUUID());
@@ -202,6 +204,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result getLogs(Integer maxLines) {
     String appHomeDir = config.getString("application.home");
     String logDir = config.getString("log.override.path");
@@ -229,6 +232,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getFilteredLogs", produces = "text/plain", response = String.class)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result getFilteredLogs(
       Integer maxLines,
       String universeName,
