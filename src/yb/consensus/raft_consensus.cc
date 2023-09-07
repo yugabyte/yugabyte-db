@@ -156,6 +156,9 @@ DEFINE_test_flag(double, return_error_on_change_config, 0.0,
 DEFINE_test_flag(bool, pause_before_replicate_batch, false,
                  "Whether to pause before doing DoReplicateBatch.");
 
+DEFINE_test_flag(bool, request_vote_respond_leader_still_alive, false,
+                 "Fake rejection to vote due to leader still alive");
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -2313,6 +2316,10 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   ReplicaState::UniqueLock state_guard;
   RETURN_NOT_OK(state_->LockForConfigChange(&state_guard));
 
+  if (PREDICT_FALSE(FLAGS_TEST_request_vote_respond_leader_still_alive)) {
+    return RequestVoteRespondLeaderIsAlive(request, response);
+  }
+
   // If the node is not in the configuration, allow the vote (this is required by Raft)
   // but log an informational message anyway.
   if (!IsRaftConfigMember(request->candidate_uuid(), state_->GetActiveConfigUnlocked())) {
@@ -2390,12 +2397,26 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
     response->set_remaining_leader_lease_duration_ms(
         narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
     response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
+  } else {
+    remaining_old_leader_lease = state_->RemainingMajorityReplicatedLeaderLeaseDuration();
+    if (remaining_old_leader_lease.Initialized()) {
+      response->set_remaining_leader_lease_duration_ms(
+        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
+      response->set_leader_lease_uuid(peer_uuid());
+    }
   }
 
   const auto& old_leader_ht_lease = state_->old_leader_ht_lease();
   if (old_leader_ht_lease) {
     response->set_leader_ht_lease_expiration(old_leader_ht_lease.expiration);
     response->set_leader_ht_lease_uuid(old_leader_ht_lease.holder_uuid);
+  } else {
+    const auto ht_lease = VERIFY_RESULT(MajorityReplicatedHtLeaseExpiration(
+        /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max()));
+    if (ht_lease) {
+      response->set_leader_ht_lease_expiration(ht_lease);
+      response->set_leader_ht_lease_uuid(peer_uuid());
+    }
   }
 
   // Passed all our checks. Vote granted.
