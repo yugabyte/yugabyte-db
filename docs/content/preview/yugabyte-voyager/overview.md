@@ -52,7 +52,7 @@ YugabyteDB Voyager for offline migration supports YugabyteDB stable versions 2.1
 
 <!-- Need to add for live migration -->
 
-The following table descibes the suppported target databases based on your migration choice.
+The following table describes the supported target databases based on your migration choice.
 
 | Migration type | Supported target databases |
 | :------------- | :------------------------- |
@@ -67,21 +67,10 @@ The following table descibes the suppported target databases based on your migra
 | YugabyteDB Anywhere | [Deploy a universe](../../yugabyte-platform/create-deployments/) |
 | YugabyteDB Managed | [Deploy a cluster](../../yugabyte-cloud/cloud-basics/) | -->
 
-## Migration workflow
+## Migration types
 
-A typical migration workflow using yb-voyager consists of the steps shown in the following illustration:
+You can perform migration by choosing one of the following options:
 
-![Migration workflow](/images/migrate/migration-workflow.png)
-
-| Step | Description |
-| :--- | :---|
-| [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| [Prepare source](../migrate-steps/#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
-| [Prepare target](../migrate-steps/#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
-| [Export schema](../migrate-steps/#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
-| [Analyze schema](../migrate-steps/#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
-| [Modify schema](../migrate-steps/#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
-| [Export data](../migrate-steps/#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
-| [Import schema](../migrate-steps/#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
-| [Import data](../migrate-steps/#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| [Import&nbsp;indexes&nbsp;and triggers](../migrate-steps/#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+- [Offline migration](../migrate/migrate-steps/)
+- [Live migration](../migrate/live-migrate/)
+- [Live migration with fall-forward](../migrate/live-fall-forward/)
