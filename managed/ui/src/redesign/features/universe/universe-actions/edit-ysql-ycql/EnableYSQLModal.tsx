@@ -64,10 +64,15 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       ysqlNewPassword: '',
       ysqlConfirmNewPassword: ''
     },
-    mode: 'onChange',
+    mode: 'onTouched',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const {
+    control,
+    watch,
+    handleSubmit,
+    formState: { isDirty }
+  } = formMethods;
 
   //watchers
   const enableYSQLValue = watch('enableYSQL');
@@ -164,7 +169,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       cancelTestId="EnableYSQLModal-Close"
       buttonProps={{
         primary: {
-          disabled: !primaryCluster?.userIntent?.enableYSQL
+          disabled: !isDirty
         }
       }}
     >
@@ -311,7 +316,8 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                         pattern: {
                           value: PASSWORD_REGEX,
                           message: t('universeForm.validation.passwordStrength')
-                        }
+                        },
+                        deps: ['ysqlConfirmPassword', 'enableYSQLAuth']
                       }}
                       control={control}
                       fullWidth
@@ -406,7 +412,8 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                               pattern: {
                                 value: PASSWORD_REGEX,
                                 message: t('universeForm.validation.passwordStrength')
-                              }
+                              },
+                              deps: ['ysqlConfirmNewPassword', 'enableYSQLAuth']
                             }}
                             name={'ysqlNewPassword'}
                             control={control}
@@ -428,7 +435,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                                   (enableYSQLAuthValue && value === ysqlNewPasswordValue) ||
                                   (t('universeForm.validation.confirmPassword') as string)
                               },
-                              deps: ['ysqlPassword', 'enableYSQLAuth']
+                              deps: ['ysqlNewPassword', 'enableYSQLAuth']
                             }}
                             fullWidth
                             inputProps={{
