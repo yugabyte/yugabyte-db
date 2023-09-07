@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -12,7 +13,9 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -26,9 +29,11 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -82,8 +87,11 @@ public class ImageBundleControllerTest extends FakeDBApplication {
 
   /* ==== Helper Request Functions ==== */
 
-  private Result listImageBundles(UUID customerUUID, UUID providerUUID) {
+  private Result listImageBundles(UUID customerUUID, UUID providerUUID, Architecture arch) {
     String uri = "/api/customers/%s/providers/%s/image_bundle";
+    if (arch != null) {
+      uri += String.format("?arch=%s", arch.toString());
+    }
     return doRequestWithAuthToken(
         "GET",
         String.format(uri, customerUUID.toString(), providerUUID.toString()),
@@ -149,13 +157,63 @@ public class ImageBundleControllerTest extends FakeDBApplication {
     ImageBundle ib1 = ImageBundle.create(provider, "ImageBundle-1", details, true);
     ImageBundle ib2 = ImageBundle.create(provider, "ImageBundle-2", details, false);
 
-    Result result = listImageBundles(customer.getUuid(), provider.getUuid());
+    Result result = listImageBundles(customer.getUuid(), provider.getUuid(), null);
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
     List<ImageBundle> imageBundles = Json.fromJson(json, List.class);
     assertEquals(imageBundles.size(), 2);
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testListImageBundleArch() {
+    ImageBundleDetails details1 = new ImageBundleDetails();
+    details1.setGlobalYbImage("Global-AMI-Image");
+    details1.setArch(Architecture.x86_64);
+    ImageBundle ib1 = ImageBundle.create(provider, "ImageBundle-1", details1, true);
+
+    ImageBundleDetails details2 = new ImageBundleDetails();
+    details2.setGlobalYbImage("Global-AMI-Image");
+    details2.setArch(Architecture.aarch64);
+    ImageBundle ib2 = ImageBundle.create(provider, "ImageBundle-2", details2, true);
+    ImageBundle ib3 = ImageBundle.create(provider, "ImageBundle-3", details2, false);
+
+    Result result = listImageBundles(customer.getUuid(), provider.getUuid(), Architecture.aarch64);
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    Set<String> bundleNames = ImmutableSet.of("ImageBundle-2", "ImageBundle-3");
+    assertEquals(bundleNames.size(), json.size());
+
+    List<ImageBundle> imageBundles = new ArrayList<>();
+    ArrayNode arrayNode = (ArrayNode) json;
+
+    for (JsonNode node : arrayNode) {
+      // Convert each JSON object in the array to an ImageBundle object
+      ImageBundle imageBundle = Json.fromJson(node, ImageBundle.class);
+      imageBundles.add(imageBundle);
+    }
+    for (ImageBundle bundle : imageBundles) {
+      assertTrue(bundleNames.contains(bundle.getName()));
+    }
+
+    result = listImageBundles(customer.getUuid(), provider.getUuid(), Architecture.x86_64);
+    assertEquals(OK, result.status());
+    json = Json.parse(contentAsString(result));
+
+    imageBundles = new ArrayList<>();
+    arrayNode = (ArrayNode) json;
+
+    for (JsonNode node : arrayNode) {
+      // Convert each JSON object in the array to an ImageBundle object
+      ImageBundle imageBundle = Json.fromJson(node, ImageBundle.class);
+      imageBundles.add(imageBundle);
+    }
+    bundleNames = ImmutableSet.of("ImageBundle-1");
+    assertEquals(bundleNames.size(), json.size());
+    for (ImageBundle bundle : imageBundles) {
+      assertTrue(bundleNames.contains(bundle.getName()));
+    }
   }
 
   @Test

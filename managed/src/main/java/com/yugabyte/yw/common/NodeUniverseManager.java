@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -460,9 +461,11 @@ public class NodeUniverseManager extends DevopsBase {
       if (cluster.userIntent.imageBundleUUID != null) {
         imageBundleUUID = cluster.userIntent.imageBundleUUID;
       } else {
-        ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-        if (bundle != null) {
-          imageBundleUUID = bundle.getUuid();
+        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundles.size() > 0) {
+          Architecture arch = universe.getUniverseDetails().arch;
+          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+          imageBundleUUID = defaultBundle.getUuid();
         }
       }
       if (imageBundleUUID != null) {
