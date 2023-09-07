@@ -779,4 +779,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the xCluster config.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowConfigureYSQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ysql",
+          ScopeType.UNIVERSE,
+          "Configure YSQL DB API",
+          "Allow users to configure YSQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ycql",
+          ScopeType.UNIVERSE,
+          "Configure YCQL DB API",
+          "Allow users to configure YCQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
 }
