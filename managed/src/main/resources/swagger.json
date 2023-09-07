@@ -2677,7 +2677,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -10554,7 +10554,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -13017,10 +13017,17 @@
           "type" : "string"
         },
         "role" : {
-          "description" : "User role",
+          "description" : "User role. Deprecated. Use field roleResourceDefinitions instead.",
           "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
           "example" : "Admin",
           "type" : "string"
+        },
+        "roleResourceDefinitions" : {
+          "description" : "List of roles and resource groups defined for user.",
+          "items" : {
+            "$ref" : "#/definitions/RoleResourceDefinition"
+          },
+          "type" : "array"
         },
         "timezone" : {
           "description" : "User timezone",
@@ -13028,7 +13035,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email", "role" ],
+      "required" : [ "email" ],
       "type" : "object"
     },
     "UserWithFeatures" : {
@@ -20688,7 +20695,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "ApplicationLogs" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -24769,7 +24776,8 @@
         "tags" : [ "User management" ]
       },
       "put" : {
-        "description" : "",
+        "deprecated" : true,
+        "description" : "Deprecated. Use this method instead: setRoleBinding.",
         "operationId" : "updateUserRole",
         "parameters" : [ {
           "format" : "uuid",
