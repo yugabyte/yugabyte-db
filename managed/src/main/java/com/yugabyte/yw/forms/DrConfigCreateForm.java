@@ -5,6 +5,8 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import java.util.UUID;
 import javax.validation.Valid;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
 import lombok.ToString;
 import play.data.validation.Constraints.MaxLength;
 import play.data.validation.Constraints.Pattern;
@@ -47,12 +49,15 @@ public class DrConfigCreateForm {
   public boolean dryRun = false;
 
   @Valid
-  @Required
-  @ApiModelProperty("Parameters needed for creating PITR configs")
+  @ApiModelProperty(
+      "Parameters needed for creating PITR configs; if not specified, "
+          + "default values from the runtime config will be used")
   public PitrParams pitrParams;
 
   @ApiModel(description = "PITR parameters")
   @ToString
+  @NoArgsConstructor
+  @AllArgsConstructor
   public static class PitrParams {
     @Required
     @ApiModelProperty(value = "Retention period of a snapshot in seconds")

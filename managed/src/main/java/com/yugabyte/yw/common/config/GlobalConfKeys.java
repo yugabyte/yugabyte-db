@@ -750,6 +750,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disasterRecoveryEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.dr.enabled",
+          ScopeType.GLOBAL,
+          "Enable disaster recovery",
+          "It indicates whether creating disaster recovery configs are enabled",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",

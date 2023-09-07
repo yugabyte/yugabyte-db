@@ -76,7 +76,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
       if (mightDeletedXClusterConfig.isPresent()
           && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
-        setXClusterConfigStatus(XClusterConfigStatusType.DeletionFailed);
+        mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
       }
       throw new RuntimeException(e);
     } finally {
@@ -94,13 +94,15 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       @Nullable Universe sourceUniverse,
       @Nullable Universe targetUniverse) {
     if (!isInMustDeleteStatus(xClusterConfig)) {
-      createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
+      createXClusterConfigSetStatusTask(
+              xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
 
     // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
     // to them if any.
-    createDeleteXClusterConfigSubtasks(xClusterConfig, taskParams().isForced());
+    createDeleteXClusterConfigSubtasks(
+        xClusterConfig, false /* keepEntry */, taskParams().isForced());
 
     // Fetch all universes that are connected through xCluster config to source and
     // target universe.
