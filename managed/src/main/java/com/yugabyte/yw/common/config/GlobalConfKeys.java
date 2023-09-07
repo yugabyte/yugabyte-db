@@ -636,6 +636,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static ConfKeyInfo<Integer> maxVolumeCount =
+      new ConfKeyInfo<>(
+          "yb.max_volume_count",
+          ScopeType.GLOBAL,
+          "Maximum Volume Count",
+          "Maximum Volume Count",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
