@@ -442,4 +442,4 @@ yugabyte=# select pg_stat_statements_reset();
 
 ## Learn more
 
-- [Latency histogram and P99 latencies](../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
+- [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
