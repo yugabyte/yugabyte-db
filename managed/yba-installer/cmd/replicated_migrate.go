@@ -81,6 +81,8 @@ var replicatedMigrationStart = &cobra.Command{
 			log.Fatal("Could not read " + checkFile + " to get group and user: " + err.Error())
 		}
 		statInfo := info.Sys().(*syscall.Stat_t)
+		log.DebugLF(
+			fmt.Sprintf("Prometheus user:group ownership - '%s:%s'", statInfo.Uid, statInfo.Gid))
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
@@ -310,6 +312,12 @@ var replicatedRollbackCmd = &cobra.Command{
 		state.CurrentStatus = ybactlstate.RollbackStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("Failed to save state: " + err.Error())
+		}
+
+		prompt := "Rollback to Replicated will not carry over any changes made to YBA after " +
+			"migration began. Continue?"
+		if !common.UserConfirm(prompt, common.DefaultNo) {
+			log.Fatal("canceling rollback")
 		}
 		if err := rollbackMigrations(state); err != nil {
 			log.Fatal("rollback failed: " + err.Error())
