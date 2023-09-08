@@ -39,6 +39,8 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
 
 </ul>
 
+You can install YugabyteDB Anywhere on a host machine using Replicated in both online and airgapped environments.
+
 ## Install Replicated
 
 {{< tabpane text=true >}}
