@@ -143,8 +143,8 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
         You may also specify the following for your token generated from the AppRole:
 
-        - ttl — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
-        - period — If specified, the token can be infinitely renewed.
+        - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
+        - `period` — If specified, the token can be infinitely renewed.
 
     - Obtain the RoleID and SecretID using the following commands:
 
@@ -174,7 +174,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
         For AppRole, enter the role ID and corresponding secret ID obtained from the vault. If the vault is configured with namespaces, also enter the namespace used to generate the credentials.
 
-    - **Key Name** - Enter the key name.
+    - **Key Name** - Enter the name of the Master Key in the vault. If you don't provide a key name, the configuration uses the default name key_yugabyte. If a key with that name exists in the vault, the configuration will use it, otherwise a key with that name is created.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
     - **Mount Path** — Specify the path to the secret engine in the vault. The default value is `transit/`.
 
