@@ -75,14 +75,14 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
-| [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
+| [--source-db-schema](#source-db-schema) <schemaName> | Schema name of the source database. |
 | [--source-db-user](#source-db-user) <username> | Name of the source database user (typically `ybvoyager`). |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Clears the exported schema. |
+| [--start-clean](#start-clean) | Starts a fresh schema export after clearing the `schema` directory. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
@@ -155,14 +155,14 @@ The valid *arguments* for export data are described in the following table:
 | [--source-db-name](#source-db-name) <name> | Source database name. |
 | [--source-db-password](#source-db-password) <password>| Source database password. |
 | [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
-| [--source-db-schema](#source-db-schema) <schemaName> | Schema of the source database. |
+| [--source-db-schema](#source-db-schema) <schemaName> | Schema name of the source database. |
 | [--source-db-user](#source-db-user) <username> | Username of the source database. |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Clears the exported data files. |
+| [--start-clean](#start-clean) | Starts a fresh data export after clearing all data from the `data` directory.  |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -227,12 +227,12 @@ The valid *arguments* for import schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import of the schema on the target YugabyteDB database. |
+| [--start-clean](#start-clean) | Starts a fresh schema import on the target for the schema present in the `schema` directory |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
-| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema name of the target database. |
 | [--target-db-user](#target-db-user) <username> | Username of the target database. |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -282,12 +282,12 @@ The valid *arguments* for import data are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import of data after clearing the previous state of import on the target YugabyteDB database. |
+| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory and if any table on target is non-empty, it will prompt whether you want to continue the import without truncating those tables; if yes then Voyager will start ingesting the data present in the data files with upsert mode and for the cases where the table doesn't have a primary key, it may duplicate the data. So in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
-| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema name of the target database. |
 | [--target-db-user](#target-db-user) <username> | Username of the target database. |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -343,12 +343,12 @@ The valid *arguments* for import data file are described in the following table:
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--quote-char](#quote-char) | Character used to quote the values (default double quotes `"`) only applicable to CSV file format. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import of a data file into a table in the target YugabyteDB database. |
+| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory and if any table on target is non-empty, it prompts whether you want to continue the import without truncating those tables; if yes, then Voyager starts ingesting the data present in the data files with upsert mode and for the cases where the table doesn't have a primary key, it may duplicate the data. So in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
 | [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
-| [--target-db-schema](#target-db-schema) <schemaName> | Schema of the target database. |
+| [--target-db-schema](#target-db-schema) <schemaName> | Schema name of the target database. |
 | [--target-db-user](#target-db-user) <username> | Username of the target database. |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
@@ -405,7 +405,7 @@ The valid *arguments* for import data status are described in the following tabl
 yb-voyager import data status --export-dir /path/to/yb/export/dir
 ```
 
-### fall-forward setup
+### fall-forward setup (Tech preview)
 
 Imports data to the fall-forward database, and streams new changes from the target YugabyteDB to the fall-forward database.
 
@@ -442,7 +442,7 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. (Default: 1) |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
-| --start-clean | Starts a fresh import to the fall-forward database |
+| --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on fall- forward database is non-empty, it prompts whether you want to continue the import without the truncating those tables; if yes, then Voyager starts ingesting the data present in the datafiles without upsert mode and for the cases where the table doesn't have a primary key, it may duplicate the data. So, in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | [--table-list](#table-list) | Comma-separated list of the tables to import data. |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the migration. (Default: false) |
@@ -459,7 +459,7 @@ yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
         --parallel-jobs connectionCount
 ```
 
-### fall-forward synchronize
+### fall-forward synchronize (Tech preview)
 
 Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB after cutover.
 
@@ -505,7 +505,7 @@ yb-voyager fall-forward synchronize --export-dir /path/to/yb/export/dir \
         --target-db-schema schemaName
 ```
 
-### cutover initiate
+### cutover initiate (Tech preview)
 
 Initiate cutover to the target YugabyteDB.
 
@@ -528,7 +528,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 yb-voyager cutover initiate --export-dir /path/to/yb/export/dir \
 ```
 
-### cutover status
+### cutover status (Tech preview)
 
 Shows the status of the cutover state to YugabyteDB from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
 
@@ -551,7 +551,7 @@ The valid *arguments* for cutover status are described in the following table:
 yb-voyager cutover status --export-dir /path/to/yb/export/dir \
 ```
 
-### fall-forward switchover
+### fall-forward switchover (Tech preview)
 
 Initiate a switchover to the fall-forward database.
 
@@ -574,7 +574,7 @@ The valid *arguments* for fall-forward switchover are described in the following
 yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir \
 ```
 
-### fall-forward status
+### fall-forward status (Tech preview)
 
 Shows the status of the fall-forward switchover state to fall-forward database from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
 
@@ -597,7 +597,7 @@ The valid *arguments* for fall-forward switchover status are described in the fo
 yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \
 ```
 
-### archive changes
+### archive changes (Tech preview)
 
 This command archives the streaming data from the source database.
 
@@ -664,7 +664,7 @@ Specifies the name of the source database.
 
 ### --source-db-schema
 
-Specifies the schema of the source database. Not applicable for MySQL.
+Specifies the schema name of the source database. Not applicable for MySQL.
 
 For Oracle, you can specify only one schema name using this option.
 
@@ -706,7 +706,7 @@ Default: yugabyte
 
 ### --target-db-schema
 
-Specifies the schema of the target database. MySQL and Oracle migrations only.
+Specifies the schema name of the target database. MySQL and Oracle migrations only.
 
 ### --parallel-jobs
 
@@ -827,7 +827,7 @@ For the import phase, starts a fresh import of schema during import schema and c
 
 For import data file, starts a fresh import of a data file into a table in the target database.
 
-Note: Because Voyager uses upsert mode during data import, if the target tables are not empty and they have a Primary Key, you should have no problems when using this flag, as column values will be updated. For tables with no Primary Key, you should exclude them using `--exlcude-table-list` to avoid duplicate data, if any.
+Note: Because Voyager uses upsert mode during data import, if the target tables are not empty and they have a Primary Key, you should have no problems when using this flag, as column values will be updated. For tables with no Primary Key, you should exclude them using `--exlcude-table-list` to avoid duplicate data, if any, or truncate those tables manually before using the `start-clean` flag.
 
 ### --table-list
 
@@ -887,7 +887,7 @@ Default: Oracle(1521)
 
 ### --ff-db-schema
 
-Specifies the schema of the fall-forward database.
+Specifies the schema name of the fall-forward database.
 
 ### --ff-db-user
 
@@ -895,7 +895,7 @@ Specifies the username in the Fall-forward database to be used for the migration
 
 ### --export-type
 
-Specifies the type of live migration [`snapshot-only`, `snapshot-and-changes` ]
+Specifies the type of migration [`snapshot-only` (offline), `snapshot-and-changes`(live, and optionally fall-forward) ]
 
 Default - `snapshot-only`
 

@@ -2,13 +2,14 @@
 title: Steps to perform live migration of your database using YugabyteDB Voyager
 headerTitle: Live migration
 linkTitle: Live migration
-headcontent: Steps to perform live migration using YugabyteDB Voyager.
+headcontent: Steps for a live migration using YugabyteDB Voyager.
 description: Run the steps to ensure a successful live migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: migrate-live
     parent: migration-types
     weight: 103
+techPreview: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 type: docs
 rightNav:
   hideH4: true
@@ -16,7 +17,17 @@ rightNav:
 
 This page describes the steps to perform and verify a successful live migration to YugabyteDB including changes that continuously occur on the source.
 
-## Migration workflow
+## Live migration workflow
+
+The following workflows illustrate how you can perform a data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
+
+Eventually, the migration process reaches a steady state where you can perform a [cutover](#cutover). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB.
+
+The following illustration describes how the data export and import operations are simultaneously handled by YugabyteDB Voyager.
+
+![Live migration short](/images/migrate/live-migration-short.png)
+
+The following illustration describes the overview of live migration using YugabyteDB Voyager.
 
 ![Live migration workflow](/images/migrate/live-migration-workflow.png)
 
@@ -28,7 +39,7 @@ This page describes the steps to perform and verify a successful live migration 
 | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
 | [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
-| Start | Start the phases: export data, import data, and archive changes simultaneously. |
+| Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
 | [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | [Archive changes](#archive-changes) | Continususly archive migration changes to limit disk utilization. |
@@ -196,37 +207,6 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 {{< /note >}}
 
-### Export data
-
-Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data command as follows:
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager export data --export-dir <EXPORT_DIR> \
---source-db-type <SOURCE_DB_TYPE> \
---source-db-host <SOURCE_DB_HOST> \
---source-db-user <SOURCE_DB_USER> \
---source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
---source-db-name <SOURCE_DB_NAME> \
---source-db-schema <SOURCE_DB_SCHEMA> \
---export-type snapshot-and-changes
-```
-
-The export data command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase.
-
-Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
-Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
-
-#### Caveats
-
-- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
-- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
-- [--parallel-jobs](../../reference/yb-voyager-cli/#parallel-jobs) argument has no effect on live migration.
-
-Refer to [export data](../../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
-
-The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
-
 ### Import schema
 
 Import the schema using the `yb-voyager import schema` command.
@@ -259,9 +239,40 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 {{< /note >}}
 
+### Export data
+
+Begin exporting data from the source database into the `EXPORT_DIR/data` directory using the yb-voyager export data command as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager export data --export-dir <EXPORT_DIR> \
+--source-db-type <SOURCE_DB_TYPE> \
+--source-db-host <SOURCE_DB_HOST> \
+--source-db-user <SOURCE_DB_USER> \
+--source-db-password <SOURCE_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+--source-db-name <SOURCE_DB_NAME> \
+--source-db-schema <SOURCE_DB_SCHEMA> \
+--export-type snapshot-and-changes
+```
+
+The export data command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as the number of events, export rate, and so on, is displayed during the CDC phase.
+
+Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
+Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
+
+#### Caveats
+
+- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
+- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
+- [--parallel-jobs](../../reference/yb-voyager-cli/#parallel-jobs) argument has no effect on live migration.
+
+Refer to [export data](../../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
+
+The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
+
 ### Import data
 
-After you have successfully imported the schema in the target database, and the CDC phase has started in export data (which can be checked by export data status command), you can start importing the data using the yb-voyager import data command as follows:
+After you have successfully imported the schema in the target database, you can start importing the data using the yb-voyager import data command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -278,9 +289,23 @@ Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details 
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB cluster.
 
-Some important metrics such as number of events, ingestion rate, and so on, will be displayed during the CDC phase.
+Some important metrics such as the number of events, ingestion rate, and so on, is displayed during the CDC phase similar to the following:
 
-The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
+```output
+| -----------------------------  |  ----------------------------- |
+| Metric                         |                          Value |
+| -----------------------------  |  ----------------------------- |
+| Total Imported events          |                         272572 |
+| Events Imported in this Run    |                         272572 |
+| Ingestion Rate (last 3 mins)   |               14542 events/sec |
+| Ingestion Rate (last 10 mins)  |               14542 events/sec |
+| Time taken in this Run         |                      0.83 mins |
+| Remaining Events               |                        4727427 |
+| Estimated Time to catch up     |                          5m42s |
+| -----------------------------  |  ----------------------------- |
+```
+
+The entire import process is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
 [table-list](../../reference/yb-voyager-cli/#table-list) and [exclude-table-list](../../reference/yb-voyager-cli/#exclude-table-list) flags are not supported in live migration.
@@ -308,9 +333,9 @@ yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
 
 ### Cutover
 
-This is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
+Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
 
-Keep monitoring the metrics displayed on export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
+Keep monitoring the metrics displayed for export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
 Perform the following steps as part of the cutover process:
 
@@ -323,7 +348,7 @@ Perform the following steps as part of the cutover process:
         yb-voyager cutover initiate --export-dir <EXPORT_DIR>
         ```
 
-    1. Proceed with the cutover process by doing the following:
+    1. From another terminal, proceed with the following steps while the cutover operation is in progress:
 
         1. Stop the export data process.
         1. Stop the import data process after it has imported all the events to the target YugabyteDB.
@@ -368,4 +393,4 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 1. Stop [archive changes](#archive-changes).
 
-## Limitations
+<!-- ## Limitations -->
