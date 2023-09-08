@@ -1,3 +1,9 @@
+4.7.4
+NEW FEATURES
+============
+-- Compatible with PostgreSQL 16.
+
+
 4.7.3
 BUG FIXES
 =========
