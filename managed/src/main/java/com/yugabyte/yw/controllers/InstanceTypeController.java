@@ -28,7 +28,6 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -103,14 +102,15 @@ public class InstanceTypeController extends AuthenticatedController {
       UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    if (arch == null) {
-      // This will be the case of legacy flow, where we don't have architecture as top level
-      // universe property. We can retrieve the arch from the default Image bundle for the provider.
-      List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
-      if (defaultImageBundles.size() > 0) {
-        arch = defaultImageBundles.get(0).getDetails().getArch().toString();
-      }
-    }
+    // if (arch == null) {
+    //   // This will be the case of legacy flow, where we don't have architecture as top level
+    //   // universe property. We can retrieve the arch from the default Image bundle for the
+    // provider.
+    //   List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
+    //   if (defaultImageBundles.size() > 0) {
+    //     arch = defaultImageBundles.get(0).getDetails().getArch().toString();
+    //   }
+    // }
     final String architecture = arch;
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
