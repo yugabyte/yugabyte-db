@@ -22,6 +22,789 @@ SET search_path TO ag_catalog;
 -- jsonb operators in AGE (?, ?&, ?|, ->, ->>, #>, #>>, ||)
 --
 --
+-- Agtype exists operator
+--
+-- exists (?)
+-- should return 't'
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"n"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"a"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"b"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"d"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ? '"label"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ? '"n"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '["1","2"]'::agtype ? '"1"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '["hello", "world"]'::agtype ? '"hello"';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_exists('{"id": 1}','id'::text);
+ agtype_exists 
+---------------
+ t
+(1 row)
+
+SELECT '{"id": 1}'::agtype ? 'id'::text;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- should return 'f'
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"e"';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"e1"';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '"1"';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '1';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[{"id": 281474976710658, "label": "", "properties": {"n": 100}}]'::agtype ? '"id"';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[{"id": 281474976710658, "label": "", "properties": {"n": 100}}]'::agtype ? 'null';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ? 'null';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ? 'null';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '["hello", "world"]'::agtype ? '"hell"';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT agtype_exists('{"id": 1}','not_id'::text);
+ agtype_exists 
+---------------
+ f
+(1 row)
+
+SELECT '{"id": 1}'::agtype ? 'not_id'::text;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '["e1", "n"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '["n"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '["n", "a", "e"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '{"n": null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '{"n": null, "b": true}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? '["e1"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+-- errors out
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? 'e1';
+ERROR:  invalid input syntax for type agtype
+LINE 1: ...a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? 'e1';
+                                                                  ^
+DETAIL:  Expected agtype value, but found "e1".
+CONTEXT:  agtype data, line 1: e1
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? 'e';
+ERROR:  invalid input syntax for type agtype
+LINE 1: ..."a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ? 'e';
+                                                                   ^
+DETAIL:  Expected agtype value, but found "e".
+CONTEXT:  agtype data, line 1: e
+-- Exists any (?|)
+-- should return 't'
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["a","b"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["b","a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["c","a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"1":null, "b":"qq"}'::agtype ?| '["c","1"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["a","a", "b", "b", "b"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?| '[1,2,3,4]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[null,"id"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '["id",null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[true,"id"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[1,"id"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[null,null,"n"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '["n",null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_exists_any('{"id": 1}', array['id']);
+ agtype_exists_any 
+-------------------
+ t
+(1 row)
+
+SELECT '{"id": 1}'::agtype ?| array['id'];
+ ?column? 
+----------
+ t
+(1 row)
+
+-- should return 'f'
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["c","d"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["1","2"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["c","1"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '[]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '["c","d"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[null]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[null,null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[null, "idk"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?| '[""]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex' ?| '[null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?| '[null,null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?| '["idk",null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[null]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[null,null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[[""]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[null,null, "idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '[null,null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?| '["start_idk",null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '[["a"], ["b"]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '[["a"], ["b"], ["c"]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[null]'::agtype ?| '[null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT agtype_exists_any('{"id": 1}', array['not_id']);
+ agtype_exists_any 
+-------------------
+ f
+(1 row)
+
+SELECT '{"id": 1}'::agtype ?| array['not_id'];
+ ?column? 
+----------
+ f
+(1 row)
+
+-- errors out
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ?| '"b"';
+ERROR:  invalid agtype value for right operand
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ?| '"d"';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '{"a", "b"}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?| '{"a", "b"}';
+                                                 ^
+DETAIL:  Expected ":", but found ",".
+CONTEXT:  agtype data, line 1: {"a",...
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?| '';
+                                                 ^
+DETAIL:  The input string ended unexpectedly.
+CONTEXT:  agtype data, line 1: 
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '""';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '{""}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?| '{""}';
+                                                 ^
+DETAIL:  Expected ":", but found "}".
+CONTEXT:  agtype data, line 1: {""}
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '{}';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '0'::agtype;
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?| '0';
+ERROR:  invalid agtype value for right operand
+-- Exists all (?&)
+-- should return 't'
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["a","b"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["b","a"]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["a","a", "b", "b", "b"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[null]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[null,null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[null,null,"id"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '["id",null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '[null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '[]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '[null,null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '[null,null,"n"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '["n",null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null,null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null,null,"n"]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '["n",null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[1,2,3]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[1,2,3,null]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[null, null]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[null, null, null]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '[]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[null]'::agtype ?& '[null]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_exists_all('{"id": 1}', array['id']);
+ agtype_exists_all 
+-------------------
+ t
+(1 row)
+
+SELECT '{"id": 1}'::agtype ?& array['id'];
+ ?column? 
+----------
+ t
+(1 row)
+
+-- should return 'f'
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["c","a"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["a","b", "c"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '["c","d"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[1,2,3]'::agtype ?& '[1,2,3,4]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '[["a"]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '[["a"], ["b"]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '[["a"], ["b"], ["c"]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[null, "idk"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[""]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex' ?& '[null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '[null,null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}::vertex'::agtype ?& '["idk",null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[1,"id"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710658, "label": "", "properties": {"n": 100}}'::agtype ?& '[true,"id"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null, "idk"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[[""]]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null,null, "idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '[null,null,"idk"]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 1688849860263937, "label": "EDGE", "end_id": 1970324836974593, "start_id": 1407374883553281, "properties": {"n": 100}}::edge'::agtype ?& '["start_idk",null]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '[null, "c", "a"]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT agtype_exists_all('{"id": 1}', array['not_id']);
+ agtype_exists_all 
+-------------------
+ f
+(1 row)
+
+SELECT '{"id": 1}'::agtype ?& array['not_id'];
+ ?column? 
+----------
+ f
+(1 row)
+
+-- errors out
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '"d"';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '"a"';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '" "';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '""';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '"null"';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '{"a", "b", "c"}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?& '{"a", "b", "c"}';
+                                                 ^
+DETAIL:  Expected ":", but found ",".
+CONTEXT:  agtype data, line 1: {"a",...
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '{}';
+ERROR:  invalid agtype value for right operand
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '{""}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?& '{""}';
+                                                 ^
+DETAIL:  Expected ":", but found "}".
+CONTEXT:  agtype data, line 1: {""}
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '{null}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?& '{null}';
+                                                 ^
+DETAIL:  Expected string or "}", but found "null".
+CONTEXT:  agtype data, line 1: {null...
+SELECT '{"a":null, "b":"qq"}'::agtype ?& '{"null"}';
+ERROR:  invalid input syntax for type agtype
+LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?& '{"null"}';
+                                                 ^
+DETAIL:  Expected ":", but found "}".
+CONTEXT:  agtype data, line 1: {"null"}
+--
 -- concat || operator
 --
 SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype || '[0, 1]'::agtype as i) a;
@@ -464,6 +1247,306 @@ SELECT * FROM cypher('jsonb_operators',$$CREATE ({list:['a', 'b', 'c'], json:{a:
 ---
 (0 rows)
 
+/*
+ * ?, ?|, ?& key existence operators
+ */
+-- Exists (?)
+-- should return true
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ? 'list' $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json ? 'a' $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.list ? 'c' $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ? 'a' $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ? 'd' $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+-- should return false
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ? 'a' $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json ? 'd' $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.list ? 'd' $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ? 'c' $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ? 'e' $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ? [] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ? ['d'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ? {d: 'e'} $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+-- Exists (?|)
+-- should return true
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| ['list'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| ['list', 'd'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| ['json', 'a'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| ['list', 'json'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?| ['a'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?| ['a', 'b'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ?| ['d'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ?| ['d', 'e'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| keys(n) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json ?| keys(n.json) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return [n.json ?| keys(n.json)] ?| [true] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+-- should return false
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| [] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| ['a', 'b'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?| [] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ?| ['c'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| [['list']] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| keys(n.json) $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json ?| keys(n) $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return [n.json ?| keys(n.json)] ?| [false] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+-- errors out
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| 'list' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?| n $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& 1 $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '1' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '{}' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& n.json $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+-- Exists (?&)
+-- should return true
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& ['list', 'json'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?& ['a', 'b'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ?& ['d'] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& keys(n) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json ?& keys(n.json) $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+-- should return false
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& [] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& ['a', 'b'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?& [] $$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.b ?& ['a', 'b', 'c'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n.json.c ?& ['d', 'e'] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& [['list']] $$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+-- errors out
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& 'list' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& 1 $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '1' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& n $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '{}' $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& n.json $$) as (a agtype);
+ERROR:  invalid agtype value for right operand
 --
 -- concat || operator
 --

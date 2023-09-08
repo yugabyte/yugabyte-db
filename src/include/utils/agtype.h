@@ -550,6 +550,10 @@ agtype_value *string_to_agtype_value(char *s);
 agtype_value *integer_to_agtype_value(int64 int_value);
 void add_agtype(Datum val, bool is_null, agtype_in_state *result, Oid val_type,
                 bool key_scalar);
+agtype_value *extract_entity_properties(agtype *object, bool error_on_scalar);
+agtype_iterator *get_next_list_element(agtype_iterator *it,
+                                       agtype_container *agtc,
+                                       agtype_value *elem);
 void pfree_agtype_value(agtype_value* value);
 void pfree_agtype_value_content(agtype_value* value);
 void pfree_agtype_in_state(agtype_in_state* value);

@@ -2981,6 +2981,23 @@ CREATE OPERATOR ? (
   JOIN = contjoinsel
 );
 
+CREATE FUNCTION ag_catalog.agtype_exists_agtype(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ? (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_agtype,
+  COMMUTATOR = '?',
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
 CREATE FUNCTION ag_catalog.agtype_exists_any(agtype, text[])
 RETURNS boolean
 LANGUAGE c
@@ -2997,6 +3014,22 @@ CREATE OPERATOR ?| (
   JOIN = contjoinsel
 );
 
+CREATE FUNCTION ag_catalog.agtype_exists_any_agtype(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ?| (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_any_agtype,
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
 CREATE FUNCTION ag_catalog.agtype_exists_all(agtype, text[])
 RETURNS boolean
 LANGUAGE c
@@ -3009,6 +3042,22 @@ CREATE OPERATOR ?& (
   LEFTARG = agtype,
   RIGHTARG = text[],
   FUNCTION = ag_catalog.agtype_exists_all,
+  RESTRICT = contsel,
+  JOIN = contjoinsel
+);
+
+CREATE FUNCTION ag_catalog.agtype_exists_all_agtype(agtype, agtype)
+RETURNS boolean
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OPERATOR ?& (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_exists_all_agtype,
   RESTRICT = contsel,
   JOIN = contjoinsel
 );
@@ -3062,9 +3111,9 @@ PARALLEL SAFE;
 CREATE OPERATOR CLASS ag_catalog.gin_agtype_ops
 DEFAULT FOR TYPE agtype USING gin AS
   OPERATOR 7 @>,
-  OPERATOR 9 ?(agtype, text),
-  OPERATOR 10 ?|(agtype, text[]),
-  OPERATOR 11 ?&(agtype, text[]),
+  OPERATOR 9 ?(agtype, agtype),
+  OPERATOR 10 ?|(agtype, agtype),
+  OPERATOR 11 ?&(agtype, agtype),
   FUNCTION 1 ag_catalog.gin_compare_agtype(text,text),
   FUNCTION 2 ag_catalog.gin_extract_agtype(agtype, internal),
   FUNCTION 3 ag_catalog.gin_extract_agtype_query(agtype, internal, int2,

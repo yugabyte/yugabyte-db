@@ -803,25 +803,6 @@ SELECT agtype_contains('{"id": 1}','{"id": 2}');
 SELECT '{"id": 1}'::agtype @> '{"id": 1}';
 SELECT '{"id": 1}'::agtype @> '{"id": 2}';
 
-SELECT agtype_exists('{"id": 1}','id');
-SELECT agtype_exists('{"id": 1}','not_id');
-
-SELECT '{"id": 1}'::agtype ? 'id';
-SELECT '{"id": 1}'::agtype ? 'not_id';
-
-SELECT agtype_exists_any('{"id": 1}', array['id']);
-SELECT agtype_exists_any('{"id": 1}', array['not_id']);
-
-SELECT '{"id": 1}'::agtype ?| array['id'];
-SELECT '{"id": 1}'::agtype ?| array['not_id'];
-
-
-SELECT agtype_exists_all('{"id": 1}', array['id']);
-SELECT agtype_exists_all('{"id": 1}', array['not_id']);
-
-SELECT '{"id": 1}'::agtype ?& array['id'];
-SELECT '{"id": 1}'::agtype ?& array['not_id'];
-
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --
