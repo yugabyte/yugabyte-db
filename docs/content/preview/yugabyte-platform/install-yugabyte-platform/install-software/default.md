@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/installer/).
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
 
 Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
