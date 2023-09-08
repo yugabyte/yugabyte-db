@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { Theme, makeStyles } from '@material-ui/core';
-import { UniverseDetails } from '../../universe-form/utils/dto';
+import { Certificate, UniverseDetails } from '../../universe-form/utils/dto';
 import { getPrimaryCluster } from '../../universe-form/utils/helpers';
 
 //styles
@@ -123,3 +123,8 @@ export const getInitialFormValues = (universeDetails: UniverseDetails) => {
     upgradeDelay: 240
   };
 };
+
+const getCertificateType = (certificate: Certificate) => certificate.certType;
+
+export const isSelfSignedCert = (certificate: Certificate) =>
+  getCertificateType(certificate) === 'SelfSigned';

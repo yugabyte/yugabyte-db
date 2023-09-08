@@ -964,7 +964,7 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        {isCACertRotationEnabled && (
+        {isCACertRotationEnabled && showModal && visibleModal === 'tlsConfigurationModal' && (
           <EncryptionInTransit
             open={showModal && visibleModal === 'tlsConfigurationModal'}
             onClose={() => {
