@@ -2,7 +2,7 @@
 title: Steps to perform live migration of your database using YugabyteDB Voyager
 headerTitle: Live migration with fall-forward
 linkTitle: Live migration with fall-forward
-headcontent: Run the steps to ensure a successful live migration with fall-forward using YugabyteDB Voyager.
+headcontent: Steps to perform live migration with fall-forward using YugabyteDB Voyager.
 description: Steps to ensure a successful live migration with fall-forward using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -17,6 +17,8 @@ type: docs
 This page describes the steps to perform and verify a successful live migration to YugabyteDB using the fall-forward option.
 
 ## Migration workflow
+
+![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
@@ -407,3 +409,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
     {{< /warning >}}
 
 1. Stop [archive changes](#archive-changes).
+
+
+## Limitataions
+

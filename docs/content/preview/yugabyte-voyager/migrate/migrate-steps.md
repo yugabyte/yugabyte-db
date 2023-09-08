@@ -16,7 +16,7 @@ This page describes the steps to perform and verify a successful offline migrati
 
 ## Migration workflow
 
-![Migration workflow](/images/migrate/migration-workflow.png)
+![Offline migration workflow](/images/migrate/migration-workflow.png)
 
 | Step | Description |
 | :--- | :---|

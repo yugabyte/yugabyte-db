@@ -2,7 +2,7 @@
 title: Steps to perform live migration of your database using YugabyteDB Voyager
 headerTitle: Live migration
 linkTitle: Live migration
-headcontent: Run the steps to ensure a successful migration using YugabyteDB Voyager.
+headcontent: Steps to perform live migration using YugabyteDB Voyager.
 description: Run the steps to ensure a successful live migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -18,7 +18,24 @@ This page describes the steps to perform and verify a successful live migration 
 
 ## Migration workflow
 
-The export data command will first export a snapshot and then start continuously capturing changes from the source. The import data command will similarly first import the snapshot, and then continuously apply the exported change events on the target. Eventually, the migration process will reach a steady state wherein you can perform a cutover. You can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB.
+![Live migration workflow](/images/migrate/live-migration-workflow.png)
+
+| Step | Description |
+| :--- | :---|
+| [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| [Prepare source](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| Start | Start the phases: export data, import data, and archive changes simultaneously. |
+| [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
+| [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| [Archive changes](#archive-changes) | Continususly archive migration changes to limit disk utilization. |
+| [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process will reach a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB. |
+| [Wait for cutover to complete](#cutover) | Monitor the wait status using the [cutover status](../../reference/yb-voyager-cli/#cutover-status) command. |
+| [Import&nbsp;indexes&nbsp;and triggers](#cutover) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+| [Verify migration](#cutover) | Check if the live migration is successful. |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 

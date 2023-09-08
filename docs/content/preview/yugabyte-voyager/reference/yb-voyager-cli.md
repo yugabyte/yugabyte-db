@@ -52,7 +52,7 @@ The following command line options specify the migration steps.
 
 ### export schema
 
-[Export the schema](../../migrate-steps/#export-and-analyze-schema) from the source database.
+[Export the schema](../../migrate/migrate-steps/#export-and-analyze-schema) from the source database.
 
 #### Syntax
 
@@ -103,7 +103,7 @@ yb-voyager export schema --export-dir /path/to/yb/export/dir \
 
 ### analyze-schema
 
-[Analyse the PostgreSQL schema](../../migrate-steps/#analyze-schema) dumped in the export schema step.
+[Analyse the PostgreSQL schema](../../migrate/migrate-steps/#analyze-schema) dumped in the export schema step.
 
 #### Syntax
 
@@ -128,7 +128,7 @@ yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format tx
 
 ### export data
 
-[Dump](../../migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+[Dump](../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
 #### Syntax
 
@@ -203,9 +203,9 @@ yb-voyager export data status --export-dir /path/to/yb/export/dir
 
 ### import schema
 
-[Import the schema](../../migrate-steps/#import-schema) to the target YugabyteDB.
+[Import the schema](../../migrate/migrate-steps/#import-schema) to the target YugabyteDB.
 
-During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate-steps/#import-data) is complete.
+During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate/migrate-steps/#import-data) is complete.
 
 {{< note title="For Oracle migrations" >}}
 
@@ -262,7 +262,7 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
 
 ### import data
 
-[Import the data](../../migrate-steps/#import-data) to the target YugabyteDB.
+[Import the data](../../migrate/migrate-steps/#import-data) to the target YugabyteDB.
 
 #### Syntax
 
@@ -316,7 +316,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers).
+[Load all your data files](../../migrate/migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate/migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate/migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate/migrate-steps/#import-data-file-from-azure-blob-storage-containers).
 
 #### Syntax
 
@@ -863,23 +863,57 @@ Use this argument to not display progress bars.
 
 Default: false
 
+### --ff-db-host
+
+Specifies the domain name or IP address of the machine on which Fall-forward database server is running.
+
+### --ff-db-name
+
+Specifies the name of the fall-forward database.
+
+### --ff-db-password
+
+Specifies the password for the fall-forward database user to be used for the migration. Alternatively, you can also specify the password by setting the environment variable `FF_DB_PASSWORD`.
+
+If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password.
+
+If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes.
+
+### --ff-db-port
+
+Specifies the port number of the machine on which the fall-forward database server is running.
+
+Default: Oracle(1521)
+
+### --ff-db-schema
+
+Specifies the schema of the fall-forward database.
+
+### --ff-db-user
+
+Specifies the username in the Fall-forward database to be used for the migration.
+
+### --export-type
+
+Specifies the type of live migration [`snapshot-only`, `snapshot-and-changes` ]
+
+Default - `snapshot-only`
+
 ---
 
 ## SSL connectivity
 
 You can instruct yb-voyager to connect to the source or target database over an SSL connection. Connecting securely to PostgreSQL, MySQL, and YugabyteDB requires you to pass a similar set of arguments to yb-voyager. Oracle requires a different set of arguments.
 
-Note that the SSL arguments are unsupported with [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle).
-
 The following table summarizes the arguments and options you can pass to yb-voyager to establish an SSL connection.
 
 | Database | Arguments | Description |
 | :------- | :------------ | :----------- |
 | PostgreSQL <br /> MySQL | `--source-ssl-mode`| Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul> |
-| | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. Note: If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), ensure that the keys are in the PKCS8 standard PEM format. |
+| | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. Note: If using [accelerated data export](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), ensure that the keys are in the PKCS8 standard PEM format. |
 | | `--source-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities.
-| | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate. If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), this is not supported. |
-| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](#source-db-schema) and [`--oracle-db-sid`](#oracle-db-sid). Note: By default, the expectation is that the wallet files (.sso, .pk12, and so on) are in the TNS_ADMIN directory (the one containing tnsnames.ora). If the wallet files are in a different directory, ensure that you update the wallet location in the `sqlnet.ora` file. If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), to specify a different wallet location, also create a `ojdbc.properties` file in the TNS_ADMIN directory, and add the following: `oracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/path/to/wallet)))`. |
+| | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate. If using [accelerated data export](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), this is not supported. |
+| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](#source-db-schema) and [`--oracle-db-sid`](#oracle-db-sid). Note: By default, the expectation is that the wallet files (.sso, .pk12, and so on) are in the TNS_ADMIN directory (the one containing tnsnames.ora). If the wallet files are in a different directory, ensure that you update the wallet location in the `sqlnet.ora` file. If using [accelerated data export](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), to specify a different wallet location, also create a `ojdbc.properties` file in the TNS_ADMIN directory, and add the following: `oracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/path/to/wallet)))`. |
 | YugabyteDB | `--target-ssl-mode` | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul>
 | | `--target-ssl-cert` <br /> `--target-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--target-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities. |
