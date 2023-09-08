@@ -29,11 +29,6 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
-  </li>
-
-  <li>
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>

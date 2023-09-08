@@ -16,13 +16,13 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers. |
-| Replicated | Docker containers | You're able to use Docker containers. |
+| YBA Installer | yba-ctl CLI | You are performing a reguler installation. |
+| Replicated | Docker containers | You want to use Docker containers. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of YBA Installer or Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

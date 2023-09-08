@@ -121,7 +121,7 @@ The next step is to install YugabyteDB Anywhere.
 
 ## Set Up HTTPS (optional)
 
-Launch the Replicated UI via [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). Expect to see a warning stating that the connection to the server is not yet private. This condition is resolved once HTTPS for the Replicated Admin Console is set up in the next step. Proceed by clicking **Continue to Setup** **>** **ADVANCED** to bypass the warning and access the **Replicated Admin Console**, as shown in the following illustration:
+Launch the Replicated UI via [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). Expect to see a warning stating that the connection to the server is not yet private. This condition is resolved once HTTPS for the Replicated Admin Console is set up in the next step. Proceed by clicking **Continue to Setup > ADVANCED** to bypass the warning and access the **Replicated Admin Console**, as shown in the following illustration:
 
 ![Replicated SSL warning](/images/replicated/replicated-warning.png)
 
@@ -153,7 +153,7 @@ Add a password to protect the Replicated Admin Console, which is different from 
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-## Preflight checks
+## Perform preflight checks
 
 Replicated performs a set of preflight checks to ensure that the host is set up correctly for YugabyteDB Anywhere, as shown in the following illustration:
 
