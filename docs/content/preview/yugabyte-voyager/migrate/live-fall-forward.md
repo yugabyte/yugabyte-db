@@ -318,7 +318,18 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
 --export-type snapshot-and-changes
 ```
 
-The export data command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase.
+The export data command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase similar to the following:
+
+```output
+| ---------------------------------------  |  ----------------------------- |
+| Metric                                   |                          Value |
+| ---------------------------------------  |  ----------------------------- |
+| Total Exported Events                    |                         123456 |
+| Total Exported Events (Current Run)      |                         123456 |
+| Export Rate(Last 3 min)                  |                      22133/sec |
+| Export Rate(Last 10 min)                 |                      21011/sec |
+| ---------------------------------------  |  ----------------------------- |
+```
 
 Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.

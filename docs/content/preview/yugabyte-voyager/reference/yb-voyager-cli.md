@@ -128,7 +128,9 @@ yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format tx
 
 ### export data
 
-[Dump](../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+For offline migration, export data [dumps](../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+
+For live migration (and fall-forward), export data [dumps](../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
 #### Syntax
 
@@ -144,6 +146,7 @@ The valid *arguments* for export data are described in the following table:
 | [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
 | [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
+| [--export-type](#export-type) | Choose migration type between `snapshot-only` (default) or `snapshot-and-changes` |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
@@ -180,7 +183,9 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
 
 ### export data status
 
-Get the status report of an ongoing or completed data export operation.
+For offline migration, get the status report of an ongoing or completed data export operation.
+
+For live migration (and fall-forward), get the report of the ongoing export phase which includes metrics such as the number of rows exported in the snapshot phase, the total number of change events exported from the source, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count exported.
 
 #### Syntax
 
@@ -262,7 +267,9 @@ yb-voyager import schema --export-dir /path/to/yb/export/dir \
 
 ### import data
 
-[Import the data](../../migrate/migrate-steps/#import-data) to the target YugabyteDB.
+For offline migration, [Import the data](../../migrate/migrate-steps/#import-data) to the target YugabyteDB.
+
+For live migration (and fall-forward), the command [imports the data](../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
 #### Syntax
 
@@ -384,7 +391,9 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
 
 ### import data status
 
-Get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
+For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
+
+For live migration, get the status report of [import data](#import-data), and for live migration with fall forward, the report will also include the status of [fall forward setup](#fall-forward-setup-tech-preview) as well. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count of the target or fall-forward database.
 
 #### Syntax
 
@@ -398,6 +407,8 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
+| [target-db-password](#target-db-password) | Password of the target database (only for live migration) |
+| [ff-db-password](#ff-db-password) | Password of the fall-forward database (only for live migration with fall-forward) |
 
 #### Example
 
@@ -656,6 +667,8 @@ Specifies the password of the source database.
 
 If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
 
+Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`.
+
 If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes.
 
 ### --source-db-name
@@ -693,6 +706,8 @@ Specifies the username in the target database to be used for the migration.
 ### --target-db-password
 
 Specifies the password for the target database user to be used for the migration.
+
+Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`.
 
 If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password.
 
@@ -843,6 +858,8 @@ For `export data` command, the list of table names passed in the `--table-list` 
 
 For `import data` command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes.
 
+For live migration, during `import data`, the `exclude-table-list` argument is not supported.
+
 {{< /note >}}
 
 ### --send-diagnostics
@@ -860,6 +877,7 @@ Default: false
 ### --disable-pb
 
 Use this argument to not display progress bars.
+For live migration, this can also be used for not printing the statistics.
 
 Default: false
 
@@ -898,6 +916,19 @@ Specifies the username in the Fall-forward database to be used for the migration
 Specifies the type of migration [`snapshot-only` (offline), `snapshot-and-changes`(live, and optionally fall-forward) ]
 
 Default - `snapshot-only`
+
+### --delete
+
+Deletes the exported data in the CDC phase after moving it to another location.
+Default: false
+
+### --fs-utilization-threshold
+
+Specifies disk utilization threshold in percentage after which you can [archive changes](#archive-changes-tech-preview).
+
+### --move-to
+
+Specifies the destination to which [archive changes](#archive-changes-tech-preview) should move the files to.
 
 ---
 
