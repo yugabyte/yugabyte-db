@@ -36,7 +36,7 @@ export const MigrationDetails: FC<MigrationDetailsProps> = ({
       <Paper>
         <Box p={4}>
           <Typography variant="h4" className={classes.heading}>
-            {migration.migration_name}
+            {migration.database_name}
           </Typography>
           <Box display="flex" gridGap={theme.spacing(5)}>
             <Box width={300} flexShrink={0}>
