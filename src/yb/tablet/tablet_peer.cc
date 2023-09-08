@@ -1724,5 +1724,7 @@ bool TabletPeer::TEST_IsFlushingRetryableRequests() {
       : false;
 }
 
+Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
+
 }  // namespace tablet
 }  // namespace yb

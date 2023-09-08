@@ -243,7 +243,8 @@ void HandleTabletPage(
       {"transactions", "Transactions"},
       {"rocksdb", "RocksDB" },
       {"waitqueue", "Wait Queue"},
-      {"sharedlockmanager", "In-Memory Locks"}};
+      {"sharedlockmanager", "In-Memory Locks"},
+      {"preparer", "Preparer"}};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -431,6 +432,21 @@ void HandleInMemoryLocksPage(
   }
 }
 
+void HandlePreparerPage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>Prepare Info for Tablet "
+       << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto* preparer = DCHECK_NOTNULL(peer->DEBUG_GetPreparer());
+  if (preparer) {
+    preparer->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No preparer found. This is unexpected." << "</h3>" << std::endl;
+  }
+}
+
 template<class F>
 void RegisterTabletPathHandler(
     Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
@@ -469,6 +485,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
   RegisterTabletPathHandler(server, tserver_, "/waitqueue", &HandleWaitQueuePage);
   RegisterTabletPathHandler(server, tserver_, "/sharedlockmanager", &HandleInMemoryLocksPage);
+  RegisterTabletPathHandler(server, tserver_, "/preparer", &HandlePreparerPage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
