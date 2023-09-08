@@ -63,7 +63,7 @@ Prepare your source database by creating a new database user, and provide it wit
 </ul>
 
 <div class="tab-content">
-  <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
   {{% includeMarkdown "./oracle.md" %}}
   </div>
 </div>
@@ -352,7 +352,21 @@ Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details 
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB cluster.
 
-Some important metrics such as number of events, ingestion rate, and so on, will be displayed during the CDC phase.
+Some important metrics such as number of events, ingestion rate, and so on, will be displayed during the CDC phase similar to the following:
+
+```output
+| -----------------------------  |  ----------------------------- |
+| Metric                         |                          Value |
+| -----------------------------  |  ----------------------------- |
+| Total Imported events          |                         272572 |
+| Events Imported in this Run    |                         272572 |
+| Ingestion Rate (last 3 mins)   |               14542 events/sec |
+| Ingestion Rate (last 10 mins)  |               14542 events/sec |
+| Time taken in this Run         |                      0.83 mins |
+| Remaining Events               |                        4727427 |
+| Estimated Time to catch up     |                          5m42s |
+| -----------------------------  |  ----------------------------- |
+```
 
 The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. If restarted, the data import resumes from its current state.
 
@@ -388,6 +402,8 @@ yb-voyager fall-forward setup --export-dir <EXPORT-DIR> \
 --parallel-jobs <COUNT>
 ```
 
+Refer to [fall-forward setup](../../reference/yb-voyager-cli/#fall-forward-setup-tech-preview) for details about the arguments.
+
 Similar to [import data](#import-data), during fall-forward:
 
 - The snapshot is first imported, following which, the change events are imported to the fall-forward database.
@@ -408,6 +424,8 @@ As the migration continuously exports changes on the source database to the `EXP
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
+Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes-tech-preview) for details about the arguments.
+
 ### Cutover
 
 Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
@@ -425,16 +443,18 @@ Perform the following steps as part of the cutover process:
         yb-voyager cutover initiate --export-dir <EXPORT_DIR>
         ```
 
+        Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate-tech-preview) for details about the arguments.
+
     1. From another terminal, proceed with the following steps while the cutover operation is in progress.
 
         1. Stop the export data process.
         1. Stop the import data process after it has imported all the events to the target YugabyteDB.
 
-    1. Start synchronizing changes from the target YugabyteDB to the fall-forward database using the `fall-forward synchronize` command. Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the output.
+    1. Start synchronizing changes from the target YugabyteDB to the fall-forward database using the [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize-tech-preview) command. Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
 
 ### Fall-forward switchover (Optional)
 
-During this phase, switch over your application from pointing it to the target YugabyteDB to pointing it to the fall-forward database. As this step optional step, perform it _only_ if the target YugabyteDB is not working as expected.
+During this phase, switch over your application from pointing it to the target YugabyteDB to pointing it to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB is not working as expected.
 
 Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-forwad setup` processes. After you notice that the import of events to the fall-forward database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
@@ -449,6 +469,8 @@ Perform the following steps as part of the cutover process:
         yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
         ```
 
+        Refer to [fall-forward switchover](../../reference/yb-voyager-cli/#fall-forward-switchover-tech-preview) for details about the arguments.
+
     1. From another terminal, proceed with the following steps while the switchover operation is in progress.
 
         1. Stop the `fall-forward synchronize` process.
@@ -459,6 +481,8 @@ Perform the following steps as part of the cutover process:
     ```sh
     yb-voyager fall-forward status --export-dir <EXPORT_DIR>
     ```
+
+    Refer to [fall-forward status](../../reference/yb-voyager-cli/#fall-forward-status-tech-preview) for details about the arguments.
 
 1. Import indexes and triggers to the fall-forward database using the `import schema` command with an additional `--post-import-data` flag as follows:
 

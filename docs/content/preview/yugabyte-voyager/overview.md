@@ -41,7 +41,8 @@ YugabyteDB Voyager has the following features:
 You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - YugabyteDB Voyager for offline migration supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
-- [Live migration](../migrate/live-migrate/) - YugabyteDB Voyager for [live migration](../migrate/live-migrate/) and supports YugabyteDB stable versions 2.18.0.0 and later.
+- [Live migration](../migrate/live-migrate/)
+<!-- - YugabyteDB Voyager for [live migration](../migrate/live-migrate/) and supports YugabyteDB stable versions 2.18.0.0 and later. -->
 - [Live migration with fall-forward](../migrate/live-fall-forward/) - YugabyteDB Voyager for [live migration with fall-forward](../migrate/live-fall-forward/) supports YugabyteDB stable versions 2.18.0.0 and later.
 
 ## Source databases

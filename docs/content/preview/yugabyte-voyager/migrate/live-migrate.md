@@ -19,7 +19,7 @@ This page describes the steps to perform and verify a successful live migration 
 
 ## Live migration workflow
 
-The following workflows illustrate how you can perform a data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
+The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
 
 Eventually, the migration process reaches a steady state where you can perform a [cutover](#cutover). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB.
 
@@ -42,7 +42,7 @@ The following illustration describes the overview of live migration using Yugaby
 | Start | Start the phases: export data first, followed by import data and archive changes simultaneously. |
 | [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
-| [Archive changes](#archive-changes) | Continususly archive migration changes to limit disk utilization. |
+| [Archive changes](#archive-changes) | Continuously archive migration changes to limit disk utilization. |
 | [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process will reach a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover) | Monitor the wait status using the [cutover status](../../reference/yb-voyager-cli/#cutover-status) command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#cutover) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
@@ -70,7 +70,7 @@ Prepare your source database by creating a new database user, and provide it wit
 </ul>
 
 <div class="tab-content">
-  <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
   {{% includeMarkdown "./oracle.md" %}}
   </div>
 </div>
@@ -331,6 +331,8 @@ As the migration continuously exports changes on the source database to the `EXP
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
+Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes-tech-preview) for details about the arguments.
+
 ### Cutover
 
 Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
@@ -348,6 +350,8 @@ Perform the following steps as part of the cutover process:
         yb-voyager cutover initiate --export-dir <EXPORT_DIR>
         ```
 
+        Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate-tech-preview) for details about the arguments.
+
     1. From another terminal, proceed with the following steps while the cutover operation is in progress:
 
         1. Stop the export data process.
@@ -359,6 +363,8 @@ Perform the following steps as part of the cutover process:
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
+    Refer to [cutover status](../../reference/yb-voyager-cli/#cutover-status-tech-preview) for details about the arguments.
+
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
 
     ```sh
@@ -369,7 +375,7 @@ Perform the following steps as part of the cutover process:
             --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
             --target-db-name <TARGET_DB_NAME> \
             --target-db-user <TARGET_DB_USER> \
-            --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+            --target-db-schema <TARGET_DB_SCHEMA> \
             --post-import-data
     ```
 
