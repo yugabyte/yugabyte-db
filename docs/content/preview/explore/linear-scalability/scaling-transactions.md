@@ -1,21 +1,19 @@
 ---
-title: Scaling transactions
-headerTitle: Scaling concurrent transactions
-linkTitle: Scaling concurrent transactions
-description: Scaling concurrent transactions in YugabyteDB.
+title: Scale out a universe
+headerTitle: Scale out a universe
+linkTitle: Scale out a universe
+description: Scaling a universe in YugabyteDB.
 headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
-    name: Scaling transactions
+    name: Scale out a universe
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
-    weight: 200
+    weight: 10
 type: docs
 ---
 
-With YugabyteDB, you can add nodes to upscale your universe efficiently and reliably to achieve more read and write IOPS (input/output operations per second) without any downtime.
-
-This document demonstrates how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node universe with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the universe scales out by verifying that the number of read and write IOPS are evenly distributed across all nodes at all times.
+YugabyteDB can scale seamlessly while running a read-write workload. You can see this by using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node universe with a replication factor of 3 and add a node while the workload is running. Using the built-in metrics, you can observe how the universe scales out by verifying that the number of read and write IOPS are evenly distributed across all nodes at all times.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -72,7 +70,7 @@ Now you should have four nodes.
 
 Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the statistics update. Shortly, you should see the new node performing a comparable number of reads and writes as the other nodes. The tablets are also distributed evenly across all four nodes.
 
-The universe automatically lets the client know to use the newly-added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes:
+The universe automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes:
 
 ![Read and write IOPS with 4 nodes](/images/ce/add-node-ybtserver.png)
 
@@ -100,3 +98,7 @@ Navigate to the [simulation application UI](http://127.0.0.1:8080/) to see the n
 ![Latency and throughput graph after stopping node 4](/images/ce/stop-node-graph.png)
 
 {{% explore-cleanup-local %}}
+
+## Learn more
+
+- [TPC-C benchmark](../../../benchmark/tpcc-ysql)
