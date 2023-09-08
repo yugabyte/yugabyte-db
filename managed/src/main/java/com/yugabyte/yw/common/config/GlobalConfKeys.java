@@ -1074,4 +1074,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable publishing thread dumps to GCS",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> blockOperatorApiResources =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.block_api_operator_owned_resources",
+          ScopeType.GLOBAL,
+          "Operator owned resources api block",
+          "A resource controlled by the kubernetes operator cannot be updated using the REST API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
