@@ -62,16 +62,25 @@ Prepare your source database by creating a new database user, and provide it wit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#oracle" class="nav-link" id="oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#standalone-oracle" class="nav-link" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
-      Oracle
+      Standalone Oracle Container Database
+    </a>
+  </li>
+    <li>
+    <a href="#rds-oracle" class="nav-link" id="rds-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      RDS Oracle
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
-  {{% includeMarkdown "./oracle.md" %}}
+  <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
+  {{% includeMarkdown "./standalone-oracle.md" %}}
+  </div>
+    <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
+  {{% includeMarkdown "./rds-oracle.md" %}}
   </div>
 </div>
 
@@ -370,10 +379,7 @@ Perform the following steps as part of the cutover process:
 
         Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate-tech-preview) for details about the arguments.
 
-    1. From another terminal, proceed with the following steps while the cutover operation is in progress:
-
-        1. Stop the export data process.
-        1. Stop the import data process after it has imported all the events to the target YugabyteDB.
+        The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB.
 
 1. Wait for the cutover process to complete. The status of the cutover process can be monitored by the following command:
 

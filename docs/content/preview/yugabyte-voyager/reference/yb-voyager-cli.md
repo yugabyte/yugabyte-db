@@ -877,7 +877,7 @@ Default: false
 ### --disable-pb
 
 Use this argument to not display progress bars.
-For live migration, this can also be used for not printing the statistics.
+For live migration, this can also be used for not print the metrics for [export data](#export-data) or [import data](#import-data).
 
 Default: false
 
@@ -924,7 +924,7 @@ Default: false
 
 ### --fs-utilization-threshold
 
-Specifies disk utilization threshold in percentage after which you can [archive changes](#archive-changes-tech-preview).
+Specifies disk utilization percentage after which you can [archive changes](#archive-changes-tech-preview) to move it to another location and delete it.
 
 ### --move-to
 
