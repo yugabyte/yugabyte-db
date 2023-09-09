@@ -86,7 +86,7 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **Provider Name** translates to an internal YugabyteDB Anywhere tag used for organizing cloud providers.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YugabyteDB Anywhere are tagged with this subscription.
 - **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
-- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [Microsoft Azure: Tenant and application ID values for signing in](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
+- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
 - **SSH User** represents the user name for the **SSH Port**.
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.

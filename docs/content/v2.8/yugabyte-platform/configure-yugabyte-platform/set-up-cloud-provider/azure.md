@@ -87,7 +87,7 @@ You'll be able to see all the resources managed by Yugabyte Platform in your res
 
 **Resource group** is the group in which YugabyteDB nodes compute and network resources will be created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 
-**Tenant ID** is the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow the instructions on [this Microsoft Azure page](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
+**Tenant ID** is the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow the instructions on [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
 
 **Client ID** is the client [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 
