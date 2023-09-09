@@ -56,3 +56,5 @@ Create a database user and provide the user with READ access to all the resource
    ```
 
    The `ybvoyager` user can now be used for migration.
+
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
