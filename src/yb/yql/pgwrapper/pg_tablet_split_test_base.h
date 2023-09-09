@@ -21,7 +21,7 @@
 namespace yb {
 namespace pgwrapper {
 
-using PartitionKeyTabletMap = std::map<std::string_view, master::TabletInfoPtr>;
+using PartitionKeyTabletMap = std::map<std::string, master::TabletInfoPtr>;
 using VerifyTabletsCallback = std::function<Status(const PartitionKeyTabletMap&)>;
 using SelectTabletCallback =
     std::function<Result<master::TabletInfoPtr>(const PartitionKeyTabletMap& tablets)>;
