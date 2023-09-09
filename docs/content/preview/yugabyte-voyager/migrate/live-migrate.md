@@ -2,7 +2,7 @@
 title: Steps to perform live migration of your database using YugabyteDB Voyager
 headerTitle: Live migration
 linkTitle: Live migration
-headcontent: Steps for a live migration using YugabyteDB Voyager.
+headcontent: Steps for a live migration using YugabyteDB Voyager
 description: Run the steps to ensure a successful live migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -15,7 +15,7 @@ rightNav:
   hideH4: true
 ---
 
-This page describes the steps to perform and verify a successful live migration to YugabyteDB including changes that continuously occur on the source.
+This page describes the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
 
 ## Live migration workflow
 

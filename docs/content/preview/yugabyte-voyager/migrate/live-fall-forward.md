@@ -2,7 +2,7 @@
 title: Steps to perform live migration of your database using YugabyteDB Voyager
 headerTitle: Live migration with fall-forward
 linkTitle: Live migration with fall-forward
-headcontent: Steps for a live migration with fall-forward using YugabyteDB Voyager.
+headcontent: Steps for a live migration with fall-forward using YugabyteDB Voyager
 description: Steps to ensure a successful live migration with fall-forward using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -125,7 +125,7 @@ DROP USER ybvoyager;
 
 ## Create an export directory
 
-yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
 Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
 
@@ -136,7 +136,7 @@ export EXPORT_DIR=$HOME/export-dir
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated *Schema Analysis Report*.
+- `reports` directory contains the generated _Schema Analysis Report_.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
@@ -149,7 +149,7 @@ Perform the following steps to prepare your fall-forward database:
 1. Create `ybvoyager_metadata` schema or user, and tables, and assign its privileges to `ybvoyager` as follows:
 
     ```sql
-    CREATE USER ybvoyager_metadata IDENTIFIED BY "password"';
+    CREATE USER ybvoyager_metadata IDENTIFIED BY "password";
     GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
     ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
 

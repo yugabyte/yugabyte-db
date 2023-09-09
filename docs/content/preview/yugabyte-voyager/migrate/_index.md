@@ -23,7 +23,7 @@ menu:
         <div class="title">Offline migration</div>
       </div>
       <div class="body">
-        Steps to perform offline migration of your database using YugabyteDB Voyager.
+        Perform an offline migration of your database.
       </div>
     </a>
   </div>
@@ -35,7 +35,7 @@ menu:
         <div class="title">Live migration</div>
       </div>
       <div class="body">
-        Steps to perform offline migration of your database using YugabyteDB Voyager.
+        Migrate your database while your application is running.
       </div>
     </a>
   </div>
@@ -47,7 +47,7 @@ menu:
         <div class="title">Live migration with fall-forward</div>
       </div>
       <div class="body">
-       Steps to perform Live migration of your database with fall-forward option using YugabyteDB Voyager.
+        Add a fall-forward database for your live migration.
       </div>
     </a>
   </div>
