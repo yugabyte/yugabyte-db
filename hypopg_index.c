@@ -1789,8 +1789,10 @@ hypo_hideIndexes(RelOptInfo *rel)
 static void
 hypo_set_indexname(hypoIndex * entry, char *indexname)
 {
-	char		oid[12];		/* store <oid>, oid shouldn't be more than
-								 * 9999999999 */
+	char		oid[13];		/* store <oid>, oid is an unsigned int32, so it
+								 * shouldn't be more than 4B, so 10 digits.
+								 * We add 2 chars for the < and > separators
+								 * and an extra null char.*/
 	int			totalsize;
 
 	snprintf(oid, sizeof(oid), "<%d>", entry->oid);
