@@ -490,6 +490,7 @@ CREATE TABLE ischk_d2 PARTITION OF ischk FOR VALUES IN (1);
 CREATE INDEX ischk_idx ON ischk USING gin (b);
 /*+ IndexScan(ischk ischk_idx) */
 EXPLAIN (COSTS false) SELECT * FROM ischk WHERE b = 'x';
+DROP TABLE ischk;
 
 -- quote test
 /*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
