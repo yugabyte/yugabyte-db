@@ -49,6 +49,16 @@ regions:
     image: almalinux-8-v20220719
     project: almalinux-cloud
     zones: ['a', 'b', 'c']
+  us-east5:
+    cidr_prefix: '10.229'
+    image: almalinux-8-v20220719
+    project: almalinux-cloud
+    zones: ['a', 'b', 'c']
+  us-south1:
+    cidr_prefix: '10.230'
+    image: almalinux-8-v20220719
+    project: almalinux-cloud
+    zones: ['a', 'b', 'c']
   australia-southeast1:
     cidr_prefix: "10.208"
     image: almalinux-8-v20220719

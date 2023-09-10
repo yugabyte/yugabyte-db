@@ -71,7 +71,9 @@ export const REGION_METADATA = [
   { code: 'eu-east', name: 'EU East', latitude: 46, longitude: 25 },
   { code: 'china', name: 'China', latitude: 31.2, longitude: 121.5 },
   { code: 'brazil', name: 'Brazil', latitude: -22, longitude: -43 },
-  { code: 'australia', name: 'Australia', latitude: -29, longitude: 148 }
+  { code: 'australia', name: 'Australia', latitude: -29, longitude: 148 },
+  { code: 'us-east-5', name: 'Ohio', latitude: 39, longitude: -82 },
+  { code: 'us-south-1', name: 'Texas', latitude: 32, longitude: -96 }
 ];
 
 export const REGION_DICT = {};
