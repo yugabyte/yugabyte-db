@@ -151,7 +151,7 @@ The valid *arguments* for export data are described in the following table:
 | [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only. |
 | [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel jobs to extract data from source database. (default 4) |
+| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel jobs to extract data from source database. (Default: 4) |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
 | [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
@@ -416,7 +416,7 @@ The valid *arguments* for import data status are described in the following tabl
 yb-voyager import data status --export-dir /path/to/yb/export/dir
 ```
 
-### fall-forward setup (Tech preview)
+### fall-forward setup
 
 Imports data to the fall-forward database, and streams new changes from the YugabyteDB database to the fall-forward database.
 
@@ -432,28 +432,28 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during import data. (Default: 10000000) |
 | --continue-on-error | Ignores errors and continues data import. |
-| --disable-pb | Set to true to disable progress bar during data import (default false) |
-| --enable-upsert | Set to true to enable UPSERT mode on target tables, and false to disable UPSERT mode on target tables (Default: true) |
-| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while importing data (ignored if `--table-list` is used) |
+| --disable-pb | Set to true to disable progress bar during data import. (Default: false) |
+| --enable-upsert | Set to true to enable UPSERT mode on target tables, and false to disable UPSERT mode on target tables. (Default: true) |
+| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while importing data (ignored if `--table-list` is used). |
 | [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| --ff-db-host <hostname> | Host on which the fall-forward database server is running (Default: "127.0.0.1") |
+| --ff-db-host <hostname> | Host on which the fall-forward database server is running. (Default: "127.0.0.1") |
 | --ff-db-name <name> | Name of the database in the fall-forward database server on which import needs to be done |
-| --ff-db-password <password> | Password to connect to the fall-forward database server |
-| --ff-db-port <port> | Port number of the fall-forward database server (Default: 1521) |
-| --ff-db-schema <schemaName> | Schema name of the fall-forward database |
+| --ff-db-password <password> | Password to connect to the fall-forward database server. |
+| --ff-db-port <port> | Port number of the fall-forward database server. (Default: 1521) |
+| --ff-db-schema <schemaName> | Schema name of the fall-forward database. |
 | --ff-db-sid <SID> | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
-| --ff-db-user <username>| Username to connect to the fall-forward database server |
-| --ff-ssl-cert <path>| Fall-forward database SSL Certificate path |
-| --ff-ssl-crl <list>| Fall-forward database SSL Root Certificate Revocation List (CRL) |
+| --ff-db-user <username>| Username to connect to the fall-forward database server. |
+| --ff-ssl-cert <path>| Fall-forward database SSL Certificate path. |
+| --ff-ssl-crl <list>| Fall-forward database SSL Root Certificate Revocation List (CRL). |
 | --ff-ssl-key <Keypath> | Fall-forward database SSL key path |
 | --ff-ssl-mode <SSLmode>| One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| --ff-ssl-root-cert | Fall-forward database SSL Root Certificate path |
+| --ff-ssl-root-cert | Fall-forward database SSL Root Certificate path. |
 | [-h, --help](#command-line-help) | Command line help for setup. |
 | [--oracle-home](#oracle-home) <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. (Default: 1) |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
-| --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on fall- forward database is non-empty, it prompts whether you want to continue the import without the truncating those tables; if yes, then yb-voyager starts ingesting the data present in the datafiles without upsert mode and for the cases where a table doesn't have a primary key, it may duplicate the data. So, in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
+| --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on fall- forward database is non-empty, it prompts whether you want to continue the import without the truncating those tables; if yes, then yb-voyager starts ingesting the data present in the data files without upsert mode and for the cases where a table doesn't have a primary key, it may duplicate the data. So, in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | [--table-list](#table-list) | Comma-separated list of the tables to import data. |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the migration. (Default: false) |
@@ -470,7 +470,7 @@ yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
         --parallel-jobs connectionCount
 ```
 
-### fall-forward synchronize (Tech preview)
+### fall-forward synchronize
 
 Exports new changes from the YugabyteDB database to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB database after cutover.
 
@@ -516,7 +516,7 @@ yb-voyager fall-forward synchronize --export-dir /path/to/yb/export/dir \
         --target-db-schema schemaName
 ```
 
-### cutover initiate (Tech preview)
+### cutover initiate
 
 Initiate cutover to the YugabyteDB database.
 
@@ -539,7 +539,7 @@ The valid *arguments* for cutover initiate are described in the following table:
 yb-voyager cutover initiate --export-dir /path/to/yb/export/dir
 ```
 
-### cutover status (Tech preview)
+### cutover status
 
 Shows the status of the cutover to the YugabyteDB database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
@@ -562,7 +562,7 @@ The valid *arguments* for cutover status are described in the following table:
 yb-voyager cutover status --export-dir /path/to/yb/export/dir
 ```
 
-### fall-forward switchover (Tech preview)
+### fall-forward switchover
 
 Initiate a switchover to the fall-forward database.
 
@@ -585,7 +585,7 @@ The valid *arguments* for fall-forward switchover are described in the following
 yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 ```
 
-### fall-forward status (Tech preview)
+### fall-forward status
 
 Shows the status of the fall-forward switchover to the fall-forward database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
@@ -608,7 +608,7 @@ The valid *arguments* for fall-forward switchover status are described in the fo
 yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \
 ```
 
-### archive changes (Tech preview)
+### archive changes
 
 Archives the streaming data from the source database.
 
@@ -625,7 +625,7 @@ The valid *arguments* for archive changes status are described in the following 
 | [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help for archive changes. |
 | --delete |  Delete exported data after moving it to the target database. (Default: false) |
-| --move-to <string> |   destination to move exported data to. |
+| --move-to <path> | Destination path to move exported data to. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
 | [--verbose](#verbose) | Display extra information in the output. |
 | [-y, --yes](#yes) | Answer yes to all prompts during migration (Default: false). |
@@ -929,7 +929,7 @@ Specifies disk utilization percentage after which you can [archive changes](#arc
 
 ### --move-to
 
-Specifies the destination to which [archive changes](#archive-changes-tech-preview) should move the files to.
+Specifies the destination path to which [archive changes](#archive-changes-tech-preview) should move the files to.
 
 ---
 

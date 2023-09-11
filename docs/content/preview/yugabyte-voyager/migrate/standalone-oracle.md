@@ -25,14 +25,14 @@ private=true
 
 1. Create the tablespaces as follows:
 
-    1. Connect to PDB as sysdba and run the following command:
+    1. Connect to Pluggable database (PDB) as sysdba and run the following command:
 
         ```sql
         CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
           SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
         ```
 
-    1. Connect to CDB as sysdba and run the following command:
+    1. Connect to Container database (CDB) as sysdba and run the following command:
 
         ```sql
         CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'

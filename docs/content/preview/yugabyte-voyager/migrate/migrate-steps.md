@@ -80,7 +80,7 @@ Prepare your source database by creating a new database user, and provide it wit
 
 ## Prepare the target database
 
-Prepare your target YugabyteDB datbase cluster by creating a database, and a user for your cluster.
+Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
 ### Create the target database
 
@@ -311,7 +311,7 @@ By default, yb-voyager creates C/2 connections where C is the total number of co
 
 Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
-yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB datbase cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
 {{< tip title="Importing large datasets" >}}
 
@@ -327,7 +327,7 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 #### Import data file
 
-If all your data files are in CSV format and you have already created a schema in your target YugabyteDB datbase, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
+If all your data files are in CSV format and you have already created a schema in your target YugabyteDB database, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
