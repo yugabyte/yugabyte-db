@@ -21,7 +21,7 @@ This page describes the steps to perform and verify a successful live migration 
 
 The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on the disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
 
-Eventually, the migration process reaches a steady state where you can perform a [cutover](#cut-over-to-a-database). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB.
+Eventually, the migration process reaches a steady state where you can [cut over to a database](#cut-over-to-a-database). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB.
 
 The following illustration describes how the data export and import operations are simultaneously handled by YugabyteDB Voyager.
 
@@ -286,7 +286,7 @@ The export data command first ensures that it exports a snapshot of the data alr
 | ---------------------------------------  |  ----------------------------- |
 ```
 
-Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
+Note that the CDC phase will start only after a snapshot of the entire table-set is completed.
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
 
 #### Caveats
