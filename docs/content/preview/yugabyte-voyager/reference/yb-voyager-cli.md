@@ -559,7 +559,7 @@ The valid *arguments* for cutover status are described in the following table:
 #### Example
 
 ```sh
-yb-voyager cutover status --export-dir /path/to/yb/export/dir \
+yb-voyager cutover status --export-dir /path/to/yb/export/dir
 ```
 
 ### fall-forward switchover (Tech preview)
