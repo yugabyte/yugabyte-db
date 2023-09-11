@@ -29,7 +29,7 @@ After starting [live migration](../live-migrate/#live-migration-workflow) of dat
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cutover), applications stop writing to the source database and start writing to the target YugabyteDB. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cutover), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
@@ -89,7 +89,7 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 ## Prepare the target database
 
-Prepare your target YugabyteDB cluster by creating a database, and a user for your cluster.
+Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
 ### Create the target database
 
@@ -196,7 +196,7 @@ Perform the following steps to prepare your fall-forward database:
     /
     ```
 
-1. Set the following variables on the client machine on where yb-voyager is running:
+1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
 
     ```sh
     export ORACLE_HOME=/usr/lib/oracle/21/client64
@@ -370,7 +370,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
-For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB cluster.
+For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
 Some important metrics such as number of events, ingestion rate, and so on, will be displayed during the CDC phase similar to the following:
 
@@ -452,7 +452,7 @@ Make sure to run the archive changes command only after completing [fall-forward
 
 ### Cutover
 
-Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
+Cutover is the last phase of switching your application from pointing to your source database to pointing to your YugabyteDB database.
 
 Keep monitoring the metrics displayed on export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
@@ -469,9 +469,9 @@ Perform the following steps as part of the cutover process:
 
         Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate-tech-preview) for details about the arguments.
 
-        The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB.
+        The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-    1. Start synchronizing changes from the target YugabyteDB to the fall-forward database using the [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize-tech-preview) command. Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
+    1. Start synchronizing changes from the target YugabyteDB database to the fall-forward database using the [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize-tech-preview) command. Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
 
@@ -509,13 +509,13 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### Fall-forward switchover (Optional)
 
-During this phase, switch over your application from pointing it to the target YugabyteDB to pointing it to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB is not working as expected.
+During this phase, switch over your application from pointing it to the target YugabyteDB database to pointing it to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
 
-Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-forwad setup` processes. After you notice that the import of events to the fall-forward database is catching up to the exported events from the target database, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
+Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-forwad setup` processes. After you notice that the import of events to the fall-forward database is catching up to the exported events from the target database, you are ready to switchover. You can use the "Remaining events" metric displayed in the fall-forward setup process to help you determine the switchover.
 
-Perform the following steps as part of the cutover process:
+Perform the following steps as part of the switchover process:
 
-1. Quiesce your source database, that is stop application writes.
+1. Quiesce your target database, that is stop application writes.
 1. Initiate switchover as follows:
 
     1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to switchover using the following command:
@@ -536,21 +536,7 @@ Perform the following steps as part of the cutover process:
 
     Refer to [fall-forward status](../../reference/yb-voyager-cli/#fall-forward-status-tech-preview) for details about the arguments.
 
-1. Import indexes and triggers to the fall-forward database using the `import schema` command with an additional `--post-import-data` flag as follows:
-
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --ff-db-host <FALL-FORWARD_DB_HOST> \
-            --ff-db-user <FALL-FORWARD_DB_USER> \
-            --ff-db-password <FALL-FORWARD_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --ff-db-name <FALL-FORWARD_DB_NAME> \
-            --ff-db-user <FALL-FORWARD_DB_USER> \
-            --ff-db-schema <FALL-FORWARD_DB_SCHEMA> \
-            --post-import-data
-    ```
-
-    Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+1. Setup indexes and triggers to the fall-forward database manually.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and fall-forward databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -569,6 +555,10 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
     {{< /warning >}}
 
 1. Stop [archive changes](#archive-changes).
+
+{{< note >}}
+During `fall-forward synchronize`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `fall-forward synchronize` output. You need to manually delete the stream ID after `fall forward switchover` is completed.
+{{< /note >}}
 
 ## Limitations
 

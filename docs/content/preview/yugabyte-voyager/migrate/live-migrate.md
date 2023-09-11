@@ -19,9 +19,9 @@ This page describes the steps to perform and verify a successful live migration 
 
 ## Live migration workflow
 
-The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
+The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on the disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
 
-Eventually, the migration process reaches a steady state where you can perform a [cutover](#cutover). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB.
+Eventually, the migration process reaches a steady state where you can perform a [cutover](#cutover). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB datbase, and then restart your applications pointing to YugabyteDB.
 
 The following illustration describes how the data export and import operations are simultaneously handled by YugabyteDB Voyager.
 
@@ -43,9 +43,9 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | [Archive changes](#archive-changes) | Continuously archive migration changes to limit disk utilization. |
-| [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB. |
+| [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB datbase, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover) | Monitor the wait status using the [cutover status](../../reference/yb-voyager-cli/#cutover-status) command. |
-| [Import&nbsp;indexes&nbsp;and triggers](#cutover) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+| [Import&nbsp;indexes&nbsp;and triggers](#cutover) | Import indexes and triggers to the target YugabyteDB datbase database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#cutover) | Check if the live migration is successful. |
 
 Before proceeding with migration, ensure that you have completed the following steps:
@@ -96,7 +96,7 @@ You can use only one of the following arguments to connect to your Oracle instan
 
 ## Prepare the target database
 
-Prepare your target YugabyteDB cluster by creating a database, and a user for your cluster.
+Prepare your target YugabyteDB datbase cluster by creating a database, and a user for your cluster.
 
 ### Create the target database
 
@@ -314,7 +314,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
-For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB cluster.
+For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB datbase cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB datbase cluster.
 
 Some important metrics such as the number of events, ingestion rate, and so on, is displayed during the CDC phase similar to the following:
 
@@ -362,7 +362,7 @@ Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes-tech-
 
 ### Cutover
 
-Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB.
+Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB datbase.
 
 Keep monitoring the metrics displayed for export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
@@ -379,7 +379,7 @@ Perform the following steps as part of the cutover process:
 
         Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate-tech-preview) for details about the arguments.
 
-        The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB.
+        The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB datbase.
 
 1. Wait for the cutover process to complete. The status of the cutover process can be monitored by the following command:
 
