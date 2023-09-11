@@ -401,7 +401,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createKMSConfig(UUID customerUUID, String keyProvider, Http.Request request) {
@@ -457,7 +457,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
@@ -524,7 +524,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
@@ -549,7 +549,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listKMSConfigs(UUID customerUUID) {
@@ -590,7 +590,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
@@ -641,7 +641,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result refreshKMSConfig(UUID customerUUID, UUID configUUID, Request request) {
@@ -668,7 +668,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT)),
     @RequiredPermissionOnResource(
         requiredPermission =

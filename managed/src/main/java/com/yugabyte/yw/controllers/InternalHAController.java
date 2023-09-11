@@ -71,7 +71,7 @@ public class InternalHAController extends Controller {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getHAConfigByClusterKey(Http.Request request) {
@@ -95,7 +95,7 @@ public class InternalHAController extends Controller {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result syncInstances(long timestamp, Http.Request request) {
@@ -141,7 +141,7 @@ public class InternalHAController extends Controller {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result syncBackups(Http.Request request) throws Exception {
@@ -201,7 +201,7 @@ public class InternalHAController extends Controller {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result demoteLocalLeader(long timestamp, Http.Request request) {

@@ -93,10 +93,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   static final Integer SSH_PORT = 12345;
   static final String DEFAULT_SUDO_SSH_USER = "ssh-user";
 
-  Permission permission1 = new Permission(ResourceType.DEFAULT, Action.CREATE);
-  Permission permission2 = new Permission(ResourceType.DEFAULT, Action.READ);
-  Permission permission3 = new Permission(ResourceType.DEFAULT, Action.UPDATE);
-  Permission permission4 = new Permission(ResourceType.DEFAULT, Action.DELETE);
+  Permission permission1 = new Permission(ResourceType.OTHER, Action.CREATE);
+  Permission permission2 = new Permission(ResourceType.OTHER, Action.READ);
+  Permission permission3 = new Permission(ResourceType.OTHER, Action.UPDATE);
+  Permission permission4 = new Permission(ResourceType.OTHER, Action.DELETE);
 
   @Before
   public void before() {
@@ -113,7 +113,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
     rd1 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
             .build();
     when(mockFileHelperService.createTempFile(anyString(), anyString()))

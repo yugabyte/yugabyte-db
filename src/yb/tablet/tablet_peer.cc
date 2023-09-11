@@ -1722,15 +1722,17 @@ bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
       : false;
 }
 
-bool TabletPeer::TEST_IsFlushingRetryableRequests() {
+RetryableRequestsFlushState TabletPeer::TEST_RetryableRequestsFlusherState() const {
   if (!FlushRetryableRequestsEnabled()) {
-    return false;
+    return RetryableRequestsFlushState::kFlushIdle;
   }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
-      ? retryable_requests_flusher->TEST_IsFlushing()
-      : false;
+      ? retryable_requests_flusher->flush_state()
+      : RetryableRequestsFlushState::kFlushIdle;
 }
+
+Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
 }  // namespace tablet
 }  // namespace yb

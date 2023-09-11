@@ -42,6 +42,7 @@ interface VolumeInfoFieldProps {
   disableVolumeSize: boolean;
   disableNumVolumes: boolean;
   isDedicatedMasterField?: boolean;
+  maxVolumeCount: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -65,7 +66,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   disableStorageType,
   disableVolumeSize,
   disableNumVolumes,
-  isDedicatedMasterField
+  isDedicatedMasterField,
+  maxVolumeCount
 }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -189,7 +191,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
-    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: Number(numVolumes) });
+    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
   //render

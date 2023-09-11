@@ -56,6 +56,7 @@ Result<docdb::CompactionSchemaInfo> SchemaPackingProviderFromSuperblock::Colocat
 Result<TableInfoPtr> SchemaPackingProviderFromSuperblock::GetTableInfo(
     const TableId& table_id) const {
   const auto& id = table_id.empty() ? primary_table_id_ : table_id;
+  // Should be thread safe as kv_store_ is setup only once in this Init().
   const auto& tables = kv_store_.tables;
   const auto iter = tables.find(id);
   if (iter == tables.end()) {

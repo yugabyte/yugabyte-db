@@ -52,10 +52,10 @@ public class ConfKeysTest extends FakeDBApplication {
   private Provider defaultProvider;
   private String authToken;
 
-  Permission permission1 = new Permission(ResourceType.DEFAULT, Action.CREATE);
-  Permission permission2 = new Permission(ResourceType.DEFAULT, Action.READ);
-  Permission permission3 = new Permission(ResourceType.DEFAULT, Action.UPDATE);
-  Permission permission4 = new Permission(ResourceType.DEFAULT, Action.DELETE);
+  Permission permission1 = new Permission(ResourceType.OTHER, Action.CREATE);
+  Permission permission2 = new Permission(ResourceType.OTHER, Action.READ);
+  Permission permission3 = new Permission(ResourceType.OTHER, Action.UPDATE);
+  Permission permission4 = new Permission(ResourceType.OTHER, Action.DELETE);
 
   @Before
   public void setUp() {
@@ -73,7 +73,7 @@ public class ConfKeysTest extends FakeDBApplication {
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
-            .resourceType(ResourceType.DEFAULT)
+            .resourceType(ResourceType.OTHER)
             .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
             .build();
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));

@@ -56,7 +56,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
         }
 
-        createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
+        createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         if (editFormData.name != null) {
@@ -75,7 +75,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                       cert,
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
 
-          createXClusterConfigRenameTask(editFormData.name)
+          createXClusterConfigRenameTask(xClusterConfig, editFormData.name)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           // Delete the old directory if it created a new one. When the old directory is removed
@@ -88,7 +88,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
                       false /* ignoreErrors */));
         } else if (editFormData.status != null) {
-          createSetReplicationPausedTask(editFormData.status)
+          createSetReplicationPausedTask(xClusterConfig, editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else if (editFormData.sourceRole != null || editFormData.targetRole != null) {
           createChangeXClusterRoleTask(
@@ -99,10 +99,11 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         } else if (editFormData.tables != null) {
           if (!CollectionUtils.isEmpty(taskParams().getTableInfoList())) {
             createXClusterConfigSetStatusForTablesTask(
-                taskParams().getTableIdsToAdd(), XClusterTableConfig.Status.Updating);
+                xClusterConfig,
+                taskParams().getTableIdsToAdd(),
+                XClusterTableConfig.Status.Updating);
             addSubtasksToAddTablesToXClusterConfig(
-                sourceUniverse,
-                targetUniverse,
+                xClusterConfig,
                 taskParams().getTableInfoList(),
                 taskParams().getMainTableIndexTablesMap(),
                 Collections.emptySet() /* tableIdsScheduledForBeingRemoved */);
@@ -110,8 +111,11 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
           if (!CollectionUtils.isEmpty(taskParams().getTableIdsToRemove())) {
             createXClusterConfigSetStatusForTablesTask(
-                taskParams().getTableIdsToRemove(), XClusterTableConfig.Status.Updating);
+                xClusterConfig,
+                taskParams().getTableIdsToRemove(),
+                XClusterTableConfig.Status.Updating);
             createXClusterConfigModifyTablesTask(
+                    xClusterConfig,
                     taskParams().getTableIdsToRemove(),
                     XClusterConfigModifyTables.Params.Action.DELETE)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -120,7 +124,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
 
-        createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
+        createXClusterConfigSetStatusTask(xClusterConfig, XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
@@ -136,7 +140,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      setXClusterConfigStatus(XClusterConfigStatusType.Running);
+      xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
       if (editFormData.tables != null) {
         // Set tables in updating status to failed.
         Set<String> tablesInPendingStatus =
@@ -166,14 +170,17 @@ public class EditXClusterConfig extends CreateXClusterConfig {
   }
 
   protected void addSubtasksToAddTablesToXClusterConfig(
-      Universe sourceUniverse,
-      Universe targetUniverse,
+      XClusterConfig xClusterConfig,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsScheduledForBeingRemoved) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
             getDbToTablesInfoMapNeedBootstrap(
+                xClusterConfig,
                 taskParams().getTableIdsToAdd(),
                 requestedTableInfoList,
                 mainTableIndexTablesMap,
@@ -188,14 +195,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               + "tables {}",
           tableIdsNotNeedBootstrap);
       createXClusterConfigModifyTablesTask(
-              tableIdsNotNeedBootstrap, XClusterConfigModifyTables.Params.Action.ADD)
+              xClusterConfig,
+              tableIdsNotNeedBootstrap,
+              XClusterConfigModifyTables.Params.Action.ADD)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
 
     // YSQL tables replication with bootstrapping can only be set up with DB granularity. The
     // following subtasks remove tables in replication, so the replication can be set up again
     // for all the tables in the DB including the new tables.
-    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Set<String> tableIdsDeleteReplication = new HashSet<>();
     dbToTablesInfoMapNeedBootstrap.forEach(
         (namespaceName, tablesInfo) -> {
@@ -221,35 +229,41 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         isRestartWholeConfig);
     if (isRestartWholeConfig) {
       createXClusterConfigSetStatusForTablesTask(
-          getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
+          xClusterConfig, getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
 
       // Delete the xCluster config.
       createDeleteXClusterConfigSubtasks(
           xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
-      createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
+      createXClusterConfigSetStatusTask(
+          xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
       createXClusterConfigSetStatusForTablesTask(
-          getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
+          xClusterConfig, getTableIds(requestedTableInfoList), XClusterTableConfig.Status.Updating);
 
       // Recreate the config including the new tables.
       addSubtasksToCreateXClusterConfig(
-          sourceUniverse, targetUniverse, requestedTableInfoList, mainTableIndexTablesMap);
+          xClusterConfig,
+          requestedTableInfoList,
+          mainTableIndexTablesMap,
+          taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+          taskParams().getPitrParams());
     } else {
       createXClusterConfigModifyTablesTask(
+          xClusterConfig,
           tableIdsDeleteReplication,
           XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
 
       createXClusterConfigSetStatusForTablesTask(
-          tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);
+          xClusterConfig, tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);
 
       // Add the subtasks to set up replication for tables that need bootstrapping.
       addSubtasksForTablesNeedBootstrap(
-          sourceUniverse,
-          targetUniverse,
+          xClusterConfig,
           taskParams().getBootstrapParams(),
           dbToTablesInfoMapNeedBootstrap,
-          true /* isReplicationConfigCreated */);
+          true /* isReplicationConfigCreated */,
+          taskParams().getPitrParams());
     }
   }
 }

@@ -106,7 +106,11 @@ public class UniverseYbDbAdminHandler {
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
       // Test current password
       try {
-        ysqlQueryExecutor.validateAdminPassword(universe, dbCreds);
+        DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+        testDBCreds.ysqlAdminPassword = dbCreds.ysqlCurrAdminPassword;
+        testDBCreds.dbName = dbCreds.dbName;
+        testDBCreds.ysqlAdminUsername = dbCreds.ysqlAdminUsername;
+        ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
       } catch (PlatformServiceException pe) {
         throw new PlatformServiceException(
             BAD_REQUEST, "provided username and password are incorrect.");

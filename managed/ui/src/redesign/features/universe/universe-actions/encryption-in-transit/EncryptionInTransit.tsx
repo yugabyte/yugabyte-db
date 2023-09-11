@@ -1,11 +1,11 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Tabs, Tab } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { YBModal, YBToggleField, YBTooltip } from '../../../../components';
+import { YBAlert, YBModal, YBToggleField, YBTooltip, AlertVariant } from '../../../../components';
 import {
   TOAST_AUTO_DISMISS_INTERVAL,
   EIT_FIELD_NAME,
@@ -18,10 +18,12 @@ import {
   FORM_RESET_VALUES,
   EncryptionInTransitFormValues,
   useEITStyles,
-  getInitialFormValues
+  getInitialFormValues,
+  isSelfSignedCert,
+  USE_SAME_CERTS_FIELD_NAME
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
-import { Universe } from '../../universe-form/utils/dto';
+import { Universe, Certificate } from '../../universe-form/utils/dto';
 import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
@@ -35,19 +37,39 @@ interface EncryptionInTransitProps {
   universe: Universe;
 }
 
+enum EitTabs {
+  'CACert' = 'CACert',
+  'ServerCert' = 'ServerCert'
+}
+
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
+
+const NonRollingBanner: FC = () => {
+  const { t } = useTranslation();
+  return (
+    <Box mt={2}>
+      <YBAlert
+        text={t('universeActions.encryptionInTransit.disableEITWarning')}
+        variant={AlertVariant.Warning}
+        open={true}
+      />
+    </Box>
+  );
+};
 
 export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClose, universe }) => {
   const { t } = useTranslation();
   const classes = useEITStyles();
-  const [currentTab, setTab] = React.useState<string>('CACert');
 
   //universe current status
   const { universeDetails } = universe;
   const universeId = universe.universeUUID;
 
   //prefetch data
-  const { isLoading } = useQuery(QUERY_KEY.getCertificates, api.getCertificates);
+  const { isLoading, data: certificates } = useQuery(
+    QUERY_KEY.getCertificates,
+    api.getCertificates
+  );
 
   //initialize form
   const INITIAL_VALUES = getInitialFormValues(universeDetails);
@@ -73,11 +95,29 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   const rotateCToN = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
   const rootCA = watch(NODE_NODE_CERT_FIELD_NAME);
   const clientRootCA = watch(CLIENT_NODE_CERT_FIELD_NAME);
+  const rootAndClientRootCASame = watch(USE_SAME_CERTS_FIELD_NAME);
 
+  //Disable encryption in transit toggle if (a)->one of server cert rotations enabled OR (b)->one of root certs are modiified
   const disableEITToggle =
     rotateNToN ||
     rotateCToN ||
     (encryptionEnabled && (rootCA !== rootCAInitial || clientRootCA !== clientRootCAInitial));
+  //EIT or CNEncrytion or NNEncryption toggle is turned on or off
+  const tlsToggled =
+    encryptionEnabled !== enableUniverseEncryption ||
+    enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
+    enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
+
+  //Server cert rotation is only supported for self signed certs
+  const rootCAInfo = certificates?.find((cert: Certificate) => cert.uuid === rootCA);
+  const clientRootCAInfo = certificates?.find((cert: Certificate) => cert.uuid === clientRootCA);
+  const disableServerCertRotation =
+    !encryptionEnabled ||
+    !(enableNodeToNodeEncrypt || enableClientToNodeEncrypt) ||
+    (rootCAInfo && !isSelfSignedCert(rootCAInfo)) ||
+    (!rootAndClientRootCASame && clientRootCAInfo && !isSelfSignedCert(clientRootCAInfo));
+
+  const [currentTab, setTab] = React.useState('');
 
   //methods
   const handleChange = (_: any, tab: string) => setTab(tab);
@@ -96,10 +136,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
 
   const constructPayload = (values: EncryptionInTransitFormValues) => {
     let { enableUniverseEncryption, rollingUpgrade, upgradeDelay, ...payload } = values;
-    const tlsToggled =
-      encryptionEnabled !== enableUniverseEncryption ||
-      enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
-      enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
+
     if (
       !values.enableUniverseEncryption ||
       (values.rootAndClientRootCASame && values.enableNodeToNodeEncrypt === false)
@@ -156,6 +193,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       values.enableUniverseEncryption &&
       !(values.enableNodeToNodeEncrypt || values.enableClientToNodeEncrypt)
     ) {
+      //If encryption is enabled at global level, but if one of NN OR CN toggle is not turned on
       toast.warn(t('universeActions.encryptionInTransit.enableEITWarning'), TOAST_OPTIONS);
     } else {
       try {
@@ -166,6 +204,15 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       }
     }
   });
+
+  useEffect(() => {
+    if (disableServerCertRotation) setTab(EitTabs.CACert);
+  }, [setTab, disableServerCertRotation]);
+
+  useEffect(() => {
+    if (!isLoading && !currentTab)
+      setTab(disableServerCertRotation ? EitTabs.CACert : EitTabs.ServerCert);
+  }, [isLoading, disableServerCertRotation, setTab, currentTab]);
 
   return (
     <YBModal
@@ -179,8 +226,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       title={t('universeActions.encryptionInTransit.title')}
       onClose={onClose}
       onSubmit={handleFormSubmit}
-      submitTestId="EncryptionAtRest-Submit"
-      cancelTestId="EncryptionAtRest-Close"
+      submitTestId="EncryptionInTransit-Submit"
+      cancelTestId="EncryptionInTransit-Close"
     >
       {isLoading ? (
         <YBLoading text={' '} />
@@ -193,7 +240,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             display="flex"
             width="100%"
             flexDirection="column"
-            data-testid="EncryptionAtRest-Modal"
+            data-testid="EncryptionInTransit-Modal"
           >
             <Box
               display="flex"
@@ -238,9 +285,9 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             </Box>
 
             {enableUniverseEncryption && (
-              <Box mt={4}>
+              <Box mt={4} className={classes.eitTabContainer}>
                 <Tabs
-                  value={currentTab}
+                  value={disableServerCertRotation ? EitTabs.CACert : currentTab}
                   indicatorColor="primary"
                   textColor="primary"
                   onChange={handleChange}
@@ -249,22 +296,27 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                 >
                   <Tab
                     label={t('universeActions.encryptionInTransit.certAuthority')}
-                    value="CACert"
+                    value={EitTabs.CACert}
                   />
-                  {encryptionEnabled && (enableNodeToNodeEncrypt || enableClientToNodeEncrypt) && (
+                  {!disableServerCertRotation && (
                     <Tab
                       label={t('universeActions.encryptionInTransit.serverCert')}
-                      value="ServerCert"
+                      value={EitTabs.ServerCert}
                     />
                   )}
                 </Tabs>
-                {currentTab === 'CACert' && <CertificateAuthority initialValues={INITIAL_VALUES} />}
-                {currentTab === 'ServerCert' && (
+
+                {(currentTab === EitTabs.CACert || disableServerCertRotation) && (
+                  <CertificateAuthority initialValues={INITIAL_VALUES} />
+                )}
+                {currentTab === EitTabs.ServerCert && !disableServerCertRotation && (
                   <RotateServerCerts initialValues={INITIAL_VALUES} />
                 )}
-                <RollingUpgrade />
+
+                {!tlsToggled && <RollingUpgrade />}
               </Box>
             )}
+            {tlsToggled && <NonRollingBanner />}
           </Box>
         </FormProvider>
       )}

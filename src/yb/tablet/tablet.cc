@@ -250,6 +250,9 @@ DEFINE_RUNTIME_uint64(post_split_compaction_input_size_threshold_bytes, 256_MB,
              "Max size of a files to be compacted within one iteration. "
              "Set to 0 to compact all files at once during post split compaction.");
 
+DEFINE_test_flag(bool, pause_before_getting_safe_time, false,
+                 "Pause before doing Tablet::DoGetSafeTime");
+
 DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "Enables exclusive mode for post-split compaction for a tablet: all scheduled and "
        "unscheduled compactions are run before post-split compaction and no other compaction "
@@ -479,8 +482,8 @@ Tablet::Tablet(const TabletInitData& data)
       table_type_(data.metadata->table_type()),
       log_anchor_registry_(data.log_anchor_registry),
       mem_tracker_(MemTracker::FindOrCreateTracker(
-          Format("tablet-$0", tablet_id()), data.parent_mem_tracker, AddToParent::kTrue,
-          CreateMetrics::kFalse)),
+          Format("tablet-$0", tablet_id()), /* metric_name */ "PerTablet", data.parent_mem_tracker,
+              AddToParent::kTrue, CreateMetrics::kFalse)),
       block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
       clock_(data.clock),
       mvcc_(
@@ -769,16 +772,14 @@ Status Tablet::OpenKeyValueTablet() {
   InitRocksDBOptions(
       &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
-  regulardb_mem_tracker_ =
-      MemTracker::FindOrCreateTracker(
-          Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_,
-          AddToParent::kTrue, CreateMetrics::kFalse);
+  regulardb_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      Format("$0-$1", kRegularDB, tablet_id()), /* metric_name */ kRegularDB,
+          block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
   rocksdb_options.block_based_table_mem_tracker = regulardb_mem_tracker_;
 
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
-    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
-        tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kRegularDB));
+    rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(tablet_metrics_entity_);
   }
 
   key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
@@ -853,15 +854,14 @@ Status Tablet::OpenKeyValueTablet() {
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
     intents_rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
-    intentdb_mem_tracker_ =
-        MemTracker::FindOrCreateTracker(
-            Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_,
-            AddToParent::kTrue, CreateMetrics::kFalse);
+    intentdb_mem_tracker_ = MemTracker::FindOrCreateTracker(
+        Format("$0-$1", kIntentsDB, tablet_id()), /* metric_name */ kIntentsDB,
+            block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
     intents_rocksdb_options.block_based_table_mem_tracker = intentdb_mem_tracker_;
     // We may not have a metrics_entity_ instantiated in tests.
     if (tablet_metrics_entity_) {
       intents_rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(
-          tablet_metrics_entity_, Format("$0_$1", "BlockBasedTable", kIntentsDB));
+          tablet_metrics_entity_);
     }
     intents_rocksdb_options.statistics = intentsdb_statistics_;
 
@@ -3353,6 +3353,7 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
     return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
   }

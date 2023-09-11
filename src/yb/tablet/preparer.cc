@@ -29,10 +29,12 @@
 
 #include "yb/tablet/operations/operation_driver.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/threadpool.h"
 
 DEFINE_UNKNOWN_uint64(max_group_replicate_batch_size, 16,
@@ -46,6 +48,13 @@ DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,
 
 DEFINE_test_flag(bool, block_prepare_batch, false,
                  "pause the prepare task.");
+
+DEFINE_test_flag(double, simulate_preparer_skips_run, 0.0,
+                 "Probability that the preparer will skip invoking Run after submitting an item.");
+
+DEFINE_test_flag(double, simulate_skip_process_batch, 0.0,
+                 "Probability that the preparer will skip invoking ProcessAndClearLeaderSideBatch "
+                 "after processing an item.");
 
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
@@ -74,6 +83,8 @@ class PreparerImpl {
   ThreadPoolToken* PoolToken() {
     return tablet_prepare_pool_token_.get();
   }
+
+  void DumpStatusHtml(std::ostream& out);
 
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
@@ -123,8 +134,11 @@ class PreparerImpl {
   consensus::ConsensusRounds rounds_to_replicate_;
 
   void Run();
+
+  // Should only be run via tablet_prepare_pool_token_
   void ProcessItem(OperationDriver* item);
 
+  // Should only be run via tablet_prepare_pool_token_
   void ProcessAndClearLeaderSideBatch();
 
   void ProcessFailedItem(OperationDriver* item, Status status);
@@ -196,6 +210,9 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
   auto expected = false;
   if (!running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
     // running_ was already true, so we are not creating a task to process operations.
+    return Status::OK();
+  }
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_simulate_preparer_skips_run))) {
     return Status::OK();
   }
   // We flipped running_ from 0 to 1. The previously running thread could go back to doing another
@@ -315,6 +332,10 @@ void PreparerImpl::ProcessFailedItem(OperationDriver* item, Status status) {
 }
 
 void PreparerImpl::ProcessAndClearLeaderSideBatch() {
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_simulate_skip_process_batch))) {
+    return;
+  }
+
   if (leader_side_batch_.empty()) {
     return;
   }
@@ -394,6 +415,41 @@ void PreparerImpl::ReplicateSubBatch(
   }
 }
 
+void PreparerImpl::DumpStatusHtml(std::ostream& out) {
+  out << "<div>" << "stop_requested: " << stop_requested_ << "</div>" << std::endl;
+  out << "<div>" << "running: " << running_ << "</div>" << std::endl;
+  out << "<div>" << "stopped: " << stopped_ << "</div>" << std::endl;
+  out << "<div>" << "active_tasks: " << active_tasks_ << "</div>" << std::endl;
+  out << "<div>" << "prepare_should_fail: " << prepare_should_fail_ << "</div>" << std::endl;
+  auto get_ops_status = MakeFuture<Status>([&](auto callback) {
+    auto s = tablet_prepare_pool_token_->SubmitFunc([&, cb = std::move(callback)]() {
+      out << "<div>" << "queue ops:</div>" << std::endl;
+      out << "<ul>" << std::endl;
+      for (const auto& op : queue_) {
+        out << "<li>" << op.ToString() << "</li>" << std::endl;
+      }
+      out << "</ul>" << std::endl;
+
+      out << "<div>" << "leader batched ops: " << leader_side_batch_.size()
+          << "</div>" << std::endl;
+      out << "<ul>" << std::endl;
+      for (const auto& op : leader_side_batch_) {
+        out << "<li>" << op->ToString() << "</li>" << std::endl;
+      }
+      out << "</ul>" << std::endl;
+
+      cb(Status::OK());
+    });
+    if (!s.ok()) {
+      out << "<div>" << "Error generating preparer ops status" << s << "</div>" << std::endl;
+    }
+  }).get();
+  if (!get_ops_status.ok()) {
+    out << "<div>" << "Error generating preparer ops status"
+        << get_ops_status << "</div>" << std::endl;
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 // Preparer
 
@@ -420,6 +476,10 @@ Status Preparer::Submit(OperationDriver* operation_driver) {
 
 ThreadPoolToken* Preparer::PoolToken() {
   return impl_->PoolToken();
+}
+
+void Preparer::DumpStatusHtml(std::ostream& out) {
+  return impl_->DumpStatusHtml(out);
 }
 
 }  // namespace tablet

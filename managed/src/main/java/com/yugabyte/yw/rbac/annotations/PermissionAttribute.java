@@ -8,7 +8,7 @@ import java.lang.annotation.RetentionPolicy;
 
 @Retention(RetentionPolicy.RUNTIME)
 public @interface PermissionAttribute {
-  ResourceType resourceType() default ResourceType.DEFAULT;
+  ResourceType resourceType() default ResourceType.OTHER;
 
   Action action() default Action.READ;
 }

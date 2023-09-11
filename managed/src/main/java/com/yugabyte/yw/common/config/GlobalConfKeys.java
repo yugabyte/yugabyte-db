@@ -636,6 +636,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static ConfKeyInfo<Integer> maxVolumeCount =
+      new ConfKeyInfo<>(
+          "yb.max_volume_count",
+          ScopeType.GLOBAL,
+          "Maximum Volume Count",
+          "Maximum Volume Count",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
@@ -748,6 +756,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disasterRecoveryEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.dr.enabled",
+          ScopeType.GLOBAL,
+          "Enable disaster recovery",
+          "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
@@ -1024,6 +1040,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "New RBAC Authz feature",
           "New RBAC Authz feature with custom role creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableVMOSPatching =
+      new ConfKeyInfo<>(
+          "yb.provider.vm_os_patching",
+          ScopeType.GLOBAL,
+          "VM OS Patching",
+          "Enables VM OS Patching with image bundles",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

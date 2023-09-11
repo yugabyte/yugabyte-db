@@ -1,53 +1,53 @@
 [
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "CREATE",
     "name": "Create Resource",
-    "description": "Default permission to create a resource instance.",
+    "description": "Permission to create a resource instance.",
     "permissionValidOnResource": false,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "READ",
     "name": "View Resource",
-    "description": "Default permission to read a resource instance.",
+    "description": "Permission to read a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": []
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "UPDATE",
     "name": "Update Resource",
-    "description": "Default permission to update a resource instance.",
+    "description": "Permission to update a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "DELETE",
     "name": "Delete Resource",
-    "description": "Default permission to delete a resource instance.",
+    "description": "Permission to delete a resource instance.",
     "permissionValidOnResource": true,
     "prerequisitePermissions": [
       {
-        "resourceType": "DEFAULT",
+        "resourceType": "OTHER",
         "action": "READ"
       }
     ]
   },
   {
-    "resourceType": "DEFAULT",
+    "resourceType": "OTHER",
     "action": "SUPER_ADMIN_ACTIONS",
     "name": "Super Admin Actions",
     "description": "Gives all the super admin permissions like HA, runtime configs, etc.",

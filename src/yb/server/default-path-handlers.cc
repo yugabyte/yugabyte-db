@@ -485,6 +485,9 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
       SplitStringUsing(*metrics_p, ",", &prometheus_opts->metrics);
     }
 
+    arg = FindWithDefault(req.parsed_args, "cache_filters", "true");
+    prometheus_opts->cache_filters = ParseLeadingBoolValue(arg.c_str(), true);
+
     const string* table_whitelist_p = FindOrNull(req.parsed_args,
         "table_whitelist");
     if (table_whitelist_p == nullptr) {
@@ -522,7 +525,7 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
   WARN_NOT_OK(metrics->WriteAsJson(&writer, opts), "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
+static void WriteMetricsForPrometheus(MetricRegistry* const metrics,
                                       const Webserver::WebRequest& req,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
@@ -589,7 +592,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   AddPprofPathHandlers(webserver);
 }
 
-void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
+void RegisterMetricsJsonHandler(Webserver* webserver, MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
       WriteMetricsForPrometheus, metrics, _1, _2);

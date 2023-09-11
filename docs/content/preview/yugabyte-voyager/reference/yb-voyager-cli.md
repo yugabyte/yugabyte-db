@@ -514,9 +514,9 @@ Default: If yb-voyager can determine the total number of cores N in the target Y
 
 ### --batch-size
 
-Specifies the size of batches generated for ingestion during [import data](../../migrate-steps/#import-data).
+Specifies the number of rows in each batch generated for ingestion during [import data](../../migrate-steps/#import-data).
 
-Default: 20,000
+Default: 20000; rows.
 
 ### --data-dir
 
