@@ -12,12 +12,10 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
-import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
 import io.ebean.Model;
-import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
@@ -193,15 +191,20 @@ public class InstanceType extends Model {
    * Reset the 'instance_type_details_json' of all rows belonging to a specific provider in this
    * table.
    */
-  public static void resetInstanceTypeDetailsForProvider(UUID providerUuid) {
-    String updateQuery =
-        "UPDATE instance_type "
-            + "SET instance_type_details = '{}' WHERE provider_uuid = :providerUuid";
-    SqlUpdate update = DB.sqlUpdate(updateQuery).setParameter("providerUuid", providerUuid);
-    int modifiedCount = DB.getDefault().execute(update);
-    LOG.info("Query [" + updateQuery + "] updated " + modifiedCount + " rows");
-    if (modifiedCount == 0) {
-      LOG.warn("Failed to update any SQL row");
+  public static void resetInstanceTypeDetailsForProvider(
+      Provider provider, Config config, boolean allowUnsupported) {
+    // We do not want to reset the details for manually added instance types.
+
+    List<InstanceType> instanceTypes = findByProvider(provider, config, allowUnsupported);
+    instanceTypes =
+        instanceTypes.stream()
+            .filter(
+                supportedInstanceTypes(getAWSInstancePrefixesSupported(config), allowUnsupported))
+            .collect(Collectors.toList());
+
+    for (InstanceType instanceType : instanceTypes) {
+      instanceType.setInstanceTypeDetails(new InstanceTypeDetails());
+      instanceType.save();
     }
   }
 
@@ -297,6 +300,18 @@ public class InstanceType extends Model {
         .collect(Collectors.toList());
   }
 
+  public static List<InstanceType> getInstanceTypesWithoutArch(UUID providerUuid) {
+    return InstanceType.find
+        .query()
+        .where()
+        .eq("provider_uuid", providerUuid)
+        .or()
+        .eq("instance_type_details", null)
+        .eq("instance_type_details::json->>'arch'", null)
+        .endOr()
+        .findList();
+  }
+
   /** Default details for volumes attached to this instance. */
   public static class VolumeDetails {
     public Integer volumeSizeGB;
@@ -309,8 +324,14 @@ public class InstanceType extends Model {
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
     public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
 
+    @ApiModelProperty(value = "Volume Details for the instance.")
     public List<VolumeDetails> volumeDetailsList = new LinkedList<>();
+
+    @ApiModelProperty(value = "Tenancy for the instance.")
     public PublicCloudConstants.Tenancy tenancy;
+    public Architecture arch;
+
+    @ApiModelProperty(value = "Architecture for the instance.")
     public Architecture arch;
 
     public void setVolumeDetailsList(int volumeCount, int volumeSizeGB, VolumeType volumeType) {

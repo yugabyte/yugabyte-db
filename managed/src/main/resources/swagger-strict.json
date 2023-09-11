@@ -5070,6 +5070,10 @@
           "$ref" : "#/definitions/ImageBundleDetails",
           "description" : "Image Bundle Details"
         },
+        "metadata" : {
+          "$ref" : "#/definitions/Metadata",
+          "description" : "Metadata for imageBundle"
+        },
         "name" : {
           "description" : "Image Bundle Name",
           "type" : "string"
@@ -5197,21 +5201,23 @@
     "InstanceTypeDetails" : {
       "properties" : {
         "arch" : {
+          "description" : "Architecture for the instance.",
           "enum" : [ "x86_64", "aarch64" ],
           "type" : "string"
         },
         "tenancy" : {
+          "description" : "Tenancy for the instance.",
           "enum" : [ "Shared", "Dedicated", "Host" ],
           "type" : "string"
         },
         "volumeDetailsList" : {
+          "description" : "Volume Details for the instance.",
           "items" : {
             "$ref" : "#/definitions/VolumeDetails"
           },
           "type" : "array"
         }
       },
-      "required" : [ "arch", "tenancy", "volumeDetailsList" ],
       "type" : "object"
     },
     "InstanceTypeKey" : {
@@ -5980,6 +5986,19 @@
         }
       },
       "required" : [ "masters" ],
+      "type" : "object"
+    },
+    "Metadata" : {
+      "properties" : {
+        "type" : {
+          "enum" : [ "YBA_ACTIVE", "YBA_DEPRECATED", "CUSTOM" ],
+          "type" : "string"
+        },
+        "version" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "type", "version" ],
       "type" : "object"
     },
     "Metric" : {
