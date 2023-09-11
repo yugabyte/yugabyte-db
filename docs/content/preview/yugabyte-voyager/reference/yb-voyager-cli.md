@@ -541,7 +541,7 @@ yb-voyager cutover initiate --export-dir /path/to/yb/export/dir
 
 ### cutover status (Tech preview)
 
-Shows the status of the cutover state to YugabyteDB from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the cutover to the YugabyteDB database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
 #### Syntax
 
