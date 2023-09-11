@@ -587,7 +587,7 @@ yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 
 ### fall-forward status (Tech preview)
 
-Shows the status of the fall-forward switchover state to fall-forward database from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the fall-forward switchover to the fall-forward database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
 #### Syntax
 
