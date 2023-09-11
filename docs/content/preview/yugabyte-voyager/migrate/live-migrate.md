@@ -205,7 +205,7 @@ The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The above command generates a report file under the `EXPORT_DIR/reports/` directory.
+The preceding command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 Refer to [analyze schema](../../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
 
