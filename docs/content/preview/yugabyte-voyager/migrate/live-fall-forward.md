@@ -529,7 +529,7 @@ Perform the following steps as part of the switchover process:
 
         The `fall-forward switchover` command stops the `fall-forward synchronize` process, followed by the `fall-forward setup` process after it has imported all the events to the fall-forward database.
 
-1. Wait for the switchover process to complete. The status of the switchover process can be monitored by the following command:
+1. Wait for the switchover process to complete. Monitor the status of the switchover process using the following command:
 
     ```sh
     yb-voyager fall-forward status --export-dir <EXPORT_DIR>
