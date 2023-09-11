@@ -23,7 +23,7 @@ A fall forward approach allows you to test the system end-to-end. This workflow 
 
 ![fall-forward short](/images/migrate/live-fall-forward-short.png)
 
-After starting [live migration](../live-migrate/#live-migration-workflow) of data, an additional step of setting up the fall-forward database (via [fall-forward setup](#fall-forward-setup)) needs to be performed. The setup starts replicating the snapshot data along with new changes exported from the source database to the fall-forward DB, as shown in the following illustration:
+Before starting a [live migration](../live-migrate/#live-migration-workflow), you set up the fall-forward database (via [fall-forward setup](#fall-forward-setup)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and fall-forward databases, as shown in the following illustration:
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
