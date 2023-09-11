@@ -2,18 +2,13 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.models.CustomerTask.TargetType;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
-import org.yb.client.ChangeLoadBalancerStateResponse;
-import org.yb.client.YBClient;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -25,11 +20,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Singleton;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
+import org.yb.client.ChangeLoadBalancerStateResponse;
+import org.yb.client.YBClient;
 
 @Singleton
 public class CustomerTaskManager {
@@ -67,13 +63,16 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
+      Optional<Universe> optUniv =
+          customerTask.getTarget().isUniverseTarget()
+              ? Universe.maybeGet(customerTask.getTargetUUID())
+              : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
         JsonNode node = taskInfo.getTaskDetails();
         if (node.has(ALTER_LOAD_BALANCER)) {
           isLoadBalanceAltered = node.path(ALTER_LOAD_BALANCER).asBoolean(false);
         }
-        Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
         if (optUniv.isPresent() && isLoadBalanceAltered) {
           enableLoadBalancer(optUniv.get());
         }
@@ -110,25 +109,23 @@ public class CustomerTaskManager {
 
       if (unlockUniverse) {
         // Unlock the universe for future operations.
-        Universe.maybeGet(customerTask.getTargetUUID())
-            .ifPresent(
-                u -> {
-                  UniverseDefinitionTaskParams details = u.getUniverseDetails();
-                  if (details.backupInProgress || details.updateInProgress) {
-                    // Create the update lambda.
-                    Universe.UniverseUpdater updater =
-                        universe -> {
-                          UniverseDefinitionTaskParams universeDetails =
-                              universe.getUniverseDetails();
-                          universeDetails.backupInProgress = false;
-                          universeDetails.updateInProgress = false;
-                          universe.setUniverseDetails(universeDetails);
-                        };
+        optUniv.ifPresent(
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details.backupInProgress || details.updateInProgress) {
+                // Create the update lambda.
+                Universe.UniverseUpdater updater =
+                    universe -> {
+                      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+                      universeDetails.backupInProgress = false;
+                      universeDetails.updateInProgress = false;
+                      universe.setUniverseDetails(universeDetails);
+                    };
 
-                    Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
-                    LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
-                  }
-                });
+                Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
+                LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
+              }
+            });
       }
 
       // Mark task as a failure after the universe is unlocked.
@@ -153,9 +150,18 @@ public class CustomerTaskManager {
               .stream()
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
-      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update and
-      // customer completion time update are not transactional.
+
+      // Delete orphaned parent tasks which do not have any associated customer task.
+      // It is rare but can happen as a customer task and task info are not saved in transaction.
+      // TODO It can be handled better with transaction but involves bigger change.
       String query =
+          "DELETE FROM task_info WHERE parent_uuid IS NULL AND uuid NOT IN "
+              + "(SELECT task_uuid FROM customer_task)";
+      Ebean.createSqlUpdate(query).execute();
+
+      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update
+      // and customer completion time update are not transactional.
+      query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
@@ -168,7 +174,7 @@ public class CustomerTaskManager {
           .findList()
           .forEach(
               row -> {
-                TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
+                TaskInfo taskInfo = TaskInfo.getOrBadRequest(row.getUUID("task_uuid"));
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 failPendingTask(customerTask, taskInfo);
               });

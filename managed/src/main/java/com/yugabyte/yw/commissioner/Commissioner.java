@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,6 +23,23 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,15 +47,6 @@ import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class Commissioner {
@@ -114,7 +124,12 @@ public class Commissioner {
     } catch (Throwable t) {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
-        taskRunnable.task.terminate();
+        taskRunnable.getTask().terminate();
+        TaskInfo taskInfo = taskRunnable.getTaskInfo();
+        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
+          taskInfo.setTaskState(TaskInfo.State.Failure);
+          taskInfo.save();
+        }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);

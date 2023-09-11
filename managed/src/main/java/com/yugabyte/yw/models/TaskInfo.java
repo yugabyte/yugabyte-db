@@ -20,10 +20,10 @@ import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.Query;
-import io.ebean.annotation.CreatedTimestamp;
+import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.UpdatedTimestamp;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -120,12 +121,12 @@ public class TaskInfo extends Model {
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
-  @CreatedTimestamp
+  @WhenCreated
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY, example = "1624295239113")
   private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
-  @UpdatedTimestamp
+  @WhenModified
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
   private Date updateTime;
 
@@ -250,6 +251,10 @@ public class TaskInfo extends Model {
   public static TaskInfo get(UUID taskUUID) {
     // Return the instance details object.
     return find.byId(taskUUID);
+  }
+
+  public static Optional<TaskInfo> maybeGet(UUID taskUUID) {
+    return Optional.ofNullable(get(taskUUID));
   }
 
   public static TaskInfo getOrBadRequest(UUID taskUUID) {
