@@ -62,7 +62,7 @@ Prepare your source database by creating a new database user, and provide it wit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#standalone-oracle" class="nav-link" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Standalone Oracle Container Database
     </a>
