@@ -383,7 +383,7 @@ Perform the following steps as part of the cutover process:
 
         The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-1. Wait for the cutover process to complete. The status of the cutover process can be monitored by the following command:
+1. Wait for the cutover process to complete. The status of the cutover process can be monitored using the following command:
 
     ```sh
     yb-voyager cutover status --export-dir <EXPORT_DIR>
