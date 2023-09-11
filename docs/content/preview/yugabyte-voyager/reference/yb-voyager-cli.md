@@ -472,7 +472,7 @@ yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
 
 ### fall-forward synchronize (Tech preview)
 
-Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB after cutover.
+Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB database after cutover.
 
 #### Syntax
 
