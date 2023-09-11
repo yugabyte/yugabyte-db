@@ -137,8 +137,8 @@ public class AWSInitializer extends AbstractInitializer {
       JsonNode onDemandJson = regionJson.get("terms").get("OnDemand");
 
       storeEBSPriceComponents(context, productDetailsListJson, onDemandJson);
-      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson);
-      parseProductDetailsList(context, productDetailsListJson);
+      storeInstancePriceComponents(context, productDetailsListJson, onDemandJson, region);
+      parseProductDetailsList(context, productDetailsListJson, region);
 
       // Create the instance types.
       storeInstanceTypeInfoToDB(context);
@@ -419,9 +419,10 @@ public class AWSInitializer extends AbstractInitializer {
    * @param region The region EC2 product is in.
    */
   private void parseProductDetailsList(
-      InitializationContext context, JsonNode productDetailsListJson) {
+      InitializationContext context, JsonNode productDetailsListJson, Region region) {
     LOG.info("Parsing product details list");
     Iterator<JsonNode> productDetailsListIter = productDetailsListJson.elements();
+    Architecture regionArch = region.getArchitecture();
     while (productDetailsListIter.hasNext()) {
       JsonNode productDetailsJson = productDetailsListIter.next();
 
