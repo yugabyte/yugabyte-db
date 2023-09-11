@@ -423,7 +423,7 @@ Suppose you have a scenario where,
 
 In this scenario, [import data status](#import-data-status) command reports an incorrect number of imported rows, because it doesn't take into account the deleted rows.
 
-For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+For more details, refer to GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
 {{< /warning >}}
 
