@@ -582,7 +582,7 @@ The valid *arguments* for fall-forward switchover are described in the following
 #### Example
 
 ```sh
-yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir \
+yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 ```
 
 ### fall-forward status (Tech preview)
