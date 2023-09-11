@@ -329,7 +329,6 @@ public class InstanceType extends Model {
 
     @ApiModelProperty(value = "Tenancy for the instance.")
     public PublicCloudConstants.Tenancy tenancy;
-    public Architecture arch;
 
     @ApiModelProperty(value = "Architecture for the instance.")
     public Architecture arch;
