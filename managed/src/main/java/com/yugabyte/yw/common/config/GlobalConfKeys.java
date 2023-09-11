@@ -636,7 +636,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static ConfKeyInfo<Integer> maxVolumeCount =
       new ConfKeyInfo<>(
           "yb.max_volume_count",
@@ -645,7 +644,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum Volume Count",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
@@ -1042,6 +1040,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "New RBAC Authz feature",
           "New RBAC Authz feature with custom role creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableVMOSPatching =
+      new ConfKeyInfo<>(
+          "yb.provider.vm_os_patching",
+          ScopeType.GLOBAL,
+          "VM OS Patching",
+          "Enables VM OS Patching with image bundles",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }
