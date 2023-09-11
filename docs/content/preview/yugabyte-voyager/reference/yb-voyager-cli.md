@@ -393,7 +393,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
-For live migration, get the status report of [import data](#import-data), and for live migration with fall forward, the report will also include the status of [fall forward setup](#fall-forward-setup-tech-preview) as well. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count of the target or fall-forward database.
+For live migration, get the status report of [import data](#import-data). For live migration with fall forward, the report also includes the status of [fall forward setup](#fall-forward-setup-tech-preview). The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
 #### Syntax
 
