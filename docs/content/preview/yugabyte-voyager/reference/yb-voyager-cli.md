@@ -407,7 +407,7 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
-| [target-db-password](#target-db-password) | Password of the target database (only for live migration) |
+| [target-db-password](#target-db-password) | Password of the target database. Live migrations only. |
 | [ff-db-password](#ff-db-password) | Password of the fall-forward database (only for live migration with fall-forward) |
 
 #### Example
