@@ -901,7 +901,7 @@ If the password contains special characters that are interpreted by the shell (f
 
 Specifies the port number of the machine on which the fall-forward database server is running.
 
-Default: Oracle(1521)
+Default: For Oracle databases, 1521
 
 ### --ff-db-schema
 
