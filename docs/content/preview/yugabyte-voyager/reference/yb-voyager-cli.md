@@ -566,7 +566,7 @@ yb-voyager cutover status --export-dir /path/to/yb/export/dir
 
 Initiate a switchover to the fall-forward database.
 
-### Syntax
+#### Syntax
 
 ```sh
 yb-voyager fall-forward switchover [ <arguments> ... ]
@@ -836,13 +836,14 @@ By default, answer yes to all questions during migration.
 
 ### --start-clean
 
-For the export phase, cleans the exported schema/data in the export-dir.
+For the export phase, starts a fresh schema export during export schema after clearing the `schema` directory,
+and a fresh data export during export data after clearing `data` directory.
 
-For the import phase, starts a fresh import of schema during import schema and clears the previous state of import data, and starts a fresh import of data on the target database.
+For the import phase, starts a fresh import of schema during import schema  on the target for the schema present in the `schema` directory.
 
-For import data file, starts a fresh import of a data file into a table in the target database.
+For import data or import data file, the flag starts a fresh import with data files present in the `data` directory and if any table on the target database is non-empty, it prompts whether you want to continue the import without the truncating those tables. If yes, then yb-voyager starts ingesting the data present in the data files with upsert mode.
 
-Note: Because Voyager uses upsert mode during data import, if the target tables are not empty and they have a Primary Key, you should have no problems when using this flag, as column values will be updated. For tables with no Primary Key, you should exclude them using `--exlcude-table-list` to avoid duplicate data, if any, or truncate those tables manually before using the `start-clean` flag.
+For tables with no primary key, you should exclude them using [--exlcude-table-list](#exclude-table-list) to avoid duplicate data, if any, or truncate those tables manually before using the `start-clean` flag.
 
 ### --table-list
 
