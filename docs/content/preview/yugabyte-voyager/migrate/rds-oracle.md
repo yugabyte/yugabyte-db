@@ -15,7 +15,7 @@ private=true
     exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
     ```
 
-1. Create the tablespaces as follows by connecting as an admin user as follows:
+1. Connect to your database as an admin user, and create the tablespaces as follows:
 
     ```sql
     CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;

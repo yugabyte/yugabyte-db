@@ -289,7 +289,7 @@ The valid *arguments* for import data are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory and if any table on target is non-empty, it will prompt whether you want to continue the import without truncating those tables; if yes then Voyager will start ingesting the data present in the data files with upsert mode and for the cases where the table doesn't have a primary key, it may duplicate the data. So in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
+| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory. If any table on the target is not empty, you are prompted to continue the import without truncating those tables. If you continue, Voyager starts ingesting the data present in the data files with upsert mode, and for cases where the table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -393,7 +393,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
-For live migration, get the status report of [import data](#import-data), and for live migration with fall forward, the report will also include the status of [fall forward setup](#fall-forward-setup-tech-preview) as well. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count of the target or fall-forward database.
+For live migration, get the status report of [import data](#import-data). For live migration with fall forward, the report also includes the status of [fall forward setup](#fall-forward-setup-tech-preview). The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
 #### Syntax
 
@@ -407,8 +407,8 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory which is a workspace used to keep the exported  schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
-| [target-db-password](#target-db-password) | Password of the target database (only for live migration) |
-| [ff-db-password](#ff-db-password) | Password of the fall-forward database (only for live migration with fall-forward) |
+| [target-db-password](#target-db-password) | Password of the target database. Live migrations only. |
+| [ff-db-password](#ff-db-password) | Password of the fall-forward database. Live migration with fall-forward only.  |
 
 #### Example
 
@@ -418,7 +418,7 @@ yb-voyager import data status --export-dir /path/to/yb/export/dir
 
 ### fall-forward setup (Tech preview)
 
-Imports data to the fall-forward database, and streams new changes from the target YugabyteDB to the fall-forward database.
+Imports data to the fall-forward database, and streams new changes from the target YugabyteDB database to the fall-forward database.
 
 #### Syntax
 
@@ -472,7 +472,7 @@ yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
 
 ### fall-forward synchronize (Tech preview)
 
-Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB after cutover.
+Exports new changes from the target YugabyteDB to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB database after cutover.
 
 #### Syntax
 
@@ -526,7 +526,7 @@ Initiate cutover to the target YugabyteDB.
 yb-voyager cutover initiate [ <arguments> ... ]
 ```
 
-The valid *arguments* for fall-forward synchronize are described in the following table:
+The valid *arguments* for cutover initiate are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
@@ -536,12 +536,12 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 #### Example
 
 ```sh
-yb-voyager cutover initiate --export-dir /path/to/yb/export/dir \
+yb-voyager cutover initiate --export-dir /path/to/yb/export/dir
 ```
 
 ### cutover status (Tech preview)
 
-Shows the status of the cutover state to YugabyteDB from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the cutover to the YugabyteDB database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
 #### Syntax
 
@@ -559,7 +559,7 @@ The valid *arguments* for cutover status are described in the following table:
 #### Example
 
 ```sh
-yb-voyager cutover status --export-dir /path/to/yb/export/dir \
+yb-voyager cutover status --export-dir /path/to/yb/export/dir
 ```
 
 ### fall-forward switchover (Tech preview)
@@ -582,12 +582,12 @@ The valid *arguments* for fall-forward switchover are described in the following
 #### Example
 
 ```sh
-yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir \
+yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 ```
 
 ### fall-forward status (Tech preview)
 
-Shows the status of the fall-forward switchover state to fall-forward database from one of "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the fall-forward switchover to the fall-forward database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
 #### Syntax
 
@@ -610,7 +610,7 @@ yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \
 
 ### archive changes (Tech preview)
 
-This command archives the streaming data from the source database.
+Archives the streaming data from the source database.
 
 #### Syntax
 
@@ -901,7 +901,7 @@ If the password contains special characters that are interpreted by the shell (f
 
 Specifies the port number of the machine on which the fall-forward database server is running.
 
-Default: Oracle(1521)
+Default: For Oracle databases, 1521
 
 ### --ff-db-schema
 
@@ -915,11 +915,12 @@ Specifies the username in the Fall-forward database to be used for the migration
 
 Specifies the type of migration [`snapshot-only` (offline), `snapshot-and-changes`(live, and optionally fall-forward) ]
 
-Default - `snapshot-only`
+Default: `snapshot-only`
 
 ### --delete
 
 Deletes the exported data in the CDC phase after moving it to another location.
+
 Default: false
 
 ### --fs-utilization-threshold
