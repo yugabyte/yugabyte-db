@@ -27,11 +27,11 @@ After starting [live migration](../live-migrate/#live-migration-workflow) of dat
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cutover), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cut-over-to-a-database), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
-Finally, if you must switch to the fall-forward database in case the current YugabyteDB system is not working as expected, you can use [fall-forward switchover](#fall-forward-switchover-optional) option to achieve the same.
+Finally, if you must switch to the fall-forward database in case the current YugabyteDB system is not working as expected, you can use [fall-forward switchover](#switch-over-your-database-optional) option to achieve the same.
 
 ![After fall-forward switchover](/images/migrate/after-fall-fwd-switchover.png)
 
@@ -306,7 +306,7 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 Manually, setup the fall-forward database with the same schema as that of the source database with the following considerations:
 
 - The table names on the fall-forward database need to be case insensitive ( as YB Voyager currently does not support case-sensitivity.)
-- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the fall-forward database. Create them later as mentioned in Step 4 of [Fall-forward switchover](#fall-forward-switchover-optional).
+- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the fall-forward database. Create them later as mentioned in Step 4 of [Fall-forward switchover](#switch-over-your-database-optional).
 - Disable foreign key constraints and check constraints on the fall-forward database.
 
 ### Export data
@@ -448,7 +448,7 @@ Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes) for 
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
 {{< /note >}}
 
-### Cutover
+### Cut over to a database
 
 Cutover is the last phase of switching your application from pointing to your source database to pointing to your YugabyteDB database.
 
@@ -457,22 +457,20 @@ Keep monitoring the metrics displayed on export data and import data processes. 
 Perform the following steps as part of the cutover process:
 
 1. Quiesce your source database, that is stop application writes.
-1. Initiate cutover as follows:
+1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
-    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to initiate cutover with the following command:
+    ```sh
+    yb-voyager cutover initiate --export-dir <EXPORT_DIR>
+    ```
 
-        ```sh
-        yb-voyager cutover initiate --export-dir <EXPORT_DIR>
-        ```
+    Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate) for details about the arguments.
 
-        Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate) for details about the arguments.
+    As part of the cutover process, the following occurs in the background:
 
-        As part of the cutover process, the following occurs in the background:
+    1. The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-        1. The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
-
-        1. The [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize) command automatically starts synchronizing changes from the target YugabyteDB database to the fall-forward database.
-        Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
+    1. The [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize) command automatically starts synchronizing changes from the target YugabyteDB database to the fall-forward database.
+    Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
 
@@ -508,7 +506,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 1. Stop [archive changes](#archive-changes).
 
-### Fall-forward switchover (Optional)
+### Switch over your database (Optional)
 
 During this phase, switch over your application from pointing it to the target YugabyteDB database to pointing it to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
 
@@ -517,17 +515,15 @@ Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-f
 Perform the following steps as part of the switchover process:
 
 1. Quiesce your target database, that is stop application writes.
-1. Initiate switchover as follows:
+1. perform a switchover after the exported events rate ("ingestion rate" in the metrics table) drops to using the following command:
 
-    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to switchover using the following command:
+    ```sh
+    yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
+    ```
 
-        ```sh
-        yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
-        ```
+    Refer to [fall-forward switchover](../../reference/yb-voyager-cli/#fall-forward-switchover) for details about the arguments.
 
-        Refer to [fall-forward switchover](../../reference/yb-voyager-cli/#fall-forward-switchover) for details about the arguments.
-
-        The `fall-forward switchover` command stops the `fall-forward synchronize` process, followed by the `fall-forward setup` process after it has imported all the events to the fall-forward database.
+    The `fall-forward switchover` command stops the `fall-forward synchronize` process, followed by the `fall-forward setup` process after it has imported all the events to the fall-forward database.
 
 1. Wait for the switchover process to complete. The status of the switchover process can be monitored by the following command:
 
