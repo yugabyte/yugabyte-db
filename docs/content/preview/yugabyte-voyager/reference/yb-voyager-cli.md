@@ -536,7 +536,7 @@ The valid *arguments* for cutover initiate are described in the following table:
 #### Example
 
 ```sh
-yb-voyager cutover initiate --export-dir /path/to/yb/export/dir \
+yb-voyager cutover initiate --export-dir /path/to/yb/export/dir
 ```
 
 ### cutover status (Tech preview)
