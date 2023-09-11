@@ -114,7 +114,12 @@ public class Commissioner {
     } catch (Throwable t) {
       if (taskRunnable != null) {
         // Destroy the task initialization in case of failure.
-        taskRunnable.task.terminate();
+        taskRunnable.getTask().terminate();
+        TaskInfo taskInfo = taskRunnable.getTaskInfo();
+        if (taskInfo.getTaskState() != TaskInfo.State.Failure) {
+          taskInfo.setTaskState(TaskInfo.State.Failure);
+          taskInfo.save();
+        }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
@@ -235,13 +240,19 @@ public class Commissioner {
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    if (task == null) {
+      // We are not able to find the task. Report an error.
+      LOG.error("Error fetching task progress for {}. Customer task is not found", taskUUID);
+      return Optional.empty();
+    }
     // Check if the task is in the DB.
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-    if (task == null || taskInfo == null) {
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+    if (!optional.isPresent()) {
       // We are not able to find the task. Report an error.
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
+    TaskInfo taskInfo = optional.get();
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
             String.class,
@@ -278,14 +289,12 @@ public class Commissioner {
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-    if (taskInfo != null) {
-      return taskInfo.getTaskDetails();
-    } else {
-      // TODO: push this down to TaskInfo
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+    if (optional.isPresent()) {
+      return optional.get().getTaskDetails();
     }
+    throw new PlatformServiceException(
+        BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
   }
 
   private int getSubTaskPositionFromContext(String property) {
