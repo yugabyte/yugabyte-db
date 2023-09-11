@@ -519,7 +519,7 @@ Perform the following steps as part of the switchover process:
 1. Quiesce your target database, that is stop application writes.
 1. Initiate switchover as follows:
 
-    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to switchover using the following command:
+    1. After the exported events rate ("ingestion rate" in the metrics table) drops to 0, it is safe to switch over using the following command:
 
         ```sh
         yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
