@@ -43,7 +43,7 @@ Horizontal scaling is the most common scaling model in YugabyteDB, and has sever
 
 * **Improved performance** - More nodes can process requests in parallel, reducing response times.
 * **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
-* **Elastic Scaling** - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
+* **Elastic scaling** - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
 
 ## Vertical scaling (scale up)
 
