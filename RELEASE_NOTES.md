@@ -2,6 +2,13 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 2.0.2
+
+### Bug Fixes
+
+[GH-418](https://github.com/percona/pg_stat_monitor/issues/418) - Fixed compilation issue with PG16 and added meson.build file.
+
+
 ## 2.0.1
 
 ### Bug Fixes
