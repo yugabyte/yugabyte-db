@@ -421,7 +421,7 @@ Suppose you have a scenario where,
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
-In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+In this scenario, [import data status](#import-data-status) command reports an incorrect number of imported rows, because it doesn't take into account the deleted rows.
 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
