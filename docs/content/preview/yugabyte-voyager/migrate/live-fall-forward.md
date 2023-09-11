@@ -15,7 +15,7 @@ rightNav:
 type: docs
 ---
 
-When you migrate a database using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (Fall-forward database) that is a replica of your original source database.
+When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the fall-forward database) that is a replica of your original source database.
 
 A fall forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
