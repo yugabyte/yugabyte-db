@@ -100,7 +100,9 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
+
+If you don't provide the target database name during import, yb-voyager assumes the target database name is `yugabyte`. To specify the target database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
 
 ```sql
 CREATE DATABASE target_db_name;
