@@ -31,11 +31,11 @@ At [cutover](#cutover), applications stop writing to the source database and sta
 
 ![After cutover](/images/migrate/after-cutover.png)
 
-Finally, if you must switch to the fall-forward database in case the current YugabyteDB system is not working as expected, you can use [fall-forward switchover](#fall-forward-switchover-optional) option to achieve the same.
+Finally, if you need to switch to the fall-forward database (because the current YugabyteDB system is not working as expected), you can use [fall-forward switchover](#fall-forward-switchover-optional) option.
 
 ![After fall-forward switchover](/images/migrate/after-fall-fwd-switchover.png)
 
-The following illustration describes the overview of live migration using YB Voyager with fall-forward option.
+The following illustration describes the workflow for live migration using YB Voyager with the fall-forward option.
 
 ![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
 
@@ -53,7 +53,7 @@ Prepare your source database by creating a new database user, and provide it wit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#standalone-oracle" class="nav-link" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Standalone Oracle Container Database
     </a>
@@ -303,10 +303,10 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 ### Export and import schema to fall-forward database
 
-Manually, setup the fall-forward database with the same schema as that of the source database with the following considerations:
+Manually, set up the fall-forward database with the same schema as that of the source database with the following considerations:
 
-- The table names on the fall-forward database need to be case insensitive ( as YB Voyager currently does not support case-sensitivity.)
-- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the fall-forward database. Create them later as mentioned in Step 4 of [Fall-forward switchover](#fall-forward-switchover-optional).
+- The table names on the fall-forward database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
+- Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the fall-forward database. Create them later as described in [Fall-forward switchover](#fall-forward-switchover-optional).
 - Disable foreign key constraints and check constraints on the fall-forward database.
 
 ### Export data
@@ -353,7 +353,7 @@ The options passed to the command are similar to the [`yb-voyager export schema`
 
 ### Import data
 
-After you have successfully imported the schema in the target database, and the CDC phase has started in export data (which can be checked by export data status command), you can start importing the data using the yb-voyager import data command as follows:
+After you have successfully imported the schema in the target database, and the CDC phase has started in export data (which you can monitor using the export data status command), you can start importing the data using the yb-voyager import data command as follows:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -408,7 +408,7 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 Note that the fall-forward setup is applicable for data migration only (schema migration needs to be done manually).
 
-The fall-forward setup refers to replicating the snapshot data along with the changes exported from the source database to the fall-forward database as shown in the "After Cutover" illustration . The command to start the setup as follows:
+The fall-forward setup refers to replicating the snapshot data along with the changes exported from the source database to the fall-forward database. The command to start the setup is as follows:
 
 ```sh
 yb-voyager fall-forward setup --export-dir <EXPORT-DIR> \
@@ -425,10 +425,10 @@ Refer to [fall-forward setup](../../reference/yb-voyager-cli/#fall-forward-setup
 Similar to [import data](#import-data), during fall-forward:
 
 - The snapshot is first imported, following which, the change events are imported to the fall-forward database.
-- Some important metrics such as the number of events, events rate, and so on is displayed.
+- Some important metrics such as the number of events, events rate, and so on, are displayed.
 - The setup is restartable.
 
-Additionally, when you run the `fall-forward setup` command, the [import data status](#import-data-status) command also shows progress of importing all changes to the fall-forward database to get an overall progress of the data import operation and streaming changes to fall-forward DB with the following command:
+Additionally, when you run the `fall-forward setup` command, the [import data status](#import-data-status) command also shows progress of importing all changes to the fall-forward database. To view overall progress of the data import operation and streaming changes to the fall-forward database, use the following command:
 
 ```sh
 yb-voyager import data status --export-dir <EXPORT_DIR> --ff-db-password <password>
