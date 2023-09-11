@@ -22,6 +22,13 @@ Running applications in multiple data centers with data split across them is not
 For more details see, [build global applications](../build-global-apps).
 {{</tip>}}
 
+## Co-location
+Colocated tables helps to optimize for low-latency, high-performance data access by reducing the need for additional trips across the network for small tables. It also reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and the storage for these per node.
+
+{{<tip>}}
+For more details see, [colocation](../../architecture/docdb-sharding/colocated-tables/).
+{{</tip>}}
+
 ## Faster reads with covering indexes
 
 When a query uses an index to look up rows faster, the columns that are not present in the index are fetched from the original table. This results in additional round trips to the main table leading to increased latency.
