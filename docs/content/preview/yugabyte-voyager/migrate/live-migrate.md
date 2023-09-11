@@ -62,7 +62,7 @@ Prepare your source database by creating a new database user, and provide it wit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#standalone-oracle" class="nav-link" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Standalone Oracle Container Database
     </a>
@@ -100,7 +100,9 @@ Prepare your target YugabyteDB database cluster by creating a database, and a us
 
 ### Create the target database
 
-Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name. If the target database name is not provided, yb-voyager assumes the target database name to be `yugabyte`. If you do not want to import in the default `yugabyte` database, specify the name of the target database name using the `--target-db-name` argument to the `yb-voyager import` commands.
+Create the target database in your YugabyteDB cluster. The database name can be the same or different from the source database name.
+
+If you don't provide the target database name during import, yb-voyager assumes the target database name is `yugabyte`. To specify the target database name during import, use the `--target-db-name` argument with the `yb-voyager import` commands.
 
 ```sql
 CREATE DATABASE target_db_name;
@@ -203,7 +205,7 @@ The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in
 yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 ```
 
-The above command generates a report file under the `EXPORT_DIR/reports/` directory.
+The preceding command generates a report file under the `EXPORT_DIR/reports/` directory.
 
 Refer to [analyze schema](../../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
 
@@ -379,7 +381,7 @@ Perform the following steps as part of the cutover process:
 
     The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-1. Wait for the cutover process to complete. The status of the cutover process can be monitored by the following command:
+1. Wait for the cutover process to complete. The status of the cutover process can be monitored using the following command:
 
     ```sh
     yb-voyager cutover status --export-dir <EXPORT_DIR>
@@ -417,9 +419,9 @@ Suppose you have a scenario where,
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
-In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+In this scenario, [import data status](#import-data-status) command reports an incorrect number of imported rows, because it doesn't take into account the deleted rows.
 
-For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
+For more details, refer to GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
 {{< /warning >}}
 
