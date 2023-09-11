@@ -15,7 +15,7 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB automatically splits user tables into multiple shards, called tablets, using either a [hash](#hash-sharding)- or [range](#range-sharding)-based strategy.
+YugabyteDB automatically splits user tables into multiple [shards](../../../architecture/docdb-sharding/sharding/?), called tablets, using either a [hash](#hash-sharding)- or [range](#range-sharding)-based strategy.
 
 The primary key for each row in the table uniquely identifies the location of the tablet in the row, as per the following diagram:
 
@@ -344,3 +344,8 @@ The key has been written to one of the tablets. In this example, the tablet's UU
     ![Auto-sharding when adding three nodes](/images/ce/sharding_6nodes.png)
 
 {{% explore-cleanup-local %}}
+
+## Learn more
+
+- [Sharding in YugabyteDB](../../../architecture/docdb-sharding/sharding/)
+- [Reason for YugabyteDB's Sharding design](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
