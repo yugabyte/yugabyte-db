@@ -43,7 +43,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | [Archive changes](#archive-changes) | Continuously archive migration changes to limit disk utilization. |
-| [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process will reach a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB. |
+| [Initiate cutover](#cutover) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB, and then restart your applications pointing to YugabyteDB. |
 | [Wait for cutover to complete](#cutover) | Monitor the wait status using the [cutover status](../../reference/yb-voyager-cli/#cutover-status) command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#cutover) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#cutover) | Check if the live migration is successful. |
