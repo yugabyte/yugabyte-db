@@ -920,6 +920,7 @@ Default - `snapshot-only`
 ### --delete
 
 Deletes the exported data in the CDC phase after moving it to another location.
+
 Default: false
 
 ### --fs-utilization-threshold
