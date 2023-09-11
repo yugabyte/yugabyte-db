@@ -804,7 +804,11 @@ pgsm_ExecutorCheckPerms(List *rt, List *rp, bool abort)
 	{
 		RangeTblEntry *rte = lfirst(lr);
 
-		if (rte->rtekind != RTE_RELATION)
+		if (rte->rtekind != RTE_RELATION
+#if PG_VERSION_NUM >= 160000
+            && (rte->rtekind != RTE_SUBQUERY && rte->relkind != 'v')
+#endif
+           )
 			continue;
 
 		if (i < REL_LST)
@@ -1261,8 +1265,11 @@ pg_get_backend_status(void)
 	for (i = 1; i <= num_backends; i++)
 	{
 		PgBackendStatus *beentry;
-
+#if PG_VERSION_NUM < 160000
 		local_beentry = pgstat_fetch_stat_local_beentry(i);
+#else
+		local_beentry = pgstat_get_local_beentry_by_index(i);
+#endif
 		if (!local_beentry)
 			continue;
 

@@ -48,6 +48,7 @@ static bool check_overflow_targer(int *newval, void **extra, GucSource source);
 void
 init_guc(void)
 {
+    pgsm_track = PGSM_TRACK_TOP;
 
 	DefineCustomIntVariable("pg_stat_monitor.pgsm_max", /* name */
 							"Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor.", /* short_desc */

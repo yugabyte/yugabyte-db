@@ -22,7 +22,22 @@ print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";
 close $conf;
 
 # Dictionary for expected PGSM columns names on different PG server versions
-my %pg_versions_pgsm_columns = ( 15 => "application_name,blk_read_time," .
+my %pg_versions_pgsm_columns = ( 16 => "application_name,blk_read_time," .
+    "blk_write_time,bucket,bucket_done,bucket_start_time,calls," .
+    "client_ip,cmd_type,cmd_type_text,comments,cpu_sys_time,cpu_user_time," .
+    "datname,dbid,elevel,jit_emission_count,jit_emission_time,jit_functions," .
+    "jit_generation_time,jit_inlining_count,jit_inlining_time," .
+    "jit_optimization_count,jit_optimization_time," .
+    "local_blks_dirtied,local_blks_hit,local_blks_read," .
+    "local_blks_written,max_exec_time,max_plan_time,mean_exec_time," .
+    "mean_plan_time,message,min_exec_time,min_plan_time,pgsm_query_id,planid," .
+    "plans,query,query_plan,queryid,relations,resp_calls," .
+    "rows,shared_blks_dirtied,shared_blks_hit,shared_blks_read," .
+    "shared_blks_written,sqlcode,stddev_exec_time,stddev_plan_time," .
+    "temp_blk_read_time,temp_blk_write_time,temp_blks_read,temp_blks_written," .
+    "top_query,top_queryid,toplevel,total_exec_time,total_plan_time," .
+    "userid,username,wal_bytes,wal_fpi,wal_records",
+15 => "application_name,blk_read_time," .
     "blk_write_time,bucket,bucket_done,bucket_start_time,calls," .
     "client_ip,cmd_type,cmd_type_text,comments,cpu_sys_time,cpu_user_time," .
     "datname,dbid,elevel,jit_emission_count,jit_emission_time,jit_functions," .

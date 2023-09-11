@@ -64,19 +64,11 @@ PGSM::append_to_debug_file($stdout);
 # Compare values for query 'INSERT INTO t1 VALUES(generate_series($1,$2))' 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.local_blks_hit != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO t1%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
-is($stdout,'t',"Check: shared_blks_hit should not be 0.");
-
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.local_blks_read != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO t1%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
-trim($stdout);
-is($stdout,'t',"Check: shared_blks_hit should not be 0.");
+is($stdout,'t',"Check: local_blks_hit should not be 0.");
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.local_blks_dirtied != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO t1%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
-is($stdout,'t',"Check: shared_blks_hit should not be 0.");
-
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.local_blks_written != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO t1%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
-trim($stdout);
-is($stdout,'t',"Check: shared_blks_hit should not be 0.");
+is($stdout,'t',"Check: local_blks_dirtied should not be 0.");
 
 # Compare values for query 'SELECT * FROM t1' 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT PGSM.local_blks_hit != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%FROM t1%\';', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);

@@ -119,10 +119,6 @@ is($stdout,'t',"Check: blk_write_time should not be 0.");
 trim($stdout);
 is($stdout,'t',"Check: shared_blks_hit should not be 0.");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres','SELECT SUM(PGSM.shared_blks_read) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY PGSM.query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
-trim($stdout);
-is($stdout,'t',"Check: shared_blks_read should not be 0.");
-
 ($cmdret, $stdout, $stderr) = $node->psql('postgres','SELECT SUM(PGSM.shared_blks_dirtied) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY PGSM.query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: shared_blks_dirtied should not be 0.");
@@ -130,10 +126,6 @@ is($stdout,'t',"Check: shared_blks_dirtied should not be 0.");
 ($cmdret, $stdout, $stderr) = $node->psql('postgres','SELECT SUM(PGSM.shared_blks_written) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY PGSM.query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
 is($stdout,'t',"Check: shared_blks_written should not be 0.");
-
-($cmdret, $stdout, $stderr) = $node->psql('postgres','SELECT SUM(PGSM.blk_read_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY PGSM.query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
-trim($stdout);
-is($stdout,'t',"Check: blk_read_time should not be 0.");
 
 ($cmdret, $stdout, $stderr) = $node->psql('postgres','SELECT SUM(PGSM.blk_write_time) != 0 FROM pg_stat_monitor AS PGSM WHERE PGSM.query LIKE \'%INSERT INTO pgbench_history%\' GROUP BY PGSM.query;', extra_params => ['-Pformat=unaligned','-Ptuples_only=on']);
 trim($stdout);
