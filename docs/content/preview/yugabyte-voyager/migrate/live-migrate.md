@@ -27,7 +27,7 @@ The following illustration describes how the data export and import operations a
 
 ![Live migration short](/images/migrate/live-migration-short.png)
 
-The following illustration describes the overview of live migration using YugabyteDB Voyager.
+The following illustration shows the steps in a live migration using YugabyteDB Voyager.
 
 ![Live migration workflow](/images/migrate/live-migration-workflow.png)
 
