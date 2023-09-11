@@ -289,7 +289,7 @@ The valid *arguments* for import data are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory and if any table on target is non-empty, it will prompt whether you want to continue the import without truncating those tables; if yes then Voyager will start ingesting the data present in the data files with upsert mode and for the cases where the table doesn't have a primary key, it may duplicate the data. So in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
+| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory. If any table on the target is not empty, you are prompted to continue the import without truncating those tables. If you continue, Voyager starts ingesting the data present in the data files with upsert mode, and for cases where the table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
