@@ -526,7 +526,7 @@ Initiate cutover to the target YugabyteDB.
 yb-voyager cutover initiate [ <arguments> ... ]
 ```
 
-The valid *arguments* for fall-forward synchronize are described in the following table:
+The valid *arguments* for cutover initiate are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
