@@ -745,6 +745,15 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<int> TabletIDMetadata() {
+    tserver::PgTabletIDMetadataRequestPB req; 
+    tserver::PgTabletIDMetadataResponsePB resp;
+    RETURN_NOT_OK(proxy_->TabletIDMetadata(req, &resp, PrepareController()));
+
+    int result = 1;
+    return result;
+  }
+
   Result<client::RpcsInfo> ActiveUniverseHistory() {
     tserver::PgActiveUniverseHistoryRequestPB req;
     tserver::PgActiveUniverseHistoryResponsePB resp;
@@ -1019,6 +1028,10 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 
 Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
+}
+
+Result<int> PgClient::TabletIDMetadata() {
+  return impl_->TabletIDMetadata();
 }
 
 Status PgClient::EnumerateActiveTransactions(

@@ -683,7 +683,7 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Active Universe History.
   Result<client::RpcsInfo> ActiveUniverseHistory();
-
+  Result<int> TabletIDMetadata();
   Status SetTopLevelNodeId();
 
   void SetQueryId(int64_t query_id);

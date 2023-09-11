@@ -76,6 +76,7 @@ class PgMutationCounter;
     (WaitForBackendsCatalogVersion) \
     (CancelTransaction) \
     (ActiveUniverseHistory) \
+    (TabletIDMetadata) \
     (GetTServerUUID) \
     (GetActiveTransactionList) \
     /**/
@@ -95,6 +96,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
 
   ~PgClientServiceImpl();
 
+  // Status TabletIDMetadata(
+  //   const PgTabletIDMetadataRequestPB* req, PgTabletIDMetadataResponsePB* resp,  rpc::RpcContext context) override;
+    
   void Perform(
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 

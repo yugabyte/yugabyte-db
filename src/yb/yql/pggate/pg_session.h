@@ -377,6 +377,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
+  Result<int> TabletIDMetadata();
   
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);

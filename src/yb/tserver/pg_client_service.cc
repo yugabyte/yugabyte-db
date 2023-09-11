@@ -773,6 +773,40 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  // void GetTabletInfo(
+  //     tserver::PgTabletIDMetadataResponsePB* resp, yb::util::MessengerType messenger_type) {
+  //   rpc::DumpRunningRpcsRequestPB dump_req;
+  //   rpc::DumpRunningRpcsResponsePB dump_resp;
+
+  //   dump_req.set_include_traces(false);
+  //   dump_req.set_get_wait_state(true);
+  //   dump_req.set_dump_timed_out(false);
+
+  //   auto messenger = tablet_server_.GetMessenger(messenger_type);
+
+  //   WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+    
+  //   // for (auto conns : dump_resp.inbound_connections()) {
+  //   //   for (auto call : conns.calls_in_flight()) {
+  //   //     // if (!call.has_wait_state() || (call.wait_state().has_aux_info()
+  //   //     //     && call.wait_state().aux_info().has_method()
+  //   //     //     && call.wait_state().aux_info().method() == "ActiveUniverseHistory"))
+  //   //     //   continue;
+  //   //     if (messenger_type == util::MessengerType::kTserver) {
+  //   //       resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
+  //   //     } else {
+  //   //       resp->add_cql_wait_states()->CopyFrom(call.wait_state());
+  //   //     }
+  //   //   }
+  //   // }
+  // }
+
+  Status TabletIDMetadata(
+      const PgTabletIDMetadataRequestPB& req, PgTabletIDMetadataResponsePB* resp,
+      rpc::RpcContext* context) {
+    return Status::OK();
+    }
+
   Status GetTserverCatalogVersionInfo(
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,

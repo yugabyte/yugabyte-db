@@ -2055,6 +2055,9 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
+Result<int> PgApiImpl::TabletIDMetadata() {
+  return pg_session_->TabletIDMetadata();
+}
 
 Status PgApiImpl::SetTopLevelNodeId() {
   return pg_session_->SetTopLevelNodeId();
