@@ -36,3 +36,12 @@ ANALYZE test_18689;
 -------
      4
 (1 row)
+
+CREATE TABLE p100000(c1 INT, PRIMARY KEY(c1 ASC));
+INSERT INTO p100000 SELECT generate_series(1,100000);
+ANALYZE p100000;
+EXPLAIN SELECT * FROM p100000 ORDER BY c1 ASC;
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Index Scan using p100000_pkey on p100000  (cost=7.20..52070.53 rows=100000 width=4)
+(1 row)
