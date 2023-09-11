@@ -915,7 +915,7 @@ Specifies the username in the Fall-forward database to be used for the migration
 
 Specifies the type of migration [`snapshot-only` (offline), `snapshot-and-changes`(live, and optionally fall-forward) ]
 
-Default - `snapshot-only`
+Default: `snapshot-only`
 
 ### --delete
 
