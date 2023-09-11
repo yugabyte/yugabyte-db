@@ -2262,7 +2262,7 @@ YbBinSearchCatNamesComp(const void *a, const void *b)
  * However, it is extensible as needed to accomdate different use cases.
  * This list must be sorted in alpabetical order.
  * NOTE: Not all catalogs can be preloaded as part of additional catalogs to
- * preload. Please validate whether a catalog can be preloaded before using it 
+ * preload. Please validate whether a catalog can be preloaded before using it
  * in production.
  */
 static const YbCatNamePfId YbCatalogNamesPfIds[] = {
