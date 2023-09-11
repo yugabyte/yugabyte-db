@@ -610,7 +610,7 @@ yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \
 
 ### archive changes (Tech preview)
 
-This command archives the streaming data from the source database.
+Archives the streaming data from the source database.
 
 #### Syntax
 
