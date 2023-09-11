@@ -418,7 +418,7 @@ yb-voyager import data status --export-dir /path/to/yb/export/dir
 
 ### fall-forward setup (Tech preview)
 
-Imports data to the fall-forward database, and streams new changes from the target YugabyteDB to the fall-forward database.
+Imports data to the fall-forward database, and streams new changes from the target YugabyteDB database to the fall-forward database.
 
 #### Syntax
 
