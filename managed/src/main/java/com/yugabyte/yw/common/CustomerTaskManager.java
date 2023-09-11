@@ -24,7 +24,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -86,7 +86,10 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
-      Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
+      Optional<Universe> optUniv =
+          customerTask.getTargetType().isUniverseTarget()
+              ? Universe.maybeGet(customerTask.getTargetUUID())
+              : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
         JsonNode node = taskInfo.getDetails();
@@ -175,24 +178,22 @@ public class CustomerTaskManager {
 
       if (unlockUniverse) {
         // Unlock the universe for future operations.
-        Universe.maybeGet(customerTask.getTargetUUID())
-            .ifPresent(
-                u -> {
-                  UniverseDefinitionTaskParams details = u.getUniverseDetails();
-                  if (details.updateInProgress) {
-                    // Create the update lambda.
-                    Universe.UniverseUpdater updater =
-                        universe -> {
-                          UniverseDefinitionTaskParams universeDetails =
-                              universe.getUniverseDetails();
-                          universeDetails.updateInProgress = false;
-                          universe.setUniverseDetails(universeDetails);
-                        };
+        optUniv.ifPresent(
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details.updateInProgress) {
+                // Create the update lambda.
+                Universe.UniverseUpdater updater =
+                    universe -> {
+                      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+                      universeDetails.updateInProgress = false;
+                      universe.setUniverseDetails(universeDetails);
+                    };
 
-                    Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
-                    LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
-                  }
-                });
+                Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
+                LOG.debug("Unlocked universe {}.", customerTask.getTargetUUID());
+              }
+            });
       }
 
       // Mark task as a failure after the universe is unlocked.
@@ -204,15 +205,13 @@ public class CustomerTaskManager {
       // Resume tasks if any
       TaskType taskType = taskInfo.getTaskType();
       UniverseTaskParams taskParams = null;
-      LOG.info("Resume Task: " + String.valueOf(resumeTask));
+      LOG.info("Resume Task: {}", resumeTask);
 
       try {
         if (resumeTask && optUniv.isPresent()) {
           Universe universe = optUniv.get();
           if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
-            String errMsg =
-                String.format("Invalid task state: Task %s cannot be resumed", taskUUID);
-            LOG.debug(errMsg);
+            LOG.debug("Invalid task state: Task {} cannot be resumed", taskUUID);
             customerTask.markAsCompleted();
             return;
           }
@@ -229,7 +228,7 @@ public class CustomerTaskManager {
               taskParams = restoreParams;
               break;
             default:
-              LOG.error(String.format("Invalid task type: %s during platform restart", taskType));
+              LOG.error("Invalid task type: {} during platform restart", taskType);
               return;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
@@ -238,15 +237,14 @@ public class CustomerTaskManager {
           try {
             customerTask.updateTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
-            TaskInfo task = TaskInfo.get(taskUUID);
-            if (task != null) {
-              task.getSubTasks().forEach(st -> st.delete());
-              task.delete();
+            Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+            if (optional.isPresent()) {
+              optional.get().getSubTasks().forEach(st -> st.delete());
+              optional.get().delete();
             }
             commitTransaction();
           } catch (Exception e) {
-            throw new RuntimeException(
-                "Unable to delete the previous task info: " + taskUUID.toString());
+            throw new RuntimeException("Unable to delete the previous task info: " + taskUUID);
           } finally {
             endTransaction();
           }
@@ -274,9 +272,18 @@ public class CustomerTaskManager {
           TaskInfo.INCOMPLETE_STATES.stream()
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
-      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update and
-      // customer completion time update are not transactional.
+
+      // Delete orphaned parent tasks which do not have any associated customer task.
+      // It is rare but can happen as a customer task and task info are not saved in transaction.
+      // TODO It can be handled better with transaction but involves bigger change.
       String query =
+          "DELETE FROM task_info WHERE parent_uuid IS NULL AND uuid NOT IN "
+              + "(SELECT task_uuid FROM customer_task)";
+      DB.sqlUpdate(query).execute();
+
+      // Retrieve all incomplete customer tasks or task in incomplete state. Task state update
+      // and customer completion time update are not transactional.
+      query =
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
@@ -287,11 +294,11 @@ public class CustomerTaskManager {
               + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
               + " AND ct.completion_time IS NULL))";
       // TODO use Finder.
-      Ebean.createSqlQuery(query)
+      DB.sqlQuery(query)
           .findList()
           .forEach(
               row -> {
-                TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
+                TaskInfo taskInfo = TaskInfo.getOrBadRequest(row.getUUID("task_uuid"));
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
                 handlePendingTask(customerTask, taskInfo);
               });
