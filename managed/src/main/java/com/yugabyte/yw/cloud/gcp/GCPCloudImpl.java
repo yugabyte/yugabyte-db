@@ -78,7 +78,6 @@ public class GCPCloudImpl implements CloudAPI {
   // Basic validation to make sure that the credentials work with GCP.
   @Override
   public boolean isValidCreds(Provider provider, String region) {
-    GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     boolean useHostCredentials =
         Optional.ofNullable(gcpCloudInfo.getUseHostCredentials()).orElse(false);
@@ -88,6 +87,7 @@ public class GCPCloudImpl implements CloudAPI {
       return true;
     }
     try {
+      GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
       apiClient.checkInstanceFetching();
     } catch (GeneralSecurityException | IOException e) {
       log.error("Error in validating GCP credentials", e);
