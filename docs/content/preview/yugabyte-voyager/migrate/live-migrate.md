@@ -362,9 +362,9 @@ yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
 
 Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes) for details about the arguments.
 
-### Cut over to a database
+### Cut over to the target
 
-Cutover is the last phase of switching your application from pointing to your source database to pointing to your target YugabyteDB database.
+Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
 Keep monitoring the metrics displayed for export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to perform a cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
@@ -381,7 +381,7 @@ Perform the following steps as part of the cutover process:
 
     The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-1. Wait for the cutover process to complete. The status of the cutover process can be monitored using the following command:
+1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
     ```sh
     yb-voyager cutover status --export-dir <EXPORT_DIR>
@@ -431,7 +431,7 @@ After migration verification, stop [archiving changes](#archive-changes).
 
 - Schema changes on the source Oracle database will not be recognized during the live migration.
 - Tables without primary key are not supported.
-- Truncating a table on source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
+- Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle datatypes are unsupported - NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. yb-voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - Reserved keywords such as table name, or column names are unsupported.
