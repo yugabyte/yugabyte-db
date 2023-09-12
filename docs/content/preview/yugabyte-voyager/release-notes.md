@@ -15,7 +15,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ## v1.5 - September 11, 2023
 
-## New feature
+### New feature
 
 * Support for [live migration](../migrate/live-migrate/) from Oracle (with the option of [fall-forward](../migrate/live-fall-forward/)) in Tech Preview.
 
