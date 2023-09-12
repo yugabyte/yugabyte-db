@@ -58,6 +58,7 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
@@ -84,6 +85,8 @@ public class KubernetesOperatorController {
   private Map<String, Deque<Pair<Field, UserIntent>>> pendingTasks = new HashMap<>();
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
+
+  @Inject KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
   public enum OperatorAction {
     CREATED,
@@ -147,9 +150,6 @@ public class KubernetesOperatorController {
           }
         }
         String universeName = name;
-        KubernetesOperatorStatusUpdater.addToMap(universeName, ybUniverse);
-        KubernetesOperatorStatusUpdater.client = ybUniverseClient;
-        KubernetesOperatorStatusUpdater.kubernetesClient = kubernetesClient;
         reconcile(ybUniverse, action);
 
       } catch (Exception e) {
@@ -183,11 +183,16 @@ public class KubernetesOperatorController {
         UniverseResp universeResp =
             universeCRUDHandler.findByName(cust, universeName).stream().findFirst().orElse(null);
 
-        if (universeResp == null
-            && isRunningInKubernetes()
-            && canDeleteProvider(cust, universeName)) {
-          String status = ybUniverse.getStatus().getUniverseStatus();
-          if (status.contains("DestroyKubernetesUniverse Success")) {
+        if (universeResp == null) {
+          var ybUniStatus = ybUniverse.getStatus();
+          // at this point the universe should be deleted, lets just return.
+          if (ybUniStatus == null) {
+            return;
+          }
+          String status = ybUniStatus.getUniverseStatus();
+          if (status.contains("DestroyKubernetesUniverse Success")
+              && canDeleteProvider(cust, universeName)
+              && isRunningInKubernetes()) {
             LOG.info("Status is: " + status);
             LOG.info("Deleting provider now");
             Result deleteProvider = deleteProvider(cust.getUuid(), universeName);
@@ -199,8 +204,6 @@ public class KubernetesOperatorController {
                 .inNamespace(namespace)
                 .withName(ybUniverse.getMetadata().getName())
                 .patch(ybUniverse);
-
-            KubernetesOperatorStatusUpdater.removeFromMap(ybUniverse.getMetadata().getName());
           }
         } else {
           Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
@@ -214,8 +217,6 @@ public class KubernetesOperatorController {
                 .inNamespace(namespace)
                 .withName(ybUniverse.getMetadata().getName())
                 .patch(ybUniverse);
-
-            KubernetesOperatorStatusUpdater.removeFromMap(ybUniverse.getMetadata().getName());
           }
           if (task != null) {
             LOG.info("Deleted Universe using KubernetesOperator");
@@ -356,7 +357,7 @@ public class KubernetesOperatorController {
 
           String startingTask =
               String.format("Starting task on universe %s", currentUserIntent.universeName);
-          KubernetesOperatorStatusUpdater.doKubernetesEventUpdate(
+          kubernetesStatusUpdater.doKubernetesEventUpdate(
               currentUserIntent.universeName, startingTask);
           if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
             LOG.info("Updating Kubernetes Overrides");
@@ -620,8 +621,12 @@ public class KubernetesOperatorController {
       userIntent.enableYCQLAuth = true;
       userIntent.ycqlPassword = password;
     }
-    userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
-    userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    if (ybUniverse.getSpec().getMasterGFlags() != null) {
+      userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
+    }
+    if (ybUniverse.getSpec().getTserverGFlags() != null) {
+      userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    }
     return userIntent;
   }
 

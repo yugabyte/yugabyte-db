@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -23,7 +24,6 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -365,7 +365,12 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    // PLAT-10007 use ybc-data instead of /tmp
+    if (ybcTempDir.equals("/tmp")) {
+      ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    }
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
@@ -376,7 +381,7 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces) {
+      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -384,11 +389,6 @@ public class GFlagsUtil {
     String providerUUID = userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     String ybHomeDir = provider.getYbHome();
-    int hardwareConcurrency =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
-                    .getNumCores());
     String serverAddress =
         listenOnAllInterfaces
             ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
@@ -1028,7 +1028,10 @@ public class GFlagsUtil {
     Path tmpDirectoryPath =
         FileUtils.getOrCreateTmpDirectory(
             confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-    Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    Path localGflagFilePath = tmpDirectoryPath;
+    if (node.getNodeUuid() != null) {
+      localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    }
     if (!Files.isDirectory(localGflagFilePath)) {
       try {
         Files.createDirectory(localGflagFilePath);

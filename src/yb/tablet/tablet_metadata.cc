@@ -340,7 +340,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
-        self->table_type, self->doc_read_context->schema().is_colocated())
+        self->table_type, self->doc_read_context->schema().is_colocated()),
+    .schema = rpc::SharedField(self->doc_read_context, &self->doc_read_context->schema())
   };
 }
 
@@ -397,8 +398,14 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
   }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
-  has_been_fully_compacted = pb.has_been_fully_compacted();
+  parent_data_compacted = pb.parent_data_compacted();
   last_full_compaction_time = pb.last_full_compaction_time();
+  if (pb.has_post_split_compaction_file_number_upper_bound()) {
+    post_split_compaction_file_number_upper_bound =
+        pb.post_split_compaction_file_number_upper_bound();
+  } else {
+    post_split_compaction_file_number_upper_bound.reset();
+  }
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
     snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
@@ -412,12 +419,20 @@ Status KvStoreInfo::MergeWithRestored(
     dockv::OverwriteSchemaPacking overwrite) {
   lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
-  has_been_fully_compacted = snapshot_kvstoreinfo.has_been_fully_compacted();
+  parent_data_compacted = snapshot_kvstoreinfo.parent_data_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
-  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+  if (snapshot_kvstoreinfo.has_post_split_compaction_file_number_upper_bound()) {
+    post_split_compaction_file_number_upper_bound =
+        snapshot_kvstoreinfo.post_split_compaction_file_number_upper_bound();
+  } else {
+    post_split_compaction_file_number_upper_bound.reset();
+  }
+
+  return RestoreMissingValuesAndMergeTableSchemaPackings(
+      snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-Status KvStoreInfo::MergeTableSchemaPackings(
+Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
@@ -428,12 +443,20 @@ Status KvStoreInfo::MergeTableSchemaPackings(
             "should both be non-colocated (singular). Snapshot table count: $0, restored table "
             "count: $1",
             snapshot_kvstoreinfo.tables_size(), tables.size()));
+    auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+    if (overwrite) {
+      schema->UpdateMissingValuesFrom(snapshot_kvstoreinfo.tables(0).schema().columns());
+    }
     return tables.begin()->second->MergeSchemaPackings(snapshot_kvstoreinfo.tables(0), overwrite);
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
     if (target_table != nullptr) {
+      auto schema = target_table->doc_read_context->mutable_schema();
+      if (overwrite) {
+        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
+      }
       RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
   }
@@ -503,8 +526,14 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
   } else {
     pb->set_upper_bound_key(upper_bound_key);
   }
-  pb->set_has_been_fully_compacted(has_been_fully_compacted);
+  pb->set_parent_data_compacted(parent_data_compacted);
   pb->set_last_full_compaction_time(last_full_compaction_time);
+  if (post_split_compaction_file_number_upper_bound.has_value()) {
+    pb->set_post_split_compaction_file_number_upper_bound(
+        *post_split_compaction_file_number_upper_bound);
+  } else {
+    pb->clear_post_split_compaction_file_number_upper_bound();
+  }
 
   // Putting primary table first, then all other tables.
   pb->mutable_tables()->Reserve(narrow_cast<int>(tables.size() + 1));
@@ -530,6 +559,7 @@ void KvStoreInfo::UpdateColocationMap(const TableInfoPtr& table_info) {
   }
 }
 
+// TODO(pscompact): do we need to update this for file number upper bound?
 bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   auto eq = [](const auto& lhs, const auto& rhs) {
     return DereferencedEqual(lhs, rhs, TableInfo::TEST_Equals);
@@ -538,7 +568,7 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
                           rocksdb_dir,
                           lower_bound_key,
                           upper_bound_key,
-                          has_been_fully_compacted,
+                          parent_data_compacted,
                           snapshot_schedules) &&
          MapsEqual(lhs.tables, rhs.tables, eq) &&
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
@@ -1574,11 +1604,27 @@ std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList(
   return hosted_services_;
 }
 
+void RaftGroupMetadata::DisableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  ++disable_schema_gc_counter_;
+}
+
+void RaftGroupMetadata::EnableSchemaGC() {
+  std::lock_guard lock(data_mutex_);
+  --disable_schema_gc_counter_;
+  LOG_IF(DFATAL, disable_schema_gc_counter_ < 0)
+      << "Disable GC counter underflow: " << disable_schema_gc_counter_;
+}
+
 Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
   {
     std::lock_guard lock(data_mutex_);
+    if (disable_schema_gc_counter_ != 0) {
+      // Could skip schema GC at all, because it will be cleaned after next compaction.
+      return Status::OK();
+    }
     for (const auto& [table_id, schema_version] : versions) {
       auto it = table_id.IsNil() ? kv_store_.tables.find(primary_table_id_)
                                  : kv_store_.tables.find(table_id.ToHexString());
@@ -1654,8 +1700,9 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
-  metadata->kv_store_.has_been_fully_compacted = false;
+  metadata->kv_store_.parent_data_compacted = false;
   metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
+  metadata->kv_store_.post_split_compaction_file_number_upper_bound.reset();
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
@@ -1918,6 +1965,23 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   MutexLock l_flush(flush_lock_);
   std::lock_guard lock(data_mutex_);
   return min_unflushed_change_metadata_op_id_;
+}
+
+bool RaftGroupMetadata::OnPostSplitCompactionDone() {
+  std::lock_guard lock(data_mutex_);
+  bool updated = false;
+
+  if (!kv_store_.parent_data_compacted) {
+    kv_store_.parent_data_compacted = true;
+    updated = true;
+  }
+
+  if (kv_store_.post_split_compaction_file_number_upper_bound != 0) {
+    kv_store_.post_split_compaction_file_number_upper_bound = 0;
+    updated = true;
+  }
+
+  return updated;
 }
 
 } // namespace tablet

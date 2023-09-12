@@ -17,6 +17,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
@@ -332,7 +333,8 @@ class PackedRowData {
   void InitPackerHelper() {
     packer_.emplace(
         std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
-        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
+        *new_packing_.schema);
   }
 
   Status Flush() {
@@ -367,15 +369,18 @@ class PackedRowData {
   }
 
   Status PackOldValue(ColumnId column_id) {
-    if (old_value_slice_.empty()) {
-      return CheckPackOldValueResult(column_id, std::visit([column_id](auto& packer) {
-        return packer.AddValue(
-            column_id, std::remove_reference_t<decltype(packer)>::PackedValue::Null(),
-            kUnlimitedTail);
-      }, *packer_));
-    }
     return std::visit([this, column_id](auto& decoder) {
-      return DoPackOldValue(column_id, decoder.FetchValue(column_id));
+      if (old_value_slice_.empty() ||
+          decoder.GetPackedIndex(column_id) == dockv::SchemaPacking::kSkippedColumnIdx) {
+        VLOG(4) << "Packing missing value for column " << column_id;
+        const auto& missing_value = VERIFY_RESULT_REF(
+            dockv::PackerBase(&*packer_).schema().GetMissingValueByColumnId(column_id));
+        return CheckPackOldValueResult(
+            column_id, std::visit([column_id, missing_value](auto& packer) {
+          return packer.AddValue(column_id, missing_value);
+        }, *packer_));
+      }
+      return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
     }, old_row_decoder_);
   }
 

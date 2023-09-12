@@ -23,8 +23,9 @@ const std::string table = "testtable";
 
 class PgDropColumnSanityTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--ysql_ddl_rollback_enabled=true");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=false");
+    options->extra_tserver_flags.push_back(
+      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=false");
   }
 
@@ -200,10 +201,11 @@ class PgDropColumnColocatedTableTest : public PgDropColumnSanityTest {
     // Create table.
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT, col_to_test INT)", table));
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0(col_to_test)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0(id) INCLUDE (col_to_test)", table));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 2), (3, 3), (4, 4),"
         " (5, 5)", table));
     // Disable rollback.
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
     // Issue Alter Table Drop column.
     ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col_to_test", table)));
   }
@@ -216,7 +218,7 @@ class PgDropColumnColocatedTableTest : public PgDropColumnSanityTest {
   std::string kDatabaseName = "colocateddbtest";
 };
 
-TEST_F(PgDropColumnColocatedTableTest, YB_DISABLE_TEST(ColocatedTest)) {
+TEST_F(PgDropColumnColocatedTableTest, ColocatedTest) {
   TestMarkColForDeletion();
 }
 
@@ -231,16 +233,17 @@ class PgDropColumnTablegroupTest : public PgDropColumnSanityTest {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT, col_to_test INT) TABLEGROUP $1",
                                 table, kTablegroup));
     ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0(col_to_test)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0(id) INCLUDE (col_to_test)", table));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 2), (3, 3), (4, 4),"
         " (5, 5)", table));
     // Disable rollback.
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "false"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
     // Issue Alter Table Drop column.
     ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col_to_test", table)));
   }
 };
 
-TEST_F(PgDropColumnTablegroupTest, YB_DISABLE_TEST(TablegroupTest)) {
+TEST_F(PgDropColumnTablegroupTest, TablegroupTest) {
   TestMarkColForDeletion();
 }
 

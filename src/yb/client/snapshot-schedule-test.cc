@@ -227,7 +227,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
       nullptr, YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, WaitSnapshot::kTrue,
       kSnapshotInterval, kSnapshotInterval * 2));
 
-  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id));
+  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id, nullptr /* txn */));
 
   // We give 2 rounds of retention period for cleanup.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {

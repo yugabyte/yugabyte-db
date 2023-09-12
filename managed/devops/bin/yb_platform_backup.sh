@@ -552,9 +552,9 @@ restore_backup() {
   # The version_metadata.json file is always present in a release package, and it would have
   # been stored during create_backup(), so we don't need to check if the file exists before
   # restoring it from the restore path.
-  bp1=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command})
-  bp2=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command})
-  back_plat_version=${bp1}-${bp2}
+  backup_yba_version="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command}"
+  backup_yba_build="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command}"
+  back_plat_version=${backup_yba_version}-${backup_yba_build}
 
   if [ ${curr_platform_version} != ${back_plat_version} ]
   then
@@ -584,16 +584,22 @@ restore_backup() {
     $tar_cmd "${input_path}" --directory "${yugabackup}"
 
     # Copy over releases. Need to ignore node-agent/ybc releases
+    set +e
     releasesdir=$(find "${yugabackup}" -name "releases" -type d | \
                   grep -v "ybc" | grep -v "node-agent")
-    cp -R "$releasesdir" "$ybai_data_dir"
+    set -e
+    if [[ "$releasesdir" != "" ]] && [[ -d "$releasesdir" ]]; then
+      cp -R "$releasesdir" "$ybai_data_dir"
+    fi
     # Node-agent/ybc foldes can be copied entirely into
     # Copy releases, ybc, certs, keys, over
     # xcerts/keys/licenses can all go directly into data directory
     BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent')
     for d in "${BACKUP_DIRS[@]}"
     do
+      set +e
       found_dir=$(find "${yugabackup}" -path "$d" -type d)
+      set -e
       if [[ "$found_dir" != "" ]] && [[ -d "$found_dir" ]]; then
         cp -R "$found_dir" "$ybai_data_dir"
       fi
@@ -964,6 +970,7 @@ case $command in
           ;;
         --yba_installer)
           yba_installer=true
+          DOCKER_BASED=false
           shift
           ;;
         --pg_restore_path)

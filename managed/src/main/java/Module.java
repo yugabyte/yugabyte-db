@@ -6,6 +6,7 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
 import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.oauth2.sdk.http.HTTPRequest;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
@@ -220,6 +222,7 @@ public class Module extends AbstractModule {
     }
 
     bind(YbClientConfigFactory.class).asEagerSingleton();
+    bind(KubernetesOperatorStatusUpdater.class).asEagerSingleton();
   }
 
   @Provides
@@ -239,6 +242,7 @@ public class Module extends AbstractModule {
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
           HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+          HTTPRequest.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());

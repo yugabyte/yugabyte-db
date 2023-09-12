@@ -70,6 +70,7 @@ typedef enum {
 	OD_LPRESERVE_SESSION_SERVER_CONN,
 	OD_LAPPLICATION_NAME_ADD_HOST,
 	OD_LSERVER_LIFETIME,
+	OD_LMIN_POOL_SIZE,
 	OD_LTLS,
 	OD_LTLS_CA_FILE,
 	OD_LTLS_KEY_FILE,
@@ -215,6 +216,7 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_LPRESERVE_SESSION_SERVER_CONN),
 	od_keyword("application_name_add_host", OD_LAPPLICATION_NAME_ADD_HOST),
 	od_keyword("server_lifetime", OD_LSERVER_LIFETIME),
+	od_keyword("min_pool_size", OD_LMIN_POOL_SIZE),
 
 	/*   tls */
 	od_keyword("tls", OD_LTLS),
@@ -1300,6 +1302,10 @@ static int od_config_reader_rule_settings(od_config_reader_t *reader,
 				return NOT_OK_RESPONSE;
 			rule->server_lifetime_us = server_lifetime * 1000000L;
 		}
+			continue;
+		case OD_LMIN_POOL_SIZE:
+			if (!od_config_reader_number(reader, &rule->min_pool_size))
+				return NOT_OK_RESPONSE;
 			continue;
 #ifdef LDAP_FOUND
 		/* ldap_pool_size */

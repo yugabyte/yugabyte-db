@@ -39,7 +39,7 @@ To set up HA for YugabyteDB Anywhere, you first configure the active instance by
 
 You then configure one or more standby instances by creating standby replication configurations, using the shared authentication key generated on the active instance.
 
-If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the YugabyteDB Anywhere trust store on the active instance.
+If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
 
 ### Configure the active instance
 
@@ -57,17 +57,17 @@ You can configure the active instance as follows:
 
     In most cases, you do not need to replicate very often. A replication interval of 5-10 minutes is recommended. For testing purposes, a 1-minute interval is more convenient.
 
-1. If the active instance is using the HTTPS protocol, copy the root certificate for the active instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
-
-    The root certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
-
-1. Add the root certificate by clicking **Add Peer Certificates**, click **Add Certificate**, paste the root certificate of the **active** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
-
 1. Click **Create**.
 
 1. Switch to **Instance Configuration**.
 
     The address for this active instance should be the only information under **Instances**.
+
+1. If the active instance is using the HTTPS protocol, copy the root certificate for the active instance. For information on how to obtain the root certificate of a server using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+
+    The root certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
+
+1. Add the root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store).
 
 Your active instance is now configured.
 
@@ -89,11 +89,13 @@ After the active instance has been configured, you can configure one or more sta
 
     The CA certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
 
-1. Switch to the active instance, and then select **Instance Configuration**.
+1. Switch to the active instance.
+
+1. Add the root certificate of the standby instance to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
+
+1. Navigate to **Admin > High Availability > Replication Configuration** and select **Instance Configuration**.
 
 1. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
-
-1. If the standby is using the HTTPS protocol, click **Manage Peer Certificates**, click **Add Certificate**, paste the root certificate of the **standby** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 

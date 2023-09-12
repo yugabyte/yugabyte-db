@@ -49,6 +49,7 @@ export const OIDCAuth = (props) => {
   const [oidcEnabled, setOIDC] = useState(false);
   const [OIDCMetadata, setOIDCMetadata] = useState(null);
   const [showMetadataModel, setShowMetadataModal] = useState(false);
+  let submitAction = undefined;
 
   const transformData = (values) => {
     const escStr = values.oidcProviderMetadata
@@ -68,6 +69,25 @@ export const OIDCAuth = (props) => {
     let s = trimStart(str, '""');
     s = trimEnd(s, '""');
     return s;
+  };
+
+  const resetFormValues = () => {
+    const oidcFields = OIDC_FIELDS.map((ef) => `${OIDC_PATH}.${ef}`);
+    const oidcConfigs = configEntries.filter((config) => oidcFields.includes(config.key));
+    const formData = oidcConfigs.reduce((fData, config) => {
+      const [, key] = config.key.split(`${OIDC_PATH}.`);
+      fData[key] = '';
+      if (key === 'showJWTInfoOnLogin') {
+        fData[key] = false;
+      }
+      return fData;
+    }, {});
+
+    const finalFormData = {
+      ...formData
+    };
+
+    return finalFormData;
   };
 
   const initializeFormValues = () => {
@@ -205,7 +225,7 @@ export const OIDCAuth = (props) => {
               <b>Note!</b>{' '}
               {
                 "By disabling OIDC users won't be able to login with your current\
-            authentication provider. Are you sure"
+            authentication provider. Are you sure?"
               }
             </div>
           </div>
@@ -217,9 +237,13 @@ export const OIDCAuth = (props) => {
           initialValues={initializeFormValues()}
           enableReinitialize
           onSubmit={(values, { setSubmitting, resetForm }) => {
-            saveOIDCConfigs(values);
-            setSubmitting(false);
-            resetForm(values);
+            if (submitAction === 'submit') {
+              saveOIDCConfigs(values);
+              setSubmitting(false);
+              resetForm(values);
+            } else if (submitAction === 'clear') {
+              resetForm(resetFormValues());
+            }
           }}
         >
           {({ handleSubmit, setFieldValue, isSubmitting, dirty, values }) => {
@@ -496,8 +520,22 @@ export const OIDCAuth = (props) => {
                     <YBButton
                       btnText="Save"
                       btnType="submit"
+                      onClick={() => {
+                        submitAction = 'submit';
+                        handleSubmit();
+                      }}
                       disabled={isSubmitting || isDisabled || isSaveDisabled}
                       btnClass="btn btn-orange pull-right"
+                    />
+                    <YBButton
+                      btnText="Clear"
+                      btnType="submit"
+                      onClick={() => {
+                        submitAction = 'clear';
+                        handleSubmit();
+                      }}
+                      disabled={isSubmitting || isDisabled}
+                      btnClass="btn btn-orange pull-right clear-btn"
                     />
                   </Col>
                 </Row>

@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansio
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -44,10 +45,13 @@ import lombok.extern.slf4j.Slf4j;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected EditKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected EditKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -59,8 +63,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       verifyParams(UniverseOpType.EDIT);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-          universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       // This value is used by subsequent calls to helper methods for
@@ -160,8 +163,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-          getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
@@ -223,16 +225,41 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     boolean instanceTypeChanged = false;
     // TODO Support overriden instance types
-    if (!curIntent.instanceType.equals(newIntent.instanceType)) {
-      List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
-      // If the instance type changed from dev/xsmall to anything else,
-      // master resources will also change.
-      if (!isReadOnlyCluster
-          && !curIntent.instanceType.equals(newIntent.instanceType)
-          && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      if (!curIntent.instanceType.equals(newIntent.instanceType)) {
+        List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
+        // If the instance type changed from dev/xsmall to anything else,
+        // master resources will also change.
+        if (!isReadOnlyCluster && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+          restartAllPods = true;
+        }
+        instanceTypeChanged = true;
+      }
+    } else {
+      boolean tserverCpuChanged =
+          !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
+              newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      boolean tserverMemChanged =
+          !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
+              newIntent.tserverK8SNodeResourceSpec.memoryGib);
+      boolean masterMemChanged = false;
+      boolean masterCpuChanged = false;
+
+      // For clusters that have read replicas, this condition is true since we
+      // do not pass in masterK8sNodeResourceSpec.
+      if (curIntent.masterK8SNodeResourceSpec != null) {
+        masterMemChanged =
+            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
+                newIntent.masterK8SNodeResourceSpec.memoryGib);
+        masterCpuChanged =
+            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
+                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+      }
+      instanceTypeChanged =
+          tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
+      if (!isReadOnlyCluster && (masterMemChanged || masterCpuChanged)) {
         restartAllPods = true;
       }
-      instanceTypeChanged = true;
     }
 
     Set<NodeDetails> mastersToAdd =

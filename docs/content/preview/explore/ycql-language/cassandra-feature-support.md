@@ -53,9 +53,10 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                    |           Operation            |                             Details                             |
 | :----------------: | :----------------------------- | :-------------------------------------------------------------- |
 |   {{<icon/yes>}}   | Creating keyspace              | [CREATE KEYSPACE](../../../api/ycql/ddl_create_keyspace/)       |
+|   {{<icon/yes>}}   | Check before creating keyspace | `CREATE KEYSPACE IF NOT EXISTS`                                 |
 | {{<icon/partial>}} | Modifying keyspace             | [ALTER KEYSPACE](../../../api/ycql/ddl_alter_keyspace/) - No Op |
 |   {{<icon/no>}}    | Check before altering keyspace | `ALTER KEYSPACE IF EXISTS`                                      |
-|   {{<icon/no>}}    | Check before creating keyspace | `CREATE KEYSPACE IF NOT EXISTS`                                 |
+
 {.sno-1}
 
 ### Tables
@@ -90,8 +91,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Select columns                            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select#where-clause) |
 | {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select#if-clause)              |
-| {{<icon/no>}}  | Select using `CONTAINS [KEY]`             | {{<issue 3620 "Tracked">}}                                               |
-| {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type |
+| {{<icon/yes>}}  | Select using `CONTAINS [KEY]`            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
+| {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type     |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
 | {{<icon/no>}}  | Grouping results with `GROUP BY`          |                                                                          |
 {.sno-1}

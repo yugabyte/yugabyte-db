@@ -20,7 +20,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
@@ -51,9 +50,13 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
     public String ysqlPassword;
   }
 
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+
   @Inject
-  protected CreateKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -65,33 +68,40 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         verifyParams(UniverseOpType.CREATE);
       }
       Cluster primaryCluster = taskParams().getPrimaryCluster();
-      if (isFirstTry()) {
-        if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
-          ycqlPassword = primaryCluster.userIntent.ycqlPassword;
-          primaryCluster.userIntent.ycqlPassword = RedactingService.redactString(ycqlPassword);
+      boolean cacheYCQLAuthPass =
+          primaryCluster.userIntent.enableYCQL
+              && primaryCluster.userIntent.enableYCQLAuth
+              && !primaryCluster.userIntent.defaultYcqlPassword;
+      boolean cacheYSQLAuthPass =
+          primaryCluster.userIntent.enableYSQL
+              && primaryCluster.userIntent.enableYSQLAuth
+              && !primaryCluster.userIntent.defaultYsqlPassword;
+      if (cacheYCQLAuthPass || cacheYSQLAuthPass) {
+        if (isFirstTry()) {
+          if (cacheYSQLAuthPass) {
+            ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+          }
+          if (cacheYCQLAuthPass) {
+            ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+          }
+          passwordStore.put(
+              taskParams().getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
+        } else {
+          log.debug("Reading password for {}", taskParams().getUniverseUUID());
+          // Read from the in-memory store on retry.
+          AuthPasswords passwords = passwordStore.getIfPresent(taskParams().getUniverseUUID());
+          if (passwords == null) {
+            throw new RuntimeException(
+                "Auth passwords are not found. Platform might have restarted"
+                    + " or task might have expired");
+          }
+          ycqlPassword = passwords.ycqlPassword;
+          ysqlPassword = passwords.ysqlPassword;
         }
-        if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
-          ysqlPassword = primaryCluster.userIntent.ysqlPassword;
-          primaryCluster.userIntent.ysqlPassword = RedactingService.redactString(ysqlPassword);
-        }
-        passwordStore.put(
-            taskParams().getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
-      } else {
-        log.debug("Reading password for {}", taskParams().getUniverseUUID());
-        // Read from the in-memory store on retry.
-        AuthPasswords passwords = passwordStore.getIfPresent(taskParams().getUniverseUUID());
-        if (passwords == null) {
-          throw new RuntimeException(
-              "Auth passwords are not found. Platform might have restarted"
-                  + " or task might have expired");
-        }
-        ycqlPassword = passwords.ycqlPassword;
-        ysqlPassword = passwords.ysqlPassword;
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-          universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -216,8 +226,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-          getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

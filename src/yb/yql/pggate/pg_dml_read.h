@@ -32,8 +32,7 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tools.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 //--------------------------------------------------------------------------------------------------
 // DML_READ
@@ -72,6 +71,9 @@ class PgDmlRead : public PgDml {
 
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan);
+
+  // Set prefix length, in columns, of distinct index scans.
+  void SetDistinctPrefixLength(const int distinct_prefix_length);
 
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
@@ -142,10 +144,8 @@ class PgDmlRead : public PgDml {
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
-  void SetDistinctScan(const PgExecParameters *exec_params);
   Status ProcessEmptyPrimaryBinds();
-  bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
-  bool CanBuildYbctidsFromPrimaryBinds();
+  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   Result<dockv::DocKey> EncodeRowKeyForBound(
@@ -156,5 +156,4 @@ class PgDmlRead : public PgDml {
   PgDocOp::SharedPtr original_doc_op_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

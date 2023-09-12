@@ -10,8 +10,12 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.models.PitrConfig;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonTypes.TableType;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ConfigureDBApiParams.Converter.class)
@@ -50,6 +54,11 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             || (communicationPorts.yqlServerHttpPort != universePorts.yqlServerHttpPort)
             || (communicationPorts.yqlServerRpcPort != universePorts.yqlServerRpcPort);
 
+    if (!enableYCQL && !enableYSQL) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Need to enable at least one endpoint among YSQL and YCQL");
+    }
+
     if (configureServer.equals(ServerType.YSQLSERVER)) {
       if (changeInYcql) {
         throw new PlatformServiceException(
@@ -71,6 +80,31 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
+      } else if (!enableYSQL) {
+        // Ensure that user deletes all backup schedules, xcluster configs
+        // and pitr configs before disabling YSQL.
+        if (PitrConfig.getByUniverseUUID(universe.getUniverseUUID()).stream()
+            .anyMatch(p -> p.getTableType().equals(TableType.PGSQL_TABLE_TYPE))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YSQL if pitr config exists");
+        }
+        if (Schedule.getAllSchedulesByOwnerUUID(universe.getUniverseUUID()).stream()
+            .anyMatch(
+                s ->
+                    s.getTaskParams().has("backupType")
+                        && s.getTaskParams()
+                            .get("backupType")
+                            .asText()
+                            .equals(TableType.PGSQL_TABLE_TYPE.toString()))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YSQL if backup schedules are active");
+        }
+        if (XClusterConfig.getByUniverseUuid(universe.getUniverseUUID()).stream()
+            .anyMatch(
+                config -> config.getTableTypeAsCommonType().equals(TableType.PGSQL_TABLE_TYPE))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YSQL if xcluster config exists");
+        }
       }
     } else if (configureServer.equals(ServerType.YQLSERVER)) {
       if (changeInYsql) {
@@ -92,6 +126,31 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && !StringUtils.isEmpty(ycqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YCQL auth is disabled.");
+      } else if (!enableYCQL) {
+        // Ensure that all backup schedules, xcluster configs
+        // and pitr configs are deleted before disabling YCQL.
+        if (PitrConfig.getByUniverseUUID(universe.getUniverseUUID()).stream()
+            .anyMatch(p -> p.getTableType().equals(TableType.YQL_TABLE_TYPE))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YCQL if pitr config exists");
+        }
+        if (Schedule.getAllSchedulesByOwnerUUID(universe.getUniverseUUID()).stream()
+            .anyMatch(
+                s ->
+                    s.getTaskParams().has("backupType")
+                        && s.getTaskParams()
+                            .get("backupType")
+                            .asText()
+                            .equals(TableType.YQL_TABLE_TYPE.toString()))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YCQL if backup schedules are active");
+        }
+        if (XClusterConfig.getByUniverseUuid(universe.getUniverseUUID()).stream()
+            .anyMatch(
+                config -> config.getTableTypeAsCommonType().equals(TableType.YQL_TABLE_TYPE))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot disable YCQL if xcluster config exists");
+        }
       }
     } else {
       throw new PlatformServiceException(

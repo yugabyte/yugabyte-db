@@ -263,7 +263,10 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 	ListCell   *l;
 	const char *lock_mode;
 
-	if (yb_lock_mechanism == YB_NO_SCAN_LOCK)
+	if (!es->pstmt->rowMarks)
+		return;
+
+	if (!IsolationIsSerializable() && yb_lock_mechanism == YB_NO_SCAN_LOCK)
 		return;
 
 	foreach(l, es->pstmt->rowMarks)
@@ -281,6 +284,20 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 		appendStringInfo(es->str, " (Locked %s)", lock_mode);
 	else
 		ExplainPropertyText("Lock Type", lock_mode, es);
+}
+
+/* Explains a LockRows node */
+static void
+YbExplainLockRows(ExplainState *es)
+{
+	/* We only have something interesting to do in SERIALIZABLE isolation. */
+	if (!IsolationIsSerializable())
+		return;
+
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+		appendStringInfoString(es->str, " (no-op)");
+	else
+		ExplainPropertyBool("Executes", false, es);
 }
 
 /*
@@ -1290,7 +1307,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			pname = sname = "Seq Scan";
 			break;
 		case T_YbSeqScan:
-			pname = sname = "YB Seq Scan";
+			pname = sname = "Seq Scan";
 			break;
 		case T_SampleScan:
 			pname = sname = "Sample Scan";
@@ -1348,7 +1365,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				case CMD_SELECT:
 					/* Don't need to expose implementation details */
 					if (IsYBRelation(((ScanState*) planstate)->ss_currentRelation))
-						sname = pname = "Seq Scan";
+						sname = pname = "YB Foreign Scan";
 					else
 						pname = "Foreign Scan";
 					operation = "Select";
@@ -1523,12 +1540,12 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
-			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+			YbExplainScanLocks(YB_NO_SCAN_LOCK, es);
 			ExplainScanTarget((Scan *) plan, es);
 			break;
 		case T_ForeignScan:
 		case T_CustomScan:
-			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+			YbExplainScanLocks(YB_NO_SCAN_LOCK, es);
 			if (((Scan *) plan)->scanrelid > 0)
 				ExplainScanTarget((Scan *) plan, es);
 			break;
@@ -1536,7 +1553,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				IndexScan  *indexscan = (IndexScan *) plan;
 
-				YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
+				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
 										indexscan->estimated_num_nexts,
@@ -1645,6 +1662,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				else
 					ExplainPropertyText("Command", setopcmd, es);
 			}
+			break;
+		case T_LockRows:
+			YbExplainLockRows(es);
 			break;
 		default:
 			break;

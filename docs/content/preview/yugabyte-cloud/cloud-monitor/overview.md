@@ -45,7 +45,7 @@ The following table describes the metrics available on the **Overview**.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. You can additionally view the metrics for specific nodes.
+To choose the metrics to display on the **Performance** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
 
 The **Performance** tab provides the following metrics in addition to the Overview metrics.
 
@@ -55,7 +55,7 @@ The **Performance** tab provides the following metrics in addition to the Overvi
 | :---| :--- | :--- |
 | YSQL Operations/Sec | The count of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. This does not include index writes. | If the count drops significantly lower than your average count, it might indicate an application connection failure. In addition, if the count is much higher than your average count, it could indicate a DDoS, security incident, and so on. You should coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | YSQL Average Latency (ms) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. The overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency. There could be reasons your traffic experiences spikes in latency, such as when ad-hoc queries such as count(*) are executed. |
-| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
+| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 15 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
 
 ### YCQL Ops
 

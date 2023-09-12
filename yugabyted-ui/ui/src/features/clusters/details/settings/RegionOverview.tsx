@@ -72,10 +72,9 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   const nodeList = React.useMemo(() => 
     nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
   ,[nodesResponse, readReplica]);
-  const totalRamUsageGb = (nodeList?.reduce((acc, curr) =>
-    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
   const totalCores = roundDecimal((clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
   const totalDiskSize = roundDecimal((clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
+  const totalRamProvisionedGb = clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0;
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
@@ -90,11 +89,11 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
         nodeCount: nodeList?.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
         vCpuPerNode: totalCores / (nodeList?.length ?? 1),
-        ramPerNode: getRamUsageText(totalRamUsageGb / (nodeList?.length ?? 1)),
+        ramPerNode: getRamUsageText(totalRamProvisionedGb / (nodeList?.length ?? 1)),
         diskPerNode: getDiskSizeText(totalDiskSize / (nodeList?.length ?? 1)),
       }
     })
-  }, [nodeList, totalCores, totalRamUsageGb, totalDiskSize, readReplica])
+  }, [nodeList, totalCores, totalRamProvisionedGb, totalDiskSize, readReplica])
 
   const summaryData = useMemo(() => [
     {
@@ -108,13 +107,13 @@ export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
     },
     {
       title: t('clusterDetail.settings.regions.totalMemory'),
-      value: getRamUsageText(totalRamUsageGb),
+      value: getRamUsageText(totalRamProvisionedGb),
     },
     {
       title: t('clusterDetail.settings.regions.totalDiskSize'),
       value: getDiskSizeText(totalDiskSize),
     }
-  ], [nodeList, totalCores, totalRamUsageGb, totalDiskSize])
+  ], [nodeList, totalCores, totalRamProvisionedGb, totalDiskSize])
 
   const regionColumns = [
     {

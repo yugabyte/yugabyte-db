@@ -304,10 +304,10 @@ extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
 					 RelOptInfo *outer_rel, RelOptInfo *inner_rel,
 					 RelOptInfo *parent_joinrel, List *restrictlist,
 					 SpecialJoinInfo *sjinfo, JoinType jointype);
-extern Path *yb_create_skipscan_path(PlannerInfo *root,
-									 IndexOptInfo *index,
-									 IndexPath *basepath,
-									 List *yb_distinct_prefix,
-									 int yb_distinct_nkeys);
+extern Path *yb_create_distinct_index_path(PlannerInfo *root,
+									 	   IndexOptInfo *index,
+									 	   IndexPath *basepath,
+									 	   int yb_distinct_prefixlen,
+									 	   int yb_distinct_nkeys);
 
 #endif							/* PATHNODE_H */

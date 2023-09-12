@@ -742,13 +742,9 @@ export const LDAPAuth = (props) => {
                               &nbsp;
                               <Col>
                                 <Row>
-                                  <b>Note!</b> {YUGABYTE_TITLE} will use the following format to
-                                  connect to your LDAP server.
-                                </Row>
-                                <Row>
-                                  {
-                                    '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
-                                  }
+                                  <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
+                                  {`{{Bind DN}}`} to connect to your LDAP server and perform the
+                                  search.
                                 </Row>
                               </Col>
                             </div>
@@ -1139,13 +1135,9 @@ export const LDAPAuth = (props) => {
                                 &nbsp;
                                 <Col>
                                   <Row>
-                                    <b>Note!</b> {YUGABYTE_TITLE} will use the following format to
-                                    connect to your LDAP server.
-                                  </Row>
-                                  <Row>
-                                    {
-                                      '{ {{DN Prefix}} + {{LDAP Users Username}} + {{LDAP Base DN}} } / {{Service Account DN}}'
-                                    }
+                                    <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
+                                    {`{{Bind DN}}`} to connect to your LDAP server and perform the
+                                    search.
                                   </Row>
                                 </Col>
                               </div>

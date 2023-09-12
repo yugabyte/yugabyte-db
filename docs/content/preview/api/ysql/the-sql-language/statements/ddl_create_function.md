@@ -22,23 +22,21 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 ## Syntax
 
-{{<ebnf>}}
-
-- create_function
-- arg_decl_with_dflt
-- arg_decl
-- subprogram_signature
-- unalterable_fn_attribute
-- lang_name
-- implementation_definition
-- sql_stmt_list
-- alterable_fn_and_proc_attribute
-- alterable_fn_only_attribute
-- volatility
-- on_null_input
-- parallel_mode
-
-{{</ebnf>}}
+{{%ebnf%}}
+  create_function,
+  arg_decl_with_dflt,
+  arg_decl,
+  subprogram_signature,
+  unalterable_fn_attribute,
+  lang_name,
+  subprogram_implementation,
+  sql_stmt_list,
+  alterable_fn_and_proc_attribute,
+  alterable_fn_only_attribute,
+  volatility,
+  on_null_input,
+  parallel_mode
+{{%/ebnf%}}
 
 <a name="make-function-returns-mandatory"></a>
 {{< tip title="'Regard the 'RETURNS' clause as mandatory." >}}

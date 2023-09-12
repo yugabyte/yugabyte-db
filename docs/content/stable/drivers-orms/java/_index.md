@@ -23,7 +23,7 @@ The following projects can be used to implement Java applications using the Yuga
 | PostgreSQL JDBC Driver | [Documentation](postgres-jdbc/)<br /> [Reference](../../reference/drivers/java/postgres-jdbc-reference/) | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | 2.4 and above
 | Vert.x Pg Client | [Documentation](ysql-vertx-pg-client/) | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) |
 | YugabyteDB YCQL (3.10) Driver | [Documentation](ycql)<br />[Reference](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-3-10) | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | |
-| YugabyteDB YCQL (4.6) Driver | [Documentation](ycql-4.6)<br />[Reference](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-4-6) | [4.6.0-yb-11](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.6.0-yb-11) | |
+| YugabyteDB YCQL (4.6) Driver | [Documentation](ycql-4.x)<br />[Reference](../../reference/drivers/ycql-client-drivers/#yugabyte-java-driver-for-ycql-4-15) | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | |
 
 | Projects | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |

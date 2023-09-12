@@ -185,12 +185,6 @@ IsYugaByteEnabled()
 	return YBCPgIsYugaByteEnabled();
 }
 
-bool
-YbIsClientYsqlConnMgr()
-{
-	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
-}
-
 void
 CheckIsYBSupportedRelation(Relation relation)
 {
@@ -287,12 +281,24 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 
 int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
 {
-	return attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBAttnumToBmsIndexWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), attnum);
 }
 
 AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
 {
-	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBBmsIndexToAttnumWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), idx);
+}
+
+int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum)
+{
+	return attnum - minattr + 1;
+}
+
+AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx)
+{
+	return idx + minattr - 1;
 }
 
 /*
@@ -465,7 +471,7 @@ YBSavepointsEnabled()
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
  *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
- *   * the table pg_yb_catalog_version has one row per database. 
+ *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
  * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
@@ -537,6 +543,18 @@ YBIsDBCatalogVersionMode()
 		yb_last_known_catalog_cache_version = 1;
 		YbUpdateCatalogCacheVersion(1);
 		elog(DEBUG3, "switching to per-db mode");
+		/*
+		 * YB does write operation buffering to reduce the number of RPCs.
+		 * That is, PG backend can buffer several write operations and send
+		 * them out in a single RPC. Here we dynamically switch from global
+		 * catalog version mode to per-database catalog version mode, so
+		 * flush the buffered write operations. Otherwise, we can end up
+		 * having the first write operations in global catalog version mode,
+		 * and the rest write operations in per-database catalog version.
+		 * Mixing global and per-database catalog versions in a single RPC
+		 * triggers a tserver SCHECK failure.
+		 */
+		YBFlushBufferedOperations();
 		return true;
 	}
 
@@ -766,8 +784,7 @@ YBInitPostgresBackend(
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
-		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
-		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
@@ -1227,6 +1244,10 @@ bool yb_test_fail_next_ddl = false;
 
 char *yb_test_block_index_phase = "";
 
+char *yb_test_fail_index_state_change = "";
+
+bool ddl_rollback_enabled = false;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -1390,13 +1411,13 @@ void
 YBDecrementDdlNestingLevel()
 {
 	--ddl_transaction_state.nesting_level;
+	if (yb_test_fail_next_ddl)
+	{
+		yb_test_fail_next_ddl = false;
+		elog(ERROR, "Failed DDL operation as requested");
+	}
 	if (ddl_transaction_state.nesting_level == 0)
 	{
-		if (yb_test_fail_next_ddl)
-		{
-			yb_test_fail_next_ddl = false;
-			elog(ERROR, "Failed DDL operation as requested");
-		}
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
@@ -1588,7 +1609,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateSchemaStmt:
 		case T_CreateStatsStmt:
 		case T_CreateSubscriptionStmt:
-		case T_CreateTableAsStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
 		case T_CreateUserMappingStmt:
@@ -1664,6 +1684,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				break;
 			}
 
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+		}
+		/*
+		 * Create Table As Select need not include the same checks as Create Table as complex tables
+		 * (eg: partitions) cannot be created using this statement.
+		*/
+		case T_CreateTableAsStmt:
+		{
+			/*
+			 * Simple add objects are not breaking changes, and they do not even require
+			 * a version increment because we do not do any negative caching for them.
+			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
 			break;
@@ -2017,6 +2051,19 @@ YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
+	}
+}
+
+void
+YbTestGucFailIfStrEqual(char *actual, const char *expected)
+{
+	if (strcmp(actual, expected) == 0)
+	{
+		ereport(ERROR,
+				(errmsg("TEST injected failure at stage %s", expected),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+
 	}
 }
 
@@ -3680,8 +3727,6 @@ bool YbIsBatchedExecution()
 	return yb_is_batched_execution;
 }
 
-bool yb_is_client_ysqlconnmgr = false;
-
 void YbSetIsBatchedExecution(bool value)
 {
 	yb_is_batched_execution = value;
@@ -3693,7 +3738,7 @@ YbGetSplitOptions(Relation rel)
 	OptSplit *split_options = makeNode(OptSplit);
 	split_options->split_type = NUM_TABLETS;
 	split_options->num_tablets = rel->yb_table_properties->num_tablets;
-	/* 
+	/*
 	 * Copy split points if we have a live range key.
 	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
 	 * being dropped).

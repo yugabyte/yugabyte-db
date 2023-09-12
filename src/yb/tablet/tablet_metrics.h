@@ -67,6 +67,7 @@ YB_DEFINE_ENUM(TabletCounters,
   (kExpiredTransactions)
   (kRestartReadRequests)
   (kConsistentPrefixReadRequests)
+  (kPickReadTimeOnDocDB)
   (kPgsqlConsistentPrefixReadRows)
   (kTabletDataCorruptions)
   (kRowsInserted)
@@ -125,6 +126,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
   void SetHistogramContext(TabletMetrics* histogram_context);
 
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+
+  // Returns number of metric changes dumped.
+  size_t Dump(std::stringstream* out) const;
 
   void MergeAndClear(TabletMetrics* target);
 

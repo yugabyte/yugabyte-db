@@ -14,8 +14,10 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
+from collections import OrderedDict
 from msrestazure.azure_exceptions import CloudError
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.cloud.common.utils import maybe_fault_injected
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsFaultInjectionError
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -682,8 +684,8 @@ class AzureCloudAdmin():
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
                 logging.info("[app] Deleting ip {}".format(ip_name))
                 ip_del = self.network_client.public_ip_addresses.begin_delete(
-                                                                        NETWORK_RESOURCE_GROUP,
-                                                                        ip_name)
+                    NETWORK_RESOURCE_GROUP,
+                    ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
@@ -698,20 +700,23 @@ class AzureCloudAdmin():
 
         logging.info("[app] Sucessfully destroyed orphaned resources for {}".format(vm_name))
 
-    def change_instance_type(self, vm_name, instance_type):
+    def change_instance_type(self, vm_name, instance_type, cloud_instance_types=[]):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
             raise YBOpsRuntimeError("VM {} is not found".format(vm_name))
-        update = {
-            "hardware_profile": {
-                "vm_size": instance_type
+
+        def change_func(instance_type):
+            vm_parameters = {
+                "hardware_profile": {
+                    "vm_size": instance_type
+                }
             }
-        }
-        update_result = self.compute_client.virtual_machines.begin_update(
-            RESOURCE_GROUP,
-            vm_name,
-            update
-        )
+            return self.compute_client.virtual_machines.begin_update(
+                RESOURCE_GROUP,
+                vm_name,
+                vm_parameters
+            )
+        update_result = self._create_instance(change_func, instance_type, cloud_instance_types)
         update_result.wait()
         logging.info("[app] Successfully changed instance type for {}".format(vm_name))
 
@@ -783,11 +788,38 @@ class AzureCloudAdmin():
         params["storage_profile"]["osDisk"]["tags"] = result
         return params
 
+    def _create_instance(self, create_func, instance_type, cloud_instance_types=[]):
+        # Allocation failure codes.
+        retryable_error_codes = {'AllocationFailed', 'OverconstrainedZonalAllocationRequest',
+                                 'SkuNotAvailable', 'ZonalAllocationFailed'}
+        instance_types = []
+        if cloud_instance_types:
+            instance_types.extend(cloud_instance_types)
+        else:
+            instance_types.append(instance_type)
+        # Remove duplicates preserving the priority order.
+        instance_type_ordered_dict = OrderedDict.fromkeys(instance_types)
+        for idx, instance_type in enumerate(instance_type_ordered_dict):
+            logging.info("[app] Selecting instance type {}".format(instance_type))
+            try:
+                maybe_fault_injected()
+                return create_func(instance_type)
+            except YBOpsFaultInjectionError as e:
+                if idx == len(instance_type_ordered_dict) - 1:
+                    raise e
+            except HttpResponseError as e:
+                if idx == len(instance_type_ordered_dict) - 1:
+                    raise e
+                if e.error and (not hasattr(e.error, 'code') or
+                                e.error.code not in retryable_error_codes):
+                    raise e
+            logging.info("Retrying with the next instance type")
+
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
                             use_spot_instance, vm_custom, disk_custom, is_edit=False,
-                            json_output=True):
+                            json_output=True, cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -797,6 +829,42 @@ class AzureCloudAdmin():
             image_reference = {
                 "id": image
             }
+            fields = shared_gallery_image_match.groupdict()
+            logging.info("Parsing Shared Image Gallery fields: {}".format(fields))
+
+            # We need to handle the case where the Gallery Image is in a different
+            # subscription than the one we are currently using.
+            local_compute_client = None
+            if fields['subscription_id'] == SUBSCRIPTION_ID:
+                local_compute_client = self.compute_client
+            else:
+                local_compute_client = ComputeManagementClient(
+                    self.credentials, fields['subscription_id'])
+
+            image_identifier = local_compute_client.gallery_images.get(
+                fields['resource_group'],
+                fields['gallery_name'],
+                fields['image_definition_name']).as_dict().get('identifier')
+
+            # When creating VMs with images that are NOT from the marketplace,
+            # the creator of the VM needs to provide the plan information.
+            # We try to extract this info from the publisher, offer, sku fields
+            # of the image definition.
+            logging.info("Image parameters: {}, publisher = {}, offer={}, sku={}".format(
+                image_identifier,
+                image_identifier['publisher'],
+                image_identifier['offer'],
+                image_identifier['sku']))
+
+            if (image_identifier is not None
+                    and image_identifier['publisher'] is not None
+                    and image_identifier['offer'] is not None
+                    and image_identifier['sku'] is not None):
+                plan = {
+                    "publisher": image_identifier['publisher'],
+                    "product": image_identifier['offer'],
+                    "name": image_identifier['sku'],
+                }
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')
@@ -870,13 +938,18 @@ class AzureCloudAdmin():
             self.add_tag_resource(vm_parameters, k, tags[k])
         if vm_custom and len(vm_custom) > 0:
             merge(vm_parameters, vm_custom)
-        creation_result = self.compute_client.virtual_machines.begin_create_or_update(
-            RESOURCE_GROUP,
-            vm_name,
-            vm_parameters
-        )
 
-        vm_result = creation_result.result()
+        def create_fnc(instance_type):
+            vm_parameters["hardware_profile"] = {
+                "vm_size": instance_type
+            }
+            return self.compute_client.virtual_machines.begin_create_or_update(
+                RESOURCE_GROUP,
+                vm_name,
+                vm_parameters
+            )
+        creation_result = self._create_instance(create_fnc, instance_type, cloud_instance_types)
+        creation_result.result()
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 
         # Attach disks
@@ -1027,6 +1100,7 @@ class AzureCloudAdmin():
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
+            logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)

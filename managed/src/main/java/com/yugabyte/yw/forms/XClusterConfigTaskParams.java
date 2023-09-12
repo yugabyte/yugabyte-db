@@ -52,6 +52,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.pitrParams = pitrParams;
   }
 
+  /** It is used in the create method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
@@ -67,6 +68,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
         null /* pitrParams */);
   }
 
+  /** It is used in the edit method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigEditFormData editFormData,
@@ -88,8 +90,12 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .collect(Collectors.toSet());
     this.tableIdsToRemove = tableIdsToRemove;
     this.tableInfoList = tableInfoList;
+
+    // Todo: add support for accepting pitr params from the user for the transactional xCluster
+    //  to make it consistent with the DR config api.
   }
 
+  /** It is used in the restart method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
@@ -109,7 +115,9 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
             .filter(entry -> Objects.isNull(entry.getValue()))
             .map(Entry::getKey)
             .collect(Collectors.toSet());
-    ;
+
+    // Todo: add support for accepting pitr params from the user for the transactional xCluster
+    //  to make it consistent with the DR config api.
   }
 
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig) {
@@ -117,16 +125,19 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.xClusterConfig = xClusterConfig;
   }
 
+  /** It is used in the delete method. */
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
     this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.isForced = isForced;
   }
 
+  /** It is used in the sync method. */
   public XClusterConfigTaskParams(UUID targetUniverseUUID) {
     this.setUniverseUUID(targetUniverseUUID);
   }
 
+  /** It is used in the sync method. */
   public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
     this.syncFormData = syncFormData;
     this.setUniverseUUID(syncFormData.targetUniverseUUID);

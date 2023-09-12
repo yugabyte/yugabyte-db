@@ -169,7 +169,7 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusWithCustomTransactionsList) {
   ASSERT_EQ(num_txns, 1);
 }
 
-TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
+TEST_F(PgGetLockStatusTest, TestLocksFromWaitQueue) {
   const auto table = "foo";
   const auto key = "1";
   auto session = ASSERT_RESULT(Init(table, key));
@@ -181,15 +181,12 @@ TEST_F(PgGetLockStatusTest, YB_DISABLE_TEST_IN_TSAN(TestLocksFromWaitQueue)) {
   auto status_future = ASSERT_RESULT(
       ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=v+10 WHERE k=$1", table, key)));
 
-  // Assert that locks corresponding to the waiter txn as well are returned in
-  // GetLockStatusResponsePB.
+  // Assert that locks corresponding to the waiter txn as well are returned in pg_locks;
   SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
-  const auto& tablet_id = session.first_involved_tablet;
-  auto resp = ASSERT_RESULT(GetLockStatus(tablet_id));
-  auto num_txns = ASSERT_RESULT(GetNumTxnsInLockStatusResponse(resp));
+  auto num_txns = ASSERT_RESULT(session.conn->FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
   ASSERT_EQ(num_txns, 2);
 
-  ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
   ASSERT_OK(status_future.get());
 }
@@ -341,23 +338,13 @@ TEST_F(PgGetLockStatusTest, TestWaiterLockContainingColumnId) {
       ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=1 WHERE k=$1", table, key)));
 
   SleepFor(2s * kTimeMultiplier);
-  // Workaround to get the other transaction id, currently can't get it through a pg command.
-  auto tserver_lock_status_resp = ASSERT_RESULT(GetLockStatus(session.first_involved_tablet));
-  auto txns_set = ASSERT_RESULT(GetTxnsInLockStatusResponse(tserver_lock_status_resp));
-  txns_set.erase(session.txn_id);
-  ASSERT_EQ(txns_set.size(), 1);
-  auto other_txn = *txns_set.begin();
-  ASSERT_NE(other_txn, session.txn_id);
-
   auto res = ASSERT_RESULT(session.conn->FetchValue<int64_t>(
-    Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'transactionid' = '$0'",
-    other_txn.ToString())));
+      "SELECT COUNT(*) FROM pg_locks WHERE NOT granted"));
   // The waiter acquires 3 locks in total,
   // 1 {STRONG_READ,STRONG_WRITE} on the column
   // 1 {WEAK_READ,WEAK_WRITE} on the row
   // 1 {WEAK_READ,WEAK_WRITE} on the table
   ASSERT_EQ(res, 3);
-  ASSERT_TRUE(conn.IsBusy());
   ASSERT_OK(session.conn->Execute("COMMIT"));
 }
 
@@ -502,6 +489,40 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
     std::string value = ASSERT_RESULT(GetString(table_names_res.get(), i, 0));
     ASSERT_TRUE(table_names.find(value) != table_names.end());
   }
+  fetched_locks.CountDown();
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
+  const auto tablegroup = "tg";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup));
+
+  const auto table_name = "foo";
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) TABLEGROUP $1", table_name, tablegroup));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
+
+  const auto key = "1";
+  const auto num_txns = 2;
+  TestThreadHolder thread_holder;
+  CountDownLatch fetched_locks{1};
+  for (auto i = 0 ; i < num_txns ; i++) {
+    thread_holder.AddThreadFunctor([this, &fetched_locks, table_name, key] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=$1", table_name, key));
+      ASSERT_TRUE(fetched_locks.WaitFor(15s * kTimeMultiplier));
+      ASSERT_OK(conn.RollbackTransaction());
+    });
+  }
+
+  SleepFor(5s * kTimeMultiplier);
+  // Each transaction above acquires 3 locks, one {STRONG_READ,STRONG_WRITE} on the column,
+  // one {WEAK_READ, WEAK_WRITE} on the row, and a {WEAK_READ,WEAK_WRITE} on the table.
+  auto res = ASSERT_RESULT(setup_conn.FetchValue<int64_t>("SELECT COUNT(*) FROM pg_locks"));
+  ASSERT_EQ(res, num_txns * 3);
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }

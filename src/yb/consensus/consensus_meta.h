@@ -80,12 +80,11 @@ class ConsensusMetadata {
  public:
   // Create a ConsensusMetadata object with provided initial state.
   // Encoded PB is flushed to disk before returning.
-  static Status Create(FsManager* fs_manager,
+  static Result<std::unique_ptr<ConsensusMetadata>> Create(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                const RaftConfigPB& config,
-                               int64_t current_term,
-                               std::unique_ptr<ConsensusMetadata>* cmeta);
+                               int64_t current_term);
 
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
@@ -183,6 +182,10 @@ class ConsensusMetadata {
 
   // Used internally for storing the role + term combination atomically.
   using PackedRoleAndTerm = uint64;
+
+  const ConsensusMetadataPB& GetConsensusMetadataPB() const {
+    return pb_;
+  }
 
  private:
   ConsensusMetadata(FsManager* fs_manager, std::string tablet_id,

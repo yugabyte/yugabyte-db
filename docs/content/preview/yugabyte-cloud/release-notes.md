@@ -20,6 +20,30 @@ On this page:
 
 ## Change log
 
+### September 12, 2023
+
+**New Features**
+
+- Support for multi-region clusters and read replicas in Azure. You can now create dedicated clusters with multi-region deployment in Azure, as well as read replicas.
+
+### September 6, 2023
+
+**New Features**
+
+- Support for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key and rotating keys on encrypted clusters. Clusters must be using YugabyteDB v2.16.7 or later.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Datadog.
+
+**Database**
+
+- Innovation track updated to 2.18.2.1.
+
+### August 15, 2023
+
+**Database**
+
+- Innovation track updated to 2.16.6.0.
+- Production track updated to 2.14.11.0.
+
 ### July 13, 2023
 
 **Database**
@@ -109,7 +133,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/end-of-life/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
 
 ### February 13, 2023
 

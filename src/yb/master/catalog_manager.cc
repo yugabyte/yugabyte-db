@@ -223,7 +223,10 @@ DEFINE_NON_RUNTIME_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
     "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
+// The time is temporarly set to 600 sec to avoid hitting the tablet replacement code inherited from
+// Kudu. Removing tablet replacement code will be fixed in GH-6006
+DEFINE_RUNTIME_int32(
+    tablet_creation_timeout_ms, 600 * 1000,  // 600 sec
     "Timeout used by the master when attempting to create tablet "
     "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
@@ -358,8 +361,6 @@ TAG_FLAG(disable_index_backfill_for_non_txn_tables, hidden);
 DEFINE_RUNTIME_bool(enable_transactional_ddl_gc, true,
     "A kill switch for transactional DDL GC. Temporary safety measure.");
 TAG_FLAG(enable_transactional_ddl_gc, hidden);
-
-DECLARE_bool(ysql_ddl_rollback_enabled);
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
@@ -569,8 +570,6 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
-
 DEFINE_test_flag(bool, create_table_in_running_state, false,
     "In master-only tests, create tables in the running state without waiting for tablet creation, "
     "as we will not have any tablet servers.");
@@ -592,6 +591,11 @@ DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
     "pg_yb_catalog_version table which can help to reduce the number of reads "
     "from the table. This is more useful when there are many databases and/or "
     "many tservers in the cluster.");
+
+DEFINE_test_flag(string, block_alter_table, "",
+    "If non-empty, the specified alter table step is blocked. Possible values are "
+    "\"alter_schema\" (blocks the schema from being altered) and \"completion\","
+    "(blocks the service completion of the alter table request)");
 
 DECLARE_int32(heartbeat_interval_ms);
 
@@ -1468,6 +1472,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   RETURN_NOT_OK(LoadXReplStream());
   RETURN_NOT_OK(LoadUniverseReplication());
+  RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   return Status::OK();
 }
@@ -2447,6 +2452,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->state() != SysNamespaceEntryPB::RUNNING) {
+        continue;
+      }
+
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
@@ -2734,7 +2743,7 @@ Status CatalogManager::CompactSysCatalog(
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
   return PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
-    return shared_tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction);
+    return shared_tablet->ForceManualRocksDBCompact();
   });
 }
 
@@ -4090,15 +4099,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TransactionMetadata txn;
   bool schedule_ysql_txn_verifier = false;
   if (req.has_transaction() &&
-      (FLAGS_enable_transactional_ddl_gc || FLAGS_ysql_ddl_rollback_enabled)) {
+      (FLAGS_enable_transactional_ddl_gc || req.ysql_ddl_rollback_enabled())) {
     table->mutable_metadata()->mutable_dirty()->pb.mutable_transaction()->
         CopyFrom(req.transaction());
     txn = VERIFY_RESULT(TransactionMetadata::FromPB(req.transaction()));
     RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
 
     // Set the YsqlTxnVerifierState.
-    if (FLAGS_ysql_ddl_rollback_enabled && !IsIndex(req) && !colocated &&
-        !table->is_matview()) {
+    if (req.ysql_ddl_rollback_enabled()) {
       table->mutable_metadata()->mutable_dirty()->pb.add_ysql_ddl_txn_verifier_state()->
         set_contains_create_table_op(true);
       schedule_ysql_txn_verifier = true;
@@ -5151,6 +5159,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SNAPSHOT_RESTORATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -5767,6 +5776,7 @@ Status CatalogManager::MarkIndexInfoFromTableForDeletion(
         indexed_table->namespace_id()));
     auto* resp_indexed_table = resp->mutable_indexed_table();
     resp_indexed_table->mutable_namespace_()->set_name(ns_info->name());
+    resp_indexed_table->mutable_namespace_()->set_id(ns_info->id());
     resp_indexed_table->set_table_name(indexed_table->name());
     resp_indexed_table->set_table_id(indexed_table_id);
   }
@@ -5936,6 +5946,7 @@ Status CatalogManager::DeleteTable(
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
+  scoped_refptr<TableInfo> indexed_table;
   if (req->is_index_table()) {
     TRACE("Looking up index");
     TableId table_id = table->id();
@@ -5949,17 +5960,31 @@ Status CatalogManager::DeleteTable(
       is_transactional = l->schema().table_properties().is_transactional();
       index_table_type = l->table_type();
     }
-    scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+    indexed_table = GetTableInfo(indexed_table_id);
     const bool is_pg_table = indexed_table != nullptr &&
                              indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
     if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
           indexed_table_id, table_id, /* multi_stage */ true, epoch, resp);
     }
+
+    // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
+    // deletion when the transaction commits. Thus set the response fields required by the client
+    // right away.
+    if (is_pg_table && req->ysql_ddl_rollback_enabled()) {
+      auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
+          indexed_table->namespace_id()));
+      auto* resp_indexed_table = resp->mutable_indexed_table();
+      resp_indexed_table->mutable_namespace_()->set_name(ns_info->name());
+      resp_indexed_table->mutable_namespace_()->set_id(ns_info->id());
+      resp_indexed_table->set_table_name(indexed_table->name());
+      resp_indexed_table->set_table_id(indexed_table_id);
+    }
   }
 
   // Check whether DDL rollback is enabled.
-  if (FLAGS_ysql_ddl_rollback_enabled && req->has_transaction()) {
+  if (req->ysql_ddl_rollback_enabled() && req->has_transaction() &&
+      table->GetTableType() == PGSQL_TABLE_TYPE) {
     bool ysql_txn_verifier_state_present = false;
     bool table_created_by_same_transaction = false;
     auto l = table->LockForWrite();
@@ -5983,9 +6008,7 @@ Status CatalogManager::DeleteTable(
 
     // If this table has not been created in the same transaction that is dropping it, mark this
     // table for deletion upon successful commit of this transaction.
-    if (!table_created_by_same_transaction &&
-        table->GetTableType() == PGSQL_TABLE_TYPE && !table->is_matview() &&
-        !req->is_index_table() && !table->colocated()) {
+    if (!table_created_by_same_transaction) {
       // Setup a background task. It monitors the YSQL transaction. If it commits, the task drops
       // the table. Otherwise it removes the deletion marker in the ysql_ddl_txn_verifier_state.
       TransactionMetadata txn;
@@ -5994,11 +6017,10 @@ Status CatalogManager::DeleteTable(
         pb.mutable_transaction()->CopyFrom(req->transaction());
         txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
         RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
-        pb.add_ysql_ddl_txn_verifier_state()->set_contains_drop_table_op(true);
-      } else {
-        DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
-        pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+        pb.add_ysql_ddl_txn_verifier_state();
       }
+      DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+      pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
       // Upsert to sys_catalog.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       // Update the in-memory state.
@@ -6502,10 +6524,8 @@ namespace {
 // Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
 // dropped or if it should be marked for deletion first and dropped later.
 Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const string& col_name) {
-  // If DDL Atomicity is disabled, or if the table is not a YSQL table, or if the table is
-  // colocated, then we can directly drop the column. Colocated tables will be supported by DDL
-  // Atomicity in a future change (Phase 4 of #13358).
-  if (!FLAGS_ysql_ddl_rollback_enabled || pb.table_type() != PGSQL_TABLE_TYPE || pb.colocated()) {
+  // Applicable only for YSQL tables.
+  if (pb.table_type() != PGSQL_TABLE_TYPE) {
     return false;
   }
 
@@ -6610,7 +6630,8 @@ Status ApplyAlterSteps(server::Clock* clock,
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-        if (VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
+        if (req->ysql_ddl_rollback_enabled() &&
+            VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
           RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
           ddl_log_entries->emplace_back(
               time, table_id, current_pb,
@@ -6720,7 +6741,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // If the table is already undergoing an alter operation, return failure.
-  if (FLAGS_ysql_ddl_rollback_enabled && l->has_ysql_ddl_txn_verifier_state()) {
+  if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
     DCHECK(req->has_transaction());
     DCHECK(req->transaction().has_transaction_id());
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
@@ -6734,6 +6755,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   const TableName table_name = l->name();
   const NamespaceId namespace_id = l->namespace_id();
   const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
+
+  while (FLAGS_TEST_block_alter_table == "alter_schema") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
 
   // Calculate new schema for the on-disk state, not persisted yet.
   Schema new_schema;
@@ -6883,12 +6910,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // rolls back.
   TransactionMetadata txn;
   bool schedule_ysql_txn_verifier = false;
-  if (!FLAGS_ysql_ddl_rollback_enabled) {
+  if (!req->ysql_ddl_rollback_enabled()) {
     // If DDL rollback is no longer enabled, make sure that there is no transaction
     // verification state present.
     table_pb.clear_ysql_ddl_txn_verifier_state();
-  } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE &&
-             !table->colocated()) {
+  } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
     if (!l->has_ysql_ddl_txn_verifier_state()) {
       table_pb.mutable_transaction()->CopyFrom(req->transaction());
       auto *ddl_state = table_pb.add_ysql_ddl_txn_verifier_state();
@@ -6919,6 +6945,13 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
             << table->ToString() << " per request from " << RequestorString(rpc);
+
+  while (FLAGS_TEST_block_alter_table == "completion") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
+
   return Status::OK();
 }
 
@@ -8332,6 +8365,7 @@ Status CatalogManager::CreateTablegroup(
   }
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
+    ctreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
   }
   ctreq.set_name(parent_table_name);
   ctreq.set_table_id(parent_table_id);
@@ -8424,6 +8458,8 @@ Status CatalogManager::DeleteTablegroup(const DeleteTablegroupRequestPB* req,
   dtreq.mutable_table()->set_table_name(parent_table_name);
   dtreq.mutable_table()->set_table_id(parent_table_id);
   dtreq.set_is_index_table(false);
+  dtreq.mutable_transaction()->CopyFrom(req->transaction());
+  dtreq.set_ysql_ddl_rollback_enabled(req->ysql_ddl_rollback_enabled());
 
   // Delete the parent table.
   // This will also delete the tablegroup tablet, as well as the tablegroup entity.

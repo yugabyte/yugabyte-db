@@ -305,9 +305,7 @@ public class ResizeNode extends UpgradeTaskBase {
     for (NodeDetails node : nodes) {
       if (!node.disksAreMountedByUUID) {
         createUpdateMountedDisksTask(
-                node,
-                currentIntent.getInstanceTypeForNode(node),
-                currentIntent.getDeviceInfoForNode(node))
+                node, node.getInstanceType(), currentIntent.getDeviceInfoForNode(node))
             .setSubTaskGroupType(getTaskSubGroupType());
       }
     }

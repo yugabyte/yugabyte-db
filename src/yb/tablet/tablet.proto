@@ -60,7 +60,7 @@ message TabletStatusPB {
   optional TableType table_type = 16;
   // Is the tablet hidden.
   optional bool is_hidden = 17;
-  optional bool has_been_fully_compacted = 18;
+  optional bool parent_data_compacted = 18; // See KvStoreInfoPB.
 }
 
 // Used to present the maintenance manager's internal state.

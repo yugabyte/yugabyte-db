@@ -40,7 +40,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/master_replication.proxy.h"
 
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tserver/xcluster_consumer.h"
@@ -292,11 +292,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   Status WaitForLoadBalancersToStabilizeOnAllClusters() {
     for (const auto& producer_cluster : producer_clusters_) {
       auto cluster = producer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     for (const auto& consumer_cluster : consumer_clusters_) {
       auto cluster = consumer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     return Status::OK();
   }

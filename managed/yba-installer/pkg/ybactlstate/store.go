@@ -2,7 +2,6 @@ package ybactlstate
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 
@@ -17,9 +16,6 @@ func LoadState() (*State, error) {
 	sp := filepath.Join(common.YbactlInstallDir(), StateFileName)
 	sf, err := os.Open(sp)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return state, nil
-		}
 		return state, err
 	}
 	if err := json.NewDecoder(sf).Decode(state); err != nil {

@@ -1,8 +1,8 @@
-import { FC, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { FieldArray } from 'formik';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Box, makeStyles, InputAdornment, IconButton } from '@material-ui/core';
+import { Box, makeStyles, InputAdornment, IconButton, Divider } from '@material-ui/core';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { YBButton, YBInput } from '../../../redesign/components';
 import { TSERVER } from '../../../redesign/features/universe/universe-form/form/fields';
@@ -16,8 +16,11 @@ import {
   unformatConf,
   verifyAttributes
 } from '../../../utils/UniverseUtils';
+import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 import { ReactComponent as DraggableIcon } from '../../../redesign/assets/draggable.svg';
 import { ReactComponent as CloseIcon } from '../../../redesign/assets/close.svg';
+
+const OIDC_ENABLED_DB_VERSION = '2.18.0.0';
 
 const useStyles = makeStyles((theme) => ({
   numNodesInputField: {
@@ -38,7 +41,7 @@ const useStyles = makeStyles((theme) => ({
   },
   overrideMuiHelperText: {
     '& .MuiFormHelperText-root': {
-      color: 'orange'
+      color: theme.palette.orange[500]
     }
   },
   updateKeySetInput: {
@@ -48,13 +51,21 @@ const useStyles = makeStyles((theme) => ({
   },
   editKeySetImage: {
     cursor: 'pointer'
+  },
+  divider: {
+    border: '1px',
+    marginTop: theme.spacing(2),
+    backgroundColor: '#E5E5E9'
+  },
+  iconButton: {
+    marginBottom: theme.spacing(3)
   }
 }));
 
 interface EditGFlagConfProps {
   formProps: any;
+  dbVersion: string;
   serverType: string;
-  flagName: string;
   updateJWKSDialogStatus: (status: boolean) => void;
 }
 
@@ -90,7 +101,7 @@ const getGFlagRows = (rowCount: number) =>
     isWarning: false
   }));
 
-const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) => {
+const reorderGFlagRows = (GFlagRows: GFlagRowProps[], startIndex: number, endIndex: number) => {
   let result = Array.from(GFlagRows);
   const [removed] = result.splice(startIndex, 1);
   result.splice(endIndex, 0, removed);
@@ -100,11 +111,11 @@ const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) 
 
 export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   formProps,
+  dbVersion,
   serverType,
-  flagName,
   updateJWKSDialogStatus
 }) => {
-  let unformattedLDAPConf: string | null = null;
+  let unformattedLDAPConf: GFlagRowProps[] | null = null;
   const GFlagConfData = CONST_VALUES.EMPTY_STRING;
   const { t } = useTranslation();
   const classes = useStyles();
@@ -114,11 +125,15 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     serverType === TSERVER
       ? formProps?.values?.tserverFlagDetails?.flagvalueobject
       : formProps?.values?.masterFlagDetails?.flagvalueobject;
+  const flagValue = formProps?.values?.flagvalue;
+  const versionDifference = compareYBSoftwareVersions(dbVersion, OIDC_ENABLED_DB_VERSION);
+  const isOIDCSupported = versionDifference >= 0;
 
-  if (isNonEmptyString(formProps?.values?.flagvalue) && !GFlagValueConfObject) {
-    unformattedLDAPConf = unformatConf(formProps?.values?.flagvalue);
+  if (isNonEmptyString(flagValue) && !GFlagValueConfObject) {
+    unformattedLDAPConf = unformatConf(flagValue);
   }
 
+  const [flagName, setFlagName] = useState<string>(formProps?.values?.flagname);
   const [showJWKSButton, setShowJWKSButton] = useState<boolean>(false);
   const [showJWKSDialog, setShowJWKSDialog] = useState<boolean>(false);
   const [JWKSKey, setJWKSToken] = useState<string>(CONST_VALUES.EMPTY_STRING);
@@ -126,15 +141,24 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   const [rowCount, setRowCount] = useState<number>(
     GFlagValueConfObject?.length > 0 ? GFlagValueConfObject?.length : 1
   );
-
   const [errorMessageKey, setErrorMessageKey] = useState<string>(CONST_VALUES.EMPTY_STRING);
-  const [GFlagRows, setGFlagConfRows] = useState<any>(
+  const [GFlagRows, setGFlagConfRows] = useState<GFlagRowProps[]>(
     GFlagValueConfObject?.length > 0
       ? GFlagValueConfObject
-      : isNonEmptyString(formProps?.values?.flagvalue)
+      : isNonEmptyString(flagValue)
       ? unformattedLDAPConf
       : getGFlagRows(rowCount)
   );
+
+  useEffect(() => {
+    if (!GFlagValueConfObject && isNonEmptyString(flagValue)) {
+      setGFlagConfRows(unformattedLDAPConf!);
+    }
+  }, [flagValue]);
+
+  useEffect(() => {
+    setFlagName(formProps?.values?.flagname);
+  }, [formProps?.values?.flagname]);
 
   const getPlaceholder = (index: number, flagName: string) => {
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
@@ -273,7 +297,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     const { isAttributeInvalid, errorMessageKey, isWarning } = verifyAttributes(
       GFlagInput,
       searchTerm,
-      JWKSKeyset
+      JWKSKeyset,
+      isOIDCSupported
     );
     return {
       isErrorInValidation: isAttributeInvalid,
@@ -348,7 +373,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                             <Box display="flex" flexDirection="column">
                               <Box display="flex" flexDirection="row">
                                 <YBInput
-                                  name={`flagvalue.${index}`}
+                                  key={`${flagName}`}
+                                  name={`${flagName}-${index}`}
                                   id={`${index}`}
                                   fullWidth
                                   multiline={true}
@@ -364,7 +390,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   onChange={(e: any) => handleChange(e.target.value, index)}
                                   onBlur={() => buildGFlagConf()}
                                   error={GFlagRows[index]?.error}
-                                  helperText={t(GFlagRows[index]?.errorMessageKey)}
+                                  helperText={t(GFlagRows[index].errorMessageKey!)}
                                   inputProps={{
                                     'data-testid': `EditMultilineConfField-row-${index}`
                                   }}
@@ -382,6 +408,9 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   }}
                                 />
                                 <IconButton
+                                  className={
+                                    GFlagRows[index].errorMessageKey ? classes.iconButton : ''
+                                  }
                                   onClick={() => {
                                     removeItem(index);
                                   }}
@@ -403,6 +432,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                       setShowJWKSDialog(true);
                                       setJWKSDialogIndex(index);
                                     }}
+                                    disabled={!isOIDCSupported}
                                     type="button"
                                     size="medium"
                                     data-testid={`EditMultilineConfField-AddKeySet-${index}`}
@@ -435,6 +465,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
                                   />
                                 </Box>
                               )}
+                              <Divider className={classes.divider} />
                             </Box>
                           </div>
                         )}

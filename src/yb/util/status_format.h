@@ -114,3 +114,8 @@
       return STATUS_FORMAT(status_type, __VA_ARGS__); \
     } \
   } while (0)
+
+#define RSTATUS_DCHECK_NOTNULL(expr) \
+    RSTATUS_DCHECK((expr) != nullptr, \
+                   RuntimeError, \
+                   "$0 is null in $1", BOOST_PP_STRINGIZE(expr), __PRETTY_FUNCTION__)

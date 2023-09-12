@@ -30,7 +30,11 @@ type GFlagsJsonFuture struct {
     Error  error
 }
 
-func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
+func (h *HelperContainer) GetGFlagsFuture(
+    hostName string,
+    isMaster bool,
+    future chan GFlagsFuture,
+) {
     port := TserverUIPort
     if isMaster {
         port = MasterUIPort
@@ -73,7 +77,11 @@ func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
     future <- gFlags
 }
 
-func GetGFlagsJsonFuture(hostName string, isMaster bool, future chan GFlagsJsonFuture) {
+func (h *HelperContainer) GetGFlagsJsonFuture(
+    hostName string,
+    isMaster bool,
+    future chan GFlagsJsonFuture,
+) {
 
     port := TserverUIPort
     if isMaster {

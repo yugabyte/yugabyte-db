@@ -16,9 +16,6 @@ public class BundleDetails {
     @EnumValue("UniverseLogs")
     UniverseLogs(ComponentLevel.NodeLevel),
 
-    @EnumValue("ApplicationLogs")
-    ApplicationLogs(ComponentLevel.GlobalLevel),
-
     @EnumValue("OutputFiles")
     OutputFiles(ComponentLevel.NodeLevel),
 
@@ -47,7 +44,12 @@ public class BundleDetails {
     K8sInfo(ComponentLevel.GlobalLevel),
 
     @EnumValue("NodeAgent")
-    NodeAgent(ComponentLevel.NodeLevel);
+    NodeAgent(ComponentLevel.NodeLevel),
+
+    // Add any new components above this component, as we want this to be the last collected
+    // component to debug any issues with support bundle itself.
+    @EnumValue("ApplicationLogs")
+    ApplicationLogs(ComponentLevel.GlobalLevel);
 
     private final ComponentLevel componentLevel;
 

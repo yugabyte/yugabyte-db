@@ -279,7 +279,16 @@ class TransactionLoader::Executor {
       intents_iterator_.SeekToLast();
     }
     current_key_.RemoveLastByte();
-    while (intents_iterator_.Valid() && intents_iterator_.key().starts_with(current_key_)) {
+    // Fetch the last batch of the current transaction having a strong intent by backward scan of
+    // relevant portion in the reverse index section. During the backward scan, we break after
+    // processing the first encountered strong intent.
+    //
+    // Note: We explicitly check if the transaction id is a strict prefix of the intent key so as
+    // not process the transaction meta record and instead terminate the loop. Else, we would error
+    // while processing transactions that executed statements of type 'FOR KEY SHARE' alone, since
+    // such statements don't write strong intents.
+    while (intents_iterator_.Valid() && intents_iterator_.key().size() > current_key_.size() &&
+           intents_iterator_.key().starts_with(current_key_)) {
       auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
           << "Failed to decode intent while loading transaction " << id << ", "

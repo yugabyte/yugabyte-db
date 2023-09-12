@@ -24,6 +24,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -37,6 +38,12 @@
 
 DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");
+
+DEFINE_NON_RUNTIME_bool(ysql_rc_force_pick_read_time_on_pg_client, false,
+                        "When resetting read time for a statement in Read Commited isolation level,"
+                        " pick read time on the PgClientService instead of allowing the tserver to"
+                        " pick one.");
+TAG_FLAG(ysql_rc_force_pick_read_time_on_pg_client, advanced);
 
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
@@ -124,14 +131,16 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
     return manipulator;
   }
   switch (manipulator) {
-    case tserver::ReadTimeManipulation::NONE: [[fallthrough]];
-    case tserver::ReadTimeManipulation::RESET:
-        return ensure_read_time ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
-                                : manipulator;
+    case tserver::ReadTimeManipulation::NONE:
+      return ensure_read_time ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
+                              : manipulator;
 
-    case tserver::ReadTimeManipulation::RESTART: [[fallthrough]];
+    case tserver::ReadTimeManipulation::RESTART:
+      DCHECK(!ensure_read_time);
+      return manipulator;
+
     case tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
-        return manipulator;
+      return manipulator;
 
     case tserver::ReadTimeManipulation::ReadTimeManipulation_INT_MIN_SENTINEL_DO_NOT_USE_:
     case tserver::ReadTimeManipulation::ReadTimeManipulation_INT_MAX_SENTINEL_DO_NOT_USE_:
@@ -328,11 +337,17 @@ Status PgTxnManager::RestartTransaction() {
   return Status::OK();
 }
 
-/* This is called at the start of each statement in READ COMMITTED isolation level */
+// This is called at the start of each statement in READ COMMITTED isolation level. Note that this
+// might also be called at the start of a new retry of the statement done via
+// yb_attempt_to_restart_on_error() (e.g., in case of a retry on kConflict error).
 Status PgTxnManager::ResetTransactionReadPoint() {
-  RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
-                 "READ COMMITTED semantics don't apply to DDL transactions");
-  read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
+  RSTATUS_DCHECK(
+      !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
+  ++read_time_serial_no_;
+  const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
+  read_time_manipulation_ =
+      PREDICT_FALSE(pick_read_time_alias) ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
+                                          : tserver::ReadTimeManipulation::NONE;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
@@ -342,6 +357,10 @@ Status PgTxnManager::ResetTransactionReadPoint() {
 Status PgTxnManager::RestartReadPoint() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
   return Status::OK();
+}
+
+bool PgTxnManager::IsRestartReadPointRequested() {
+  return read_time_manipulation_ == tserver::ReadTimeManipulation::RESTART;
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
@@ -386,8 +405,7 @@ void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   priority_ = 0;
-  ++txn_serial_no_;
-  active_sub_transaction_id_ = 0;
+  IncTxnSerialNo();
 
   enable_follower_reads_ = false;
   read_only_ = false;
@@ -444,13 +462,13 @@ std::string PgTxnManager::TxnStateDebugStr() const {
 void PgTxnManager::SetupPerformOptions(
     tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time) {
   if (!IsDdlMode() && !txn_in_progress_) {
-    ++txn_serial_no_;
-    active_sub_transaction_id_ = 0;
+    IncTxnSerialNo();
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(txn_serial_no_);
+  options->set_read_time_serial_no(read_time_serial_no_);
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
   if (use_saved_priority_) {
@@ -500,6 +518,12 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
     return kHigherPriorityRange;
   }
   return kHighestPriority;
+}
+
+void PgTxnManager::IncTxnSerialNo() {
+  ++txn_serial_no_;
+  active_sub_transaction_id_ = 0;
+  ++read_time_serial_no_;
 }
 
 }  // namespace yb::pggate

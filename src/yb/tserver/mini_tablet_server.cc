@@ -130,7 +130,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 
 Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
-  TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));
+  TEST_SetThreadPrefixScoped prefix_se(ToString());
 
   std::unique_ptr<TabletServer> server(new TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
@@ -144,6 +144,8 @@ Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped
   started_ = true;
   return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
 }
+
+string MiniTabletServer::ToString() const { return Format("ts-$0", index_); }
 
 void MiniTabletServer::Isolate() {
   server::TEST_Isolate(server_->messenger());
@@ -234,7 +236,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) {
     auto tablet = tablet_peer->shared_tablet();
     if (tablet) {
-      tablet->TEST_ForceRocksDBCompact(skip_flush);
+      CHECK_OK(tablet->ForceManualRocksDBCompact(skip_flush));
     }
     return Status::OK();
   });

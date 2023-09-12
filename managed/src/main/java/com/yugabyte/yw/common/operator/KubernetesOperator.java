@@ -3,7 +3,10 @@
 package com.yugabyte.yw.common.operator;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -23,6 +26,7 @@ import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
+import io.yugabyte.operator.v1alpha1.SupportBundle;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -41,6 +45,12 @@ public class KubernetesOperator {
   @Inject private BackupHelper backupHelper;
   @Inject protected ValidatingFormFactory formFactory;
 
+  @Inject private Commissioner commissioner;
+
+  @Inject private TaskExecutor taskExecutor;
+
+  @Inject private SupportBundleUtil supportBundleUtil;
+
   public MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
       ybUniverseClient;
 
@@ -50,6 +60,10 @@ public class KubernetesOperator {
   public MixedOperation<
           StorageConfig, KubernetesResourceList<StorageConfig>, Resource<StorageConfig>>
       scClient;
+  public MixedOperation<
+          SupportBundle, KubernetesResourceList<SupportBundle>, Resource<SupportBundle>>
+      supportBundleClient;
+
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperator.class);
 
   public void init(String namespace) {
@@ -76,11 +90,13 @@ public class KubernetesOperator {
                   this.scClient = client.resources(StorageConfig.class);
                   this.backupClient = client.resources(Backup.class);
 
+                  this.supportBundleClient = client.resources(SupportBundle.class);
                   SharedIndexInformer<YBUniverse> ybUniverseSharedIndexInformer;
                   SharedIndexInformer<Release> ybSoftwareReleaseIndexInformer;
                   SharedIndexInformer<StorageConfig> ybStorageConfigIndexInformer;
                   SharedIndexInformer<Backup> ybBackupIndexInformer;
 
+                  SharedIndexInformer<SupportBundle> ybSupportBundleIndexInformer;
                   long resyncPeriodInMillis = 10 * 60 * 1000L;
                   SharedInformerFactory informerFactory = client.informers();
                   if (!namespace.trim().isEmpty()) {
@@ -155,6 +171,23 @@ public class KubernetesOperator {
                                 },
                                 resyncPeriodInMillis);
 
+                    ybSupportBundleIndexInformer =
+                        client
+                            .resources(SupportBundle.class)
+                            .inNamespace(namespace)
+                            .inform(
+                                new ResourceEventHandler<>() {
+                                  @Override
+                                  public void onAdd(SupportBundle b1) {}
+
+                                  @Override
+                                  public void onUpdate(SupportBundle b1, SupportBundle b2) {}
+
+                                  @Override
+                                  public void onDelete(
+                                      SupportBundle b1, boolean deletedFinalUnknown) {}
+                                },
+                                resyncPeriodInMillis);
                   } else {
                     // Listen to all namespaces, use the factory to build informer.
                     ybUniverseSharedIndexInformer =
@@ -167,6 +200,9 @@ public class KubernetesOperator {
                             StorageConfig.class, resyncPeriodInMillis);
                     ybBackupIndexInformer =
                         informerFactory.sharedIndexInformerFor(Backup.class, resyncPeriodInMillis);
+                    ybSupportBundleIndexInformer =
+                        informerFactory.sharedIndexInformerFor(
+                            SupportBundle.class, resyncPeriodInMillis);
                   }
                   LOG.info("Finished setting up SharedIndexInformers");
 
@@ -182,7 +218,18 @@ public class KubernetesOperator {
 
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
-                          ybSoftwareReleaseIndexInformer, releasesClient, releaseManager);
+                          ybSoftwareReleaseIndexInformer,
+                          releasesClient,
+                          releaseManager,
+                          namespace);
+                  SupportBundleReconciler supportBundleReconciler =
+                      new SupportBundleReconciler(
+                          ybSupportBundleIndexInformer,
+                          supportBundleClient,
+                          namespace,
+                          commissioner,
+                          taskExecutor,
+                          supportBundleUtil);
 
                   StorageConfigReconciler scReconciler =
                       new StorageConfigReconciler(
@@ -204,6 +251,7 @@ public class KubernetesOperator {
                   releaseReconciler.run();
                   scReconciler.run();
                   backupReconciler.run();
+                  supportBundleReconciler.run();
                   ybUniverseController.run();
 
                   LOG.info("Finished running ybUniverseController");

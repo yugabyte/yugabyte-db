@@ -1,0 +1,7 @@
+# src/test/regress/yb_misc_serial3_schedule
+#
+####################################################################################################
+# See comments in src/test/regress/yb_misc_serial_schedule.
+####################################################################################################
+test: yb_explicit_row_lock_planning
+test: yb_pg_fast_default

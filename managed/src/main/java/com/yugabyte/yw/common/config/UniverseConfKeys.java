@@ -167,6 +167,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum available memory required on DB nodes for software upgrade.",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.UNIVERSE,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -831,6 +841,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "runtime configuration.",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableRollbackSupport =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_rollback_support",
+          ScopeType.UNIVERSE,
+          "Enable Rollback Support",
+          "Enable Yugabyte DB Rollback support",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -840,5 +858,56 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "xCluster replication; it will be used when there is no existing PITR configs "
               + "and it is not specified in the task parameters",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultSnapshotInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.pitr.default_snapshot_interval",
+          ScopeType.UNIVERSE,
+          "Default PITR snapshot interval for txn xCluster",
+          "The default snapshot interval used to create PITR configs for transactional "
+              + "xCluster replication; it will be used when there is no existing PITR configs "
+              + "and it is not specified in the task parameters",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_finalize",
+          ScopeType.UNIVERSE,
+          "Skip Upgrade Finalize",
+          "Skip Auto-flags promotions and ysql upgrade during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowConfigureYSQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ysql",
+          ScopeType.UNIVERSE,
+          "Configure YSQL DB API",
+          "Allow users to configure YSQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ycql",
+          ScopeType.UNIVERSE,
+          "Configure YCQL DB API",
+          "Allow users to configure YCQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.wait_for_replication_drain_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for the WaitForReplicationDrain subtask",
+          "The minimum amount of time that the waitForReplicationDrain subtask waits for the "
+              + "replication streams to completely drain from the source to the target universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipBackupMetadataValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_metadata_validation",
+          ScopeType.UNIVERSE,
+          "Skip backup metadata validation",
+          "Skip backup metadata based validation during restore",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

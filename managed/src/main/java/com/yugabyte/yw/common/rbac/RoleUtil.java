@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common.rbac;
 
 import com.google.inject.Inject;
@@ -24,7 +26,7 @@ public class RoleUtil {
       String name,
       String description,
       RoleType roleType,
-      Set<PermissionInfoIdentifier> permissionList)
+      Set<Permission> permissionList)
       throws PlatformServiceException {
     permissionUtil.validatePermissionList(permissionList);
     log.info(
@@ -37,10 +39,7 @@ public class RoleUtil {
   }
 
   public Role editRole(
-      UUID customerUUID,
-      UUID roleUUID,
-      String description,
-      Set<PermissionInfoIdentifier> permissionList)
+      UUID customerUUID, UUID roleUUID, String description, Set<Permission> permissionList)
       throws PlatformServiceException {
     Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     permissionUtil.validatePermissionList(permissionList);

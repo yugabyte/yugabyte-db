@@ -22,11 +22,11 @@ Internet and cloud technologies have revolutionized the way people interact and 
 
 The reasons for making your applications global are the same as those for adopting a distributed database:
 
-- **Business continuity and disaster recovery** Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (see, for example, [AWS outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages) and [Google outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). To provide uninterrupted service to your users, you need to run your applications in multiple locations.
+- **Business continuity and disaster recovery**. Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (see, for example, [AWS outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages) and [Google outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). To provide uninterrupted service to your users, you need to run your applications in multiple locations.
 
-- **Data residency for compliance** To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
+- **Data residency for compliance**. To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
 
-- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account where your users are located. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
+- **Moving data closer to users**. When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account where your users are located. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
 
 ## Application design patterns
 
@@ -42,7 +42,7 @@ Running applications in multiple data centers with data split across them is not
 
 To help you answer these questions, use the following architectural concepts to choose a suitable design pattern for your application.
 
-### Application Architecture
+### Application architecture
 
 Depending on where the application instances run and which ones are active, choose from the following application architectures:
 
@@ -51,14 +51,14 @@ Depending on where the application instances run and which ones are active, choo
 - **Read-Only Multi-Active** - Only one application instance is active, while the others can serve stale reads.
 - **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just a subset of data.
 
-### Availability Architecture
+### Availability architecture
 
 Depending on whether the application instances operate on the entire dataset or just a subset, and how the application moves on a fault domain failure, choose from the following availability architectures:
 
 - **Follow the application** - Only one application instance is active, while the others (one or more) can serve stale reads.
 - **Geo-local dataset** - Applications act on geographically placed local data. On failure, the application does not move.
 
-### Data Access Architecture
+### Data access architecture
 
 Depending on whether the application should read the latest data or stale data, choose from the following data access architectures:
 
@@ -66,24 +66,18 @@ Depending on whether the application should read the latest data or stale data, 
 - **Follower reads** - Stale reads to achieve lower latency reads.
 - **Bounded staleness** - Allow stale reads but with bounds on how stale data is.
 
-## Pick the right design pattern
+## Pick the right pattern
 
 Use the following matrix to choose a [design pattern](#design-patterns-explained), based on the architectures described in the preceding section.
 
 |         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Dataset                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Single Active**            | [Global database](./global-database)<br>[Active-active multi-master](./active-active-multi-master) | N/A                                                                       |
+| **Single Active**            | [Global database](./global-database)<br>[Active-active single-master](./active-active-single-master) | N/A                                                                       |
 | **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **DATA ACCESS ARCHITECTURE** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
+| **Data Access Architecture** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
 
-## Design patterns explained
-
-{{<note>}}
-All the illustrations in this section use the following legend to represent tablet leaders and followers, cloud regions and zones, and applications.
-{{</note>}}
-
-![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
+## Design patterns
 
 The following table summarizes the design patterns that you can use for your applications. Use these proven patterns to address common problems and accelerate your application development.
 
@@ -93,8 +87,7 @@ The following table summarizes the design patterns that you can use for your app
 | ------- | ----------- |
 | [Global database](./global-database) |
 {{<header Level="6">}} Single database spread across multiple regions {{</header>}}
-A database spread across multiple (3 or more) regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.
-Applications read from source of truth, possibly with higher latencies.|
+A database spread across multiple (3 or more) regions or zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data. Applications read from source of truth, possibly with higher latencies.|
 
 |[Duplicate indexes](./duplicate-indexes)|
 {{<header Level="6">}} Consistent data everywhere {{</header>}}
@@ -102,7 +95,7 @@ Set up covering indexes with schema the same as the table in multiple regions to
 
 |[Active&#8209;active single&#8209;master](./active-active-single-master)|
 {{<header Level="6">}} Secondary database that can serve reads {{</header>}}
-Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing.|
+Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue-green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing.|
 
 |[Active&#8209;active multi&#8209;master](./active-active-multi-master)|
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
@@ -125,3 +118,9 @@ Read from local followers instead of going to the leaders in a different region.
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region.|
 
 {{</table>}}
+
+## Legend
+
+All the illustrations in this section use the following legend to represent tablet leaders and followers, cloud regions and zones, and applications.
+
+![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)

@@ -255,7 +255,6 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
             existing_value, nullptr /* verify_transaction_id_slice */,
             HasStrong(existing_intent.types)));
         auto transaction_id = decoded_value.transaction_id;
-        // TODO(tablelocks): If this is a table lock, we may want to handle as lock_only.
         bool lock_only = decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock);
         VLOG_WITH_PREFIX_AND_FUNC(4)
             << "Found conflict with exiting transaction: " << transaction_id
@@ -739,15 +738,6 @@ class IntentProcessor {
     i->second.full_doc_key = i->second.full_doc_key || full_doc_key;
   }
 
-  void ProcessTableLockIntents(TableLockType lock_type) {
-    TableLockIntents table_lock_type_to_intent_mapping =
-        GetTableLockIntents(lock_type);
-    for (const auto& mapping : table_lock_type_to_intent_mapping) {
-      container_.try_emplace(KeyBuffer(mapping.first.as_slice()),
-                             IntentData{mapping.second, false});
-    }
-  }
-
  private:
   IntentTypesContainer& container_;
 };
@@ -1010,7 +1000,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
             /* intent_value */ Slice(),
             [&intent_processor, intent_types](
                 auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto) {
+                auto, auto) {
               intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
               return Status::OK();
             },
@@ -1020,19 +1010,20 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     }
 
     const auto& pairs = write_batch_.read_pairs();
-    intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark);
     if (!pairs.empty()) {
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
-          [&intent_processor, intent_types] (
-              auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
-            intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
+          [&intent_processor,
+           intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark)] (
+              auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
+              auto is_row_lock) {
+            intent_processor.Process(
+                ancestor_doc_key, full_doc_key, intent_key,
+                GetIntentTypes(intent_types, is_row_lock));
             return Status::OK();
           },
           resolver->partial_range_key_intents()));
     }
-
-    intent_processor.ProcessTableLockIntents(write_batch_.table_lock().table_lock_type());
 
     if (container.empty()) {
       return Status::OK();
@@ -1225,7 +1216,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
             /* intent_value */ Slice(),
             [&intent_processor, intent_types](
                 auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto) {
+                auto, auto) {
               intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
               return Status::OK();
             },

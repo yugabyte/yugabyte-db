@@ -9,7 +9,7 @@ import { FieldValues, FormState } from 'react-hook-form';
 
 import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
-import { KeyPairManagement, ProviderStatus } from '../constants';
+import { KeyPairManagement, ProviderStatus, TRANSITORY_PROVIDER_STATUSES } from '../constants';
 import { AccessKey, YBProvider } from '../types';
 
 export const readFileAsText = (sshKeyFile: File) => {
@@ -155,8 +155,11 @@ export const getIsFormDisabled = <TFieldValues extends FieldValues>(
   isProviderInUse = false,
   providerConfig?: YBProvider
 ) =>
-  providerConfig?.usabilityState === ProviderStatus.UPDATING ||
-  isProviderInUse ||
+
+(providerConfig?.usabilityState &&
+  (TRANSITORY_PROVIDER_STATUSES as readonly ProviderStatus[]).includes(
+    providerConfig?.usabilityState
+  )) || isProviderInUse ||
   formState.isSubmitting;
 
 export const getIsRegionFormDisabled = <TFieldValues extends FieldValues>(

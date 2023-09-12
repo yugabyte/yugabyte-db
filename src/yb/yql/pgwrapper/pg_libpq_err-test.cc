@@ -12,6 +12,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 

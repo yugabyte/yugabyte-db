@@ -35,6 +35,10 @@ namespace yb {
 // at the main thread to avoid concurrency issues.
 Result<sigset_t> ThreadSignalMaskBlock(const std::vector<int>& signals_to_block);
 
+// On current thread, unblock the given signals and return an old signal mask.
+// Signals that were accumulated by OS will be delivered before this function returns.
+Result<sigset_t> ThreadSignalMaskUnblock(const std::vector<int>& signals_to_unblock);
+
 // Restore previous signal mask on the current thread.
 // Unblocking signals lets the blocked signals be delivered if they had been raised in the meantime.
 Status ThreadSignalMaskRestore(sigset_t old_mask);

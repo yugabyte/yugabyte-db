@@ -1,10 +1,16 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common.rbac;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.Role;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
@@ -17,9 +23,10 @@ public class PermissionInfo {
 
   @AllArgsConstructor
   public enum ResourceType {
-    UNIVERSE("rbac/universe_resource_permissions.json"),
-
-    DEFAULT("rbac/default_resource_permissions.json");
+    UNIVERSE("rbac/available_resource_permissions/universeResourcePermissions.json"),
+    ROLE("rbac/available_resource_permissions/roleResourcePermissions.json"),
+    USER("rbac/available_resource_permissions/userResourcePermissions.json"),
+    OTHER("rbac/available_resource_permissions/defaultResourcePermissions.json");
 
     @Getter public String permissionFilePath;
 
@@ -30,8 +37,14 @@ public class PermissionInfo {
           case UNIVERSE:
             Universe.getOrBadRequest(resourceUUID, customer);
             break;
-          case DEFAULT:
-            // Nothing to check explicitly for DEFAULT resources.
+          case ROLE:
+            Role.getOrBadRequest(customerUUID, resourceUUID);
+            break;
+          case USER:
+            Users.getOrBadRequest(customerUUID, customerUUID);
+            break;
+          case OTHER:
+            // Nothing to check explicitly for OTHER resources.
             break;
           default:
             break;
@@ -41,25 +54,62 @@ public class PermissionInfo {
         return false;
       }
     }
+
+    public Set<UUID> getAllResourcesUUID(UUID customerUUID) {
+      Customer customer = Customer.getOrBadRequest(customerUUID);
+      Set<UUID> allResourcesUUID = new HashSet<>();
+      switch (this) {
+        case UNIVERSE:
+          allResourcesUUID = Universe.getAllUUIDs(customer);
+          break;
+        case ROLE:
+          allResourcesUUID =
+              Role.getAll(customerUUID).stream().map(Role::getRoleUUID).collect(Collectors.toSet());
+          break;
+        case USER:
+          allResourcesUUID =
+              Users.getAll(customerUUID).stream().map(Users::getUuid).collect(Collectors.toSet());
+          break;
+        case OTHER:
+          // Nothing to check explicitly for OTHER resources.
+          break;
+        default:
+          break;
+      }
+      return allResourcesUUID;
+    }
   }
 
-  public enum Permission {
+  public enum Action {
     CREATE,
     READ,
     UPDATE,
     DELETE,
-    PAUSE_RESUME
+    PAUSE_RESUME,
+    BACKUP_RESTORE,
+    UPDATE_ROLE_BINDINGS,
+    UPDATE_PROFILE,
+    SUPER_ADMIN_ACTIONS
   }
 
-  @JsonProperty("resource_type")
+  @JsonProperty("resourceType")
   public ResourceType resourceType;
 
-  @JsonProperty("permission")
-  public Permission permission;
+  @JsonProperty("action")
+  public Action action;
+
+  // Human readable name for the permission. Used for UI.
+  @JsonProperty("name")
+  public String name;
 
   @JsonProperty("description")
   public String description;
 
-  @JsonProperty("prerequisite_permissions")
-  public HashSet<PermissionInfoIdentifier> prerequisitePermissions;
+  // Some permissions like UNIVERSE.CREATE are not applicable on particular resources, but are a
+  // generic permission. In such cases, "permissionValidOnResource" will be false.
+  @JsonProperty("permissionValidOnResource")
+  public boolean permissionValidOnResource;
+
+  @JsonProperty("prerequisitePermissions")
+  public HashSet<Permission> prerequisitePermissions;
 }

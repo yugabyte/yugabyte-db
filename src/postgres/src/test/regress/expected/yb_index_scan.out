@@ -111,13 +111,13 @@ SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
 
 -- Testing yb_pushdown_strict_inequality
 SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
- k  
+ k
 ----
  20
 (1 row)
 
 /*+Set(yb_pushdown_strict_inequality false)*/ SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
- k  
+ k
 ----
  20
 (1 row)
@@ -142,14 +142,14 @@ SELECT * FROM pk_multi WHERE h = 1;
 
 -- We should still get correct results even if hash key is unset
 /*+IndexScan(pk_multi pk_multi_pkey)*/ EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
-                    QUERY PLAN                    
+                    QUERY PLAN
 --------------------------------------------------
  Index Scan using pk_multi_pkey on pk_multi
    Index Cond: (r = ANY ('{5,3,9,2}'::integer[]))
 (2 rows)
 
 /*+IndexScan(pk_multi pk_multi_pkey)*/ SELECT * FROM pk_multi WHERE r IN (5,3,9,2);
- h | r |  v  
+ h | r |  v
 ---+---+-----
  1 | 3 | 1-3
  1 | 2 | 1-2
@@ -3651,208 +3651,6 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 (90 rows)
 
 DROP TABLE pk_hash_range_int;
--- Test IndexOnlyScan on the primary key index and the secondary index without targets
-CREATE TABLE t_kv(k int, v int, PRIMARY KEY(k ASC));
-INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
--- IndexOnlyScan on the primary index
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Index Only Scan using t_kv_pkey on t_kv (actual rows=10 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(1) FROM t_kv;
-                              QUERY PLAN
------------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
-                              QUERY PLAN
------------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-/*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
- count
--------
-    10
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT 1 FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Index Only Scan using t_kv_pkey on t_kv (actual rows=10 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
--- IndexOnlyScan on the secondary index
-CREATE INDEX t_vi ON t_kv (v asc);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=10 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
- count
--------
-    10
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=10 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
--- Verify duplicated keys in secondary index
-INSERT INTO t_kv VALUES (11, 1);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=11 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
- count
--------
-    11
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=11 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
--- Verify null values in secondary index
-INSERT INTO t_kv VALUES (12, NULL);
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=12 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
- count
--------
-    12
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
-                         QUERY PLAN
--------------------------------------------------------------
- Index Only Scan using t_vi on t_kv (actual rows=12 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
--- Verify counts in IndexOnlyScan on the primary index after the updates
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Index Only Scan using t_kv_pkey on t_kv (actual rows=12 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(1) FROM t_kv;
-                              QUERY PLAN
------------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
-                              QUERY PLAN
------------------------------------------------------------------------
- Finalize Aggregate (actual rows=1 loops=1)
-   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
-         Heap Fetches: 0
-         Partial Aggregate: true
-(4 rows)
-
-/*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT count(*) FROM t_kv;
- count
--------
-    12
-(1 row)
-
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
-                            QUERY PLAN
-------------------------------------------------------------------
- Index Only Scan using t_kv_pkey on t_kv (actual rows=12 loops=1)
-   Heap Fetches: 0
-(2 rows)
-
-DROP TABLE t_kv;
 -- Test index SPLIT AT with INCLUDE clause
 CREATE TABLE test_tbl (
   a INT,
@@ -3864,20 +3662,20 @@ CREATE INDEX test_idx on test_tbl(
 ) INCLUDE (a) SPLIT AT VALUES ((1));
 INSERT INTO test_tbl VALUES (1, 2),(2, 1),(4, 3),(5, 4);
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE a = 4;
-                             QUERY PLAN                             
+                             QUERY PLAN
 --------------------------------------------------------------------
  Index Scan using test_tbl_pkey on test_tbl (actual rows=1 loops=1)
    Index Cond: (a = 4)
 (2 rows)
 
 SELECT a, b FROM test_tbl WHERE a = 4;
- a | b 
+ a | b
 ---+---
  4 | 3
 (1 row)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE b = 4;
-                             QUERY PLAN                             
+                             QUERY PLAN
 --------------------------------------------------------------------
  Index Only Scan using test_idx on test_tbl (actual rows=1 loops=1)
    Index Cond: (b = 4)
@@ -3885,7 +3683,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl 
 (3 rows)
 
 SELECT a, b FROM test_tbl WHERE b = 4;
- a | b 
+ a | b
 ---+---
  5 | 4
 (1 row)

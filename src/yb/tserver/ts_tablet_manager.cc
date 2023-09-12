@@ -89,6 +89,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -374,6 +375,16 @@ using yb::MonoTime;
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 const std::string kDebugBootstrapString = "RemoteBootstrap";
 const std::string kDebugSnapshotTransferString = "RemoteSnapshotTransfer";
+
+// Jenkins builds complain if we use tools::SnapshotIdToString with `undefined reference`.
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+} // namespace
 
 void TSTabletManager::VerifyTabletData() {
   LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
@@ -821,10 +832,10 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
-                                                  config, consensus::kMinimumTerm, &cmeta),
-                        "Unable to create new ConsensusMeta for tablet " + tablet_id);
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+      ConsensusMetadata::Create(
+          fs_manager_, tablet_id, fs_manager_->uuid(), config, consensus::kMinimumTerm),
+      "Unable to create new ConsensusMeta for tablet " + tablet_id);
   TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
@@ -853,15 +864,15 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_encoded_key = request.split_encoded_key();
 
   auto source_partition = tablet.metadata()->partition();
-  const auto source_key_bounds = *tablet.doc_db().key_bounds;
+  const auto& source_key_bounds = tablet.key_bounds();
 
   {
     TabletCreationMetaData meta;
     meta.tablet_id = request.new_tablet1_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_end(split_partition_key);
     meta.key_bounds.upper.Reset(split_encoded_key);
+    meta.partition.set_partition_key_end(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -870,8 +881,8 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
     meta.tablet_id = request.new_tablet2_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_start(split_partition_key);
     meta.key_bounds.lower.Reset(split_encoded_key);
+    meta.partition.set_partition_key_start(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -1040,10 +1051,9 @@ Status TSTabletManager::ApplyTabletSplit(
     }
   });
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  RETURN_NOT_OK(ConsensusMetadata::Create(
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term, &cmeta));
+      split_op_id.term));
   if (request->has_split_parent_leader_uuid()) {
     cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
     LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
@@ -1351,8 +1361,11 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir));
 
   // Download the remote file specified in the request.
+  auto snapshot_id = SnapshotIdToString(req.snapshot_id());
+  auto new_snapshot_id =
+      req.has_new_snapshot_id() ? SnapshotIdToString(req.new_snapshot_id()) : snapshot_id;
   RETURN_NOT_OK_PREPEND(
-      remote_snapshot_client->FetchSnapshot(req.snapshot_id()),
+      remote_snapshot_client->FetchSnapshot(snapshot_id, new_snapshot_id),
       "remote snapshot transfer: Unable to fetch data from remote tablet " + source_uuid + " (" +
           source_addr.ToString() + ")");
 
@@ -1573,8 +1586,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   consensus::RetryableRequestsManager retryable_requests_manager(
       tablet_id, fs_manager_, meta->wal_dir(),
-      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()), parent_mem_tracker,
-                                      AddToParent::kTrue, CreateMetrics::kFalse), kLogPrefix);
+      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()),
+          /* metric_name */ "PerTablet", parent_mem_tracker, AddToParent::kTrue,
+              CreateMetrics::kFalse), kLogPrefix);
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1660,7 +1674,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .retryable_requests_manager = &retryable_requests_manager,
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
       .consensus_meta = cmeta.get(),
-      .pre_log_rollover_callback = [peer_weak_ptr, &kLogPrefix]() {
+      .pre_log_rollover_callback = [peer_weak_ptr, kLogPrefix]() {
         auto peer = peer_weak_ptr.lock();
         if (peer) {
           Status s = peer->SubmitFlushRetryableRequestsTask();

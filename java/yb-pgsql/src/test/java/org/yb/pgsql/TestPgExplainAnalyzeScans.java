@@ -3,7 +3,6 @@ package org.yb.pgsql;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 
 import java.sql.Statement;
 
@@ -140,8 +139,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
     final String queryWithExpr = String.format("/*+ SeqScan(foo) */ SELECT * FROM %s "
       + "WHERE v5 < 64", MAIN_TABLE);
 
-    PlanCheckerBuilder YB_SEQ_SCAN_PLAN = makePlanBuilder()
-        .nodeType(NODE_YB_SEQ_SCAN)
+    PlanCheckerBuilder SEQ_SCAN_PLAN = makePlanBuilder()
+        .nodeType(NODE_SEQ_SCAN)
         .relationName(MAIN_TABLE)
         .alias(MAIN_TABLE)
         .storageTableReadExecutionTime(Checkers.greater(0.0));
@@ -150,7 +149,7 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
     Checker checker = SCAN_TOP_LEVEL_CHECKER
         .storageReadRequests(Checkers.equal(NUM_PAGES + 1))
         .storageReadExecutionTime(Checkers.greater(0.0))
-        .plan(YB_SEQ_SCAN_PLAN
+        .plan(SEQ_SCAN_PLAN
             .storageTableReadRequests(Checkers.equal(NUM_PAGES + 1))
             .build())
         .build();
@@ -161,7 +160,7 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
     Checker pushdown_checker = SCAN_TOP_LEVEL_CHECKER
         .storageReadRequests(Checkers.equal(3))
         .storageReadExecutionTime(Checkers.greater(0.0))
-        .plan(YB_SEQ_SCAN_PLAN
+        .plan(SEQ_SCAN_PLAN
             .storageTableReadRequests(Checkers.equal(3))
             .build())
         .build();
@@ -172,7 +171,7 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
     Checker no_pushdown_checker = SCAN_TOP_LEVEL_CHECKER
         .storageReadRequests(Checkers.equal(NUM_PAGES + 1))
         .storageReadExecutionTime(Checkers.greater(0.0))
-        .plan(YB_SEQ_SCAN_PLAN
+        .plan(SEQ_SCAN_PLAN
             .storageTableReadRequests(Checkers.equal(NUM_PAGES + 1))
             .build())
         .build();

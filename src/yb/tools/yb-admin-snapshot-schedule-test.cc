@@ -1429,6 +1429,62 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
   RunTestWithColocatedParam(schedule_id);
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumnWithMissingDefault) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY) $1",
+        table_name, option));
+    // Insert a row.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table_name));
+    // Add a column with a missing default value.
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD COLUMN value TEXT DEFAULT 'default'", table_name));
+    // Insert some rows with explicitly set values and nulls for the new column.
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (2, null), (3, 'not_default')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Alter the table -> Drop 'value' column";
+    // Drop the column.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value", table_name));
+    // Verify that we cannot read the column.
+    auto query_and_result = conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name));
+    ASSERT_FALSE(query_and_result.ok());
+    ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
+    // Verify that we cannot insert into the column.
+    auto insert_status = conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 'new_value')", table_name);
+    ASSERT_FALSE(insert_status.ok());
+    ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
+  };
+
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Select data from the table after restore";
+    // Verify that the missing default values are restored correctly.
+    const auto query = Format("SELECT value FROM $0", table_name);
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    ASSERT_OK(WaitForSelectQueryToMatchExpectation(query + " WHERE key = 1", "default", &conn));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>(query + " WHERE key = 2")), "");
+    ASSERT_EQ(ASSERT_RESULT(
+        conn.FetchValue<std::string>(query + " WHERE key = 3")), "not_default");
+    // We should now be able to insert with restored column.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 'new_value')", table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlRenameTable) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -4052,7 +4108,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
   ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Reset the flag so we compact the children after the restore.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
@@ -4062,7 +4118,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
   ASSERT_EQ(tablets.size(), 2);
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Try to split the first tablet to sanity check it was compacted after the restore.
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(

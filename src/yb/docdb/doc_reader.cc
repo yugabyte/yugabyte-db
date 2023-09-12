@@ -37,6 +37,7 @@
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
@@ -257,9 +258,10 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   }
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
+  const Schema schema;
   DocDBTableReader doc_reader(
       iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
-      schema_packing_storage);
+      schema_packing_storage, schema);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
   SubDocument result;
@@ -325,7 +327,7 @@ class PackedRowData {
     }
     auto& decoder = decoders_[id];
     if (!decoder.Valid()) {
-      decoder.Init(version_, *data_.projection, *schema_packing_, context);
+      decoder.Init(version_, *data_.projection, *schema_packing_, context, data_.schema);
     }
 
     return decoder.Apply(value, context->Context());
@@ -362,12 +364,14 @@ DocDBTableReaderData::DocDBTableReaderData(
     IntentAwareIterator* iter_, CoarseTimePoint deadline,
     const dockv::ReaderProjection* projection_,
     TableType table_type_,
-    std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_)
+    std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
+    std::reference_wrapper<const Schema> schema_)
     : iter(iter_),
       deadline_info(deadline),
       projection(projection_),
       table_type(table_type_),
-      schema_packing_storage(schema_packing_storage_) {
+      schema_packing_storage(schema_packing_storage_),
+      schema(schema_) {
 }
 
 DocDBTableReaderData::~DocDBTableReaderData() = default;
@@ -531,10 +535,18 @@ Result<bool> TryDecodePrimitiveValueOnly(
   return true;
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* out) {
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, qlexpr::QLTableRow* out,
+    const Schema& schema) {
   for (const auto& column : projection.value_columns()) {
-    out->MarkTombstoned(column.id);
+    const auto& missing_value =
+        VERIFY_RESULT_REF(schema.GetMissingValueByColumnId(column.id));
+    if (QLValue::IsNull(missing_value)) {
+      out->MarkTombstoned(column.id);
+    } else {
+      out->AllocColumn(column.id).value = missing_value;
+    }
   }
+  return Status::OK();
 }
 
 class DocDbToQLTableRowConverter {
@@ -566,6 +578,15 @@ class DocDbToQLTableRowConverter {
     return Status::OK();
   }
 
+  Status Decode(const QLValuePB& value, DataType data_type) {
+    // Nothing to decode. Set column value.
+    if (!IsNull(value)) {
+      row_.AllocColumn(column_).value = value;
+    }
+    row_.MarkTombstoned(column_);
+    return Status::OK();
+  }
+
  private:
   qlexpr::QLTableRow& row_;
   ColumnId column_;
@@ -582,8 +603,9 @@ auto DecodePackedColumn(
   return MakeConverter(row, index, projected_column.id).Decode(value, projected_column.data_type);
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, dockv::PgTableRow* out) {
-  out->SetNull();
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, dockv::PgTableRow* out,
+    const Schema& schema) {
+  return out->SetNullOrMissingResult(schema);
 }
 
 class DocDbToPgTableRowConverter {
@@ -615,6 +637,11 @@ class DocDbToPgTableRowConverter {
     return row_.DecodeValue(column_index_, value);
   }
 
+  Status Decode(const QLValuePB& value, DataType data_type) {
+    // Nothing to decode. Set column value.
+    return row_.SetValueByColumnIdx(column_index_, value);
+  }
+
  private:
   dockv::PgTableRow& row_;
   size_t column_index_;
@@ -641,6 +668,11 @@ class NullPtrRowConverter {
   Status Decode(dockv::PackedValueV2 value, DataType = DataType::NULL_VALUE_TYPE) {
     return Status::OK();
   }
+
+  Status Decode(const QLValuePB& value, DataType = DataType::NULL_VALUE_TYPE) {
+    return Status::OK();
+  }
+
 };
 
 inline auto MakeConverter(std::nullptr_t row, size_t column_index, ColumnId) {
@@ -653,7 +685,9 @@ auto DecodePackedColumn(
   return NullPtrRowConverter().Decode(value);
 }
 
-void SetNullResult(const dockv::ReaderProjection& projection, std::nullptr_t out) {
+Status SetNullOrMissingResult(const dockv::ReaderProjection& projection, std::nullptr_t out,
+    const Schema& schema) {
+  return Status::OK();
 }
 
 template <class Value, class Converter> requires (!std::is_pointer_v<Converter>)
@@ -940,8 +974,9 @@ Status DecodePackedColumn(GetHelper<ResultType>* helper, size_t index, Value val
 }
 
 template <class ResultType>
-void SkipPackedColumn(GetHelper<ResultType>* helper, size_t index) {
-  helper->DecodePackedColumn(std::nullopt, &helper->projection().columns[index]);
+Status SkipPackedColumn(GetHelper<ResultType>* helper, size_t index,
+    const QLValuePB& missing_value) {
+  return helper->DecodePackedColumn(missing_value, &helper->projection().columns[index]);
 }
 
 template <class ResultType, class Value>
@@ -951,52 +986,160 @@ Status DecodePackedColumn(
 }
 
 template <class ResultType>
-void SkipPackedColumn(FlatGetHelper<ResultType>* helper, size_t index) {
-  docdb::DecodePackedColumn(helper->result(), index, std::nullopt, helper->projection());
+Status SkipPackedColumn(FlatGetHelper<ResultType>* helper, size_t index,
+    const QLValuePB& missing_value) {
+  return docdb::DecodePackedColumn(helper->result(), index, missing_value, helper->projection());
 }
 
-void SkipPackedColumn(dockv::PgTableRow* row, size_t index) {
-  row->SetNull(index);
+Status SkipPackedColumn(dockv::PgTableRow* row, size_t index, const QLValuePB& missing_value) {
+  return row->SetValueByColumnIdx(index, missing_value);
 }
 
-template <class Extractor, bool kLast, class ContextType>
-UnsafeStatus DecodePackedColumn(
-    const dockv::PackedColumnDecoderData& data, size_t projection_index,
+template <bool kLast, class ContextType>
+UnsafeStatus DecodePackedColumnV1(
+    dockv::PackedColumnDecoderDataV1* data, size_t projection_index,
     const dockv::PackedColumnDecoderEntry* chain) {
-  auto* extractor = static_cast<Extractor*>(data.decoder);
-  auto column_value = extractor->FetchValue(chain->data);
+  auto column_value = data->decoder.FetchValue(chain->data);
   auto status = column_value.FixValue();
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
   status = DecodePackedColumn(
-      static_cast<ContextType*>(data.context), projection_index, column_value);
+      static_cast<ContextType*>(data->context), projection_index, column_value);
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
-  return dockv::CallNextDecoder<kLast>(data, projection_index, chain);
+  return dockv::CallNextDecoderV1<kLast>(
+      data, projection_index, chain);
 }
 
-template <class RowDecoder, bool kLast, class ContextType>
-struct MakeColumnDecoder {
-  static dockv::PackedColumnDecoder Apply(DataType data_type) {
-    return &DecodePackedColumn<RowDecoder, kLast, ContextType>;
+template <bool kLast, bool kCheckNull, size_t kSize, class ContextType>
+UnsafeStatus DecodePackedColumnV2(
+    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    const dockv::PackedColumnDecoderEntry* chain) {
+  Status status;
+  if (kCheckNull && PREDICT_FALSE(dockv::PackedRowDecoderV2::IsNull(header, chain->data))) {
+    status = DecodePackedColumn(
+        static_cast<ContextType*>(context), projection_index, dockv::PackedValueV2::Null());
+  } else {
+    Slice column_value_slice;
+    if (kSize) {
+      column_value_slice = Slice(body, kSize);
+    } else {
+      auto [len, start] = DecodeFieldLength(body);
+      column_value_slice = Slice(start, len);
+    }
+    dockv::PackedValueV2 column_value(column_value_slice);
+    body = column_value->end();
+    status = DecodePackedColumn(
+        static_cast<ContextType*>(context), projection_index, column_value);
+  }
+  if (PREDICT_FALSE(!status.ok())) {
+    return status.UnsafeRelease();
+  }
+  return dockv::CallNextDecoderV2<kCheckNull, kLast>(
+      header, body, context, projection_index, chain);
+}
+
+template <dockv::PackedRowVersion kVersion, bool kLast, class ContextType>
+struct MakeColumnDecoderEntry;
+
+template <bool kLast, class ContextType>
+struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV1, kLast, ContextType> {
+  static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
+    return dockv::PackedColumnDecoderEntry {
+      .decoder = dockv::PackedColumnDecoderUnion {
+        .v1 = &DecodePackedColumnV1<kLast, ContextType>,
+      },
+      .data = make_unsigned(packed_index),
+    };
   }
 };
 
-template <class RowDecoder, bool kLast>
-struct MakeColumnDecoder<RowDecoder, kLast, dockv::PgTableRow> {
-  static dockv::PackedColumnDecoder Apply(DataType data_type) {
-    return dockv::PgTableRow::GetPackedColumnDecoder(RowDecoder::kVersion, kLast, data_type);
+template <bool kCheckNull, bool kLast, class ContextType>
+struct MakePackedRowDecoderV2Visitor {
+  template <class T>
+  dockv::PackedColumnDecoderV2 Primitive() const {
+    return Apply<sizeof(T)>();
+  }
+
+  dockv::PackedColumnDecoderV2 Binary() const {
+    return Apply<0>();
+  }
+
+  dockv::PackedColumnDecoderV2 String() const {
+    return Apply<0>();
+  }
+
+  dockv::PackedColumnDecoderV2 Decimal() const {
+    return Apply<0>();
+  }
+
+ private:
+  template <size_t kSize>
+  dockv::PackedColumnDecoderV2 Apply() const {
+    return DecodePackedColumnV2<kLast, kCheckNull, kSize, ContextType>;
   }
 };
 
 template <bool kLast, class ContextType>
-UnsafeStatus SkippedColumnDecoder(
-    const dockv::PackedColumnDecoderData& data, size_t projection_index,
+struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV2, kLast, ContextType> {
+  static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
+    return dockv::PackedColumnDecoderEntry {
+      .decoder = dockv::PackedColumnDecoderUnion {
+        .v2 = dockv::PackedColumnDecodersV2 {
+          .with_nulls = dockv::VisitDataType(
+            data_type, MakePackedRowDecoderV2Visitor<true, kLast, ContextType>()),
+          .no_nulls = dockv::VisitDataType(
+            data_type, MakePackedRowDecoderV2Visitor<false, kLast, ContextType>()),
+        },
+      },
+      .data = make_unsigned(packed_index),
+    };
+  }
+};
+
+template <bool kLast>
+struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV1, kLast, dockv::PgTableRow> {
+  static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
+    return dockv::PgTableRow::GetPackedColumnDecoderV1(
+        kLast, data_type, packed_index);
+  }
+};
+
+template <bool kLast>
+struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV2, kLast, dockv::PgTableRow> {
+  static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
+    return dockv::PgTableRow::GetPackedColumnDecoderV2(kLast, data_type, packed_index);
+  }
+};
+
+template <bool kLast, class ContextType>
+UnsafeStatus MissingColumnDecoderV1(
+    dockv::PackedColumnDecoderDataV1* data, size_t projection_index,
     const dockv::PackedColumnDecoderEntry* chain) {
-  SkipPackedColumn(static_cast<ContextType*>(data.context), projection_index);
-  return CallNextDecoder<kLast>(data, projection_index, chain);
+  auto* helper = static_cast<ContextType*>(data->context);
+  // Fill in missing value (if any) for skipped columns.
+  const QLValuePB* missing_value = DCHECK_NOTNULL(bit_cast<const QLValuePB*>(chain->data));
+  auto status = SkipPackedColumn(helper, projection_index, *missing_value);
+  if (PREDICT_FALSE(!status.ok())) {
+    return status.UnsafeRelease();
+  }
+  return CallNextDecoderV1<kLast>(data, projection_index, chain);
+}
+
+template <bool kCheckNull, bool kLast, class ContextType>
+UnsafeStatus MissingColumnDecoderV2(
+    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    const dockv::PackedColumnDecoderEntry* chain) {
+  auto* helper = static_cast<ContextType*>(context);
+  // Fill in missing value (if any) for skipped columns.
+  const QLValuePB* missing_value = DCHECK_NOTNULL(bit_cast<const QLValuePB*>(chain->data));
+  auto status = SkipPackedColumn(helper, projection_index, *missing_value);
+  if (PREDICT_FALSE(!status.ok())) {
+    return status.UnsafeRelease();
+  }
+  return CallNextDecoderV2<kCheckNull, kLast>(header, body, context, projection_index, chain);
 }
 
 template <class HelperType>
@@ -1009,43 +1152,50 @@ struct HelperToContext<FlatGetHelper<dockv::PgTableRow*>> {
   using Type = dockv::PgTableRow;
 };
 
-template <class RowDecoder, bool kLast, class HelperType>
+template <dockv::PackedRowVersion kVersion, bool kLast, class HelperType>
 dockv::PackedColumnDecoderEntry GetColumnDecoder3(
-    const dockv::ReaderProjection& projection, size_t projection_index, ssize_t packed_index) {
+    const Schema& schema, const dockv::ReaderProjection& projection, size_t projection_index,
+    ssize_t packed_index) {
   using ContextType = typename HelperToContext<HelperType>::Type;
   if (packed_index != dockv::SchemaPacking::kSkippedColumnIdx) {
     auto data_type = projection.columns[projection_index].data_type;
-    return dockv::PackedColumnDecoderEntry {
-      .decoder = MakeColumnDecoder<RowDecoder, kLast, ContextType>::Apply(data_type),
-      .data = make_unsigned(packed_index),
-    };
+    return MakeColumnDecoderEntry<kVersion, kLast, ContextType>::Apply(data_type, packed_index);
   }
-  return dockv::PackedColumnDecoderEntry {
-    .decoder = SkippedColumnDecoder<kLast, ContextType>,
-    .data = 0,
-  };
-}
-
-template <class RowDecoder, class HelperType, class... Args>
-dockv::PackedColumnDecoderEntry GetColumnDecoder2(
-    bool last, Args&&... args) {
-  if (last) {
-    return GetColumnDecoder3<RowDecoder, true, HelperType>(std::forward<Args>(args)...);
+  auto column_idx = schema.find_column_by_id(projection.columns[projection_index].id);
+  const QLValuePB* missing_value = nullptr;
+  if (column_idx != Schema::kColumnNotFound) {
+    missing_value = &schema.column(column_idx).missing_value();
   } else {
-    return GetColumnDecoder3<RowDecoder, false, HelperType>(std::forward<Args>(args)...);
+    static const QLValuePB kNull;
+    missing_value = &kNull;
+  }
+  switch (kVersion) {
+    case dockv::PackedRowVersion::kV1:
+      return dockv::PackedColumnDecoderEntry {
+        .decoder = dockv::PackedColumnDecoderUnion {
+          .v1 = MissingColumnDecoderV1<kLast, ContextType>,
+        },
+        .data = yb::bit_cast<size_t>(missing_value),
+      };
+    case dockv::PackedRowVersion::kV2:
+      return dockv::PackedColumnDecoderEntry {
+        .decoder = dockv::PackedColumnDecoderUnion {
+          .v2 = dockv::PackedColumnDecodersV2 {
+            .with_nulls = MissingColumnDecoderV2<true, kLast, ContextType>,
+            .no_nulls = MissingColumnDecoderV2<false, kLast, ContextType>,
+          },
+        },
+        .data = yb::bit_cast<size_t>(missing_value),
+      };
   }
 }
 
-template <class HelperType, class... Args>
-dockv::PackedColumnDecoderEntry GetColumnDecoder(
-    dockv::PackedRowVersion version, Args&&... args) {
-  switch (version) {
-    case dockv::PackedRowVersion::kV1:
-      return GetColumnDecoder2<dockv::PackedRowDecoderV1, HelperType>(std::forward<Args>(args)...);
-    case dockv::PackedRowVersion::kV2:
-      return GetColumnDecoder2<dockv::PackedRowDecoderV2, HelperType>(std::forward<Args>(args)...);
+template <dockv::PackedRowVersion kVersion, class HelperType, class... Args>
+dockv::PackedColumnDecoderEntry GetColumnDecoder2(bool last, Args&&... args) {
+  if (!last) {
+    return GetColumnDecoder3<kVersion, false, HelperType>(std::forward<Args>(args)...);
   }
-  FATAL_INVALID_ENUM_VALUE(dockv::PackedRowVersion, version);
+  return GetColumnDecoder3<kVersion, true, HelperType>(std::forward<Args>(args)...);
 }
 
 // Implements main logic in the reader.
@@ -1149,6 +1299,17 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
         value, projected_column, AllocateChild(result_, projected_column->subkey));
   }
 
+  Status DecodePackedColumn(
+      const QLValuePB& value, const dockv::ProjectedColumn* projected_column) {
+    // Nothing to decode. Set column value.
+    dockv::PrimitiveValue *out = AllocateChild(result_, projected_column->subkey);
+    if (out && !IsNull(value)) {
+      *out = dockv::PrimitiveValue::FromQLValuePB(value);
+      found_ = true;
+    }
+    return Status::OK();
+  }
+
   size_t Id() override {
     return GetId<GetHelper>::kValue;
   }
@@ -1157,11 +1318,16 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
     return this;
   }
 
-  dockv::PackedColumnDecoderEntry GetColumnDecoder(
-      dockv::PackedRowVersion version, size_t projection_index, ssize_t packed_index,
-      bool last) override {
-    return docdb::GetColumnDecoder<GetHelper>(
-        version, last, *data_.projection, projection_index, packed_index);
+  dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
+      size_t projection_index, ssize_t packed_index, bool last) override {
+    return GetColumnDecoder2<dockv::PackedRowVersion::kV1, GetHelper>(
+        last, data_.schema, *data_.projection, projection_index, packed_index);
+  }
+
+  dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
+      size_t projection_index, ssize_t packed_index, bool last) override {
+    return GetColumnDecoder2<dockv::PackedRowVersion::kV2, GetHelper>(
+        last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   template <class Value>
@@ -1399,11 +1565,16 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
 
   void* Context() override;
 
-  dockv::PackedColumnDecoderEntry GetColumnDecoder(
-      dockv::PackedRowVersion version, size_t projection_index, ssize_t packed_index,
-      bool last) override {
-    return docdb::GetColumnDecoder<FlatGetHelper>(
-        version, last, *data_.projection, projection_index, packed_index);
+  dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
+      size_t projection_index, ssize_t packed_index, bool last) override {
+    return GetColumnDecoder2<dockv::PackedRowVersion::kV1, FlatGetHelper>(
+        last, data_.schema, *data_.projection, projection_index, packed_index);
+  }
+
+  dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
+      size_t projection_index, ssize_t packed_index, bool last) override {
+    return GetColumnDecoder2<dockv::PackedRowVersion::kV2, FlatGetHelper>(
+        last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   Status InitRowValue(
@@ -1412,8 +1583,7 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
     DCHECK_ONLY_NOTNULL(data_.projection);
     auto packed_row_version = dockv::GetPackedRowVersion(row_value);
     if (!packed_row_version) {
-      SetNullResult(*data_.projection, result_);
-      return Status::OK();
+      return SetNullOrMissingResult(*data_.projection, result_, data_.schema);
     }
     found_ = true;
     if (Base::kCheckExistOnly) {

@@ -15,7 +15,7 @@
 set -euo pipefail
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
-activate_virtualenv
+activate_virtualenv >&2
 set_pythonpath
 
 python3 "$YB_SCRIPT_PATH_THIRDPARTY_TOOL" "$@"

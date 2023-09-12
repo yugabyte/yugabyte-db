@@ -840,7 +840,7 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
   for (auto peer : ts_tablet_manager->GetTabletPeers()) {
     auto tablet = peer->shared_tablet();
     // Find the tablet peer with the db for early compaction (matching pointers)
-    if (tablet && tablet->TEST_db() == db_with_early_compaction) {
+    if (tablet && tablet->regular_db() == db_with_early_compaction) {
       auto metadata = tablet->metadata();
       // Previous compaction time set to 30 days prior to now.
       auto now = clock_->Now();
@@ -1032,7 +1032,7 @@ TEST_F(ScheduledFullCompactionsTest, OldestTabletsAreScheduledFirst) {
   ASSERT_EQ(compact_manager->num_scheduled_last_execution(), kThreadsPlusQueue);
 
   // Try to manually schedule one of the compactions. Should fail.
-  ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerFullCompactionIfNeeded(
+  ASSERT_NOK(not_to_be_compacted[0]->shared_tablet()->TriggerManualCompactionIfNeeded(
         rocksdb::CompactionReason::kScheduledFullCompaction));
 
   // Let the compactions finish.

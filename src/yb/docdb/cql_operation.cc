@@ -1069,7 +1069,7 @@ Status QLWriteOperation::ApplyUpsert(
       if (pack_row) {
         row_packer.emplace(
             schema_version_, schema_packing, FLAGS_ycql_packed_row_size_limit,
-            context.control_fields);
+            context.control_fields, doc_read_context_->schema());
         packed_row_write_id = data.doc_write_batch->ReserveWriteId();
         context.row_packer = &row_packer.value();
         ValueControlFields column_control_fields;

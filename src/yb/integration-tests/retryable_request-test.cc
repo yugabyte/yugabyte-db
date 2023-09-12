@@ -39,9 +39,11 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(TEST_pause_before_flushing_retryable_requests);
 DECLARE_bool(TEST_pause_before_replicate_batch);
 DECLARE_bool(TEST_pause_update_majority_replicated);
 DECLARE_int32(ht_lease_duration_ms);
@@ -57,6 +59,7 @@ class RetryableRequestTest : public YBTableTestBase {
  protected:
   void BeforeStartCluster() override {
     FLAGS_enable_load_balancing = false;
+    FLAGS_enable_flush_retryable_requests = true;
   }
   bool use_external_mini_cluster() override { return false; }
 
@@ -91,6 +94,7 @@ class RetryableRequestTest : public YBTableTestBase {
 class SingleServerRetryableRequestTest : public RetryableRequestTest {
  protected:
   void BeforeStartCluster() override {
+    RetryableRequestTest::BeforeStartCluster();
     FLAGS_retryable_request_timeout_secs = 10;
   }
 
@@ -190,11 +194,45 @@ TEST_F_EX(RetryableRequestTest, TestRejectOldOriginalRequest, SingleServerRetrya
   CheckKeyValue(/* key = */ 1, /* value = */ 1);
 }
 
+TEST_F_EX(
+    RetryableRequestTest, TestRetryableRequestFlusherShutdown, SingleServerRetryableRequestTest) {
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_.name()));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
+
+  PutKeyValue("1", "1");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+  ASSERT_OK(WaitFor([&] {
+    return tablet_peer->TEST_RetryableRequestsFlusherState() ==
+        tablet::RetryableRequestsFlushState::kFlushing;
+  }, 10s, "Start flushing retryable requests"));
+
+  // If flusher is not shutdown correctly from Tablet::CompleteShutdown, will get error:
+  // "Thread belonging to thread pool 'flush-retryable-requests' with name
+  // 'flush-retryable-requests [worker]' called pool function that would result in deadlock"
+  // See issue https://github.com/yugabyte/yugabyte-db/issues/18631
+  const auto server = mini_cluster_->mini_tablet_server(0);
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(server->Restart());
+    ASSERT_OK(server->WaitStarted());
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+
+  thread_holder.WaitAndStop(10s);
+}
+
 class MultiNodeRetryableRequestTest : public RetryableRequestTest {
  protected:
   bool enable_ysql() override { return false; }
 
   void BeforeStartCluster() override {
+    RetryableRequestTest::BeforeStartCluster();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 20 * 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 20 * 1000;
   }

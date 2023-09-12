@@ -345,7 +345,7 @@ auto AsString(T&&... t) -> decltype(ToString(std::forward<T>(t)...)) {
 
 #define YB_FIELD_TO_STRING_VALUE(elem, data)     \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem),  \
-                BOOST_PP_TUPLE_ELEM(2, 1, elem), \
+                (BOOST_PP_TUPLE_ELEM(2, 1, elem)), \
                 ::yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))))
 
 #define YB_FIELD_TO_STRING(r, data, elem) \
