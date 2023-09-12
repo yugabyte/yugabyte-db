@@ -600,9 +600,10 @@ class Tablet : public AbstractTablet,
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
-  void TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
+  Status ForceRocksDBCompact(
+      rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
   rocksdb::DB* regular_db() const {
@@ -647,6 +648,7 @@ class Tablet : public AbstractTablet,
   Result<size_t> TEST_CountRegularDBRecords();
 
   Status CreateReadIntents(
+      IsolationLevel level,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
@@ -701,6 +703,10 @@ class Tablet : public AbstractTablet,
   // Also updates flushed frontier for regular and intents DBs to match split_op_id and
   // split_op_hybrid_time.
   // In case of error sub-tablet could be partially persisted on disk.
+  // NB! As of now the method is supposed to be used only for creation child tablets during
+  // splitting operation. For any other type of usage, the method must be verified and possibly
+  // updated to correctly handle split_op_id, split_op_hybrid_time, parent_data_compacted
+  // and post_split_compaction_file_number_upper_bound.
   Result<RaftGroupMetadataPtr> CreateSubtablet(
       const TabletId& tablet_id, const dockv::Partition& partition,
       const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
@@ -763,10 +769,10 @@ class Tablet : public AbstractTablet,
   // previously by this tablet.
   void TriggerPostSplitCompactionIfNeeded();
 
-  // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
+  // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
   Status TriggerAdminFullCompactionIfNeeded();
@@ -941,7 +947,11 @@ class Tablet : public AbstractTablet,
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerFullCompactionSync(rocksdb::CompactionReason reason);
+  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+
+  Status ForceRocksDBCompact(
+      const rocksdb::CompactRangeOptions& regular_options,
+      const rocksdb::CompactRangeOptions& intents_options);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);

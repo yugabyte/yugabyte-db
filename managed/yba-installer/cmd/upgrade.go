@@ -47,7 +47,7 @@ var upgradeCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		// Can have no state if upgrading from a version before state existed.
 		if err != nil {
 			state = ybactlstate.New()

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <atomic>
+#include <iterator>
 #include <memory>
 
 #include <boost/atomic.hpp>
@@ -24,10 +25,65 @@
 
 namespace yb {
 
+template <class T>
+class MPSCQueue;
+
+template <class T>
+class MPSCQueueIterator : public std::iterator<std::input_iterator_tag, T> {
+ public:
+  explicit MPSCQueueIterator(const T* pop_head): next_(pop_head) {}
+
+  bool Equals(const MPSCQueueIterator& other) const {
+    return this->next_ == other.next_;
+  }
+
+  MPSCQueueIterator& operator++() {
+    LOG(INFO) << "incr from " << next_;
+    if (!is_end()) {
+      next_ = GetNext(next_);
+    }
+    return *this;
+  }
+
+  MPSCQueueIterator operator++(int) {
+    MPSCQueueIterator copy = *this;
+    ++*this;
+    return copy;
+  }
+
+  const T& operator*() const { return *next_; }
+
+  const T* operator->() const { return next_; }
+ private:
+  bool is_end() const {
+    return !next_;
+  }
+
+  friend bool operator==(const MPSCQueueIterator& lhs, const MPSCQueueIterator& rhs) {
+    return lhs.Equals(rhs);
+  }
+
+  friend bool operator!=(const MPSCQueueIterator& lhs, const MPSCQueueIterator& rhs) {
+    return !lhs.Equals(rhs);
+  }
+
+  const T* next_;
+};
+
 // Multi producer - singe consumer queue.
 template <class T>
 class MPSCQueue {
  public:
+  typedef MPSCQueueIterator<T> const_iterator;
+
+  const_iterator begin() const {
+    return MPSCQueueIterator<T>(push_head_);
+  }
+
+  const_iterator end() const {
+    return MPSCQueueIterator<T>(nullptr);
+  }
+
   // Thread safe - could be invoked from multiple threads.
   void Push(T* value) {
     T* old_head = push_head_.load(std::memory_order_acquire);
@@ -70,6 +126,8 @@ class MPSCQueue {
   T* pop_head_ = nullptr;
   // List of push entries, push head points to last pushed entry.
   std::atomic<T*> push_head_{nullptr};
+
+  friend MPSCQueueIterator<T>;
 };
 
 template <class T>
@@ -158,7 +216,7 @@ class WriteOnceWeakPtr {
 
   // Set the pointer to the given value. Return true if successful. Setting the value to a null
   // pointer is never considered successful.
-  bool Set(const std::shared_ptr<T>& p) {
+  MUST_USE_RESULT bool Set(const std::shared_ptr<T>& p) {
     if (!p)
       return false;
     auto expected_state = State::kUnset;

@@ -78,7 +78,7 @@ class IDChecker : public ThreadLocalPtr {
 
 }  // anonymous namespace
 
-TEST_F(ThreadLocalTest, UniqueIdTest) {
+TEST_F(ThreadLocalTest, UniqueIdTestAndSequentialReadWriteTest) {
   {
     port::Mutex mu;
     port::CondVar cv(&mu);
@@ -126,9 +126,10 @@ TEST_F(ThreadLocalTest, UniqueIdTest) {
   }
   // After exit, id sequence in queue:
   ASSERT_EQ("[3, 1, 2, 0]", yb::ToString(IDChecker::PeekIds()));
-}
 
-TEST_F(ThreadLocalTest, SequentialReadWriteTest) {
+  // What follows used to be SequentialReadWriteTest. But it relies on the state
+  // that is set up by UniqueIdTest.
+
   ASSERT_EQ(0u, IDChecker::PeekId());
   ASSERT_EQ("[3, 1, 2, 0]", yb::ToString(IDChecker::PeekIds()));
 

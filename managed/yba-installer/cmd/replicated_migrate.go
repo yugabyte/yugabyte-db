@@ -34,13 +34,6 @@ var replicatedMigrationStart = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to initialize state " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
-			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.MigratingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("failed to update state: " + err.Error())
-		}
 
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl: " + err.Error())
@@ -57,6 +50,14 @@ var replicatedMigrationStart = &cobra.Command{
 			preflight.PrintPreflightResults(results)
 			log.Fatal("Preflight checks failed. To skip (not recommended), " +
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
+		}
+
+		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
+			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
+		}
+		state.CurrentStatus = ybactlstate.MigratingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to update state: " + err.Error())
 		}
 
 		// Dump replicated settings
@@ -80,6 +81,8 @@ var replicatedMigrationStart = &cobra.Command{
 			log.Fatal("Could not read " + checkFile + " to get group and user: " + err.Error())
 		}
 		statInfo := info.Sys().(*syscall.Stat_t)
+		log.DebugLF(
+			fmt.Sprintf("Prometheus user:group ownership - '%s:%s'", statInfo.Uid, statInfo.Gid))
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
@@ -241,7 +244,7 @@ Are you sure you want to continue?`
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
@@ -299,7 +302,7 @@ var replicatedRollbackCmd = &cobra.Command{
 		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
 		"migrate will not be reflected after the rollback completes",
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
@@ -309,6 +312,12 @@ var replicatedRollbackCmd = &cobra.Command{
 		state.CurrentStatus = ybactlstate.RollbackStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("Failed to save state: " + err.Error())
+		}
+
+		prompt := "Rollback to Replicated will not carry over any changes made to YBA after " +
+			"migration began. Continue?"
+		if !common.UserConfirm(prompt, common.DefaultNo) {
+			log.Fatal("canceling rollback")
 		}
 		if err := rollbackMigrations(state); err != nil {
 			log.Fatal("rollback failed: " + err.Error())

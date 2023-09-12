@@ -207,7 +207,9 @@ public class Users extends Model {
   public static Users getOrBadRequest(UUID customerUUID, UUID userUUID) {
     Users user = find.query().where().idEq(userUUID).eq("customer_uuid", customerUUID).findOne();
     if (user == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Invalid User UUID: '%s' for customer: '%s'.", userUUID, customerUUID));
     }
     return user;
   }

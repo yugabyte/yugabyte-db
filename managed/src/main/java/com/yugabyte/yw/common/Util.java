@@ -90,6 +90,11 @@ public class Util {
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
 
+  public static final String CUSTOMERS = "customers";
+  public static final String UNIVERSES = "universes";
+  public static final String USERS = "users";
+  public static final String UNIVERSE_UUID = "universeUUID";
+
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";

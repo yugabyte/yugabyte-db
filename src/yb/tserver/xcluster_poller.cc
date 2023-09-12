@@ -16,7 +16,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
 
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
@@ -354,7 +354,7 @@ void XClusterPoller::DoPoll() {
 
   // It is safe to pass rpcs_ raw pointer as the call is guaranteed to complete before Rpcs
   // shutdown.
-  *handle = CreateGetChangesCDCRpc(
+  *handle = rpc::xcluster::CreateGetChangesRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(), &req,

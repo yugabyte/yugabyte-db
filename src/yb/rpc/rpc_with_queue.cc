@@ -118,10 +118,8 @@ Status ConnectionContextWithQueue::QueueResponse(const ConnectionPtr& conn, Inbo
 }
 
 void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
-  // This function is only called as a callback on reactor thread from AssignConnection.
-  auto* reactor = conn->reactor();
-  auto guard = reactor->CheckCurrentThread();
-
+  // This function is only called as a callback on reactor thread.
+  conn->reactor()->CheckCurrentThread();
   const size_t begin = replies_being_sent_;
   size_t end = begin;
   for (;;) {

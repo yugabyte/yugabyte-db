@@ -9,6 +9,6 @@
 
 import { Permission } from "./permission";
 
-export const getPermissionDisplayText = (permission: Permission['prerequisite_permissions'][number]) => {
-    return `${permission.resource_type}.${permission.permission}`;
+export const getPermissionDisplayText = (permission: Permission['prerequisitePermissions'][number]) => {
+    return `${permission.resourceType}.${permission.action}`;
 };

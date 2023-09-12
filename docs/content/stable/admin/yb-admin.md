@@ -1638,6 +1638,28 @@ A successful operation of the above command returns a message with a DB stream I
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
+##### Creating stream in EXPLICIT checkpointing mode
+
+To create a change data capture (CDC) DB stream which works in the EXPLICIT checkpointing mode where the client is responsible for managing the checkpoints, use the following command:
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> EXPLICIT
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `EXPLICIT`: Checkpointing type on the server.
+
+A successful operation of the above command returns a message with a DB stream ID:
+
+```output
+CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
 #### list_change_data_streams
 
 Lists all the created CDC DB streams.

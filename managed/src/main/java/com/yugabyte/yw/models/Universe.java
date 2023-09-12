@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -200,7 +201,15 @@ public class Universe extends Model {
                 return false;
               }
             })
-        .forEach(Model::delete);
+        .forEach(
+            xClusterConfig -> {
+              // Delete DR configs with no xCluster configs.
+              DrConfig drConfig = xClusterConfig.getDrConfig();
+              if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
+                drConfig.delete();
+              }
+              xClusterConfig.delete();
+            });
     return super.delete();
   }
 

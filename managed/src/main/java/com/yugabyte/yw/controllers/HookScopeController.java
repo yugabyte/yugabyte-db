@@ -4,9 +4,12 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.HookScopeFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -16,6 +19,11 @@ import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -49,6 +57,12 @@ public class HookScopeController extends AuthenticatedController {
       nickname = "listScopes",
       response = HookScope.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer, request);
@@ -67,6 +81,12 @@ public class HookScopeController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.HookScopeFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer, request);
@@ -103,6 +123,12 @@ public class HookScopeController extends AuthenticatedController {
       value = "Delete a hook scope",
       nickname = "deleteHookScope",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID hookScopeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer, request);
@@ -122,6 +148,12 @@ public class HookScopeController extends AuthenticatedController {
       value = "Add a hook to a hook scope",
       nickname = "addHook",
       response = HookScope.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result addHook(
       UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -142,6 +174,12 @@ public class HookScopeController extends AuthenticatedController {
       value = "Remove a hook from a hook scope",
       nickname = "removeHook",
       response = HookScope.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result removeHook(
       UUID customerUUID, UUID hookScopeUUID, UUID hookUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);

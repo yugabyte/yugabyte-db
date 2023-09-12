@@ -29,6 +29,7 @@ import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -49,6 +50,7 @@ import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes.TableType;
 
 @ApiModel(description = "Universe level restores")
 @Entity
@@ -59,6 +61,9 @@ public class Restore extends Model {
   public static final String BACKUP_UNIVERSE_UUID =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
   public static final Pattern PATTERN = Pattern.compile(BACKUP_UNIVERSE_UUID);
+  public static final String BACKUP_CREATED_DATE =
+      "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}";
+  public static final Pattern PATTERN_DATE = Pattern.compile(BACKUP_CREATED_DATE);
 
   public static final Finder<UUID, Restore> find = new Finder<UUID, Restore>(Restore.class) {};
 
@@ -138,6 +143,10 @@ public class Restore extends Model {
 
   @UpdatedTimestamp private Date updateTime;
 
+  @Column private Date backupCreatedOnDate;
+
+  @Column private TableType backupType;
+
   private static final Multimap<State, State> ALLOWED_TRANSITIONS =
       ImmutableMultimap.<State, State>builder()
           .put(State.Created, State.InProgress)
@@ -161,6 +170,18 @@ public class Restore extends Model {
     String storageLocation = "";
     if (!CollectionUtils.isEmpty(taskDetails.backupStorageInfoList)) {
       storageLocation = taskDetails.backupStorageInfoList.get(0).storageLocation;
+      restore.setBackupType(taskDetails.backupStorageInfoList.get(0).backupType);
+      Matcher matcherDate = PATTERN_DATE.matcher(storageLocation);
+      if (matcherDate.find()) {
+        try {
+          Date backupDate =
+              new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").parse(matcherDate.group(0));
+          LOG.debug("Setting backup created on time {}.", backupDate);
+          restore.setBackupCreatedOnDate(backupDate);
+        } catch (Exception e) {
+          LOG.error("Ignoring incorrect date format in storage location");
+        }
+      }
     }
     Matcher matcher = PATTERN.matcher(storageLocation);
     if (matcher.find()) {
@@ -264,6 +285,8 @@ public class Restore extends Model {
             .universeUUID(restore.getUniverseUUID())
             .sourceUniverseUUID(restore.getSourceUniverseUUID())
             .state(state)
+            .backupType(restore.getBackupType())
+            .backupCreatedOnDate(restore.getBackupCreatedOnDate())
             .restoreSizeInBytes(restore.getRestoreSizeInBytes())
             .restoreKeyspaceList(restoreKeyspaceList)
             .isSourceUniversePresent(isSourceUniversePresent);

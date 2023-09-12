@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -42,6 +43,7 @@ public class WaitForServer extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     // Timeout for the RPC call.
     public long serverWaitTimeoutMs;
+    public UniverseDefinitionTaskParams.UserIntent userIntent;
   }
 
   @Override
@@ -97,9 +99,16 @@ public class WaitForServer extends ServerSubTaskBase {
     RunQueryFormData runQueryFormData = new RunQueryFormData();
     runQueryFormData.query = "SELECT version()";
     runQueryFormData.db_name = "system_platform";
+    UniverseDefinitionTaskParams.UserIntent userIntent = taskParams().userIntent;
+    if (userIntent == null) {
+      userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    }
     JsonNode ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
-            universe, runQueryFormData, universe.getNode(taskParams().nodeName));
+            universe,
+            runQueryFormData,
+            universe.getNode(taskParams().nodeName),
+            userIntent.isYSQLAuthEnabled());
     return !ysqlResponse.has("error");
   }
 }

@@ -231,6 +231,9 @@ struct KvStoreInfo {
   // See KvStoreInfoPB field with the same name.
   uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
 
+  // See KvStoreInfoPB field with the same name.
+  std::optional<uint64_t> post_split_compaction_file_number_upper_bound = 0;
+
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
@@ -394,6 +397,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void set_parent_data_compacted(const bool& value) {
     std::lock_guard lock(data_mutex_);
     kv_store_.parent_data_compacted = value;
+  }
+
+  std::optional<uint64_t> post_split_compaction_file_number_upper_bound() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.post_split_compaction_file_number_upper_bound;
+  }
+
+  void set_post_split_compaction_file_number_upper_bound(uint64_t value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.post_split_compaction_file_number_upper_bound = value;
   }
 
   uint64_t last_full_compaction_time() {
@@ -631,6 +644,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationApplied(const OpId& applied_opid);
 
   OpId MinUnflushedChangeMetadataOpId() const;
+
+  // Updates related meta data when post split compction as a reaction for post split compaction
+  // completed. Returns true if any field has been updated and a flush may be required.
+  bool OnPostSplitCompactionDone();
 
  private:
   typedef simple_spinlock MutexType;

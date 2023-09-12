@@ -140,6 +140,8 @@ crosslinks
 Crossplane
 CrowdIn
 CSV
+Cutover
+cutover
 cybersecurity
 Dangerfile
 Datadog
