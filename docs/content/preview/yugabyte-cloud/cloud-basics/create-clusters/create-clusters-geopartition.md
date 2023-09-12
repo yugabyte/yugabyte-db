@@ -15,8 +15,6 @@ Use [partition-by-region](../../create-clusters-topology/#partition-by-region) c
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
 
-Currently, Azure is not supported for partition-by-region clusters (coming soon).
-
 {{< youtube id="9ESTXEa9QZY" title="Create a geo-partitioned cluster in YugabyteDB Managed" >}}
 
 ## Tablespaces
