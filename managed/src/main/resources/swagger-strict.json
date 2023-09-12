@@ -7720,7 +7720,7 @@
         },
         "usabilityState" : {
           "description" : "Current usability state",
-          "enum" : [ "READY", "UPDATING", "ERROR" ],
+          "enum" : [ "READY", "UPDATING", "ERROR", "DELETING" ],
           "readOnly" : true,
           "type" : "string"
         },
