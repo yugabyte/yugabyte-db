@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -80,5 +81,19 @@ func TestUnmarshalling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// This test validates that all status enums are defined correctly - both with a valid String and
+// toStatus implementation
+func TestStatusEnum(t *testing.T) {
+	for i := NoStatus; i < endStatus; i++ {
+		str := i.String()
+		if strings.Contains(str, "unknown") {
+			t.Errorf("found unknown status - %s: %s", i, str)
+		}
+		if _, ok := toStatus[str]; !ok {
+			t.Errorf("cannot convert string '%s' to status", str)
+		}
 	}
 }
