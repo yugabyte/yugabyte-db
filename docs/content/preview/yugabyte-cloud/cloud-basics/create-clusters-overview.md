@@ -68,8 +68,8 @@ YugabyteDB Managed supports AWS, Azure, and GCP. Your choice of provider will de
 | VPC | Yes | Yes (Required) | Yes |
 | Peering | Yes | No | Yes |
 | Private Service Endpoint | Yes | Yes | No |
-| Topologies | Single region<br/>Replicate across regions<br/>Partition by region | Single region | Single region<br/>Replicate across regions<br/>Partition by region |
-| Read replicas | Yes | No | Yes |
+| Topologies | Single region<br/>Replicate across regions<br/>Partition by region | Single region<br/>Replicate across regions<br/>Partition by region | Single region<br/>Replicate across regions<br/>Partition by region |
+| Read replicas | Yes | Yes | Yes |
 | Customer Managed Key | Yes | No | Yes |
 
 #### Region
@@ -79,7 +79,10 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via [peering](../cloud-vpcs/cloud-add-peering/) (AWS or GCP) or using a [private link](../cloud-vpcs/cloud-add-endpoint/) (AWS or Azure). This configuration also provides the best security. To connect using a private link (AWS and Azure only), the link endpoints (your cluster and the application) must be in the same region.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC. This configuration also provides the best security. You can connect your cluster to the application VPC in the following ways:
+
+- [Peering](../cloud-vpcs/cloud-add-peering/) [AWS or GCP]. For best results, your application should located in one of the regions where your cluster is deployed.
+- [Private link](../cloud-vpcs/cloud-add-endpoint/) [AWS or Azure]. To connect using a private link, the link endpoints (your cluster and the application) must be in the same region.
 
 For a list of supported regions, refer to [Cloud provider regions](#cloud-provider-regions).
 
@@ -248,22 +251,26 @@ The following **Azure regions** are available:
 - Sao Paulo State (brazilsouth)
 - Toronto (canadacentral)
 - Pune (centralindia)
-- Iowa (centralus)
+- Iowa (centralus)*
 - Hong Kong (eastasia)
 - Virginia (eastus)
-- Virginia (eastus2)
+- Virginia (eastus2)*
 - Paris (francecentral)
-- Tokyo, Saitama (japaneast)
-- Seoul (koreacentral)
+- Frankfurt (germanywestcentral)*
+- Tokyo, Saitama (japaneast)*
+- Seoul (koreacentral)*
 - Ireland (northeurope)
 - Norway (norwayeast)
-- Johannesburg (southafricanorth)
-- Texas (southcentralus)
+- Johannesburg (southafricanorth)*
+- Texas (southcentralus)*
+- Singapore (southeastasia)*
 - Zurich (switzerlandnorth)
-- Dubai (uaenorth)
+- Dubai (uaenorth)*
 - London (uksouth)
 - Washington (westus2)
 - Phoenix (westus3)
+
+\* Single-region clusters only (not available for multi-region deployments)
 
   {{% /tab %}}
 
