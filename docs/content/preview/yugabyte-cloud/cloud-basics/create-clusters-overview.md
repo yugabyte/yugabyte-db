@@ -68,7 +68,7 @@ YugabyteDB Managed supports AWS, Azure, and GCP. Your choice of provider will de
 | VPC | Yes | Yes (Required) | Yes |
 | Peering | Yes | No | Yes |
 | Private Service Endpoint | Yes | Yes | No |
-| Topologies | Single region<br/>Replicate across regions<br/>Partition by region | Single region<br/>Replicate across regions | Single region<br/>Replicate across regions<br/>Partition by region |
+| Topologies | Single region<br/>Replicate across regions<br/>Partition by region | Single region<br/>Replicate across regions<br/>Partition by region | Single region<br/>Replicate across regions<br/>Partition by region |
 | Read replicas | Yes | Yes | Yes |
 | Customer Managed Key | Yes | No | Yes |
 
@@ -248,25 +248,27 @@ The following **AWS regions** are available:
 The following **Azure regions** are available:
 
 - New South Wales (australiaeast)
-- Sao Paulo State (brazilsouth)
+- Sao Paulo State (brazilsouth)*
 - Toronto (canadacentral)
 - Pune (centralindia)
-- Iowa (centralus)
+- Iowa (centralus)*
 - Hong Kong (eastasia)
 - Virginia (eastus)
-- Virginia (eastus2)
+- Virginia (eastus2)*
 - Paris (francecentral)
-- Tokyo, Saitama (japaneast)
-- Seoul (koreacentral)
+- Tokyo, Saitama (japaneast)*
+- Seoul (koreacentral)*
 - Ireland (northeurope)
 - Norway (norwayeast)
-- Johannesburg (southafricanorth)
-- Texas (southcentralus)
+- Johannesburg (southafricanorth)*
+- Texas (southcentralus)*
 - Zurich (switzerlandnorth)
-- Dubai (uaenorth)
+- Dubai (uaenorth)*
 - London (uksouth)
 - Washington (westus2)
 - Phoenix (westus3)
+
+\* Single-region clusters only (not available for multi-region deployments)
 
   {{% /tab %}}
 
