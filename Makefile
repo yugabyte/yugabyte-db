@@ -53,7 +53,7 @@ STARBALLS = $(STARBALL15)
 TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	pg_hint_plan--*.sql \
 	pg_hint_plan.control \
-	doc/* expected/*.out sql/*.sql sql/maskout*.sh \
+	docs/* expected/*.out sql/*.sql sql/maskout*.sh \
 	data/data.csv SPECS/*.spec
 
 rpms: rpm15
