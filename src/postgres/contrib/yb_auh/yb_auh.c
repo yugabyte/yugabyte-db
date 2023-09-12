@@ -158,18 +158,18 @@ _PG_init(void)
   RegisterBackgroundWorker(&worker);
 
   /*
-	 * Install hooks.
-	 */
+   * Install hooks.
+   */
   prev_shmem_startup_hook = shmem_startup_hook;
   shmem_startup_hook = ybauh_startup_hook;
-	prev_post_parse_analyze_hook = post_parse_analyze_hook;
-	post_parse_analyze_hook = ybauh_post_parse_analyze;
-	prev_ExecutorRun = ExecutorRun_hook;
-	ExecutorRun_hook = ybauh_ExecutorRun;
+  prev_post_parse_analyze_hook = post_parse_analyze_hook;
+  post_parse_analyze_hook = ybauh_post_parse_analyze;
+  prev_ExecutorRun = ExecutorRun_hook;
+  ExecutorRun_hook = ybauh_ExecutorRun;
   prev_ExecutorEnd = ExecutorEnd_hook;
-	ExecutorEnd_hook = ybauh_ExecutorEnd;
+  ExecutorEnd_hook = ybauh_ExecutorEnd;
   prev_ProcessUtility = ProcessUtility_hook;
-	ProcessUtility_hook = ybauh_ProcessUtility;
+  ProcessUtility_hook = ybauh_ProcessUtility;
 }
 
 /*
@@ -178,11 +178,11 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	/* Uninstall hooks. */
-	shmem_startup_hook = prev_shmem_startup_hook;
-	post_parse_analyze_hook = prev_post_parse_analyze_hook;
-	ExecutorRun_hook = prev_ExecutorRun;
-	ExecutorEnd_hook = prev_ExecutorEnd;
+  /* Uninstall hooks. */
+  shmem_startup_hook = prev_shmem_startup_hook;
+  post_parse_analyze_hook = prev_post_parse_analyze_hook;
+  ExecutorRun_hook = prev_ExecutorRun;
+  ExecutorEnd_hook = prev_ExecutorEnd;
   ProcessUtility_hook = prev_ProcessUtility;
 }
 
@@ -270,14 +270,14 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
   PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
-  if (nodes_head != NULL && procCount != 0) 
+  if (nodes_head != NULL && procCount != 0)
   {
     sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
   }
-  while (current != NULL) 
+  while (current != NULL)
   {
     PGProcAUHEntryList proc = current->data;
-    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    if (random() < sample_rate * MAX_RANDOM_VALUE)
     {
       auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                       proc.wait_event_info, "", proc.top_level_node_id,
@@ -286,7 +286,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
     }
     current = current->next;
   }
-  freeLinkedList(nodes_head); 
+  freeLinkedList(nodes_head);
 }
 
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
@@ -297,7 +297,7 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   float8 sample_rate= 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
+    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
@@ -383,7 +383,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
-  LWLockRelease(auh_entry_array_lock); 
+  LWLockRelease(auh_entry_array_lock);
 }
 
 static void
@@ -461,11 +461,10 @@ ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ParamListInfo params, QueryEnvironment *queryEnv,
 					DestReceiver *dest, char *completionTag)
 {
-	uint64		queryId = pstmt->queryId;
-	MyProc->queryid = queryId;
-	YBCSetQueryId(queryId);
+  uint64		queryId = pstmt->queryId;
+  MyProc->queryid = queryId;
+  YBCSetQueryId(queryId);
   nested_level++;
-  ereport(LOG, (errmsg("%s", YBCGetStackTrace())));
   PG_TRY();
   {
     if (prev_ProcessUtility)

@@ -93,8 +93,6 @@
 
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
 PG_MODULE_MAGIC;
 
 /* Location of permanent stats file (valid when database is shut down) */
