@@ -20,6 +20,12 @@ On this page:
 
 ## Change log
 
+### September 12, 2023
+
+**New Features**
+
+- Support for multi-region clusters and read replicas in Azure. You can now deploy dedicated Replicate across regions and Partition by region clusters in Azure, as well as add read replicas.
+
 ### September 6, 2023
 
 **New Features**
