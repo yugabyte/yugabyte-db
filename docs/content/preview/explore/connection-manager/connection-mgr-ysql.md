@@ -70,8 +70,8 @@ To explicitly set a port for YSQL, you should specify ports for the flags `ysql_
 
 The following table describes YB-TServer flags related to YSQL Connection Manager:
 
-| flag | Description | Default value |
-|:---- | :---------- | :------------ |
+| flag | Description | Default |
+|:---- | :---------- | :------ |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process. | false |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. | 10000 |
@@ -81,6 +81,6 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_password | Password to be used by YSQL Connection Manager for creating database connections. | yugabyte |
 | ysql_conn_mgr_username | Username to be used by YSQL Connection Manager for creating database connections.| yugabyte |
 | ysql_conn_mgr_warmup_db | Database for which warmup needs to be done. | yugabyte |
-| enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint '<ip_address_of_cluster>:13000/connections'. | true |
+| enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. | true |
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostreSQL port set via `pgsql_proxy_bind_address`. | 5433 |
 | ysql_conn_mgr_dowarmup | Enable pre-creation of server connections in YSQL Connection Manager. If set to false, the server connections are created lazily (on-demand) in YSQL Connection Manager. | false |
