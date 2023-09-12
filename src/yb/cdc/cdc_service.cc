@@ -99,10 +99,7 @@ DEFINE_UNKNOWN_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
     "Timeout used for CDC write rpc calls.  Writes normally occur intra-cluster.");
 TAG_FLAG(cdc_write_rpc_timeout_ms, advanced);
 
-DEFINE_UNKNOWN_int32(cdc_ybclient_reactor_threads, 50,
-    "The number of reactor threads to be used for processing ybclient "
-    "requests for CDC.");
-TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
+DEPRECATE_FLAG(int32, cdc_ybclient_reactor_threads, "09_2023");
 
 DEFINE_UNKNOWN_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
     "Rate at which CDC state's checkpoint is updated.");
