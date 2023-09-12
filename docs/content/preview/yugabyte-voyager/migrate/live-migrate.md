@@ -433,5 +433,5 @@ After migration verification, stop [archiving changes](#archive-changes).
 - Tables without primary key are not supported.
 - Truncating a table on source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle datatypes are unsupported - NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
-- Case-sensitive table names or column names are partially supported. yb-voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts`(case-insensitive) to a YugabyteDB database.
+- Case-sensitive table names or column names are partially supported. yb-voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - Reserved keywords such as table name, or column names are unsupported.
