@@ -805,6 +805,13 @@
       },
       "voyager": {
         "migrationOverview": "Migration Overview",
+        "archiveSelected": "Archive selected",
+        "unarchiveSelected": "Unarchive selected",
+        "showArchived": "Show {{count}} archived",
+        "hideArchived": "Hide {{count}} archived",
+        "archiveMigrations": "Archive migrations",
+        "unarchiveMigrations": "Unarchive migrations",
+        "archivedMigrations": "Archived Migrations",
         "tabMigrations": "Migrations",
         "migrations": "Migrations",
         "name": "Name",
