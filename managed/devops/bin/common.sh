@@ -130,6 +130,7 @@ if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
   readonly YB_VIRTUALENV_BASENAME=venv
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+  readonly FROZEN_MODULES_FILE="$yb_devops_home/python3_modules_requirements_frozen.txt"
   readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
   readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
   readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
@@ -340,14 +341,14 @@ create_pymodules_package() {
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
-  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+  run_pip install $extra_install_flags -r "$FROZEN_MODULES_FILE" \
     --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
   run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
     --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
   rm -rf "$YB_PYTHON_MODULES_DIR"/lib*
   # Download remaining libraries.
   log "Downloading package libraries"
-  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+  run_pip install $extra_install_flags -r "$FROZEN_MODULES_FILE" \
     --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
   run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
     --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
