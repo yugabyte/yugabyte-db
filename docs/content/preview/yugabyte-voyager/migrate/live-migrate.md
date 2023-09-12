@@ -429,7 +429,7 @@ After migration verification, stop [archiving changes](#archive-changes).
 
 ## Limitations
 
-- Schema changes on the source oracle database will not be recognized during the live migration.
+- Schema changes on the source Oracle database will not be recognized during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle datatypes are unsupported - NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
