@@ -2601,6 +2601,24 @@ master_yb_rpc_connections:
       alias:
         "rpc_connections_alive": "Connections"
 
+master_leaderless_and_underreplicated_tablets:
+  metric: ""
+  filters:
+    export_type: "node_export"
+    saved_name: "yb_node_leaderless_tablet_count|yb_node_underreplicated_tablet_count"
+  group_by: "saved_name"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  layout:
+    title: "Leaderless/Underreplicated Tablets"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_node_leaderless_tablet_count": "Leaderless Tablets"
+        "yb_node_underreplicated_tablet_count": "Underreplicated Tablets"
+
 master_threads_running:
   metric: "threads_running"
   function: "avg_over_time|avg"
