@@ -1091,7 +1091,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer2 =
           new GFlagsValidation.AutoFlagsPerServer();
       autoFlagsPerServer2.autoFlagDetails = Collections.singletonList(flag2);
-      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), (ServerType) any()))
           .thenReturn(autoFlagsPerServer)
           .thenReturn(autoFlagsPerServer2);
     } catch (IOException e) {

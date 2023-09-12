@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
@@ -18,10 +18,12 @@ import {
   FORM_RESET_VALUES,
   EncryptionInTransitFormValues,
   useEITStyles,
-  getInitialFormValues
+  getInitialFormValues,
+  isSelfSignedCert,
+  USE_SAME_CERTS_FIELD_NAME
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
-import { Universe } from '../../universe-form/utils/dto';
+import { Universe, Certificate } from '../../universe-form/utils/dto';
 import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
@@ -33,6 +35,11 @@ interface EncryptionInTransitProps {
   open: boolean;
   onClose: () => void;
   universe: Universe;
+}
+
+enum EitTabs {
+  'CACert' = 'CACert',
+  'ServerCert' = 'ServerCert'
 }
 
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
@@ -53,14 +60,16 @@ const NonRollingBanner: FC = () => {
 export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClose, universe }) => {
   const { t } = useTranslation();
   const classes = useEITStyles();
-  const [currentTab, setTab] = React.useState<string>('CACert');
 
   //universe current status
   const { universeDetails } = universe;
   const universeId = universe.universeUUID;
 
   //prefetch data
-  const { isLoading } = useQuery(QUERY_KEY.getCertificates, api.getCertificates);
+  const { isLoading, data: certificates } = useQuery(
+    QUERY_KEY.getCertificates,
+    api.getCertificates
+  );
 
   //initialize form
   const INITIAL_VALUES = getInitialFormValues(universeDetails);
@@ -86,6 +95,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   const rotateCToN = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
   const rootCA = watch(NODE_NODE_CERT_FIELD_NAME);
   const clientRootCA = watch(CLIENT_NODE_CERT_FIELD_NAME);
+  const rootAndClientRootCASame = watch(USE_SAME_CERTS_FIELD_NAME);
 
   //Disable encryption in transit toggle if (a)->one of server cert rotations enabled OR (b)->one of root certs are modiified
   const disableEITToggle =
@@ -97,6 +107,17 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     encryptionEnabled !== enableUniverseEncryption ||
     enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
     enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt;
+
+  //Server cert rotation is only supported for self signed certs
+  const rootCAInfo = certificates?.find((cert: Certificate) => cert.uuid === rootCA);
+  const clientRootCAInfo = certificates?.find((cert: Certificate) => cert.uuid === clientRootCA);
+  const disableServerCertRotation =
+    !encryptionEnabled ||
+    !(enableNodeToNodeEncrypt || enableClientToNodeEncrypt) ||
+    (rootCAInfo && !isSelfSignedCert(rootCAInfo)) ||
+    (!rootAndClientRootCASame && clientRootCAInfo && !isSelfSignedCert(clientRootCAInfo));
+
+  const [currentTab, setTab] = React.useState('');
 
   //methods
   const handleChange = (_: any, tab: string) => setTab(tab);
@@ -184,6 +205,15 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     }
   });
 
+  useEffect(() => {
+    if (disableServerCertRotation) setTab(EitTabs.CACert);
+  }, [setTab, disableServerCertRotation]);
+
+  useEffect(() => {
+    if (!isLoading && !currentTab)
+      setTab(disableServerCertRotation ? EitTabs.CACert : EitTabs.ServerCert);
+  }, [isLoading, disableServerCertRotation, setTab, currentTab]);
+
   return (
     <YBModal
       open={open}
@@ -257,7 +287,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             {enableUniverseEncryption && (
               <Box mt={4} className={classes.eitTabContainer}>
                 <Tabs
-                  value={currentTab}
+                  value={disableServerCertRotation ? EitTabs.CACert : currentTab}
                   indicatorColor="primary"
                   textColor="primary"
                   onChange={handleChange}
@@ -266,19 +296,23 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                 >
                   <Tab
                     label={t('universeActions.encryptionInTransit.certAuthority')}
-                    value="CACert"
+                    value={EitTabs.CACert}
                   />
-                  {encryptionEnabled && (enableNodeToNodeEncrypt || enableClientToNodeEncrypt) && (
+                  {!disableServerCertRotation && (
                     <Tab
                       label={t('universeActions.encryptionInTransit.serverCert')}
-                      value="ServerCert"
+                      value={EitTabs.ServerCert}
                     />
                   )}
                 </Tabs>
-                {currentTab === 'CACert' && <CertificateAuthority initialValues={INITIAL_VALUES} />}
-                {currentTab === 'ServerCert' && (
+
+                {(currentTab === EitTabs.CACert || disableServerCertRotation) && (
+                  <CertificateAuthority initialValues={INITIAL_VALUES} />
+                )}
+                {currentTab === EitTabs.ServerCert && !disableServerCertRotation && (
                   <RotateServerCerts initialValues={INITIAL_VALUES} />
                 )}
+
                 {!tlsToggled && <RollingUpgrade />}
               </Box>
             )}

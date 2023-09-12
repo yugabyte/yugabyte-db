@@ -52,11 +52,15 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
   );
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
+  const maxVolumeCount = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.max_volume_count'
+  )?.value;
 
   //form context
   const { getValues } = useFormContext<UniverseFormData>();
-  const { mode, clusterType, newUniverse, universeConfigureTemplate } =
-    useContext(UniverseFormContext)[0];
+  const { mode, clusterType, newUniverse, universeConfigureTemplate } = useContext(
+    UniverseFormContext
+  )[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
@@ -84,6 +88,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               isDedicatedMasterField={isDedicatedMasterField}
               disableVolumeSize={!isNodeResizable}
               disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
+              maxVolumeCount={maxVolumeCount}
             />
           </>
         ) : (
@@ -101,6 +106,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               disableIops={!isCreatePrimary && !isCreateRR}
               disableThroughput={!isCreatePrimary && !isCreateRR}
               isDedicatedMasterField={isDedicatedMasterField}
+              maxVolumeCount={maxVolumeCount}
             />
           </>
         )}

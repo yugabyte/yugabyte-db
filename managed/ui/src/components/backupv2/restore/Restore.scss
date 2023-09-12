@@ -31,4 +31,12 @@
       }
     }
   }
+  .universeName {
+    text-decoration: underline;
+    color: #495589;
+  }
+  .restore_status {
+    display: flex;
+    gap: 20px;
+  }
 }

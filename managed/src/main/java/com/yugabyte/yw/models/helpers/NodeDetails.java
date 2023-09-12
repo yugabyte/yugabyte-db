@@ -478,4 +478,13 @@ public class NodeDetails {
     }
     return namespace;
   }
+
+  // Returns the provisioned instance type.
+  @JsonIgnore
+  public String getInstanceType() {
+    if (cloudInfo != null && StringUtils.isNotBlank(cloudInfo.instance_type)) {
+      return cloudInfo.instance_type;
+    }
+    throw new IllegalStateException("Cloud info or instance type is not set");
+  }
 }

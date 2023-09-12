@@ -1,21 +1,19 @@
 ---
-title: Scaling transactions in YugabyteDB Managed
-headerTitle: Scaling concurrent transactions
-linkTitle: Scaling concurrent transactions
-description: Scaling concurrent transactions in YugabyteDB Managed.
+title: Scale out a universe
+headerTitle: Scale out a universe
+linkTitle: Scale out a universe
+description: Scaling a universe in YugabyteDB.
 headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
-    name: Scaling transactions
+    name: Scale out a universe
     identifier: explore-transactions-scaling-transactions-3-ysql
     parent: explore-scalability
-    weight: 210
+    weight: 10
 type: docs
 ---
 
-With YugabyteDB, you can add nodes to upscale your cluster (also known as universe in YugabyteDB and YugabyteDB Anywhere) efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
-
-This document demonstrates how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node cluster with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
+YugabyteDB can scale seamlessly while running a read-write workload. You can see this by using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node universe with a replication factor of 3 and add a node while the workload is running. Using the built-in metrics, you can observe how the universe scales out by verifying that the number of read and write IOPS are evenly distributed across all nodes at all times.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>

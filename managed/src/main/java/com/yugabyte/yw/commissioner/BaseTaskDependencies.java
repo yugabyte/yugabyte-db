@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import javax.inject.Inject;
@@ -50,4 +51,5 @@ public class BaseTaskDependencies {
   private final HealthChecker healthChecker;
   private final NodeManager nodeManager;
   private final BackupHelper backupHelper;
+  private final AutoFlagUtil autoFlagUtil;
 }

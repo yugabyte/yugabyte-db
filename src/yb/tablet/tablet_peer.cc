@@ -1732,5 +1732,7 @@ RetryableRequestsFlushState TabletPeer::TEST_RetryableRequestsFlusherState() con
       : RetryableRequestsFlushState::kFlushIdle;
 }
 
+Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
+
 }  // namespace tablet
 }  // namespace yb

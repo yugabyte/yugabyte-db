@@ -1,4 +1,4 @@
-import { FC, useState, useRef } from 'react';
+import { FC, useState } from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -88,7 +88,6 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
   const asyncCluster = _.cloneDeep(getAsyncCluster(universeDetails));
   const currentVersion = getCurrentVersion(universeDetails) || '';
   const { gFlags, asyncGflags, inheritFlagsFromPrimary } = transformToEditFlagsForm(universeData);
-  const initialGflagSet = useRef({ gFlags, asyncGflags, inheritFlagsFromPrimary });
 
   const formMethods = useForm<EditGflagsFormValues>({
     defaultValues: {
@@ -114,75 +113,59 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
   };
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    const newUniverseData = await api.fetchUniverse(universeUUID);
-    const newGflagSet = transformToEditFlagsForm(newUniverseData);
+    const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
+    const payload: EditGflagPayload = {
+      nodePrefix,
+      universeUUID,
+      sleepAfterMasterRestartMillis: values.timeDelay * 1000,
+      sleepAfterTServerRestartMillis: values.timeDelay * 1000,
+      taskType: 'GFlags',
+      upgradeOption: values?.upgradeOption,
+      ybSoftwareVersion: currentVersion,
+      clusters: []
+    };
 
-    // Check if gflags got updated before updating with new set of gflags
-    if (_.isEqual(newGflagSet, initialGflagSet.current)) {
-      const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
-      const payload: EditGflagPayload = {
-        nodePrefix,
-        universeUUID,
-        sleepAfterMasterRestartMillis: values.timeDelay * 1000,
-        sleepAfterTServerRestartMillis: values.timeDelay * 1000,
-        taskType: 'GFlags',
-        upgradeOption: values?.upgradeOption,
-        ybSoftwareVersion: currentVersion,
-        clusters: []
+    if (primaryCluster && !_.isEmpty(primaryCluster)) {
+      const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
+      primaryCluster.userIntent.specificGFlags = {
+        inheritFromPrimary: false,
+        perProcessFlags: {
+          value: {
+            MASTER: masterGFlags,
+            TSERVER: tserverGFlags
+          }
+        }
       };
-
-      if (primaryCluster && !_.isEmpty(primaryCluster)) {
-        const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
-        primaryCluster.userIntent.specificGFlags = {
+      delete primaryCluster.userIntent.masterGFlags;
+      delete primaryCluster.userIntent.tserverGFlags;
+      payload.clusters = [primaryCluster];
+    }
+    if (asyncCluster && !_.isEmpty(asyncCluster)) {
+      if (inheritFlagsFromPrimary) {
+        asyncCluster.userIntent.specificGFlags = {
+          inheritFromPrimary: true,
+          perProcessFlags: {}
+        };
+      } else {
+        const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
+        asyncCluster.userIntent.specificGFlags = {
           inheritFromPrimary: false,
           perProcessFlags: {
             value: {
-              MASTER: masterGFlags,
               TSERVER: tserverGFlags
             }
           }
         };
-        delete primaryCluster.userIntent.masterGFlags;
-        delete primaryCluster.userIntent.tserverGFlags;
-        payload.clusters = [primaryCluster];
       }
-      if (asyncCluster && !_.isEmpty(asyncCluster)) {
-        if (inheritFlagsFromPrimary) {
-          asyncCluster.userIntent.specificGFlags = {
-            inheritFromPrimary: true,
-            perProcessFlags: {}
-          };
-        } else {
-          const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
-          asyncCluster.userIntent.specificGFlags = {
-            inheritFromPrimary: false,
-            perProcessFlags: {
-              value: {
-                TSERVER: tserverGFlags
-              }
-            }
-          };
-        }
-        delete asyncCluster.userIntent.masterGFlags;
-        delete asyncCluster.userIntent.tserverGFlags;
-        payload.clusters.push(asyncCluster);
-      }
-      try {
-        await api.upgradeGflags(payload, universeUUID);
-        onClose();
-      } catch (error) {
-        toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
-      }
-    } else {
-      toast.error(
-        'Gflags got updated in between, Please try again after reload to avoid data loss',
-        {
-          autoClose: TOAST_AUTO_DISMISS_INTERVAL
-        }
-      );
-      setTimeout(() => {
-        window.location.reload();
-      }, TOAST_AUTO_DISMISS_INTERVAL);
+      delete asyncCluster.userIntent.masterGFlags;
+      delete asyncCluster.userIntent.tserverGFlags;
+      payload.clusters.push(asyncCluster);
+    }
+    try {
+      await api.upgradeGflags(payload, universeUUID);
+      onClose();
+    } catch (error) {
+      toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
     }
   });
 

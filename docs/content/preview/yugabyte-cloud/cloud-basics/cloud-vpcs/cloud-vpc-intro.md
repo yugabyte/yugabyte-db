@@ -70,13 +70,11 @@ For GCP, you have the choice of selecting all regions automatically, or defining
 
 For AWS, you can only define a single region per VPC.
 
-Currently, you can only deploy single-region clusters in Azure.
-
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you intend peer or link.
 
 #### Multi-region clusters
 
-Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations. (Currently, multi-region clusters are not supported for Azure.)
+Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations.
 
 | Provider | Regional VPC setup
 | :--- | :--- |

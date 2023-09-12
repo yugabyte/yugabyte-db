@@ -190,6 +190,16 @@ public class GFlagsValidation {
     return fileNameList;
   }
 
+  public AutoFlagsPerServer extractAutoFlags(String version, ServerType serverType)
+      throws IOException {
+    if (serverType.equals(ServerType.MASTER)) {
+      return extractAutoFlags(version, "yb-master");
+    } else if (serverType.equals(ServerType.TSERVER)) {
+      return extractAutoFlags(version, "yb-tserver");
+    }
+    return null;
+  }
+
   public AutoFlagsPerServer extractAutoFlags(String version, String serverType) throws IOException {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
