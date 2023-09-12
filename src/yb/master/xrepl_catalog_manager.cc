@@ -522,7 +522,7 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
   }
   LOG(INFO) << "Deleting CDC streams for tables:" << tid_stream.str();
 
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   if (!table_ids.empty()) {
     SharedLock lock(mutex_);
     for (const auto& tid : table_ids) {
@@ -546,9 +546,9 @@ Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& 
   }
   LOG(INFO) << "Deleting CDC streams metadata for tables:" << tid_stream.str();
 
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   for (const auto& tid : table_ids) {
-    std::vector<scoped_refptr<CDCStreamInfo>> newstreams;
+    std::vector<CDCStreamInfoPtr> newstreams;
     {
       LockGuard lock(mutex_);
       cdcsdk_tables_to_stream_map_.erase(tid);
@@ -576,9 +576,9 @@ Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
   return Status::OK();
 }
 
-std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTableUnlocked(
+std::vector<CDCStreamInfoPtr> CatalogManager::FindCDCStreamsForTableUnlocked(
     const TableId& table_id, const cdc::CDCRequestSource cdc_request_source) const {
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
 
@@ -595,9 +595,9 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
   return streams;
 }
 
-std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTableToDeleteMetadata(
+std::vector<CDCStreamInfoPtr> CatalogManager::FindCDCStreamsForTableToDeleteMetadata(
     const TableId& table_id) const {
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
 
   for (const auto& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
@@ -612,7 +612,7 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
   return streams;
 }
 
-void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
+void CatalogManager::GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams) {
   streams->clear();
   SharedLock lock(mutex_);
   streams->reserve(cdc_stream_map_.size());
@@ -758,7 +758,7 @@ Status CatalogManager::CreateCDCStream(
 Status CatalogManager::CreateNewCDCStream(
     const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
     CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  scoped_refptr<CDCStreamInfo> stream;
+  CDCStreamInfoPtr stream;
   {
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
@@ -834,7 +834,7 @@ Status CatalogManager::CreateNewCDCStream(
 }
 
 Status CatalogManager::AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) {
-  scoped_refptr<CDCStreamInfo> stream;
+  CDCStreamInfoPtr stream;
   {
     SharedLock lock(mutex_);
     stream = FindPtrOrNull(
@@ -887,7 +887,7 @@ Status CatalogManager::DeleteCDCStream(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   {
     SharedLock lock(mutex_);
     for (const auto& stream_id : req->stream_id()) {
@@ -949,7 +949,7 @@ Status CatalogManager::DeleteCDCStream(
 }
 
 Status CatalogManager::MarkCDCStreamsForMetadataCleanup(
-    const std::vector<scoped_refptr<CDCStreamInfo>>& streams, SysCDCStreamEntryPB::State state) {
+    const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State state) {
   if (streams.empty()) {
     return Status::OK();
   }
@@ -1231,13 +1231,12 @@ void CatalogManager::RemoveTableFromCDCSDKUnprocessedMap(
   }
 }
 
-Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
-    std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
+Status CatalogManager::FindCDCStreamsMarkedAsDeleting(std::vector<CDCStreamInfoPtr>* streams) {
   return FindCDCStreamsMarkedForMetadataDeletion(streams, SysCDCStreamEntryPB::DELETING);
 }
 
 Status CatalogManager::FindCDCStreamsMarkedForMetadataDeletion(
-    std::vector<scoped_refptr<CDCStreamInfo>>* streams, SysCDCStreamEntryPB::State state) {
+    std::vector<CDCStreamInfoPtr>* streams, SysCDCStreamEntryPB::State state) {
   TRACE("Acquired catalog manager lock");
   SharedLock lock(mutex_);
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
@@ -1254,7 +1253,7 @@ Status CatalogManager::FindCDCStreamsMarkedForMetadataDeletion(
 }
 
 void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
-    const scoped_refptr<CDCStreamInfo> stream, std::set<TabletId>* tablets_with_streams,
+    const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
     std::set<TableId>* dropped_tables) {
   for (const auto& table_id : stream->table_id()) {
     TabletInfos tablets;
@@ -1283,8 +1282,8 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
 
 Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
     const StreamTablesMap& drop_stream_tablelist) {
-  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_delete;
-  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_update;
+  std::vector<CDCStreamInfoPtr> streams_to_delete;
+  std::vector<CDCStreamInfoPtr> streams_to_update;
   std::vector<CDCStreamInfo::WriteLock> locks;
 
   TRACE("Cleaning CDC streams from map and system catalog.");
@@ -1292,7 +1291,7 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
     LockGuard lock(mutex_);
     for (auto& [delete_stream_id, drop_table_list] : drop_stream_tablelist) {
       if (cdc_stream_map_.find(delete_stream_id) != cdc_stream_map_.end()) {
-        scoped_refptr<CDCStreamInfo> cdc_stream_info = cdc_stream_map_[delete_stream_id];
+        CDCStreamInfoPtr cdc_stream_info = cdc_stream_map_[delete_stream_id];
         auto ltm = cdc_stream_info->LockForWrite();
         // Delete the stream from cdc_stream_map_ if all tables associated with stream are dropped.
         if (ltm->table_id().size() == static_cast<int>(drop_table_list.size())) {
@@ -1332,8 +1331,7 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
   return Status::OK();
 }
 
-Status CatalogManager::CleanUpCDCStreamsMetadata(
-    const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
+Status CatalogManager::CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfoPtr>& streams) {
   if (streams.empty()) {
     return Status::OK();
   }
@@ -1393,8 +1391,7 @@ Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
   return Status::OK();
 }
 
-Status CatalogManager::CleanUpDeletedCDCStreams(
-    const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
+Status CatalogManager::CleanUpDeletedCDCStreams(const std::vector<CDCStreamInfoPtr>& streams) {
   // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
 
@@ -1500,7 +1497,7 @@ Status CatalogManager::GetCDCStream(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  scoped_refptr<CDCStreamInfo> stream;
+  CDCStreamInfoPtr stream;
   {
     SharedLock lock(mutex_);
     stream = FindPtrOrNull(
@@ -1552,7 +1549,7 @@ Status CatalogManager::GetCDCDBStreamInfo(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  scoped_refptr<CDCStreamInfo> stream;
+  CDCStreamInfoPtr stream;
   {
     SharedLock lock(mutex_);
     stream = FindPtrOrNull(
@@ -1657,7 +1654,7 @@ Status CatalogManager::IsObjectPartOfXRepl(
 }
 
 bool CatalogManager::CDCStreamExistsUnlocked(const xrepl::StreamId& stream_id) {
-  scoped_refptr<CDCStreamInfo> stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+  CDCStreamInfoPtr stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {
     return false;
   }
@@ -1674,8 +1671,7 @@ Status CatalogManager::UpdateCDCStreams(
 
   // Map StreamId to (CDCStreamInfo, SysCDCStreamEntryPB). StreamId is sorted in
   // increasing order in the map.
-  std::map<
-      xrepl::StreamId, std::pair<scoped_refptr<CDCStreamInfo>, yb::master::SysCDCStreamEntryPB>>
+  std::map<xrepl::StreamId, std::pair<CDCStreamInfoPtr, yb::master::SysCDCStreamEntryPB>>
       id_to_update_infos;
   {
     SharedLock lock(mutex_);
@@ -1694,7 +1690,7 @@ Status CatalogManager::UpdateCDCStreams(
 
   // Acquire CDCStreamInfo::WriteLock in increasing order of xrepl::StreamId to avoid deadlock.
   std::vector<CDCStreamInfo::WriteLock> stream_locks;
-  std::vector<scoped_refptr<CDCStreamInfo>> streams_to_update;
+  std::vector<CDCStreamInfoPtr> streams_to_update;
   stream_locks.reserve(stream_ids.size());
   streams_to_update.reserve(stream_ids.size());
   for (const auto& [stream_id, update_info] : id_to_update_infos) {
@@ -3291,7 +3287,7 @@ Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
 
 Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) {
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto stream_type : {cdc::XCLUSTER, cdc::CDCSDK}) {
     {
@@ -4840,9 +4836,9 @@ Status CatalogManager::WaitForReplicationDrain(
   }
 
   std::unordered_set<xrepl::StreamId> found_stream_ids;
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   {
-    std::vector<scoped_refptr<CDCStreamInfo>> all_streams;
+    std::vector<CDCStreamInfoPtr> all_streams;
     GetAllCDCStreams(&all_streams);
     for (const auto& stream : all_streams) {
       if (filter_stream_ids.find(stream->StreamId()) == filter_stream_ids.end()) {
@@ -5387,7 +5383,7 @@ Status CatalogManager::ResumeCdcAfterNewSchema(
 
 Status CatalogManager::RunXClusterBgTasks() {
   // Clean up Deleted CDC Streams on the Producer.
-  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  std::vector<CDCStreamInfoPtr> streams;
   WARN_NOT_OK(FindCDCStreamsMarkedAsDeleting(&streams), "Failed Finding Deleting CDC Streams");
   if (!streams.empty()) {
     WARN_NOT_OK(CleanUpDeletedCDCStreams(streams), "Failed Cleaning Deleted CDC Streams");
@@ -5401,7 +5397,7 @@ Status CatalogManager::RunXClusterBgTasks() {
 
   // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
   // cache as well as from the system catalog for the drop table scenario.
-  std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
+  std::vector<CDCStreamInfoPtr> cdcsdk_streams;
   WARN_NOT_OK(
       FindCDCStreamsMarkedForMetadataDeletion(
           &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA),

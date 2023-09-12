@@ -6,6 +6,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import io.ebean.Finder;
@@ -29,6 +31,27 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = false)
 public class ImageBundle extends Model {
 
+  public static enum ImageBundleType {
+    YBA_ACTIVE,
+    YBA_DEPRECATED,
+    CUSTOM
+  };
+
+  @Data
+  @EqualsAndHashCode(callSuper = false)
+  public static class Metadata {
+    private ImageBundleType type;
+    private String version;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = false)
+  public static class NodeProperties {
+    private String machineImage;
+    private String sshUser;
+    private Integer sshPort;
+  }
+
   @ApiModelProperty(value = "Image Bundle UUID", accessMode = READ_ONLY)
   @Id
   private UUID uuid;
@@ -44,17 +67,14 @@ public class ImageBundle extends Model {
   @DbJson
   private ImageBundleDetails details = new ImageBundleDetails();
 
-  @ApiModelProperty(value = "Default Image Bundle")
+  @ApiModelProperty(
+      value = "Default Image Bundle. A provider can have two defaults, one per architecture")
   @Column(name = "is_default")
   private Boolean useAsDefault = false;
 
-  @Data
-  @EqualsAndHashCode(callSuper = false)
-  public static class NodeProperties {
-    private String machineImage;
-    private String sshUser;
-    private Integer sshPort;
-  }
+  @ApiModelProperty(value = "Metadata for imageBundle")
+  @DbJson
+  private Metadata metadata = new Metadata();
 
   public static final Finder<UUID, ImageBundle> find =
       new Finder<UUID, ImageBundle>(ImageBundle.class) {};
@@ -91,17 +111,87 @@ public class ImageBundle extends Model {
 
   public static ImageBundle create(
       Provider provider, String name, ImageBundleDetails details, boolean isDefault) {
+    return create(provider, name, details, null, isDefault);
+  }
+
+  public static ImageBundle create(
+      Provider provider,
+      String name,
+      ImageBundleDetails details,
+      Metadata metadata,
+      boolean isDefault) {
     ImageBundle bundle = new ImageBundle();
     bundle.setProvider(provider);
     bundle.setName(name);
     bundle.setDetails(details);
+    bundle.setMetadata(metadata);
     bundle.setUseAsDefault(isDefault);
     bundle.save();
     return bundle;
   }
 
-  public static ImageBundle getDefaultForProvider(UUID providerUUID) {
-    return find.query().where().eq("provider_uuid", providerUUID).eq("is_default", true).findOne();
+  public static List<ImageBundle> getDefaultForProvider(UUID providerUUID) {
+    // At a given time, two defaults can exist in image bundle one for `x86` & other for `arm`.
+    return find.query().where().eq("provider_uuid", providerUUID).eq("is_default", true).findList();
+  }
+
+  public static List<ImageBundle> getBundlesForArchType(UUID providerUUID, String arch) {
+    if (arch.isEmpty()) {
+      // List all the bundles for the provider (non-AWS provider case).
+      return find.query().where().eq("provider_uuid", providerUUID).findList();
+    }
+    // At a given time, two defaults can exist in image bundle one for `x86` & other for `arm`.
+    List<ImageBundle> bundles;
+    try {
+      bundles =
+          find.query()
+              .where()
+              .eq("provider_uuid", providerUUID)
+              .eq("details::json->>'arch'", arch)
+              .findList();
+    } catch (Exception e) {
+      // In case exception is thrown we will fallback to manual filtering, specifically for UTs
+      bundles = find.query().where().eq("provider_uuid", providerUUID).findList();
+      bundles.removeIf(
+          bundle -> {
+            if (bundle.getDetails() != null
+                && bundle.getDetails().getArch().toString().equals(arch)) {
+              return false;
+            }
+            return true;
+          });
+    }
+
+    return bundles;
+  }
+
+  public static List<ImageBundle> getYBADefaultBundles(UUID providerUUID) {
+    List<ImageBundle> bundles;
+    try {
+      bundles =
+          find.query()
+              .where()
+              .eq("provider_uuid", providerUUID)
+              .eq("metadata::json->>'type'", ImageBundleType.YBA_ACTIVE.toString())
+              .findList();
+    } catch (Exception e) {
+      // In case exception is thrown we will fallback to manual filtering, specifically for UTs
+      bundles = find.query().where().eq("provider_uuid", providerUUID).findList();
+      bundles.removeIf(
+          bundle -> {
+            if (bundle.getMetadata() != null
+                && bundle.getMetadata().getType() != null
+                && bundle
+                    .getMetadata()
+                    .getType()
+                    .toString()
+                    .equals(ImageBundleType.YBA_ACTIVE.toString())) {
+              return false;
+            }
+            return true;
+          });
+    }
+    return bundles;
   }
 
   @JsonIgnore
@@ -117,7 +207,7 @@ public class ImageBundle extends Model {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Image Bundle needs to be associated to a provider!");
     }
-    ImageBundle defaultImageBundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+    List<ImageBundle> defaultImageBundle = ImageBundle.getDefaultForProvider(provider.getUuid());
     Set<Universe> universes =
         Customer.get(provider.getCustomerUUID()).getUniversesForProvider(provider.getUuid());
     Set<Universe> universeUsingImageBundle =
@@ -135,7 +225,9 @@ public class ImageBundle extends Model {
 
   @JsonIgnore
   private boolean checkImageBudleInCluster(
-      Universe universe, UUID imageBundleUUID, ImageBundle defaultBundle) {
+      Universe universe, UUID imageBundleUUID, List<ImageBundle> defaultBundles) {
+    Architecture arch = universe.getUniverseDetails().arch;
+    ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, defaultBundles);
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       if (cluster.userIntent.imageBundleUUID == null
           && imageBundleUUID.equals(defaultBundle.getUuid())) {

@@ -245,6 +245,9 @@ public class Audit extends Model {
     @EnumValue("Sync XCluster Configuration")
     SyncXClusterConfig,
 
+    @EnumValue("Failover")
+    Failover,
+
     @EnumValue("Login")
     Login,
 

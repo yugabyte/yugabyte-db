@@ -48,14 +48,17 @@ export const CertificateAuthority: FC<CertificateAuthorityProps> = ({ initialVal
   const rotateNToN = watch(ROTATE_NODE_NODE_CERT_FIELD_NAME);
   const rotateCToN = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
 
+  //Disable CN or NN encryption toggle if (a)-roots certs are modified OR (b)-CN/NN rotation is enabled
   const disableEncryptToggle =
     rotateNToN ||
     rotateCToN ||
     (encryptionEnabled && (rootCA !== rootCAInitial || clientRootCA !== clientRootCAInitial));
+  //Disable root cert fields if (a)-CN/NN encryption is turned off
   const rotationDisabled =
     encryptionEnabled &&
-    (enableNodeToNodeEncryptInitial !== enableNNEncryption ||
-      enableClientToNodeEncryptInitial !== enableCNEncryption);
+    ((enableNodeToNodeEncryptInitial && enableNodeToNodeEncryptInitial !== enableNNEncryption) ||
+      (enableClientToNodeEncryptInitial &&
+        enableClientToNodeEncryptInitial !== enableCNEncryption));
 
   return (
     <>
@@ -65,6 +68,9 @@ export const CertificateAuthority: FC<CertificateAuthorityProps> = ({ initialVal
           name={USE_SAME_CERTS_FIELD_NAME}
           label={t('universeActions.encryptionInTransit.useSameCert')}
           labelProps={{ className: classes.eitLabels }}
+          inputProps={{
+            'data-testid': 'UseSameCert-Checkbox'
+          }}
         />
       </Box>
       <Box mt={1} display="flex" flexDirection="column" className={classes.container}>

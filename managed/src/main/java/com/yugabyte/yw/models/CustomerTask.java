@@ -12,6 +12,7 @@ import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -151,6 +153,9 @@ public class CustomerTask extends Model {
     @EnumValue("SoftwareUpgrade")
     SoftwareUpgrade,
 
+    @EnumValue("SoftwareUpgradeYB")
+    SoftwareUpgradeYB,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -264,6 +269,9 @@ public class CustomerTask extends Model {
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
 
+    @EnumValue("Failover")
+    Failover,
+
     @EnumValue("PrecheckNode")
     PrecheckNode,
 
@@ -347,6 +355,8 @@ public class CustomerTask extends Model {
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case SoftwareUpgradeYB:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
@@ -410,6 +420,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
+        case Failover:
+          return completed ? "Failed over dr confing " : "Failing over dr confing ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
@@ -679,7 +691,7 @@ public class CustomerTask extends Model {
   }
 
   /**
-   * deletes customer_task, task_info and all its subtasks of a given task. Assumes task_info tree
+   * Deletes customer_task, task_info and all its subtasks of a given task. Assumes task_info tree
    * is one level deep. If this assumption changes then this code needs to be reworked to recurse.
    * When successful; it deletes at least 2 rows because there is always customer_task and
    * associated task_info row that get deleted.
@@ -691,7 +703,12 @@ public class CustomerTask extends Model {
   public int cascadeDeleteCompleted() {
     Preconditions.checkNotNull(
         completionTime, String.format("CustomerTask %s has not completed", id));
-    TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+    if (!optional.isPresent()) {
+      delete();
+      return 1;
+    }
+    TaskInfo rootTaskInfo = optional.get();
     if (!rootTaskInfo.hasCompleted()) {
       LOG.warn(
           "Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
@@ -700,23 +717,11 @@ public class CustomerTask extends Model {
           rootTaskInfo);
       return 0;
     }
-    List<TaskInfo> subTasks = rootTaskInfo.getSubTasks();
-    List<TaskInfo> incompleteSubTasks =
-        subTasks.stream().filter(taskInfo -> !taskInfo.hasCompleted()).collect(Collectors.toList());
-    if (rootTaskInfo.getTaskState() == TaskInfo.State.Success && !incompleteSubTasks.isEmpty()) {
-      LOG.warn(
-          "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
-          id,
-          rootTaskInfo.getTaskUUID(),
-          incompleteSubTasks.size(),
-          incompleteSubTasks);
-      return 0;
-    }
-    // Note: delete leaf nodes first to preserve referential integrity.
-    subTasks.forEach(Model::delete);
+    int subTaskSize = rootTaskInfo.getSubTasks().size();
+    // This performs cascade delete.
     rootTaskInfo.delete();
-    this.delete();
-    return 2 + subTasks.size();
+    delete();
+    return 2 + subTaskSize;
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
@@ -766,5 +771,38 @@ public class CustomerTask extends Model {
         .findAny()
         .map(Schedule::getUserEmail)
         .orElse("Unknown");
+  }
+
+  public boolean isDeletable() {
+    if (targetType.isUniverseTarget()) {
+      Optional<Universe> optional = Universe.maybeGet(targetUUID);
+      if (!optional.isPresent()) {
+        return true;
+      }
+      UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
+      if (taskUUID.equals(taskParams.updatingTaskUUID)) {
+        LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+      if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
+        LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+    } else if (targetType == TargetType.Provider) {
+      Optional<Provider> optional = Provider.maybeGet(targetUUID);
+      if (!optional.isPresent()) {
+        return true;
+      }
+      CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(targetUUID);
+      if (lastTask == null) {
+        // Not possible.
+        return true;
+      }
+      if (taskUUID.equals(lastTask.taskUUID)) {
+        LOG.debug("Provider task {} is not deletable", targetUUID);
+        return false;
+      }
+    }
+    return true;
   }
 }

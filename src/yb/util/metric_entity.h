@@ -108,6 +108,10 @@ struct MetricPrometheusOptions : public MetricOptions {
   std::string server_blacklist = "NONE";
   boost::regex server_blacklist_regex;
 
+  // If true, MetricRegister will cache all regex filters.
+  // Default: true.
+  bool cache_filters = true;
+
   void CreateRegexs() {
     table_whitelist_regex = table_whitelist;
     table_blacklist_regex = table_blacklist;

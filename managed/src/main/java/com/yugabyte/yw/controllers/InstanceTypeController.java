@@ -13,9 +13,13 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -26,7 +30,9 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -48,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -92,12 +99,22 @@ public class InstanceTypeController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
+  public Result list(
+      UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (arch == null && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // This will be the case of legacy flow, where we don't have architecture as top level
+      // universe property. We can retrieve the arch from the default Image bundle for the provider.
+      List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
+      if (defaultImageBundles.size() > 0) {
+        arch = defaultImageBundles.get(0).getDetails().getArch().toString();
+      }
+    }
+    final String architecture = arch;
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
         InstanceType.findByProvider(
@@ -105,6 +122,13 @@ public class InstanceTypeController extends AuthenticatedController {
                 config,
                 confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
+            .filter(
+                it -> {
+                  if (provider.getCloudCode() == CloudType.aws && architecture != null) {
+                    return it.getInstanceTypeDetails().arch == Architecture.valueOf(architecture);
+                  }
+                  return true;
+                })
             .collect(toMap(it -> it.getInstanceTypeCode(), identity()));
 
     return maybeFilterByZoneOfferings(filterByZoneCodes, provider, instanceTypesMap);
@@ -196,13 +220,25 @@ public class InstanceTypeController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (provider.getCloudCode() == CloudType.aws
+        && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // Check in case the arch is specified for the instance.
+      InstanceTypeDetails instanceDetails = formData.get().getInstanceTypeDetails();
+      if (instanceDetails == null || instanceDetails.arch == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Please specify the architecture for the instance type %s",
+                formData.get().getInstanceTypeCode()));
+      }
+    }
     InstanceType it =
         InstanceType.upsert(
             provider.getUuid(),
@@ -234,7 +270,7 @@ public class InstanceTypeController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.DELETE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(
@@ -267,7 +303,7 @@ public class InstanceTypeController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.DEFAULT, action = Action.READ),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {

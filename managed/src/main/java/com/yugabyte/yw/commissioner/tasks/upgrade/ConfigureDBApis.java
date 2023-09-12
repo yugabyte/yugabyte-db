@@ -108,7 +108,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           },
           masterNodes,
           tserverNodes,
-          RUN_BEFORE_STOPPING,
+          // Passing user intent as part of uprgade context as in ysql server check
+          // we connect to ysqlsh. For ysqlsh connection we use socket when auth is enabled.
+          // and local ip when auth is disabled. But here since we are toggling the auth, the user
+          // intent fetched during runtime will not be correct as universe details are not updated
+          // upto this point so passing the new expected user intent as part of the
+          // waitForServer(YSQL sevrver check) in params.
+          RUN_BEFORE_STOPPING.builder().userIntent(userIntent).build(),
           universe.isYbcEnabled());
     }
   }

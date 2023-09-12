@@ -13,8 +13,6 @@ type: docs
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
-Currently, Azure is not supported for replicated across region clusters (coming soon).
-
 {{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
 
 ## Preferred region

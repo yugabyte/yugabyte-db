@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -121,6 +122,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
+  protected AutoFlagUtil mockAutoFlagUtil;
   protected ProviderEditRestrictionManager providerEditRestrictionManager;
   protected BackupHelper mockBackupHelper;
   protected PrometheusConfigManager mockPrometheusConfigManager;
@@ -215,6 +217,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSupportBundleComponent = mock(SupportBundleComponent.class);
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
+    mockAutoFlagUtil = mock(AutoFlagUtil.class);
     mockReleaseManager = mock(ReleaseManager.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
     mockBackupHelper = mock(BackupHelper.class);
@@ -255,6 +258,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
+                .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(

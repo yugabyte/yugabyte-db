@@ -932,7 +932,7 @@ public class XClusterConfigController extends AuthenticatedController {
             request.body().asJson(), XClusterConfigNeedBootstrapFormData.class);
     Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUuid, customer);
     needBootstrapFormData.tables =
-        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
+        XClusterConfigTaskBase.convertUuidStringsToIdStringSet(needBootstrapFormData.tables);
 
     log.info(
         "Received needBootstrapTable request for sourceUniverseUuid={}, configTypeString={} "
@@ -1078,7 +1078,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xClusterConfigUuid);
     needBootstrapFormData.tables =
-        XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
+        XClusterConfigTaskBase.convertUuidStringsToIdStringSet(needBootstrapFormData.tables);
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap =
@@ -1108,13 +1108,13 @@ public class XClusterConfigController extends AuthenticatedController {
               formData.sourceUniverseUUID));
     }
 
-    formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+    formData.tables = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.tables);
 
     // Validate bootstrap parameters if there is any.
     if (formData.bootstrapParams != null) {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
       bootstrapParams.tables =
-          XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
+          XClusterConfigTaskBase.convertUuidStringsToIdStringSet(bootstrapParams.tables);
       // Fail early if parameters are invalid for bootstrapping.
       if (bootstrapParams.tables.size() > 0) {
         validateBackupRequestParamsForBootstrapping(
@@ -1146,12 +1146,12 @@ public class XClusterConfigController extends AuthenticatedController {
     }
 
     if (formData.tables != null && !formData.tables.isEmpty()) {
-      formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+      formData.tables = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.tables);
       // Validate bootstrap parameters if there is any.
       if (formData.bootstrapParams != null) {
         XClusterConfigCreateFormData.BootstrapParams bootstrapParams = formData.bootstrapParams;
         bootstrapParams.tables =
-            XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(bootstrapParams.tables);
+            XClusterConfigTaskBase.convertUuidStringsToIdStringSet(bootstrapParams.tables);
         // Fail early if parameters are invalid for bootstrapping.
         if (bootstrapParams.tables.size() > 0) {
           validateBackupRequestParamsForBootstrapping(
@@ -1170,7 +1170,7 @@ public class XClusterConfigController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(
             request.body().asJson(), XClusterConfigRestartFormData.class);
 
-    formData.tables = XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(formData.tables);
+    formData.tables = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.tables);
 
     if (formData.bootstrapParams != null) {
       validateBackupRequestParamsForBootstrapping(
@@ -1259,7 +1259,7 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Support for transactional xCluster configs is disabled in YBA. You may enable it "
-              + "by setting xcluster.transactional.enabled to true in the application.conf");
+              + "by setting yb.xcluster.transactional.enabled to true in the application.conf");
     }
 
     // Check YBDB software version.

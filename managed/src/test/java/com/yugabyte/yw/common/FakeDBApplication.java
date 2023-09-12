@@ -34,6 +34,7 @@ import org.junit.Before;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -80,6 +81,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
   public FileHelperService mockFileHelperService = mock(FileHelperService.class);
   public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
+  public NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
+  public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -145,6 +148,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
+                .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
+                .overrides(bind(GetTableSchemaResponse.class).toInstance(mockSchemaResponse))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
