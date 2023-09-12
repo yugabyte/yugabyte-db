@@ -449,9 +449,9 @@ Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes) for 
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
 {{< /note >}}
 
-### Cut over to a database
+### Cut over to the target
 
-Cutover is the last phase of switching your application from pointing to your source database to pointing to your YugabyteDB database.
+Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
 Keep monitoring the metrics displayed on export data and import data processes. After you notice that the import of events is catching up to the exported events, you are ready to cutover. You can use the "Remaining events" metric displayed in the import data process to help you determine the cutover.
 
@@ -493,13 +493,13 @@ Perform the following steps as part of the cutover process:
 
     {{< warning title = "Caveat associated with rows reported by import data status" >}}
 
-Suppose you have a scenario where,
+Suppose you have the following scenario:
 
 - [import data](#import-data) or [import data file](#import-data-file) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
-In this scenario, [import data status](#import-data-status) command reports incorrect imported row count; because it doesn't take into account the deleted rows.
+In this scenario, the [import data status](#import-data-status) command reports an incorrect imported row count because it doesn't take into account the deleted rows.
 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
@@ -507,9 +507,9 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 1. Stop [archive changes](#archive-changes).
 
-### Switch over your database (Optional)
+### Switch over to the fall forward (Optional)
 
-During this phase, switch over your application from pointing it to the target YugabyteDB database to pointing it to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
+During this phase, switch your application over from the target YugabyteDB database to the fall-forward database. As this step is optional, perform it _only_ if the target YugabyteDB database is not working as expected.
 
 Keep monitoring the metrics displayed for `fall-forward synchronize` and `fall-forwad setup` processes. After you notice that the import of events to the fall-forward database is catching up to the exported events from the target database, you are ready to switchover. You can use the "Remaining events" metric displayed in the fall-forward setup process to help you determine the switchover.
 
@@ -560,9 +560,9 @@ During `fall-forward synchronize`, yb-voyager creates a CDC stream ID on the tar
 
 ## Limitations
 
-In addition to the Live migration [limitations](../live-migrate/#limitations), following are additional limitations related to the fall-forward feature.
+In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-forward feature:
 
-- Fall-forward feature is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
+- Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `fall-forward synchronize`.
 - You need to manually disable constraints on the fall-forward database.
 - yb-voyager provides limited datatypes support with YugabyteDB CDC during `fall-forward synchronize` for datatypes such as DECIMAL, and Timestamp.
