@@ -381,5 +381,9 @@ func init() {
 
 	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig,
 		replicatedMigrateFinish, replicatedRollbackCmd)
-	rootCmd.AddCommand(baseReplicatedMigration)
+
+	// Feature flag replicated migration for now
+	if os.Getenv("YBA_MODE") == "dev" {
+		rootCmd.AddCommand(baseReplicatedMigration)
+	}
 }
