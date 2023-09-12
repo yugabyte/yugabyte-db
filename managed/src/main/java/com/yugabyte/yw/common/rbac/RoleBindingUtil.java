@@ -41,7 +41,7 @@ public class RoleBindingUtil {
     Users user = Users.getOrBadRequest(userUUID);
     Role role = Role.getOrBadRequest(user.getCustomerUUID(), roleUUID);
     log.info(
-        "Creating {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
+        "Creating {} RoleBinding with user UUID '{}', role UUID {} on resource group {}.",
         type,
         userUUID,
         roleUUID,

@@ -265,6 +265,9 @@ public class UniverseCRUDHandler {
     //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if (userIntent.deviceInfo != null) {
+      userIntent.deviceInfo.validate();
+    }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
@@ -504,6 +507,20 @@ public class UniverseCRUDHandler {
             c.userIntent.imageBundleUUID = bundle.getUuid();
           }
         }
+      }
+
+      if (taskParams.arch == null && c.userIntent.imageBundleUUID != null) {
+        /*
+         * In case the architecture is not specified as part of universe creation.
+         * We will try:
+         * 1. Try reading the architecture of the imageBundle specified.
+         * 2. In case image bundle is not specified we will proceed with the architecture
+         * of the default image bundle (#2 is already taken care of in the above set of statements.)
+         */
+
+        ImageBundle universeBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), c.userIntent.imageBundleUUID);
+        taskParams.arch = universeBundle.getDetails().getArch();
       }
 
       // Set the node exporter config based on the provider

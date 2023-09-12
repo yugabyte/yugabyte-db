@@ -92,3 +92,9 @@ Create a role and a database user, and provide the user with READ access to all 
        ```
 
     1. Verify using `archive log list`.
+
+If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity). Note that you can use only one of the following arguments to connect to your Oracle instance:
+
+- [--source-db-schema](../../reference/yb-voyager-cli/#source-db-schema)
+- [--oracle-db-sid](../../reference/yb-voyager-cli/#oracle-db-sid)
+- [--oracle-tns-alias](../../reference/yb-voyager-cli/#ssl-connectivity)

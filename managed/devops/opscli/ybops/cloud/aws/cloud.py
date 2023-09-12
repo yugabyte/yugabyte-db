@@ -622,8 +622,8 @@ class AwsCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
 
-    def change_instance_type(self, args, newInstanceType):
-        change_instance_type(args["region"], args["id"], newInstanceType)
+    def change_instance_type(self, args, instance_type):
+        change_instance_type(args["region"], args["id"], instance_type)
 
     def stop_instance(self, host_info):
         ec2 = boto3.resource('ec2', host_info["region"])

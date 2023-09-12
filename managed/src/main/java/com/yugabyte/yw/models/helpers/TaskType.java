@@ -551,6 +551,8 @@ public enum TaskType {
 
   CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
 
+  SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
+
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
 
   private final Class<? extends ITask> taskClass;
@@ -584,6 +586,7 @@ public enum TaskType {
           .put(ResizeNode, 34)
           .put(RestartUniverse, 35)
           .put(SoftwareUpgrade, 36)
+          .put(SoftwareUpgradeYB, 36)
           .put(SystemdUpgrade, 37)
           .put(ThirdpartySoftwareUpgrade, 38)
           .put(TlsToggle, 39)

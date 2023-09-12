@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -105,6 +106,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -1400,6 +1402,16 @@ public class NodeManager extends DevopsBase {
     return envVars;
   }
 
+  private Map<String, String> getFaultInjectionEnvVars(Provider provider) {
+    Map<String, String> envVars = new HashMap<>();
+    String faultInjectedPaths =
+        confGetter.getConfForScope(provider, ProviderConfKeys.ybopsFaultInjectedPaths);
+    if (StringUtils.isNotBlank(faultInjectedPaths)) {
+      envVars.put("YBOPS_FAULT_INJECTED_PATHS", faultInjectedPaths);
+    }
+    return envVars;
+  }
+
   public ShellResponse detachedNodeCommand(
       NodeCommandType type, DetachedNodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
@@ -1577,6 +1589,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
+    Provider provider = nodeTaskParam.getProvider();
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
@@ -1592,7 +1605,6 @@ public class NodeManager extends DevopsBase {
       }
     }
     Path bootScriptFile = null;
-    Provider provider = nodeTaskParam.getProvider();
     String bootScript = confGetter.getConfForScope(provider, ProviderConfKeys.universeBootScript);
     Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
@@ -1646,8 +1658,7 @@ public class NodeManager extends DevopsBase {
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
-            commandArgs.add("--instance_type");
-            commandArgs.add(taskParam.instanceType);
+            addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -1656,7 +1667,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--cloud_subnet_secondary");
               commandArgs.add(taskParam.secondarySubnetId);
             }
-
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
               // If low mem instance, configure small boot disk size.
@@ -1814,8 +1824,7 @@ public class NodeManager extends DevopsBase {
 
           if (cloudType.equals(Common.CloudType.aws)) {
             // aws uses instance_type to determine device names for mounting
-            commandArgs.add("--instance_type");
-            commandArgs.add(taskParam.instanceType);
+            addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
 
           String imageBundleDefaultImage = "";
@@ -1960,7 +1969,15 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType, taskParam.useSystemd);
+          // Instance may not yet be created.
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1980,7 +1997,14 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType, taskParam.useSystemd);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1993,7 +2017,14 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType, taskParam.useSystemd);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -2066,8 +2097,7 @@ public class NodeManager extends DevopsBase {
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam, true /* includeIopsAndThroughput */));
           }
@@ -2082,8 +2112,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.add("--volume_type");
             commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
@@ -2098,9 +2127,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResizeNode.Params");
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
-
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
           commandArgs.add("--pg_max_mem_mb");
           commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
 
@@ -2306,13 +2333,18 @@ public class NodeManager extends DevopsBase {
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
+      Map<String, String> envVars =
+          ImmutableMap.<String, String>builder()
+              .putAll(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .putAll(getFaultInjectionEnvVars(provider))
+              .build();
       return execCommand(
           DevopsCommand.builder()
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
               .cloudArgs(getCloudArgs(nodeTaskParam))
-              .envVars(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
               .build());
@@ -2442,16 +2474,25 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private void addArguments(
-      List<String> commandArgs, String nodeIP, String instanceType, boolean useSystemd) {
-    commandArgs.add("--instance_type");
-    commandArgs.add(instanceType);
-    if (!Strings.isNullOrEmpty(nodeIP)) {
-      commandArgs.add("--node_ip");
-      commandArgs.add(nodeIP);
+  private void addInstanceTypeArgs(
+      List<String> commandArgs,
+      UUID providerUuid,
+      String instanceTypeCode,
+      boolean ensureCloudInstanceType) {
+    InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
+    if (ensureCloudInstanceType && !instanceType.isCloudInstanceType()) {
+      throw new RuntimeException(
+          String.format("%s is not a cloud instance type", instanceTypeCode));
     }
-    if (useSystemd) {
-      commandArgs.add("--systemd_services");
+    commandArgs.add("--instance_type");
+    commandArgs.add(instanceTypeCode);
+    if (CollectionUtils.isNotEmpty(instanceType.getInstanceTypeDetails().cloudInstanceTypeCodes)) {
+      instanceType.getInstanceTypeDetails().cloudInstanceTypeCodes.stream()
+          .forEach(
+              t -> {
+                commandArgs.add("--cloud_instance_types");
+                commandArgs.add(t);
+              });
     }
   }
 

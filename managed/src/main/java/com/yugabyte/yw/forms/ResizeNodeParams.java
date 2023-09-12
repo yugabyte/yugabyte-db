@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -46,8 +45,6 @@ import play.mvc.Http.Status;
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeWithGFlags {
-
-  private static final Pattern AZU_NO_LOCAL_DISK = Pattern.compile("Standard_(D|E)[0-9]*as\\_v5");
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
@@ -249,20 +246,22 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       boolean instanceTypeChanged = false;
       if (!Objects.equals(newInstanceTypeCode, currentInstanceTypeCode)) {
         if (!instanceTypeMap.containsKey(newInstanceTypeCode)) {
-          InstanceType instanceType =
+          InstanceType newInstanceType =
               getInstanceType(currentUserIntent, newInstanceTypeCode, allowUnsupportedInstances);
-          instanceTypeMap.put(newInstanceTypeCode, instanceType);
-          if (instanceType == null) {
+          instanceTypeMap.put(newInstanceTypeCode, newInstanceType);
+          if (newInstanceType == null) {
             return String.format(
                 "Provider %s of type %s does not contain the intended instance type '%s'",
                 currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode);
           }
-          if (currentUserIntent.providerType == Common.CloudType.azu
-              && isAzureWithLocalDisk(currentInstanceTypeCode)
-                  != isAzureWithLocalDisk(newInstanceTypeCode)) {
-            return String.format(
-                "Cannot switch between instances with and without local disk (%s and %s)",
-                currentInstanceTypeCode, newInstanceTypeCode);
+          if (currentUserIntent.providerType == Common.CloudType.azu) {
+            InstanceType currentInstanceType =
+                InstanceType.getOrBadRequest(provider.getUuid(), currentInstanceTypeCode);
+            if (newInstanceType.isAzureWithLocalDisk()
+                != currentInstanceType.isAzureWithLocalDisk())
+              return String.format(
+                  "Cannot switch between instances with and without local disk (%s and %s)",
+                  currentInstanceTypeCode, newInstanceTypeCode);
           }
         }
         instanceTypeChanged = true;
@@ -432,10 +431,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         .filter(type -> type.getInstanceTypeCode().equals(instanceTypeCode))
         .findFirst()
         .orElse(null);
-  }
-
-  private static boolean isAzureWithLocalDisk(String instanceType) {
-    return AZU_NO_LOCAL_DISK.matcher(instanceType).matches();
   }
 
   public boolean flagsProvided(Universe universe) {

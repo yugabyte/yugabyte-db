@@ -248,7 +248,7 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [export schema](/preview/yugabyte-voyager/migrate-steps/#export-and-analyze-schema) and [export data](/preview/yugabyte-voyager/migrate-steps/#export-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [export schema](/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](/preview/yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
 {{< /tip >}}
 
 ### Export data into CSV files using the COPY command

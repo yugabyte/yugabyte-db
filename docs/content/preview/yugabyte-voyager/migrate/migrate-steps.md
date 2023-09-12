@@ -1,21 +1,43 @@
 ---
-title: Steps to migrate your database using YugabyteDB Voyager
-headerTitle: Migration steps
-linkTitle: Migrate
-description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
+title: Steps to perform offline migration of your database using YugabyteDB Voyager
+headerTitle: Offline migration
+linkTitle: Offline migration
+headcontent: Steps for an offline migration using YugabyteDB Voyager
+description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
+aliases:
+  - /preview/yugabyte-voyager/migrate-steps/
 menu:
   preview_yugabyte-voyager:
-    identifier: migrate-steps
-    parent: yugabytedb-voyager
+    identifier: migrate-offline
+    parent: migration-types
     weight: 102
 type: docs
 ---
 
-This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
+This page describes the steps to perform and verify a successful offline migration to YugabyteDB.
 
-- [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
-- Check the [unsupported features](../known-issues/#unsupported-features) and [known issues](../known-issues/#known-issues).
-- Review [data modeling](../reference/data-modeling/) strategies.
+## Migration workflow
+
+![Offline migration workflow](/images/migrate/migration-workflow.png)
+
+| Step | Description |
+| :--- | :---|
+| [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| [Prepare source](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| [Prepare target](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| [Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| [Modify schema](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| [Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
+| [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
+| [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
+
+Before proceeding with migration, ensure that you have completed the following steps:
+
+- [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
+- Check the [unsupported features](../../known-issues/#unsupported-features) and [known issues](../../known-issues/#known-issues).
+- Review [data modeling](../../reference/data-modeling/) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -56,19 +78,9 @@ Prepare your source database by creating a new database user, and provide it wit
   </div>
 </div>
 
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< note title="Connecting to Oracle instances" >}}
-You can use only one of the following arguments to connect to your Oracle instance.
-
-- [`--source-db-schema`](../reference/yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../reference/yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../reference/yb-voyager-cli/#ssl-connectivity)
-{{< /note >}}
-
 ## Prepare the target database
 
-Prepare your target YugabyteDB cluster by creating a database, and a user for your cluster.
+Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
 ### Create the target database
 
@@ -80,7 +92,7 @@ CREATE DATABASE target_db_name;
 
 ### Create a user
 
-Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
+Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
 
 - For a local YugabyteDB cluster or YugabyteDB Anywhere, create a user and role with the superuser privileges using the following command:
 
@@ -88,14 +100,14 @@ Create a user with [`SUPERUSER`](../../api/ysql/the-sql-language/statements/dcl_
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-- For YugabyteDB Managed, create a user with [`yb_superuser`](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+- For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
      GRANT yb_superuser TO ybvoyager;
      ```
 
-If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
+If you want yb-voyager to connect to the target database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
 
 {{< warning title="Deleting the ybvoyager user" >}}
 
@@ -124,9 +136,9 @@ The export directory has the following sub-directories and files:
 
 - `reports` directory contains the generated *Schema Analysis Report*.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
-- `data` directory contains TSV (Tab Separated Values) files that are passed to the COPY command on the target database.
+- `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
-- `yb-voyager.log` contains log messages.
+- `logs` directory contains the log files for each command.
 
 ## Migrate your database to YugabyteDB
 
@@ -171,7 +183,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
-Refer to [export schema](../reference/yb-voyager-cli/#export-schema) for details about the arguments.
+Refer to [export schema](../../reference/yb-voyager-cli/#export-schema) for details about the arguments.
 
 #### Analyze schema
 
@@ -186,7 +198,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The above command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
+Refer to [analyze schema](../../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
 
 #### Manually edit the schema
 
@@ -194,7 +206,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../reference/data-modeling/).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../reference/data-modeling/).
 
 {{< note title="Manual schema changes" >}}
 
@@ -220,7 +232,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
 ```
 
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-Refer to [export data](../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -242,8 +254,8 @@ For MySQL and Oracle, you can optionally speed up data export by setting the env
 Consider the following caveats before using the feature:
 
 - You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
-- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
-- [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
+- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-mysql/).
+- [--parallel-jobs](../../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
 - In MySQL RDS, writes are not allowed during the data export process.
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 
@@ -270,7 +282,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-schema <TARGET_DB_SCHEMA> # MySQL and Oracle only
 ```
 
-Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
@@ -297,9 +309,9 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
 
 By default, yb-voyager creates C/2 connections where C is the total number of cores in the cluster. You can change the default number of connections using the `--parallel-jobs` argument. If yb-voyager fails to determine the number of cores in the cluster, it defaults to 2 connections per node.
 
-Refer to [import data](../reference/yb-voyager-cli/#import-data) for details about the arguments.
+Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
 
-yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. This phase is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. After restarting, the data import resumes from its current state.
 
 {{< tip title="Importing large datasets" >}}
 
@@ -315,7 +327,7 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 #### Import data file
 
-If all your data files are in CSV format and you have already created a schema in your target YugabyteDB, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
+If all your data files are in CSV format and you have already created a schema in your target YugabyteDB database, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -333,7 +345,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
 
 ```
 
-Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
 
 #### Import data file from AWS S3
 
@@ -384,7 +396,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-import-data
 ```
 
-Refer to [import schema](../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
 
 ### Verify migration
 

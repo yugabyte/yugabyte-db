@@ -16,7 +16,7 @@ This page describes the two kinds of _unbounded_ loop.
 
 ## "Infinite loop"
 
-The _infinite loop_ is the most basic and most flexible form of the _[unbounded loop](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-unbounded-loop-defn)_. It looks like this:
+The _infinite loop_ is the most basic and most flexible form of the _[unbounded loop](../../../../../../../syntax_resources/grammar_diagrams/#plpgsql-unbounded-loop-defn)_. It looks like this:
 
 ```plpgsql
 <<label_17>>loop
@@ -81,9 +81,9 @@ select k, v from s.f_infinite(6, 11);
 
 The code relies on these basic PL/pgSQL statements:
 
-- _[plpgsql_open_cursor_stmt](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-open-cursor-stmt)_
-- _[plpgsql_fetch_from_cursor_stmt](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-fetch-from-cursor-stmt)_
-- _[plpgsql_close_cursor_stmt](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-close-cursor-stmt)_
+- _[plpgsql_open_cursor_stmt](../../../../../../../syntax_resources/grammar_diagrams/#plpgsql-open-cursor-stmt)_
+- _[plpgsql_fetch_from_cursor_stmt](../../../../../../../syntax_resources/grammar_diagrams/#plpgsql-fetch-from-cursor-stmt)_
+- _[plpgsql_close_cursor_stmt](../../../../../../../syntax_resources/grammar_diagrams/#plpgsql-close-cursor-stmt)_
 
 See also the section **[Cursor manipulation in PL/pgSQL](../../../basic-statements/cursor-manipulation/)**.
 
@@ -106,7 +106,7 @@ See also the section [Beware Issue #6514](../../../../../../../cursors/#beware-i
 
 ## "While loop"
 
-The other form of the _[unbounded loop](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-unbounded-loop-defn)_ is the _while loop_. It looks like this:
+The other form of the _[unbounded loop](../../../../../../../syntax_resources/grammar_diagrams/#plpgsql-unbounded-loop-defn)_ is the _while loop_. It looks like this:
 
 ```plpgsql
 <<label_42>>while <boolean expression> loop

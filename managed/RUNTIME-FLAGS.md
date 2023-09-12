@@ -78,6 +78,7 @@
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
 | "Server certificate verification for LDAPs/LDAP-TLS" | "yb.security.ldap.enforce_server_cert_verification" | "GLOBAL" | "Enforce server certificate verification for LDAPs/LDAP-TLS" | "Boolean" |
 | "Enable Detailed Logs" | "yb.security.enable_detailed_logs" | "GLOBAL" | "Enable detailed security logs" | "Boolean" |
+| "Maximum Volume Count" | "yb.max_volume_count" | "GLOBAL" | "Maximum Volume Count" | "Integer" |
 | "Task Garbage Collector Check Interval" | "yb.taskGC.gc_check_interval" | "GLOBAL" | "How frequently do we check for completed tasks in database" | "Duration" |
 | "API support for backward compatible date fields" | "yb.api.backward_compatible_date" | "GLOBAL" | "Enable when a client to the YBAnywhere API wants to continue using the older date  fields in non-ISO format. Default behaviour is to not populate such deprecated API fields and only return newer date fields." | "Boolean" |
 | "Allow universes to be detached/attached" | "yb.attach_detach.enabled" | "GLOBAL" | "Allow universes to be detached from a source platform and attached to dest platform" | "Boolean" |
@@ -183,3 +184,4 @@
 | "Network Load balancer health check paths" | "yb.universe.network_load_balancer.custom_health_check_paths" | "UNIVERSE" | "Paths probed by HTTP/HTTPS health checks performed by the network load balancer. Paths are mapped one-to-one with the custom health check ports runtime configuration." | "String List" |
 | "Default PITR retention period for txn xCluster" | "yb.xcluster.transactional.pitr.default_retention_period" | "UNIVERSE" | "The default retention period used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Default PITR snapshot interval for txn xCluster" | "yb.xcluster.transactional.pitr.default_snapshot_interval" | "UNIVERSE" | "The default snapshot interval used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
+| "Skip backup metadata validation" | "yb.backup.skip_metadata_validation" | "UNIVERSE" | "Skip backup metadata based validation during restore" | "Boolean" |
