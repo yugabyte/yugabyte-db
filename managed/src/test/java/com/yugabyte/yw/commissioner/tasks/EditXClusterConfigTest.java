@@ -16,10 +16,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -584,12 +582,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       flagDetails.tags = "auto";
       when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
           .thenReturn(Collections.singletonList(flagDetails));
-      when(mockGFlagsValidation.extractGFlags(anyString(), anyString(), anyBoolean()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      doCallRealMethod()
-          .when(mockGFlagsValidation)
-          .getFilteredAutoFlagsWithNonInitialValue(anyMap(), anyString(), any());
-      doCallRealMethod().when(mockGFlagsValidation).isAutoFlag(any());
     } catch (Exception ignore) {
     }
 
@@ -655,12 +647,6 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       flagDetails.tags = "auto";
       when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
           .thenReturn(Collections.singletonList(flagDetails));
-      when(mockGFlagsValidation.extractGFlags(anyString(), anyString(), anyBoolean()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      doCallRealMethod()
-          .when(mockGFlagsValidation)
-          .getFilteredAutoFlagsWithNonInitialValue(anyMap(), anyString(), any());
-      doCallRealMethod().when(mockGFlagsValidation).isAutoFlag(any());
     } catch (Exception ignore) {
     }
 

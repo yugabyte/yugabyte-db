@@ -16,7 +16,10 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.MaintenanceWindowApiFilter;
@@ -27,6 +30,11 @@ import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedResponse;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -51,6 +59,12 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get details of a maintenance window", response = MaintenanceWindow.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID windowUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -63,6 +77,12 @@ public class MaintenanceController extends AuthenticatedController {
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -83,6 +103,12 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -106,6 +132,12 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -133,6 +165,12 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result update(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     maintenanceService.getOrBadRequest(customerUUID, windowUUID);
@@ -160,6 +198,12 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete maintenance window", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 

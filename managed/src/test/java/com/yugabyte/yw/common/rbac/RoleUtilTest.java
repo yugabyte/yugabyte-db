@@ -32,7 +32,7 @@ public class RoleUtilTest extends FakeDBApplication {
   RoleUtil roleUtil;
   public Customer customer;
   public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
-  public Permission permission2 = new Permission(ResourceType.DEFAULT, Action.CREATE);
+  public Permission permission2 = new Permission(ResourceType.OTHER, Action.CREATE);
 
   @Before
   public void setup() {

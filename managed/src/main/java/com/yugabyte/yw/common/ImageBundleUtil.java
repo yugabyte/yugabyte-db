@@ -6,9 +6,11 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -130,5 +132,87 @@ public class ImageBundleUtil {
         }
       }
     }
+  }
+
+  /*
+   * Returns the default image bundle associated with the universe. In case, the universe
+   * has `arch` specified as top level property we will filter the default based on the
+   * achitecture, else we will return the first one from the list of default bundles.
+   */
+  public static ImageBundle getDefaultBundleForUniverse(
+      Architecture arch, List<ImageBundle> defaultBundles) {
+    ImageBundle defaultBundle;
+    if (arch == null) {
+      defaultBundle = defaultBundles.get(0);
+    } else {
+      defaultBundle =
+          defaultBundles.stream()
+              .filter(bundle -> bundle.getDetails().getArch().equals(arch))
+              .findFirst()
+              .get();
+    }
+
+    return defaultBundle;
+  }
+
+  public void migrateImageBundlesForProviders(Provider provider) {
+    List<ImageBundle> bundles = provider.getImageBundles();
+    if (bundles.size() == 0) {
+      return;
+    }
+    long customBundlesCount =
+        bundles.stream()
+            .filter(
+                iB ->
+                    iB.getMetadata() != null
+                        && iB.getMetadata().getType() != null
+                        && iB.getMetadata().getType() == ImageBundleType.CUSTOM)
+            .count();
+    if (customBundlesCount == bundles.size()) {
+      // We will not generate image bundles in case a provider contains
+      // all explicit marked custom bundles.
+      return;
+    }
+
+    // Retrive the currentYbaDefaultImageBundles, so that we can mark them YBA_DEPRECATED.
+    boolean x86YBADefaultBundleMarkedDefault = false;
+    boolean aarch64YBADefaultBundleMarkedDefault = false;
+    List<ImageBundle> getYbaDefaultImageBundles =
+        ImageBundle.getYBADefaultBundles(provider.getUuid());
+    if (getYbaDefaultImageBundles.size() != 0) {
+      for (ImageBundle ybaDefaultBundle : getYbaDefaultImageBundles) {
+        if (ybaDefaultBundle.getDetails() == null) {
+          continue;
+        }
+        boolean isMarkedDefault = ybaDefaultBundle.getUseAsDefault().booleanValue();
+        Architecture bundleArch = ybaDefaultBundle.getDetails().getArch();
+        if (bundleArch == Architecture.aarch64 && isMarkedDefault) {
+          aarch64YBADefaultBundleMarkedDefault = true;
+        }
+        if (bundleArch == Architecture.x86_64 && isMarkedDefault) {
+          x86YBADefaultBundleMarkedDefault = true;
+        }
+
+        if (ybaDefaultBundle.getMetadata() != null
+            && ybaDefaultBundle.getMetadata().getType() != null) {
+          ybaDefaultBundle.getMetadata().setType(ImageBundleType.YBA_DEPRECATED);
+          if (isMarkedDefault) {
+            ybaDefaultBundle.setUseAsDefault(false);
+          }
+          ybaDefaultBundle.update();
+        }
+      }
+    }
+
+    // Populate the new YBA_ACTIVE bundle for x86 arch.
+    CloudImageBundleSetup.generateYBADefaultImageBundle(
+        provider, cloudQueryHelper, Architecture.x86_64, x86YBADefaultBundleMarkedDefault, true);
+    // Populate the new YBA_ACTIVE bundle for aarch64 arch.
+    CloudImageBundleSetup.generateYBADefaultImageBundle(
+        provider,
+        cloudQueryHelper,
+        Architecture.aarch64,
+        aarch64YBADefaultBundleMarkedDefault,
+        true);
   }
 }

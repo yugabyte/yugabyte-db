@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import java.util.List;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
@@ -54,7 +55,9 @@ public class V253__GenerateImageBundleTest extends FakeDBApplication {
 
     V253__GenerateImageBundle.generateImageBundles();
     defaultProvider.refresh();
-    ImageBundle defaultImageBundle = ImageBundle.getDefaultForProvider(defaultProvider.getUuid());
+    List<ImageBundle> defaultImageBundles =
+        ImageBundle.getDefaultForProvider(defaultProvider.getUuid());
+    ImageBundle defaultImageBundle = defaultImageBundles.get(0);
 
     assertEquals(1, defaultProvider.getImageBundles().size());
     assertEquals(defaultImageBundle.getUuid(), defaultProvider.getImageBundles().get(0).getUuid());

@@ -254,6 +254,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       targetIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     }
 
+    createInstanceType(UUID.fromString(currentIntent.provider), curInstanceTypeCode);
     createInstanceType(UUID.fromString(currentIntent.provider), targetInstanceTypeCode);
     assertEquals(
         expected,

@@ -380,6 +380,22 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 	return nil
 }
 
+func (prom Prometheus) RollbackMigration(uid, gid uint32) error {
+	rootDir := common.GetReplicatedBaseDir()
+	replDirs := []string{
+		filepath.Join(rootDir, "prometheusv2"),
+		filepath.Join(rootDir, "/yugaware/swamper_targets"),
+		filepath.Join(rootDir, "yugaware/swamper_rules"),
+	}
+	for _, dir := range replDirs {
+		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {
+			return fmt.Errorf("failed to reset prometheus directory %s to owner uid %d gid %d: %w",
+				dir, uid, gid, err)
+		}
+	}
+	return nil
+}
+
 func (prom Prometheus) moveAndExtractPrometheusPackage() error {
 
 	packagesPath := common.GetInstallerSoftwareDir() + "/packages"
@@ -424,7 +440,8 @@ func (prom Prometheus) createDataDirs() error {
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
 	// Create the log file
-	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil {
+	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil &&
+		!errors.Is(err, os.ErrExist) {
 		log.Error("Failed to create prometheus log file: " + err.Error())
 		return err
 	}

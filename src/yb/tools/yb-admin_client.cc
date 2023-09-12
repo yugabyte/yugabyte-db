@@ -2107,8 +2107,8 @@ Status ClusterAdminClient::GetXClusterConfig() {
   MessageToJsonString(
       cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
   cout << Format(
-              "{\"version\":$0,\"xcluster_producer_registry\":$1,consumer_"
-              "registry:$2}",
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,\"consumer_"
+              "registry\":$2}",
               xcluster_config.xcluster_config().version(), producer_registry_output,
               consumer_registry_output)
        << endl;

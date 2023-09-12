@@ -33,9 +33,9 @@ type: docs
     </a>
   </li>
    <li >
-    <a href="../ycql-4.6/" class="nav-link">
+    <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.6)
+      YugabyteDB Java Driver for YCQL (4.15)
     </a>
   </li>
 </ul>

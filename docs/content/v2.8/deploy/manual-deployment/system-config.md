@@ -134,7 +134,7 @@ Directive       | ulimit equivalent    | Value |
 LimitCPU=       | ulimit -t            | infinity |
 LimitFSIZE=     | ulimit -f            | infinity |
 LimitDATA=      | ulimit -d            | infinity |
-LimitSTACK=     | ulimit -s            | 8192 |
+LimitSTACK=     | ulimit -s            | 8388608 |
 LimitCORE=      | ulimit -c            | infinity |
 LimitRSS=       | ulimit -m            | infinity |
 LimitNOFILE=    | ulimit -n            | 1048576  |

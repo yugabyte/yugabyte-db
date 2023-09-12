@@ -11,15 +11,23 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.cdc.CdcStream;
 import com.yugabyte.yw.common.cdc.CdcStreamCreateResponse;
 import com.yugabyte.yw.common.cdc.CdcStreamDeleteResponse;
 import com.yugabyte.yw.common.cdc.CdcStreamManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CdcStreamFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -42,6 +50,12 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private CdcStreamManager cdcStreamManager;
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Universe checkCloudAndValidateUniverse(UUID customerUUID, UUID universeUUID) {
     LOG.info("Checking config for customer='{}', universe='{}'", customerUUID, universeUUID);
     if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
@@ -54,6 +68,12 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "List CDC Streams for a cluster", notes = "List CDC Streams for a cluster")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listCdcStreams(UUID customerUUID, UUID universeUUID) throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
 
@@ -64,6 +84,12 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   @ApiOperation(
       value = "Create CDC Stream for a cluster",
       notes = "Create CDC Stream for a cluster")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result createCdcStream(UUID customerUUID, UUID universeUUID, Http.Request request)
       throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
@@ -82,6 +108,12 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   @ApiOperation(
       value = "Delete a CDC stream for a cluster",
       notes = "Delete a CDC Stream for a cluster")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteCdcStream(UUID customerUUID, UUID universeUUID, String streamId)
       throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);

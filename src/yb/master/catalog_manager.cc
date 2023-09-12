@@ -223,7 +223,10 @@ DEFINE_NON_RUNTIME_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
     "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
+// The time is temporarly set to 600 sec to avoid hitting the tablet replacement code inherited from
+// Kudu. Removing tablet replacement code will be fixed in GH-6006
+DEFINE_RUNTIME_int32(
+    tablet_creation_timeout_ms, 600 * 1000,  // 600 sec
     "Timeout used by the master when attempting to create tablet "
     "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
@@ -2449,6 +2452,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->state() != SysNamespaceEntryPB::RUNNING) {
+        continue;
+      }
+
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
@@ -2736,7 +2743,7 @@ Status CatalogManager::CompactSysCatalog(
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
   return PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
-    return shared_tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction);
+    return shared_tablet->ForceManualRocksDBCompact();
   });
 }
 

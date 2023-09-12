@@ -54,10 +54,15 @@ A Kubernetes node is expected to meet the following requirements:
 
 ## Prepare the cluster
 
-The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+The minimum version for a Kubernetes cluster and Helm chart are as follows:
 
 - Kubernetes 1.22
-- Helm 3.10
+- Helm 3.11.3
+
+The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+
+- Kubernetes - 1.22 to 1.25
+- Helm - 3.11.3
 
 Before installing YugabyteDB Anywhere, verify that you have the following:
 

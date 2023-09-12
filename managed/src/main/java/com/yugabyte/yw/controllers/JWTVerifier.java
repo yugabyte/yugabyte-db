@@ -84,7 +84,7 @@ public class JWTVerifier {
   }
 
   @VisibleForTesting
-  UUID verify(Request request, String header) {
+  public UUID verify(Request request, String header) {
     Optional<String> authTokenOp = request.header(header);
     if (authTokenOp.isPresent()) {
       try {

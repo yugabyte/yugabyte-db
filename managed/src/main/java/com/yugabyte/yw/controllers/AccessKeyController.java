@@ -7,6 +7,9 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -15,6 +18,11 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -39,6 +47,12 @@ public class AccessKeyController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
   @ApiOperation(value = "Get an access key", response = AccessKey.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -52,6 +66,12 @@ public class AccessKeyController extends AuthenticatedController {
       value = "List access keys for a specific provider",
       response = AccessKey.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -66,6 +86,12 @@ public class AccessKeyController extends AuthenticatedController {
       value = "List access keys for all providers of a customer",
       response = AccessKey.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listAllForCustomer(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<UUID> providerUUIDs =
@@ -89,6 +115,12 @@ public class AccessKeyController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AccessKeyFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
     AccessKeyFormData formData =
@@ -117,6 +149,12 @@ public class AccessKeyController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AccessKey",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result edit(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     // As part of access key edit we will be creating a new access key
     // so that if the old key is associated with some universes remains
@@ -140,6 +178,12 @@ public class AccessKeyController extends AuthenticatedController {
       nickname = "delete_accesskey",
       value = "Delete an access key",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

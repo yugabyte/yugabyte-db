@@ -9,7 +9,10 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -21,6 +24,11 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -58,6 +66,13 @@ public class KubernetesOverridesController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result validateKubernetesOverrides(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     UniverseConfigureTaskParams taskParams =
@@ -95,9 +110,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
       try {
         universeOverrides = HelmUtils.convertYamlToMap(userIntent.universeOverrides);
       } catch (Exception e) {
-        String errMsg = String.format("Error in parsing universe overrides: %s", e.getMessage());
         LOG.error("Error in convertYamlToMap: ", e);
-        overrideErrorsSet.add(errMsg);
+        overrideErrorsSet.add(
+            "Error: Unable to parse overrides structure, incorrect format specified");
       }
       Set<String> providersAZSet = new HashSet<>();
       Set<String> placementAZSet = new HashSet<>();

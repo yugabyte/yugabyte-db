@@ -31,10 +31,13 @@ func cleanCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			state, err := ybactlstate.LoadState()
+			state, err := ybactlstate.Initialize()
 			if err != nil {
 				log.Warn("failed to load internal state, continue with uninstall")
 				state = ybactlstate.New()
+			}
+			if !state.CurrentStatus.TransitionValid(ybactlstate.CleaningStatus) {
+				log.Fatal("invalid state transition from " + state.CurrentStatus.String())
 			}
 			state.CurrentStatus = ybactlstate.CleaningStatus
 

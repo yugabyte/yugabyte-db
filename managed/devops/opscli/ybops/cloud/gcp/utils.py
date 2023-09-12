@@ -718,8 +718,8 @@ class GoogleCloudAdmin():
                     "Instance %s's volume %s has not changed from %s",
                     instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, newInstanceType):
-        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
+    def change_instance_type(self, zone, instance_name, instance_type):
+        new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
             "machineType": new_machine_type
         }
@@ -1089,12 +1089,12 @@ class GoogleCloudAdmin():
             current_items.append({'key': 'startup-script', 'value': boot_script})
 
         # Update the instance metadata with the new items list
-        self.compute.instances().setMetadata(
+        self.waiter.wait(self.compute.instances().setMetadata(
             project=self.project,
             zone=args.zone,
             instance=instance['name'],
             body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
-        ).execute()
+        ).execute(), zone=args.zone)
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}
