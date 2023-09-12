@@ -104,12 +104,6 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	/* not yet executed */
 	qd->already_executed = false;
 
-	// if (IsYugaByteEnabled())
-	// {
-	// 	YBCSetQueryId(qd->plannedstmt->queryId);
-	// 	MyProc->queryid = qd->plannedstmt->queryId;
-	// }
-
 	return qd;
 }
 

@@ -447,6 +447,10 @@ class PgClient::Impl {
       auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
       data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
+      if (!req.options().auh_metadata().has_query_id()) {
+        LOG(ERROR) << GetStackTrace() << "\n\n\n\n\n";
+      }
+
       proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
         ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
       });

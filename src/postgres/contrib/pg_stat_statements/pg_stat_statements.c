@@ -1291,9 +1291,6 @@ static void
 pgss_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 				 bool execute_once)
 {
-	uint64		queryId = queryDesc->plannedstmt->queryId;
-	MyProc->queryid = queryId;
-	YBCSetQueryId(queryId);
 	nested_level++;
 	PG_TRY();
 	{
@@ -1375,11 +1372,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					ParamListInfo params, QueryEnvironment *queryEnv,
 					DestReceiver *dest, char *completionTag)
 {
-
-	uint64		queryId = pstmt->queryId;
-	MyProc->queryid = queryId;
-	YBCSetQueryId(queryId);
-
 	Node	   *parsetree = pstmt->utilityStmt;
 
 	/*
@@ -1582,9 +1574,6 @@ pgss_store(const char *query, uint64 queryId,
 	key.userid = GetUserId();
 	key.dbid = MyDatabaseId;
 	key.queryid = queryId;
-
-	MyProc->queryid = queryId;
-	YBCSetQueryId(queryId);
 
 	/* Lookup the hash table entry with shared lock. */
 	LWLockAcquire(pgss->lock, LW_SHARED);

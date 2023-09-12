@@ -5961,13 +5961,6 @@ PostgresMain(int argc, char *argv[],
 						 errmsg("invalid frontend message type %d",
 								firstchar)));
 		}
-		if (IsYugaByteEnabled())
-		{
-			MyProc->queryid = 0;
-			YBCSetQueryId(0);
-			MyProc->top_level_request_id[0] = '\0';
-			MyProc->wait_event_info = 0;
-		}
 	}							/* end of input-reading loop */
 }
 
