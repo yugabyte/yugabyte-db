@@ -21,7 +21,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
 
-## Key enhancements
+### Key enhancements
 
 * The yb-voyager [export data](../reference/yb-voyager-cli/#export-data) and [export schema](../reference/yb-voyager-cli/#export-schema) now supports overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
 * The yb-voyager export data and [import data](../reference/yb-voyager-cli/#import-data) commands now support providing passwords using environment variables `SOURCE_DB_PASSWORD` and `TARGET_DB_PASSWORD`. This addresses the security concern of a password being leaked via the `ps` command output. In addition, the password will not be present in any configuration or log files on the disk.
