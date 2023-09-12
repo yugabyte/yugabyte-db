@@ -80,10 +80,34 @@ var uninstallCmd = &cobra.Command{
 	},
 }
 
+var appConfigViewCmd = &cobra.Command{
+	Use:   "cgview",
+	Short: "run replicatedctl app-config view",
+	Run: func(cmd *cobra.Command, args []string) {
+		ctl := replicatedctl.New(replicatedctl.Config{})
+		view, err := ctl.AppConfigView()
+		if err != nil {
+			panic(err)
+		}
+		// fmt.Println(view)
+		if len(args) == 1 {
+			v, e := view.Get(args[0])
+			fmt.Println(e)
+			fmt.Println(v)
+		}
+		for _, e := range view.ViewEntries {
+			for _, i := range e.Items {
+				fmt.Println(i.Name)
+			}
+		}
+		view.PrintKeyVals()
+	},
+}
+
 func init() {
 	if os.Getenv("YBA_MODE") == "dev" {
 		rootCmd.AddCommand(replicatedctlCmd)
 		replicatedctlCmd.AddCommand(appInspectCmd, appStatusCmd, appStopCmd, appStartCmd, appConfigCmd,
-			uninstallCmd)
+			uninstallCmd, appConfigViewCmd)
 	}
 }
