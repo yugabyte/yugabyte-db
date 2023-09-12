@@ -248,7 +248,7 @@ The following **AWS regions** are available:
 The following **Azure regions** are available:
 
 - New South Wales (australiaeast)
-- Sao Paulo State (brazilsouth)*
+- Sao Paulo State (brazilsouth)
 - Toronto (canadacentral)
 - Pune (centralindia)
 - Iowa (centralus)*
@@ -256,12 +256,14 @@ The following **Azure regions** are available:
 - Virginia (eastus)
 - Virginia (eastus2)*
 - Paris (francecentral)
+- Frankfurt (germanywestcentral)*
 - Tokyo, Saitama (japaneast)*
 - Seoul (koreacentral)*
 - Ireland (northeurope)
 - Norway (norwayeast)
 - Johannesburg (southafricanorth)*
 - Texas (southcentralus)*
+- Singapore (southeastasia)*
 - Zurich (switzerlandnorth)
 - Dubai (uaenorth)*
 - London (uksouth)
