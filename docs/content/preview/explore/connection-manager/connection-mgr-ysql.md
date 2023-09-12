@@ -2,8 +2,8 @@
 title: Connection Manager in YSQL
 headerTitle: YSQL Connection Manager
 linkTitle: YSQL Connection Manager
-description: A built-in server-side connection pooling mechanism in YugbayteDB
-headcontent: Explore a built-in server-side connection pooling mechanism in YugbayteDB
+description: Built-in server-side connection pooler for YSQL
+headcontent: Built-in server-side connection pooler for YSQL
 image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   preview:
@@ -14,18 +14,14 @@ menu:
 type: docs
 ---
 
-YugabyteDB inherits the architecture of creating one backend process for every connection created with it from PostgreSQL. These backend processes consume some amount of memory and CPU, limiting the number of connections a YugabyteDB server can support.
-
-The built-in YSQL Connection Manager allows multiplexing multiple client connections to a smaller number of actual server connections, thereby supporting a large number of connections from applications.
-
-[PgBouncer](https://github.com/pgbouncer/pgbouncer) and [Odyssey](https://github.com/yandex/odyssey) are some of the popular PostgreSQL based server side connection pooling mechanisms which are fully compatible with YugabuteDB.
+YugabyteDB inherits the architecture of creating one backend process for every connection to the database from PostgreSQL. These backend processes consume memory and CPU, limiting the number of connections YugabyteDB can support. To solve this problem, you can use a connection pooler, which allows multiplexing multiple client connections to a smaller number of actual server connections, thereby supporting a larger number of connections from applications. [PgBouncer](https://github.com/pgbouncer/pgbouncer) and [Odyssey](https://github.com/yandex/odyssey) are some of the popular PostgreSQL-based server-side connection pooling mechanisms which are fully compatible with YugabuteDB.
 
 However, these products have some severe limitations such as the following:
 
 - PgBouncer does not support prepared statements in the transaction pooling mode.
 - Both Odyssey and PgBouncer do not support SET statements in the transaction pooling mode.
 
-The YSQL Connection Manager aims to provide the same connection pooling advantages as other pooling solutions but without the limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other pooling solutions but without these limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 <!-- ----- Add Diagram---- -->
 
