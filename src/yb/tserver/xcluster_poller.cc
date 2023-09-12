@@ -16,7 +16,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
 
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
@@ -67,6 +67,10 @@ DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
 
 DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
     "If true, the poller will not check the leader term.");
+
+DEFINE_test_flag(
+    double, xcluster_simulate_random_failure_after_apply, 0,
+    "If non-zero, simulate a random failure after writing rows to the target tablet.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
@@ -350,7 +354,7 @@ void XClusterPoller::DoPoll() {
 
   // It is safe to pass rpcs_ raw pointer as the call is guaranteed to complete before Rpcs
   // shutdown.
-  *handle = CreateGetChangesCDCRpc(
+  *handle = rpc::xcluster::CreateGetChangesRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(), &req,
@@ -420,7 +424,8 @@ void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse response)
 }
 
 void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
-  if (!response.status.ok()) {
+  if (!response.status.ok() ||
+      RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =

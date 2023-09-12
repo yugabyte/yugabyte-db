@@ -16,12 +16,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.ConfigException;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.AppConfigHelper;
-import com.yugabyte.yw.common.PrometheusConfigHelper;
-import com.yugabyte.yw.common.PrometheusConfigManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -201,7 +196,7 @@ public class PlatformReplicationHelper {
     return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 
-  private void writeFederatedPrometheusConfig(String remoteAddr, File file) {
+  private void writeFederatedPrometheusConfig(String remoteAddr, File file, boolean https) {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       VelocityEngine velocityEngine = new VelocityEngine();
       velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
@@ -214,7 +209,12 @@ public class PlatformReplicationHelper {
 
       // Fill in the context.
       VelocityContext context = new VelocityContext();
+      context.put("interval", SwamperHelper.getScrapeIntervalSeconds(confGetter.getStaticConf()));
       context.put("address", remoteAddr);
+      context.put("https", https);
+      context.put("auth", confGetter.getGlobalConf(GlobalConfKeys.metricsAuth));
+      context.put("username", confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername));
+      context.put("password", confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword));
 
       // Merge the template with the context.
       template.merge(context, writer);
@@ -295,7 +295,8 @@ public class PlatformReplicationHelper {
 
       URI federatedURL = new URI(federatedAddr);
       String federatedPoint = remoteAddr.getHost() + ":" + federatedURL.getPort();
-      this.writeFederatedPrometheusConfig(federatedPoint, configFile);
+      boolean https = federatedURL.getScheme().equalsIgnoreCase("https");
+      this.writeFederatedPrometheusConfig(federatedPoint, configFile, https);
 
       // Reload the config.
       prometheusConfigHelper.reloadPrometheusConfig();

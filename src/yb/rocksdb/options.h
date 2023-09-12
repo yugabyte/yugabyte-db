@@ -1648,9 +1648,16 @@ struct CompactRangeOptions {
   // if there is a compaction filter
   BottommostLevelCompaction bottommost_level_compaction =
       BottommostLevelCompaction::kIfHaveCompactionFilter;
-
+  // If true, flush does not happen during compaction. Currently used in tests only.
   bool skip_flush = false;
-
+  // Specifies the reason for this compaction.
   CompactionReason compaction_reason = CompactionReason::kManualCompaction;
+  // Defines the upper bound for the files set which should considered for a compaction.
+  uint64_t file_number_upper_bound = 0;
+  // Defines the maximum sum of files sizes picked for a one compaction job. Several jobs/iterations
+  // may be triggered to cover the whole set of files considered for a compaction. It is guaranteed
+  // to pick at least one file for a compaction job even if its size is above the specified limit.
+  uint64_t input_size_limit_per_job = 0;
 };
+
 }  // namespace rocksdb

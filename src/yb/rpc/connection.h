@@ -117,7 +117,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   ~Connection();
 
   CoarseTimePoint last_activity_time() const {
-    return last_activity_time_;
+    return last_activity_time_.load(std::memory_order_acquire);
   }
 
   void UpdateLastActivity() override;
@@ -178,8 +178,9 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) ON_REACTOR_THREAD;
 
-  // Do appropriate actions after adding outbound call.
-  void OutboundQueued() ON_REACTOR_THREAD;
+  // Do appropriate actions after adding outbound call. If the connection is shutting down,
+  // returns the connection's shutdown status.
+  Status OutboundQueued() ON_REACTOR_THREAD;
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
@@ -199,12 +200,26 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
     return rpc_metrics_;
   }
 
-  CoarseTimePoint last_activity_time() {
-    return last_activity_time_.load(std::memory_order_acquire);
+  // Returns the connection's shutdown status, or OK if shutdown has not happened yet.
+  Status ShutdownStatus() const;
+
+  bool shutdown_initiated() const {
+    return shutdown_initiated_.load(std::memory_order_acquire);
   }
 
+  bool shutdown_completed() const {
+    return shutdown_completed_.load(std::memory_order_acquire);
+  }
+
+  // Used in Reactor-based stuck outbound call monitoring mechanism.
+  void ForceCallExpiration(const OutboundCallPtr& call) ON_REACTOR_THREAD;
+
  private:
-  Status DoWrite();
+  // Marks the given call as failed and schedules destruction of the connection.
+  void FailCallAndDestroyConnection(const OutboundDataPtr& outbound_data,
+                                    const Status& status) ON_REACTOR_THREAD;
+
+  void ScheduleDestroyConnection(const Status& status) ON_REACTOR_THREAD;
 
   // Does actual outbound data queuing.
   //
@@ -212,8 +227,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // QueueOutboundDataBatch for how this is used.
   //
   // Returns the handle corresponding to the queued call, or std::numeric_limits<size_t>::max() in
-  // case the connection is shutting down.
-  size_t DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD;
+  // case the handle is unknown, or an error in case the connection is shutting down.
+  Result<size_t> DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD;
 
   void ProcessResponseQueue() ON_REACTOR_THREAD;
 
@@ -270,7 +285,15 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
     int32_t id = 0; // Call id.
     OutboundCallPtr call; // Call object, null if call has expired.
     CoarseTimePoint expires_at; // Expiration time, kMax when call has expired.
-    size_t handle = 0; // Call handle in outbound stream.
+    CallHandle handle = 0; // Call handle in outbound stream.
+
+    std::string ToString(std::optional<CoarseTimePoint> now = std::nullopt) const {
+      return YB_STRUCT_TO_STRING(
+          id,
+          (call, AsString(pointer_cast<const void*>(call.get()))),
+          (expires_at, yb::ToStringRelativeToNow(expires_at, now)),
+          handle);
+    }
   };
 
   class ExpirationTag;
@@ -299,7 +322,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Fields protected by outbound_data_queue_mtx_
   // ----------------------------------------------------------------------------------------------
 
-  simple_spinlock outbound_data_queue_mtx_;
+  mutable simple_spinlock outbound_data_queue_mtx_;
 
   // Responses we are going to process.
   std::vector<OutboundDataPtr> outbound_data_to_process_ GUARDED_BY(outbound_data_queue_mtx_);
@@ -323,6 +346,9 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   std::atomic<CoarseTimePoint> last_activity_time_{CoarseTimePoint::min()};
 
   std::atomic<bool> queued_destroy_connection_{false};
+
+  std::atomic<bool> shutdown_initiated_{false};
+  std::atomic<bool> shutdown_completed_{false};
 };
 
 }  // namespace rpc

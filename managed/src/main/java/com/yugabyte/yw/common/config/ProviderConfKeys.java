@@ -388,4 +388,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Mount roots, which we show on the merics dashboard and which we're alerting on.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> ybopsFaultInjectedPaths =
+      new ConfKeyInfo<>(
+          "yb.internal.ybops_fault_injected_paths",
+          ScopeType.PROVIDER,
+          "Enable ybops fault injection",
+          "Enable ybobs fault injection for module paths with failure rate.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

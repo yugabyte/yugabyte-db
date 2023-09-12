@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
@@ -335,6 +336,24 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled) {
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -346,7 +365,7 @@ public class NodeUniverseManager extends DevopsBase {
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
-    if (cluster.userIntent.isYSQLAuthEnabled()) {
+    if (authEnabled) {
       bashCommand.add(
           String.format(
               "$(dirname \"$(ls -t %s/.yb.*/.s.PGSQL.* | head -1)\")", customTmpDirectory));
@@ -442,9 +461,11 @@ public class NodeUniverseManager extends DevopsBase {
       if (cluster.userIntent.imageBundleUUID != null) {
         imageBundleUUID = cluster.userIntent.imageBundleUUID;
       } else {
-        ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-        if (bundle != null) {
-          imageBundleUUID = bundle.getUuid();
+        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundles.size() > 0) {
+          Architecture arch = universe.getUniverseDetails().arch;
+          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+          imageBundleUUID = defaultBundle.getUuid();
         }
       }
       if (imageBundleUUID != null) {

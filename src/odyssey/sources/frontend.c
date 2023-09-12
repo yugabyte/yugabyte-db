@@ -1653,6 +1653,8 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 			}
 
+// Disabled the unnecessary logs
+#ifndef YB_SUPPORT_FOUND
 #if OD_DEVEL_LVL != OD_RELEASE_MODE
 			if (server != NULL && server->is_allocated &&
 			    server->is_transaction &&
@@ -1663,14 +1665,16 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					client->id.id);
 			}
 #endif
-
+#endif
 			/* one minute */
 			if (machine_cond_wait(client->cond, 60000) == 0) {
 				client->time_last_active = machine_time_us();
+#ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
 					1,
 					"change client last active time %lld\n",
 					client->time_last_active);
+#endif
 				break;
 			}
 		}
@@ -1959,11 +1963,9 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 	od_instance_t *instance = client->global->instance;
 	od_route_t *route = client->route;
 	machine_msg_t *msg;
+	int rc = 0;
 
 	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
-	client->client_id = 0;
-
-	int rc = 0;
 
 	/* Send `SET SESSION PARAMETER` packet. */
 	rc = od_write(&server->io, msg);
@@ -1973,8 +1975,10 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 		return -1;
 	} else {
 		od_debug(&instance->logger, "clean shared memory", client, server,
-			 "Sent `SET SESSION PARAMETER` packet");
+			 "Sent `SET SESSION PARAMETER` packet for %d", client->client_id);
 	}
+
+	client->client_id = 0;
 
 	/* Wait for the KIWI_BE_READY_FOR_QUERY packet. */
 	for (;;) {

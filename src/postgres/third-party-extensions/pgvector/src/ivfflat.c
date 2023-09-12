@@ -1,10 +1,15 @@
 #include "postgres.h"
 
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include <float.h>
 
 #include "access/amapi.h"
 #include "commands/vacuum.h"
+#endif
+
 #include "ivfflat.h"
+
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 #include "utils/guc.h"
 #include "utils/selfuncs.h"
 #include "utils/spccache.h"
@@ -15,6 +20,7 @@
 
 int			ivfflat_probes;
 static relopt_kind ivfflat_relopt_kind;
+#endif
 
 /*
  * Initialize index options and variables
@@ -22,6 +28,7 @@ static relopt_kind ivfflat_relopt_kind;
 void
 _PG_init(void)
 {
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 	ivfflat_relopt_kind = add_reloption_kind();
 	add_int_reloption(ivfflat_relopt_kind, "lists", "Number of inverted lists",
 					  IVFFLAT_DEFAULT_LISTS, 1, IVFFLAT_MAX_LISTS
@@ -33,8 +40,10 @@ _PG_init(void)
 	DefineCustomIntVariable("ivfflat.probes", "Sets the number of probes",
 							"Valid range is 1..lists.", &ivfflat_probes,
 							1, 1, IVFFLAT_MAX_LISTS, PGC_USERSET, 0, NULL, NULL, NULL);
+#endif
 }
 
+#ifdef YB_IVFFLAT_INDEX_SUPPORT
 /*
  * Get the name of index build phase
  */
@@ -249,3 +258,4 @@ ivfflathandler(PG_FUNCTION_ARGS)
 
 	PG_RETURN_POINTER(amroutine);
 }
+#endif

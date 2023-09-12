@@ -46,6 +46,9 @@ public class XClusterConfigCreateFormData {
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public BootstrapParams bootstrapParams;
 
+  @ApiModelProperty(value = "configType", allowableValues = "Basic, Txn")
+  public XClusterConfig.ConfigType configType = ConfigType.Basic;
+
   @ApiModelProperty("Run the pre-checks without actually running the subtasks")
   public boolean dryRun = false;
 
@@ -77,7 +80,4 @@ public class XClusterConfigCreateFormData {
       public int parallelism = 8;
     }
   }
-
-  @ApiModelProperty(value = "configType", allowableValues = "Basic, Txn")
-  public XClusterConfig.ConfigType configType = ConfigType.Basic;
 }

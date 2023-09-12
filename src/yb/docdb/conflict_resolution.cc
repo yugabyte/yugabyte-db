@@ -1000,7 +1000,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
             /* intent_value */ Slice(),
             [&intent_processor, intent_types](
                 auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto) {
+                auto, auto) {
               intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
               return Status::OK();
             },
@@ -1010,13 +1010,16 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     }
 
     const auto& pairs = write_batch_.read_pairs();
-    intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark);
     if (!pairs.empty()) {
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
-          [&intent_processor, intent_types] (
-              auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
-            intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
+          [&intent_processor,
+           intent_types = dockv::GetIntentTypesForRead(metadata_.isolation, row_mark)] (
+              auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
+              auto is_row_lock) {
+            intent_processor.Process(
+                ancestor_doc_key, full_doc_key, intent_key,
+                GetIntentTypes(intent_types, is_row_lock));
             return Status::OK();
           },
           resolver->partial_range_key_intents()));
@@ -1213,7 +1216,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
             /* intent_value */ Slice(),
             [&intent_processor, intent_types](
                 auto ancestor_doc_key, dockv::FullDocKey full_doc_key, auto, auto intent_key,
-                auto) {
+                auto, auto) {
               intent_processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
               return Status::OK();
             },

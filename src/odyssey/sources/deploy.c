@@ -35,7 +35,7 @@ int yb_set_client_id(od_client_t *client, od_server_t *server)
 		return -1;
 	} else {
 		od_debug(&instance->logger, "set client_id", client, server,
-			 "Sent `SET SESSION PARAMETER` packet");
+			 "Sent `SET SESSION PARAMETER` packet for %d", client->client_id);
 	}
 
 	/* 

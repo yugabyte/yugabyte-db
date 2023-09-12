@@ -1135,11 +1135,58 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ImageBundle ib1 = new ImageBundle();
     ib1.setName("ImageBundle-1");
     ib1.setProvider(provider);
+    ib1.setDetails(details);
     ib1.setUseAsDefault(true);
     ib1.save();
 
-    ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+    List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+    ImageBundle bundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.x86_64))
+            .findFirst()
+            .get();
     assertEquals(ib1.getUuid(), bundle.getUuid());
+  }
+
+  @Test
+  public void testAWSCreateDefaultImageBundlesBothArch() {
+    Provider awsProvider = ModelFactory.awsProvider(customer);
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(null);
+    details.setArch(Architecture.x86_64);
+    ImageBundle ib1 = new ImageBundle();
+    ib1.setName("ImageBundle-1-x86");
+    ib1.setProvider(awsProvider);
+    ib1.setDetails(details);
+    ib1.setUseAsDefault(true);
+    ib1.save();
+
+    ImageBundleDetails detailsAarch64 = new ImageBundleDetails();
+    detailsAarch64.setRegions(null);
+    detailsAarch64.setArch(Architecture.aarch64);
+    ImageBundle ib2 = new ImageBundle();
+    ib2.setName("ImageBundle-1-aarch64");
+    ib2.setProvider(awsProvider);
+    ib2.setDetails(detailsAarch64);
+    ib2.setUseAsDefault(true);
+    ib2.save();
+
+    List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(awsProvider.getUuid());
+    assertEquals(2, bundles.size());
+    ImageBundle x86Bundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.x86_64))
+            .findFirst()
+            .get();
+    assertEquals(x86Bundle.getName(), "ImageBundle-1-x86");
+
+    ImageBundle AarchBundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.aarch64))
+            .findFirst()
+            .get();
+    assertEquals(AarchBundle.getName(), "ImageBundle-1-aarch64");
   }
 
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {

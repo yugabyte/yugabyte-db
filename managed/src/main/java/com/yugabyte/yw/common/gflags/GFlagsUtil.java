@@ -1028,7 +1028,10 @@ public class GFlagsUtil {
     Path tmpDirectoryPath =
         FileUtils.getOrCreateTmpDirectory(
             confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-    Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    Path localGflagFilePath = tmpDirectoryPath;
+    if (node.getNodeUuid() != null) {
+      localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    }
     if (!Files.isDirectory(localGflagFilePath)) {
       try {
         Files.createDirectory(localGflagFilePath);

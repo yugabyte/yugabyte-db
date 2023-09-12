@@ -9,6 +9,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -62,8 +63,8 @@ public class RBACControllerTest extends FakeDBApplication {
   // Define test permissions to use later.
   public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
   public Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
-  public Permission permission3 = new Permission(ResourceType.DEFAULT, Action.DELETE);
-  public Permission permission4 = new Permission(ResourceType.DEFAULT, Action.READ);
+  public Permission permission3 = new Permission(ResourceType.OTHER, Action.DELETE);
+  public Permission permission4 = new Permission(ResourceType.OTHER, Action.READ);
 
   @Before
   public void setUp() {
@@ -153,7 +154,7 @@ public class RBACControllerTest extends FakeDBApplication {
 
   @Test
   public void testListDefaultPermissions() throws IOException {
-    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.DEFAULT.toString());
+    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.OTHER.toString());
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
@@ -161,8 +162,7 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(),
-        permissionUtil.getAllPermissionInfo(ResourceType.DEFAULT).size());
+        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
   }
 
   @Test
@@ -471,6 +471,40 @@ public class RBACControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteInvalidRoleWithRoleBindings() throws IOException {
+    // Create test role and insert into DB.
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "testSystemRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+
+    // Create test role binding and insert into DB.
+    RoleBinding roleBinding1 =
+        RoleBinding.create(
+            user,
+            RoleBindingType.Custom,
+            role1,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceDefinition.builder()
+                            .resourceType(ResourceType.OTHER)
+                            .allowAll(true)
+                            .build()))));
+
+    // Call API and assert that role is not deleted due to existing role bindings.
+    Result result =
+        assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
+    assertEquals(CONFLICT, result.status());
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    assertEquals(1, RoleBinding.getAll(user.getUuid()).size());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
   public void testListRoleBindings() throws IOException {
     // Create few test roles and insert into DB.
     Role role1 =
@@ -498,7 +532,7 @@ public class RBACControllerTest extends FakeDBApplication {
                 new HashSet<>(
                     Arrays.asList(
                         ResourceDefinition.builder()
-                            .resourceType(ResourceType.DEFAULT)
+                            .resourceType(ResourceType.OTHER)
                             .allowAll(true)
                             .build()))));
     RoleBinding roleBinding2 =

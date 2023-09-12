@@ -32,6 +32,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
+| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra compatible YCQL language features. | Single-node<br/>local/cloud |
 
 ## Set up YugabyteDB universe
 

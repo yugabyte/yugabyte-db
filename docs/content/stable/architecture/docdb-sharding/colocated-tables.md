@@ -22,7 +22,7 @@ Note that all the data in the colocation tablet is still replicated across nodes
 Colocation can make sense for high-performance, real-time data processing, where low-latency and fast access to data are critical. Colocation has the following benefits:
 
 - Improved performance and scalability: Using a single tablet instead of creating a tablet per relation reduces storage and compute overhead.
-- Faster access to data: By having all the data for all the databases from multiple tables stored in a single tablet, you can avoid the overhead of inter-node communication and data shuffling, which can result in faster access to data. For example, the speed of joins improves when data across the various colocated tables is local and you no longer have to read data over the network.
+- Faster access to data: By having all the data for a single database from multiple tables stored in a single tablet, you can avoid the overhead of inter-node communication and data shuffling, which can result in faster access to data. For example, the speed of joins improves when data across the various colocated tables is local and you no longer have to read data over the network.
 
 ### When to use colocation
 

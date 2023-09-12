@@ -90,6 +90,11 @@ public class Util {
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
 
+  public static final String CUSTOMERS = "customers";
+  public static final String UNIVERSES = "universes";
+  public static final String USERS = "users";
+  public static final String UNIVERSE_UUID = "universeUUID";
+
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
@@ -97,6 +102,8 @@ public class Util {
   public static final double EPSILON = 0.000001d;
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
+
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 

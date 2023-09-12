@@ -15,12 +15,20 @@ import static io.ebean.Ebean.commitTransaction;
 import static io.ebean.Ebean.endTransaction;
 import static io.ebean.Ebean.saveAll;
 
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.LdapDnToYbaRoleData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -50,6 +58,12 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
       notes = "List LDAP Mappings",
       response = LdapDnToYbaRoleData.class,
       nickname = "listLdapDnToYbaRoles")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -89,6 +103,12 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.LdapDnToYbaRoleData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result update(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 

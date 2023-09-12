@@ -124,6 +124,7 @@ import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.AsyncUtil;
@@ -1376,6 +1377,39 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     GetReplicationStatusRequest request =
         new GetReplicationStatusRequest(this.masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It returns the safe time for each namespace in replication.
+   *
+   * @return A deferred object that yields a {@link GetXClusterSafeTimeResponse} which contains
+   *         a list of {@link NamespaceSafeTimePB} objects
+   */
+  public Deferred<GetXClusterSafeTimeResponse> getXClusterSafeTime() {
+    checkIsClosed();
+    GetXClusterSafeTimeRequest request = new GetXClusterSafeTimeRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It waits for replication to complete to a point in time. If there were still undrained streams,
+   * it will return those.
+   *
+   * @param streamIds A list of stream ids to check whether the replication is drained for them
+   * @param targetTime An optional point in time to make sure the drain has happened up to that
+   *                   point; if null, it drains up to now
+   * @return A deferred object that yields a {@link GetXClusterSafeTimeResponse} which contains
+   *         a list of {@link NamespaceSafeTimePB} objects
+   */
+  public Deferred<WaitForReplicationDrainResponse> waitForReplicationDrain(
+      List<String> streamIds,
+      @Nullable Long targetTime) {
+    checkIsClosed();
+    WaitForReplicationDrainRequest request = new WaitForReplicationDrainRequest(
+        this.masterTable, streamIds, targetTime);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
