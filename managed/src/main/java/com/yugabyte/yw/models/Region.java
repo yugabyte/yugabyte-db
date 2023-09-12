@@ -275,10 +275,17 @@ public class Region extends Model {
 
   @JsonIgnore
   public boolean isUpdateNeeded(Region region) {
-    return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
-        || !Objects.equals(this.getVnetName(), region.getVnetName())
-        || !Objects.equals(this.getYbImage(), region.getYbImage())
-        || !Objects.equals(this.getDetails(), region.getDetails());
+    boolean isUpdatedNeeded =
+        !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
+            || !Objects.equals(this.getVnetName(), region.getVnetName())
+            || !Objects.equals(this.getYbImage(), region.getYbImage())
+            || !Objects.equals(this.getDetails(), region.getDetails());
+    if (region.getProviderCloudCode() == CloudType.onprem) {
+      isUpdatedNeeded |=
+          !Objects.equals(this.getLatitude(), region.getLatitude())
+              || !Objects.equals(this.getLongitude(), region.getLongitude());
+    }
+    return isUpdatedNeeded;
   }
 
   /** Query Helper for PlacementRegion with region code */
