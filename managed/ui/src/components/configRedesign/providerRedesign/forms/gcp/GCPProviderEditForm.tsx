@@ -273,6 +273,9 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
+  const serviceAccountIdentifer = providerConfig.details.cloudInfo.gcp.useHostCredentials
+    ? 'YBA Host Instance'
+    : providerConfig.details.cloudInfo.gcp.gceApplicationCredentials?.client_email;
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
@@ -296,14 +299,8 @@ export const GCPProviderEditForm = ({
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
               <FormField>
-                <FieldLabel>Current Service Account Email</FieldLabel>
-                <YBInput
-                  value={
-                    providerConfig.details.cloudInfo.gcp.gceApplicationCredentials.client_email
-                  }
-                  disabled={true}
-                  fullWidth
-                />
+                <FieldLabel>Current Service Account</FieldLabel>
+                <YBInput value={serviceAccountIdentifer} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current GCE Project Name</FieldLabel>

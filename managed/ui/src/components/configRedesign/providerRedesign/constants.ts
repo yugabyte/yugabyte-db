@@ -94,7 +94,7 @@ export type NTPSetupType = typeof NTPSetupType[keyof typeof NTPSetupType];
 
 export const VPCSetupType = {
   EXISTING: 'EXISTING',
-  HOST_INSTANCE: 'HOST',
+  HOST_INSTANCE: 'HOSTVPC',
   NEW: 'NEW'
 } as const;
 export type VPCSetupType = typeof VPCSetupType[keyof typeof VPCSetupType];
