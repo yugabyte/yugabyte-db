@@ -45,7 +45,7 @@ Deploy single- and multi-region production clusters on Amazon Web Services (AWS)
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-vpcs/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">VPC networks</div>
       </div>
       <div class="body">

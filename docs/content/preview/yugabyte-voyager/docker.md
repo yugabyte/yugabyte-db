@@ -18,6 +18,10 @@ Before installing yb-voyager, ensure that you have the [Docker](https://docs.doc
     wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker && chmod +x ./yb-voyager && sudo mv yb-voyager /usr/local/bin/yb-voyager
     ```
 
+    {{< warning >}}
+Use yb-voyager docker script without `sudo` to run Voyager commands.
+    {{< /warning >}}
+
 1. Check that yb-voyager is installed using the following command:
 
     ```sh
