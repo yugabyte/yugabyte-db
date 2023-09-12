@@ -27,7 +27,16 @@ public class AutoFlagUtil {
   private final YBClientService ybClientService;
   private final GFlagsValidation gFlagsValidation;
 
+  // Info about auto flags class can be found here
+  // https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md
+  public static int LOCAL_VOLATILE_AUTO_FLAG_CLASS = 1;
+  public static String LOCAL_VOLATILE_AUTO_FLAG_CLASS_NAME = "kLocalVolatile";
+
   public static int LOCAL_PERSISTED_AUTO_FLAG_CLASS = 2;
+  public static String LOCAL_PERSISTED_AUTO_FLAG_CLASS_NAME = "kLocalPersisted";
+
+  public static int EXTERNAL_AUTO_FLAG_CLASS = 3;
+  public static String EXTERNAL_AUTO_FLAG_CLASS_NAME = "kExternal";
 
   public static final Logger LOG = LoggerFactory.getLogger(AutoFlagUtil.class);
 

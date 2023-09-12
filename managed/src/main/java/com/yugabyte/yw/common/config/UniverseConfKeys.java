@@ -841,6 +841,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "runtime configuration.",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableRollbackSupport =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_rollback_support",
+          ScopeType.UNIVERSE,
+          "Enable Rollback Support",
+          "Enable Yugabyte DB Rollback support",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
