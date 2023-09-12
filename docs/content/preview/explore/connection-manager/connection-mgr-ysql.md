@@ -76,9 +76,9 @@ The following table describes yb-tserver flags related to the YSQL Connection Ma
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. yb-tserver starts a YSQL Connection Manager process as a child process. | false |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle (secs) time allowed for database connections created by the YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding the value provided, it will be automatically closed by the YSQL Connection Manager. | 60 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. | 10000 |
-| ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that will be present in the pool. This limit is not considered while closing a broken physical connection. | 0 |
+| ysql_conn_mgr_min_conns_per_db | Minimum number of physical connections that will be present in the pool. This limit is not considered while closing a broken physical connection. | 1 |
 | ysql_conn_mgr_num_workers | Number of worker threads used by YSQL Connection Manager. If set to 0, the number of worker threads will be half of the number of CPU cores. | 0 |
-| ysql_conn_mgr_password | Password to be used by YSQL Connection Manager while creating database connections. | 0 |
+| ysql_conn_mgr_password | Password to be used by YSQL Connection Manager while creating database connections. | 10 |
 | ysql_conn_mgr_stats_interval | Interval (in secs) at which the YSQL Connection Manager statistics is updated. | yugabyte |
 | ysql_conn_mgr_username | Username to be used by YSQL Connection Manager while creating database connections.| yugabyte |
 | ysql_conn_mgr_warmup_db | Database for which warmup needs to be done. | yugabyte |
