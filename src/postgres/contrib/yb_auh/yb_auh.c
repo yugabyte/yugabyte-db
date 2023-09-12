@@ -14,6 +14,7 @@
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
 
+#include "parser/analyze.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/procarray.h"
@@ -62,6 +63,16 @@ typedef struct circularBufferIndex
   int index;
 } circularBufferIndex;
 
+/* Current nesting depth of ExecutorRun+ProcessUtility calls */
+static int	nested_level = 0;
+
+/* Saved hook values in case of unload */
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
+static ExecutorRun_hook_type prev_ExecutorRun = NULL;
+static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+
 ybauhEntry *AUHEntryArray = NULL;
 LWLock *auh_entry_array_lock;
 
@@ -76,8 +87,16 @@ void _PG_init(void);
 void yb_auh_main(Datum);
 static Size yb_auh_memsize(void);
 static Size yb_auh_circularBufferIndexSize(void);
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static void ybauh_startup_hook(void);
+static void ybauh_post_parse_analyze(ParseState *pstate, Query *query);
+static void ybauh_ExecutorRun(QueryDesc *queryDesc,
+				 ScanDirection direction,
+				 uint64 count, bool execute_once);
+static void ybauh_ExecutorEnd(QueryDesc *queryDesc);
+static void ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					ProcessUtilityContext context, ParamListInfo params,
+					QueryEnvironment *queryEnv,
+					DestReceiver *dest, char *completionTag);
 static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
@@ -95,6 +114,77 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
+
+void
+_PG_init(void)
+{
+  BackgroundWorker worker;
+
+  if (!process_shared_preload_libraries_in_progress)
+    return;
+  DefineCustomIntVariable("yb_auh.circular_buf_size_kb", "Size of circular buffer in KBs",
+                          "Default value is 16 MB",
+                          &circular_buf_size_kb, 16*1024, 0, INT_MAX, PGC_POSTMASTER,
+                          GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
+                              | GUC_DISALLOW_IN_FILE,
+                          NULL, NULL, NULL);
+  DefineCustomIntVariable("yb_auh.sampling_interval", "Duration (in seconds) between each pull.",
+                          "Default value is 1 second", &auh_sampling_interval,
+                          1, 1, INT_MAX, PGC_SIGHUP,
+                          GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
+                              | GUC_DISALLOW_IN_FILE,
+                          NULL, NULL, NULL);
+
+  DefineCustomIntVariable("yb_auh.sample_size", "Sample size of threads to be added to the buffer",
+                          NULL, &auh_sample_size,
+                          50, 0, INT_MAX, PGC_SIGHUP,
+                          0, NULL, NULL, NULL);
+
+  RequestAddinShmemSpace(yb_auh_memsize());
+  RequestNamedLWLockTranche("auh_entry_array", 1);
+  RequestAddinShmemSpace(yb_auh_circularBufferIndexSize());
+  RequestNamedLWLockTranche("auh_circular_buffer_array", 1);
+
+  memset(&worker, 0, sizeof(worker));
+  sprintf(worker.bgw_name, "AUH controller");
+  worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
+  worker.bgw_start_time = BgWorkerStart_PostmasterStart;
+  /* Value of 1 allows the background worker for webserver to restart */
+  worker.bgw_restart_time = 1;
+  worker.bgw_main_arg = (Datum) 0;
+  sprintf(worker.bgw_library_name, "yb_auh");
+  sprintf(worker.bgw_function_name, "yb_auh_main");
+  worker.bgw_notify_pid = 0;
+  RegisterBackgroundWorker(&worker);
+
+  /*
+   * Install hooks.
+   */
+  prev_shmem_startup_hook = shmem_startup_hook;
+  shmem_startup_hook = ybauh_startup_hook;
+  prev_post_parse_analyze_hook = post_parse_analyze_hook;
+  post_parse_analyze_hook = ybauh_post_parse_analyze;
+  prev_ExecutorRun = ExecutorRun_hook;
+  ExecutorRun_hook = ybauh_ExecutorRun;
+  prev_ExecutorEnd = ExecutorEnd_hook;
+  ExecutorEnd_hook = ybauh_ExecutorEnd;
+  prev_ProcessUtility = ProcessUtility_hook;
+  ProcessUtility_hook = ybauh_ProcessUtility;
+}
+
+/*
+ * Module unload callback
+ */
+void
+_PG_fini(void)
+{
+  /* Uninstall hooks. */
+  shmem_startup_hook = prev_shmem_startup_hook;
+  post_parse_analyze_hook = prev_post_parse_analyze_hook;
+  ExecutorRun_hook = prev_ExecutorRun;
+  ExecutorEnd_hook = prev_ExecutorEnd;
+  ProcessUtility_hook = prev_ProcessUtility;
+}
 
 static void
 yb_auh_sigterm(SIGNAL_ARGS)
@@ -180,14 +270,14 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
   PgProcAuhNode *nodes_head = pg_collect_samples_proc(&procCount);
   PgProcAuhNode *current = nodes_head;
   float8 sample_rate = 0;
-  if (nodes_head != NULL && procCount != 0) 
+  if (nodes_head != NULL && procCount != 0)
   {
     sample_rate = (float)Min(num_procs_to_sample, procCount) / procCount;
   }
-  while (current != NULL) 
+  while (current != NULL)
   {
     PGProcAUHEntryList proc = current->data;
-    if (random() < sample_rate * MAX_RANDOM_VALUE) 
+    if (random() < sample_rate * MAX_RANDOM_VALUE)
     {
       auh_entry_store(auh_sample_time, proc.top_level_request_id, 0,
                       proc.wait_event_info, "", proc.top_level_node_id,
@@ -196,7 +286,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_
     }
     current = current->next;
   }
-  freeLinkedList(nodes_head); 
+  freeLinkedList(nodes_head);
 }
 
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample)
@@ -207,7 +297,7 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   float8 sample_rate= 0;
   if(numrpcs != 0)
-    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;  
+    sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
@@ -218,51 +308,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
   }
-}
-
-void
-_PG_init(void)
-{
-  BackgroundWorker worker;
-
-  if (!process_shared_preload_libraries_in_progress)
-    return;
-  DefineCustomIntVariable("yb_auh.circular_buf_size_kb", "Size of circular buffer in KBs",
-                          "Default value is 16 MB",
-                          &circular_buf_size_kb, 16*1024, 0, INT_MAX, PGC_POSTMASTER,
-                          GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
-                              | GUC_DISALLOW_IN_FILE,
-                          NULL, NULL, NULL);
-  DefineCustomIntVariable("yb_auh.sampling_interval", "Duration (in seconds) between each pull.",
-                          "Default value is 1 second", &auh_sampling_interval,
-                          1, 1, INT_MAX, PGC_SIGHUP,
-                          GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
-                              | GUC_DISALLOW_IN_FILE,
-                          NULL, NULL, NULL);
-
-  DefineCustomIntVariable("yb_auh.sample_size", "Sample size of threads to be added to the buffer",
-                          NULL, &auh_sample_size,
-                          50, 0, INT_MAX, PGC_SIGHUP,
-                          0, NULL, NULL, NULL);
-
-  RequestAddinShmemSpace(yb_auh_memsize());
-  RequestNamedLWLockTranche("auh_entry_array", 1);
-  RequestAddinShmemSpace(yb_auh_circularBufferIndexSize());
-  RequestNamedLWLockTranche("auh_circular_buffer_array", 1);
-
-  memset(&worker, 0, sizeof(worker));
-  sprintf(worker.bgw_name, "AUH controller");
-  worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-  worker.bgw_start_time = BgWorkerStart_PostmasterStart;
-  /* Value of 1 allows the background worker for webserver to restart */
-  worker.bgw_restart_time = 1;
-  worker.bgw_main_arg = (Datum) 0;
-  sprintf(worker.bgw_library_name, "yb_auh");
-  sprintf(worker.bgw_function_name, "yb_auh_main");
-  worker.bgw_notify_pid = 0;
-  RegisterBackgroundWorker(&worker);
-  prev_shmem_startup_hook = shmem_startup_hook;
-  shmem_startup_hook = ybauh_startup_hook;
 }
 
 static Size
@@ -338,7 +383,7 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
   AUHEntryArray[inserted].sample_rate = sample_rate;
-  LWLockRelease(auh_entry_array_lock); 
+  LWLockRelease(auh_entry_array_lock);
 }
 
 static void
@@ -356,6 +401,88 @@ ybauh_startup_hook(void)
                                        sizeof(struct circularBufferIndex) * 1,
                                        &found);
   auh_entry_array_lock = &(GetNamedLWLockTranche("auh_entry_array"))->lock;
+}
+
+static void
+ybauh_post_parse_analyze(ParseState *pstate, Query *query)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query);
+
+  MyProc->queryid = query->queryId;
+	YBCSetQueryId(query->queryId);
+}
+
+static void
+ybauh_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
+				 bool execute_once)
+{
+  uint64 queryId = queryDesc->plannedstmt->queryId;
+  MyProc->queryid = queryId;
+  YBCSetQueryId(queryId);
+  nested_level++;
+	PG_TRY();
+	{
+		if (prev_ExecutorRun)
+			prev_ExecutorRun(queryDesc, direction, count, execute_once);
+		else
+			standard_ExecutorRun(queryDesc, direction, count, execute_once);
+    nested_level--;
+	}
+	PG_CATCH();
+	{
+    nested_level--;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+static void
+ybauh_ExecutorEnd(QueryDesc *queryDesc)
+{
+  // reset per query AUH parameters
+  MyProc->queryid = 0;
+  YBCSetQueryId(0);
+  MyProc->top_level_request_id[0] = '\0';
+  MyProc->wait_event_info = 0;
+
+	if (prev_ExecutorEnd)
+		prev_ExecutorEnd(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
+}
+
+/*
+ * ProcessUtility hook
+ */
+static void
+ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					ProcessUtilityContext context,
+					ParamListInfo params, QueryEnvironment *queryEnv,
+					DestReceiver *dest, char *completionTag)
+{
+  uint64		queryId = pstmt->queryId;
+  MyProc->queryid = queryId;
+  YBCSetQueryId(queryId);
+  nested_level++;
+  PG_TRY();
+  {
+    if (prev_ProcessUtility)
+      prev_ProcessUtility(pstmt, queryString,
+                context, params, queryEnv,
+                dest, completionTag);
+    else
+      standard_ProcessUtility(pstmt, queryString,
+                  context, params, queryEnv,
+                  dest, completionTag);
+    nested_level--;
+  }
+  PG_CATCH();
+  {
+    nested_level--;
+    PG_RE_THROW();
+  }
+  PG_END_TRY();
 }
 
 static void
