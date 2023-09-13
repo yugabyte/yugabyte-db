@@ -1667,9 +1667,27 @@ int GetWalSegmentIndex(const int& wal_segment_index_req) {
 uint64_t ShouldUpdateSafeTime(
     const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& wal_records,
     const size_t& current_index) {
-  if (wal_records.size() > (current_index + 1)) {
-    return GetTransactionCommitTime(wal_records[current_index + 1]) !=
-           GetTransactionCommitTime(wal_records[current_index]);
+  const auto& msg = wal_records[current_index];
+
+  if (IsUpdateTransactionOp(msg)) {
+    const auto& txn_id = msg->transaction_state().transaction_id();
+    const auto& commit_time = GetTransactionCommitTime(msg);
+
+    size_t index = current_index + 1;
+    while ((index < wal_records.size()) &&
+           (GetTransactionCommitTime(wal_records[index]) == commit_time)) {
+      // Return false if we find single shard txn, or multi-shard txn with different txn_id.
+      if (!IsUpdateTransactionOp(wal_records[index]) ||
+          wal_records[index]->transaction_state().transaction_id() != txn_id) {
+        return false;
+      }
+      index++;
+    }
+  } else {
+    if (wal_records.size() > (current_index + 1)) {
+      return GetTransactionCommitTime(wal_records[current_index + 1]) !=
+             GetTransactionCommitTime(wal_records[current_index]);
+    }
   }
 
   return true;
@@ -2072,6 +2090,7 @@ Status GetChangesForCDCSDK(
     RequestScope request_scope;
     OpId last_seen_op_id = op_id;
     bool saw_non_actionable_message = false;
+    std::unordered_set<std::string> streamed_txns;
 
     // It's possible that a batch of messages in read_ops after fetching from
     // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
@@ -2180,6 +2199,19 @@ Status GetChangesForCDCSDK(
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
               auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
+
+              // It is possible for a transaction to have two APPLYs in WAL. This check
+              // prevents us from streaming the same transaction twice in the same GetChanges
+              // call.
+              if (streamed_txns.find(txn_id.ToString()) != streamed_txns.end()) {
+                saw_non_actionable_message = true;
+                AcknowledgeStreamedMultiShardTxn(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                break;
+              }
+
               std::vector<docdb::IntentKeyValueForCDC> intents;
               docdb::ApplyTransactionState new_stream_state;
 
@@ -2195,6 +2227,7 @@ Status GetChangesForCDCSDK(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
                   &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state, client,
                   cached_schema_details, msg->transaction_state().commit_hybrid_time()));
+              streamed_txns.insert(txn_id.ToString());
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
