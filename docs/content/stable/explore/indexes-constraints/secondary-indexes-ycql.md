@@ -134,8 +134,7 @@ DROP INDEX index_employees_department;
 
 ## Example scenario using multi-column index
 
-Multi-column indexes are also known as compound indexes using which you can create an index with multiple columns.
-Multi-column indexes are similar to standard indexes as they both store a sorted table of pointers to data entries. These indexes provide faster access to data entries as it uses multiple columns to sort through data faster.
+You can speed up queries that search on more than one column by creating a multi-column index.
 
 ### Syntax
 
