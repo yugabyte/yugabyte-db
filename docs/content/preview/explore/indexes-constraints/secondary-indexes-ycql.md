@@ -159,7 +159,7 @@ A column combination like (col2,col4) cannot be used to search or query a table.
 
 {{< /note >}}
 
-### Example
+## Multi-column example
 
 {{% explore-setup-single %}}
 

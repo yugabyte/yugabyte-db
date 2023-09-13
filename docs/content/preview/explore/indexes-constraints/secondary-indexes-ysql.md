@@ -146,7 +146,7 @@ To remove the index `index_employees_department`, use the following command:
 DROP INDEX index_employees_department;
 ```
 
-## Example scenario using multi-column index
+## Multi-column index
 
 To add a multi-column index during table creation, you can use the following syntax:
 
@@ -180,7 +180,7 @@ A column combination like (col2,col4) cannot be used to search or query a table.
 
 {{< /note >}}
 
-### Example
+## Multi-column example
 
 {{% explore-setup-single %}}
 
