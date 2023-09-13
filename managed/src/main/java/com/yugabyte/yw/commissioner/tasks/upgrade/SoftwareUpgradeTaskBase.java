@@ -47,12 +47,14 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected static final UpgradeContext SOFTWARE_UPGRADE_CONTEXT =
-      UpgradeContext.builder()
-          .reconfigureMaster(false)
-          .runBeforeStopping(false)
-          .processInactiveMaster(true)
-          .build();
+  protected UpgradeContext getUpgradeContext() {
+    return UpgradeContext.builder()
+        .reconfigureMaster(false)
+        .runBeforeStopping(false)
+        .processInactiveMaster(true)
+        .targetSoftwareVersion(taskParams().ybSoftwareVersion)
+        .build();
+  }
 
   protected void createDownloadTasks(Collection<NodeDetails> nodes, String softwareVersion) {
     String subGroupDescription =
