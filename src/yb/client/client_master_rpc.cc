@@ -71,6 +71,7 @@ void ClientMasterRpcBase::NewLeaderMasterDeterminedCb(const Status& status) {
 }
 
 void ClientMasterRpcBase::Finished(const Status& status) {
+  ADOPT_TRACE(trace_.get());
   auto resp_status = ResponseStatus();
   if (status.ok() && !resp_status.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Failed, got resp error: " << resp_status;
