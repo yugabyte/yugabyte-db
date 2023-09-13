@@ -35,6 +35,7 @@
 #include <execinfo.h>
 #include <dirent.h>
 #include <sys/syscall.h>
+#include "yb/util/scope_exit.h"
 
 #ifdef __linux__
 #include <link.h>
@@ -426,6 +427,18 @@ string GetLogFormatStackTraceHex() {
 }
 
 void StackTrace::Collect(int skip_frames) {
+  static thread_local bool is_collecting_stack = false;
+
+  if (is_collecting_stack) {
+    // It is unsafe to call backtrace recursively. Return an empty stack trace.
+    // A thread can get here if while it was collecting its own stack, it got interrupted by a
+    // StackTraceSignal request from another thread.
+    return;
+  }
+
+  is_collecting_stack = true;
+  auto se = ScopeExit([]() { is_collecting_stack = false; });
+
 #if THREAD_SANITIZER || ADDRESS_SANITIZER
   num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
 #else
