@@ -290,7 +290,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
 
-      createNodePrecheckTasks(node, processTypes, subGroupType);
+      createNodePrecheckTasks(node, processTypes, subGroupType, context.targetSoftwareVersion);
 
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
@@ -820,6 +820,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     // usually universeDetails are updated only at the end of task.
     UniverseDefinitionTaskParams.UserIntent userIntent;
     @Builder.Default boolean skipStartingProcesses = false;
+    String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
   }
 }

@@ -35,13 +35,6 @@ import org.apache.commons.lang3.tuple.Pair;
 @Slf4j
 public class SoftwareUpgrade extends UpgradeTaskBase {
 
-  private static final UpgradeContext SOFTWARE_UPGRADE_CONTEXT =
-      UpgradeContext.builder()
-          .reconfigureMaster(false)
-          .runBeforeStopping(false)
-          .processInactiveMaster(true)
-          .build();
-
   private final XClusterUniverseService xClusterUniverseService;
 
   @Inject
@@ -114,7 +107,12 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                   createSoftwareInstallTasks(
                       nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
-              SOFTWARE_UPGRADE_CONTEXT,
+              UpgradeContext.builder()
+                  .reconfigureMaster(false)
+                  .runBeforeStopping(false)
+                  .processInactiveMaster(true)
+                  .targetSoftwareVersion(newVersion)
+                  .build(),
               false);
 
           if (taskParams().installYbc) {
