@@ -99,13 +99,9 @@ const useStyles = makeStyles((theme) => ({
   restDetails: {
     padding: '20px',
     display: 'flex',
-    gap: '72px'
-  },
-  startEndTime: {
-    padding: '20px',
-    paddingTop: '8px',
-    display: 'flex',
-    gap: '70px'
+    columnGap: '72px',
+    flexWrap: 'wrap',
+    rowGap: '24px'
   }
 }));
 
@@ -188,7 +184,7 @@ export const RestoreDetails = () => {
                 {t('tableType')}
               </Typography>
               <div>
-                {selectedRestore?.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL'}
+                {selectedRestore.backupType ? selectedRestore?.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL' : '-'}
               </div>
             </div>
             <div>
@@ -196,8 +192,8 @@ export const RestoreDetails = () => {
                 {t('backupDate')}
               </Typography>
               <div>
-                {selectedRestore?.backupCreatedOnDate &&
-                  ybFormatDate(selectedRestore.backupCreatedOnDate)}
+                {selectedRestore?.backupCreatedOnDate ?
+                  ybFormatDate(selectedRestore.backupCreatedOnDate) : '-'}
               </div>
             </div>
             <div>
@@ -208,8 +204,6 @@ export const RestoreDetails = () => {
                 <StatusBadge statusType={(selectedRestore.state as unknown) as Badge_Types} />
               </div>
             </div>
-          </div>
-          <div className={classes.startEndTime}>
             <div>
               <Typography variant="body1" component="span">
                 {t('startTime')}
