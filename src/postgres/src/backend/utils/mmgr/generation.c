@@ -257,7 +257,7 @@ GenerationContextCreate(MemoryContext parent,
 	 * Allocate the initial block.  Unlike other generation.c blocks, it
 	 * starts with the context header and its block header follows that.
 	 */
-	set = (GenerationContext *) malloc(Generation_CONTEXTSZ);
+	set = (GenerationContext *) malloc(allocSize);
 	if (set == NULL)
 	{
 		MemoryContextStats(TopMemoryContext);
@@ -268,7 +268,7 @@ GenerationContextCreate(MemoryContext parent,
 						   name)));
 	}
 
-	YbPgMemAddConsumption(Generation_CONTEXTSZ);
+	YbPgMemAddConsumption(allocSize);
 
 	/*
 	 * Avoid writing code that can fail between here and MemoryContextCreate;
@@ -356,10 +356,6 @@ GenerationReset(MemoryContext context)
 			GenerationBlockMarkEmpty(block);
 		else
 			GenerationBlockFree(set, block);
-
-		/* YB_TODO(neil) Check if this call is needed and where to call it.
-		 *   YbPgMemSubConsumption(freed_sz);
-		 */
 	}
 
 	/* set it so new allocations to make use of the keeper block */
@@ -384,6 +380,11 @@ GenerationDelete(MemoryContext context)
 	GenerationReset(context);
 	/* And free the context header and keeper block */
 	free(context);
+	/*YB_TODO(review): Previously, in GenerationContextCreate, we used
+	 * Generation_CONTEXTSZ to allocate the initial block. Now, this has
+	 * changed to use allocSize. On deleting the context, we should also perhaps
+	 * substract allocSize from the memory consumption. See
+	 * GenerationContextCreate for details.*/
 	YbPgMemSubConsumption(Generation_CONTEXTSZ);
 }
 
@@ -664,7 +665,9 @@ GenerationBlockFree(GenerationContext *set, GenerationBlock *block)
 	wipe_mem(block, block->blksize);
 #endif
 
+	size_t freed_sz = block->endptr - ((char *) block);
 	free(block);
+	YbPgMemSubConsumption(freed_sz);
 }
 
 /*

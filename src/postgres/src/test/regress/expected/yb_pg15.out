@@ -127,13 +127,87 @@ select * from t2;
   2 | Jane |     2
 (1 row)
 
--- Batched nested loop join (YB_TODO: if I move it below pushdown test, the test fails)
+-- Joins (YB_TODO: if I move it below pushdown test, the test fails)
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
-SET enable_hashjoin = off;
+-- Merge join
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+               QUERY PLAN                
+-----------------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.a)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on p1 t1
+               Remote Filter: (a <= 100)
+   ->  Sort
+         Sort Key: t2.a
+         ->  Seq Scan on p2 t2
+               Remote Filter: (a <= 100)
+(10 rows)
+
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+ a  | b  |  c   | a  | b  |  c   
+----+----+------+----+----+------
+  0 |  0 | 0000 |  0 |  0 | 0000
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 12 | 12 | 0012 | 12 | 12 | 0012
+ 18 | 18 | 0018 | 18 | 18 | 0018
+ 24 | 24 | 0024 | 24 | 24 | 0024
+ 30 |  5 | 0030 | 30 |  5 | 0030
+ 36 | 11 | 0036 | 36 | 11 | 0036
+ 42 | 17 | 0042 | 42 | 17 | 0042
+ 48 | 23 | 0048 | 48 | 23 | 0048
+ 54 |  4 | 0054 | 54 |  4 | 0054
+ 60 | 10 | 0060 | 60 | 10 | 0060
+ 66 | 16 | 0066 | 66 | 16 | 0066
+ 72 | 22 | 0072 | 72 | 22 | 0072
+ 78 |  3 | 0078 | 78 |  3 | 0078
+ 84 |  9 | 0084 | 84 |  9 | 0084
+ 90 | 15 | 0090 | 90 | 15 | 0090
+ 96 | 21 | 0096 | 96 | 21 | 0096
+(17 rows)
+
+-- Hash join
 SET enable_mergejoin = off;
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+               QUERY PLAN                
+-----------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.a)
+   ->  Seq Scan on p1 t1
+         Remote Filter: (a <= 100)
+   ->  Hash
+         ->  Seq Scan on p2 t2
+               Remote Filter: (a <= 100)
+(7 rows)
+
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+ a  | b  |  c   | a  | b  |  c   
+----+----+------+----+----+------
+ 78 |  3 | 0078 | 78 |  3 | 0078
+ 90 | 15 | 0090 | 90 | 15 | 0090
+ 12 | 12 | 0012 | 12 | 12 | 0012
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 96 | 21 | 0096 | 96 | 21 | 0096
+ 42 | 17 | 0042 | 42 | 17 | 0042
+ 48 | 23 | 0048 | 48 | 23 | 0048
+ 60 | 10 | 0060 | 60 | 10 | 0060
+ 72 | 22 | 0072 | 72 | 22 | 0072
+ 36 | 11 | 0036 | 36 | 11 | 0036
+ 54 |  4 | 0054 | 54 |  4 | 0054
+ 18 | 18 | 0018 | 18 | 18 | 0018
+ 66 | 16 | 0066 | 66 | 16 | 0066
+ 30 |  5 | 0030 | 30 |  5 | 0030
+ 84 |  9 | 0084 | 84 |  9 | 0084
+  0 |  0 | 0000 |  0 |  0 | 0000
+ 24 | 24 | 0024 | 24 | 24 | 0024
+(17 rows)
+
+-- Batched nested loop join
+SET enable_hashjoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_bnl_batch_size = 3;
