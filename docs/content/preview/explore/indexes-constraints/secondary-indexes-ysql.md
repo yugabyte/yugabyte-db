@@ -42,7 +42,7 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index (multi-column index).
 
-Multi-column indexes are similar to standard indexes as they both store a sorted table of pointers to data entries. These indexes provide faster access to data entries as it uses multiple columns to sort through data faster. For more information, see [Example scenario using multi-column index](#example-scenario-using-multi-column-index).
+Multi-column indexes can be useful in situations where queries are searching in more than a single column.
 
 You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/indexes-constraints/expression-index-ysql/).
 
