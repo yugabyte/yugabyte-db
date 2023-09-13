@@ -25,6 +25,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/linux_syscall_support.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -35,6 +36,9 @@ using namespace std::literals;
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
 #endif
+
+DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
+    "When set to true, ThreadStacks() will not wait for threads to respond");
 
 namespace yb {
 
@@ -142,16 +146,28 @@ struct ThreadStackHelper {
     // a few iterations of the loop, so this timeout is very conservative.
     //
     // The main reason that a thread would not respond is that it has blocked signals. For
-    // example, glibc's timer_thread doesn't respond to our signal, so we always time out
-    // on that one.
-    if (left_to_collect.load(std::memory_order_acquire) > 0) {
+    // example, we may be creating a new thread, or glibc's timer_thread doesn't respond to our
+    // signal.
+    if (left_to_collect.load(std::memory_order_acquire) > 0 &&
+        !FLAGS_TEST_disable_thread_stack_collection_wait) {
       completion_flag.TimedWait(1s);
     }
 
     while (auto entry = collected.Pop()) {
       auto it = std::lower_bound(tids.begin(), tids.end(), entry->tid);
       if (it != tids.end() && *it == entry->tid) {
-        (*out)[it - tids.begin()] = entry->stack;
+        auto& entry_out = (*out)[it - tids.begin()];
+
+        if (entry->stack) {
+          entry_out = entry->stack;
+        } else {
+          // If the thread is in the middle of collecting stack trace for any other reason then it
+          // will return an empty output.
+          static const Status status = STATUS(
+              TryAgain,
+              "Thread did not respond: maybe it was in the middle of a stack trace collection");
+          entry_out = status;
+        }
       }
       allocated.Push(entry);
     }
@@ -301,6 +317,11 @@ Status SetStackTraceSignal(int signum) {
     return STATUS(InvalidArgument, "Unable to install signal handler");
   }
   return Status::OK();
+}
+
+int GetStackTraceSignal() {
+  // Only tests modify this value when multiple threads run, so this is safe.
+  return ANNOTATE_UNPROTECTED_READ(g_stack_trace_signum);
 }
 
 }  // namespace yb
