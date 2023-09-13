@@ -427,7 +427,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     String universeVersion =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     backupConfig.ybdbVersion = universeVersion;
-    backupConfig.universeKeys = keysNode;
+    backupConfig.universeKeys = keysNode.get("universe_keys");
+    backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(tableParams);
     assertEquals(true, extArgs.getUseTablespaces());
     assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
