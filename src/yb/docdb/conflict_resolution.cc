@@ -451,6 +451,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     static const std::string kRequestReason = "conflict resolution"s;
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());
+    TracePtr trace(Trace::CurrentTrace());
     for (auto& i : conflict_data_->RemainingTransactions()) {
       auto& transaction = i;
       TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
@@ -462,7 +463,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction](Result<TransactionStatusResult> result) {
+        [self, &transaction, trace](Result<TransactionStatusResult> result) {
+          ADOPT_TRACE(trace.get());
           if (result.ok()) {
             transaction.ProcessStatus(*result);
           } else if (result.status().IsTryAgain()) {
@@ -591,7 +593,8 @@ class WaitOnConflictResolver : public ConflictResolver {
       LockBatch* lock_batch)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
-        wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()) {}
+        wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
+        trace_(Trace::CurrentTrace()) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -658,6 +661,8 @@ class WaitOnConflictResolver : public ConflictResolver {
   // Note: we must pass in shared_this to keep the WaitOnConflictResolver alive until the wait queue
   // invokes this call.
   void WaitingDone(const Status& status, HybridTime resume_ht) {
+    ADOPT_TRACE(trace_.get());
+    TRACE_FUNC();
     VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
     wait_for_iters_++;
 
@@ -689,6 +694,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   uint32_t wait_for_iters_ = 0;
   TabletId status_tablet_id_;
   MonoTime wait_start_time_ = MonoTime::kUninitialized;
+  TracePtr trace_;
 };
 
 using IntentTypesContainer = std::map<KeyBuffer, IntentData>;

@@ -973,8 +973,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
         context->trace()->set_must_print(true);
       }
     }
-    ADOPT_TRACE(context->trace());
   }
+  ADOPT_TRACE(context ? context->trace() : Trace::CurrentTrace());
 
   data->used_read_time = session_info.second;
   data->used_in_txn_limit = in_txn_limit;
@@ -984,8 +984,9 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   data->ops = VERIFY_RESULT(PrepareOperations(
       &data->req, session, &data->sidecars, &table_cache_));
-
-  session->FlushAsync([this, data](client::FlushStatus* flush_status) {
+  TracePtr trace(Trace::CurrentTrace());
+  session->FlushAsync([this, data, trace](client::FlushStatus* flush_status) {
+    ADOPT_TRACE(trace.get());
     data->FlushDone(flush_status);
     const auto ops_count = data->ops.size();
     if (data->transaction) {
