@@ -5,6 +5,7 @@ linkTitle: YSQL Connection Manager
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
 image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
+techPreview: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     name: YSQL Connection Manager
@@ -43,8 +44,9 @@ YSQL Connection Manager has the following key features:
 
 To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` flag to true.
 
-Note that this feature is supported for YugabyteDB preview version 2.19.2.0 or later.
-
+{{< note title = "Note">}}
+This feature is currently unsupported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Managed](../../../yugabyte-cloud/).
+{{< /note >}}
 When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
 
 To create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
