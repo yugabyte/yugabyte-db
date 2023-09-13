@@ -43,6 +43,8 @@ YSQL Connection Manager has the following key features:
 
 To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` flag to true.
 
+Note that this feature is supported for YugabyteDB preview version 2.19.2.0 or later.
+
 When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
 
 To create a single-node cluster with YSQL Connection Manager using [yugabyted](../../../reference/configuration/yugabyted/), use the following  command:
@@ -51,7 +53,7 @@ To create a single-node cluster with YSQL Connection Manager using [yugabyted](.
 ./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv=enable_ysql_conn_mgr" --ui false
 ```
 
-Because `enable_ysql_conn_mgr` is a preview flag only, to use it, add the flag to the `allowed_preview_flags_csv list` (that is, `allowed_preview_flags_csv=enable_ysql_conn_mgr`).
+Because `enable_ysql_conn_mgr` is a preview flag only, to use it, add the flag to the `allowed_preview_flags_csv` list (that is, `allowed_preview_flags_csv=enable_ysql_conn_mgr`).
 
 {{< note >}}
 
