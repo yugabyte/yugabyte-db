@@ -53,6 +53,8 @@ You can restore only a specific database (YSQL) or keyspace (YCQL).
 
 In addition, if you are restoring a YCQL keyspace, you can restore only selected tables in the keyspace.
 
+For instructions on restoring a single table in YSQL, refer to [Restore a single table in YSQL](../restore-ysql-single-table).
+
 To restore, do the following:
 
 1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
