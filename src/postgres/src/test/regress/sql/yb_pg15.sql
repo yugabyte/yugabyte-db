@@ -64,7 +64,7 @@ insert into t2 values (1, 'foo') on conflict ON CONSTRAINT t2_pkey do update set
 
 select * from t2;
 
--- Batched nested loop join (YB_TODO: if I move it below pushdown test, the test fails)
+-- Joins (YB_TODO: if I move it below pushdown test, the test fails)
 
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
@@ -72,11 +72,19 @@ INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 59
 CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
 
-SET enable_hashjoin = off;
+-- Merge join
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+
+-- Hash join
 SET enable_mergejoin = off;
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+
+-- Batched nested loop join
+SET enable_hashjoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
-
 SET yb_bnl_batch_size = 3;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;

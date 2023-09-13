@@ -1835,12 +1835,6 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* copy some fields from pg_class row to rd_att */
 	relation->rd_att->tdtypeid = relation->rd_rel->reltype;
 	relation->rd_att->tdtypmod = -1; /* unnecessary, but... */
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte)
-	 * OID is now a regular column.
-	 */
-	relation->rd_att->tdhasoid = relation->rd_rel->relhasoids;
-#endif
 
 	/*
 	 * However, we can easily set the attcacheoff value for the first
@@ -1991,10 +1985,6 @@ typedef struct YbIndexProcessorState
 	Oid relid;
 	Relation relation;
 	List *result;
-	#ifdef YB_TODO
-	/* YB_TODO: No longer needed? */
-	Oid	oidIndex;
-	#endif
 	Oid	pkeyIndex;
 	Oid	candidateIndex;
 } YbIndexProcessorState;
@@ -2026,20 +2016,6 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 	/* add index's OID to result list */
 	state->result = lappend_oid(state->result, index->indexrelid);
 
-#ifdef YB_TODO
-	/* YB_TODO: No longer needed? */
-	/*
-	 * indclass cannot be referenced directly through the C struct,
-	 * because it comes after the variable-width indkey field.  Must
-	 * extract the datum the hard way...
-	 */
-	bool isnull;
-	Datum indclassDatum = heap_getattr(
-		htup, Anum_pg_index_indclass, GetPgIndexDescriptor(), &isnull);
-	Assert(!isnull);
-	oidvector *indclass = (oidvector *) DatumGetPointer(indclassDatum);
-#endif
-
 	/*
 	 * Invalid, non-unique, non-immediate or predicate indexes aren't
 	 * interesting for either oid indexes or replication identity indexes,
@@ -2049,16 +2025,6 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 		!index->indimmediate ||
 		!heap_attisnull(htup, Anum_pg_index_indpred, NULL))
 		return true;
-
-#ifdef YB_TODO
-	/* YB_TODO: No longer needed? */
-	/* Check to see if is a usable btree index on OID */
-	if (index->indnatts == 1 &&
-		index->indkey.values[0] == ObjectIdAttributeNumber &&
-		(indclass->values[0] == OID_BTREE_OPS_OID ||
-		 indclass->values[0] == OID_LSM_OPS_OID))
-		state->oidIndex = index->indexrelid;
-#endif
 
 	/* remember primary key index if any */
 	if (index->indisprimary)
@@ -2087,11 +2053,6 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 	List *oldlist = relation->rd_indexlist;
 	relation->rd_indexlist = list_copy(result);
-#ifdef YB_TODO
-	/* YB_TODO(neil) No longer needed?? */
-	Oid oidIndex = state->oidIndex;
-	relation->rd_oidindex = oidIndex;
-#endif
 	relation->rd_pkindex = pkeyIndex;
 	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
@@ -2164,8 +2125,6 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 	YbIndexProcessorState state = {0};
 	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
 	{
-#ifdef YB_TODO
-		/* YB_TODO(neil) This function call is no longer avail. */
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
 		/*
@@ -2174,9 +2133,8 @@ YBUpdateRelationsIndicies(const YbUpdateRelationCacheState *cache_update_state)
 		 * HOT-safety decisions.  It's unsafe to touch such an index at all
 		 * since its catalog entries could disappear at any instant.
 		 */
-		if (!IndexIsLive(index))
+		if (!index->indislive)
 			continue;
-#endif
 
 		if (!YbApplyIndex(&state, htup))
 		{

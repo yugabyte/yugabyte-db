@@ -754,23 +754,6 @@ InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
  *		This is useful when the entire cache is being reloaded or
  *		invalidated, rather than a single cache entry.
  */
-#ifdef YB_TODO
-/* YB_TODO(neil) Pg15 refactor this function.  May need to move Yugabyte code elsewhere */
-void
-InvalidateSystemCaches(void)
-{
-	...;
-	if (IsYugaByteEnabled()) {
-		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
-		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
-		// Resetting catalog version will force cache refresh as soon as possible.
-		YbResetCatalogCacheVersion();
-		return;
-	}
-	...;
-}
-#endif
-
 void
 CallSystemCacheCallbacks(void)
 {

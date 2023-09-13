@@ -428,13 +428,7 @@ RI_FKey_check(TriggerData *trigdata)
 
 	if (IsYBRelation(pk_rel))
 	{
-		/*
-		 * YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-		 *
-		 * Current Yugabyte API works with HeapTuple instead of slot.
-		 * - Create tuple as a workaround to compile.
-		 * - Pass slot to Yugabyte call once the API is fixed.
-		 */
+		/* YB_TODO(later): Do away with TTS to heaptuple conversion. */
 		bool shouldFree = true;
 		HeapTuple new_row = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
 
@@ -443,6 +437,8 @@ RI_FKey_check(TriggerData *trigdata)
 		 * referenced table tuple.
 		 */
 		YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo, new_row);
+		if (shouldFree)
+			pfree(new_row);
 		if (descr)
 		{
 			bool found = false;

@@ -228,9 +228,6 @@ map_partition_varattnos(List *expr, int fromrel_varno,
 		AttrMap    *part_attmap;
 		bool		found_whole_row;
 
-		/* YB_TODO(neil) convert_tuples_by_name_map is no longer used here.
-		 * Need to pass "yb_ignore_type_mismatch" else where for this process.
-		 */
 		part_attmap = build_attrmap_by_name(RelationGetDescr(to_rel),
 											RelationGetDescr(from_rel),
 											false /* yb_ignore_type_mismatch */);

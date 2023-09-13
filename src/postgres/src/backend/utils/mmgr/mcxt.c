@@ -89,14 +89,9 @@ YbPgMemUpdateMax()
 static void
 YbPgMemUpdateCur()
 {
-#ifdef YB_TODO
-	/* YB_TODO(neil) Pg15 reorg stat files and functions.
-	 * Need reorg ours before activating stat related function calls.
-	 */
 #if YB_TCMALLOC_ENABLED
 	YbGetActualHeapSizeBytes(&PgMemTracker.backend_cur_allocated_mem_bytes);
 	yb_pgstat_report_allocated_mem_bytes();
-#endif
 #endif
 }
 
