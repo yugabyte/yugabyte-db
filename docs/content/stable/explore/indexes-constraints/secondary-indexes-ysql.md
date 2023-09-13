@@ -30,7 +30,7 @@ type: docs
   </li>
 </ul>
 
-The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
+Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
 ## Create indexes
 
@@ -58,18 +58,11 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-For YCQL, you can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to check the indexes as follows:
-
-```cql
-DESCRIBE INDEX <index name>
-```
-
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
 For information regarding the EXPLAIN statement, see:
 
 - [EXPLAIN statement in YSQL](../../../api/ysql/the-sql-language/statements/perf_explain/)
-- [EXPLAIN statement in YCQL](../../../api/ycql/explain/)
 
 ## Remove indexes
 
@@ -81,7 +74,7 @@ DROP INDEX index_name1, index_name2, index_name3, ... ;
 
 For additional information, see [DROP INDEX YCQL API](../../../api/ycql/ddl_drop_index/).
 
-## Example scenario using YSQL
+## Example
 
 {{% explore-setup-single %}}
 
@@ -135,7 +128,6 @@ Index Cond: (department = 'Operations'::text)
 For additional information, see:
 
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
-- [CREATE INDEX YCQL API](../../../api/ycql/ddl_create_index/)
 
 The following example shows how to remove `index_employees_department` that was created in Create indexes:
 
@@ -163,8 +155,6 @@ To add a multi-column index to an existing table, you can use the following synt
 CREATE INDEX index_name ON table_name(col2,col3,col4);
 ```
 
-{{< note >}}
-
 The column order is very important when you create a multi-column index in YSQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntaxes, you can perform search using the following column combinations:
 
 ```sql
@@ -174,8 +164,6 @@ The column order is very important when you create a multi-column index in YSQL 
 ```
 
 A column combination like (col2,col4) cannot be used to search or query a table.
-
-{{< /note >}}
 
 ### Example
 

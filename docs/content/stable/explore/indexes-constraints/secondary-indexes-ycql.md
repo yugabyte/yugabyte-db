@@ -27,7 +27,7 @@ type: docs
   </li>
 </ul>
 
-The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes in YCQL.
+Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
 ## Create indexes
 
@@ -65,7 +65,7 @@ DROP INDEX index_name;
 
 For additional information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
 
-## Example scenario using YCQL
+## Example
 
 {{% explore-setup-single %}}
 
@@ -145,8 +145,6 @@ To add a multi-column index to an existing table, you can use the following synt
 CREATE INDEX index_name ON table_name(col2,col3,col4);
 ```
 
-{{< note >}}
-
 The column order is very important when you create a multi-column index in YCQL because of the structure in which the index is stored. As such, these indexes have a hierarchical order from left to right. So, for the preceding syntax, you can perform search using the following column combinations:
 
 ```sql
@@ -156,8 +154,6 @@ The column order is very important when you create a multi-column index in YCQL 
 ```
 
 A column combination like (col2,col4) cannot be used to search or query a table.
-
-{{< /note >}}
 
 ### Example
 
@@ -220,7 +216,7 @@ ycqlsh:example> EXPLAIN SELECT * FROM employees WHERE first_name='Dave' AND last
 
 To process the preceding query, the whole `employees` table needs to be scanned and all the shards have to be accessed. For large organizations, this will take a significant amount of time as the query is executed sequentially as demonstrated in the preceding EXPLAIN statement.
 
-To speed up the process, you can create an index for the department column, as follows:
+To speed up the process, you can create an index for the `first_name` and `last_name` columns, as follows:
 
 ```cql
 ycqlsh:example> Create INDEX index_name ON employees2(first_name, last_name);

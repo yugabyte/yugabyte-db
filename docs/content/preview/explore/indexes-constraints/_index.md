@@ -49,7 +49,7 @@ The following table lists different types of indexes and their support across th
     icon="fa-solid fa-list-ul">}}
 
   {{<index/item
-    title="Secondary indexes"
+    title="Secondary and multi-column indexes"
     body="Explore indexes to optimize your database performance with examples."
     href="secondary-indexes/"
     icon="fa-solid fa-list-ol">}}
@@ -59,12 +59,6 @@ The following table lists different types of indexes and their support across th
     body="Explore unique indexes in YSQL and YCQL with examples."
     href="unique-index-ysql/"
     icon="fa-solid fa-bars-staggered">}}
-
-  {{<index/item
-    title="Multi-column indexes"
-    body="Explore multi-column indexes in YSQL and YCQL with examples."
-    href="multi-column-ysql/"
-    icon="fa-solid fa-bars">}}
 
   {{<index/item
     title="Partial indexes"
