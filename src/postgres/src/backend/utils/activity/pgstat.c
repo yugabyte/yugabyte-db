@@ -194,6 +194,11 @@ int			pgstat_fetch_consistency = PGSTAT_FETCH_CONSISTENCY_CACHE;
 
 PgStat_LocalState pgStatLocal;
 
+/*
+ * Used in YB to indicate whether the statuses for ongoing concurrent
+ * indexes have been retrieved in this transaction.
+ */
+bool yb_retrieved_concurrent_index_progress = false;
 
 /* ----------
  * Local data
@@ -378,9 +383,6 @@ static const PgStat_KindInfo pgstat_kind_infos[PGSTAT_NUM_KINDS] = {
 	},
 };
 
-/* YB_TODO(neil) Pg15 relocation stat files and functions.
- * Need to double check work in pgstat.c and move them to new location */
-bool yb_retrieved_concurrent_index_progress = false;
 
 /* ------------------------------------------------------------
  * Functions managing the state of the stats system for all backends.
@@ -776,7 +778,6 @@ pgstat_clear_snapshot(void)
 	 * forward the reset request.
 	 */
 	pgstat_clear_backend_activity_snapshot();
-
 	yb_retrieved_concurrent_index_progress = false;
 }
 
@@ -1648,4 +1649,62 @@ pgstat_reset_after_failure(void)
 
 	/* and drop variable-numbered ones */
 	pgstat_drop_all_entries();
+}
+
+/* ----------
+ * yb_pgstat_report_allocated_mem_bytes() -
+ *
+ *	Called from utils/mmgr/mcxt.c to update our allocated memory measurement
+ *	value
+ * ----------
+ */
+void
+yb_pgstat_report_allocated_mem_bytes(void)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+
+	beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
+
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
+}
+
+/* ----------
+ * yb_pgstat_set_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_catalog_version(uint64_t catalog_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.version = catalog_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+/* ----------
+ * yb_pgstat_set_has_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.has_version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_has_catalog_version(bool has_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.has_version = has_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 }
