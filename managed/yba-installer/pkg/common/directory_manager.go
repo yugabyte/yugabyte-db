@@ -200,7 +200,7 @@ func MaybeGetYbdbPackagePath() string {
 func GetTemplatesDir() string {
 	// if we are being run from the installed dir, templates
 	// is in the same dir as the binary
-	installedPath := filepath.Join(GetBinaryDir(), ConfigDir)
+	installedPath := filepath.Join(GetInstallerSoftwareDir(), ConfigDir)
 	if _, err := os.Stat(installedPath); err == nil {
 		return installedPath
 	}
@@ -212,7 +212,7 @@ func GetTemplatesDir() string {
 func GetCronDir() string {
 	// if we are being run from the installed dir, cron
 	// is in the same dir as the binary
-	installedPath := filepath.Join(GetBinaryDir(), CronDir)
+	installedPath := filepath.Join(GetInstallerSoftwareDir(), CronDir)
 	if _, err := os.Stat(installedPath); err == nil {
 		return installedPath
 	}
