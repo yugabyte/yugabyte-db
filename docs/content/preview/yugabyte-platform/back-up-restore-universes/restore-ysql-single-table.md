@@ -12,36 +12,39 @@ menu:
 type: docs
 ---
 
-Currently, YugabyteDB Anywhere supports backing up and restoring entire YSQL databases only. However, after the database restore, you can perform some manual steps to restore single tables to the target database.
+Currently, YugabyteDB Anywhere supports backing up and restoring entire YSQL databases only. However, by performing some manual steps, you can restore single tables to a YSQL database using the following tools:
 
-The scope of the following procedure is limited to restoring single table that do not have foreign key relations with other tables. In general, restoring a single tables with relations with other tables is difficult, owing to the fact that you may encounter referential integrity issues.
+- [ysql_dump](../../../manage/backup-restore/export-import-data/) - exports data from a YSQL database into a SQL script file.
+- [ysqlsh](../../../admin/ysqlsh/) - YugabyteDB SQL shell for interacting with YugabyteDB using YSQL.
+
+Suppose you have a problem with a single table in a database called source_db, and you want to restore the table from a backup taken previously. You would perform the following steps:
+
+1. Using a backup of source_db, restore the backup to a new database (call it restored_db). This can be done on the same or a different universe.
+1. In restored_db, use ysql_dump to export an SQL script file of the table to be restored.
+1. In source_db, use ysqlsh to drop the table with the same name (that is, the table you want restored from the backup), if it exists. (You only need to do this if the table with the same name exists on the database.)
+1. Use ysqlsh to import the SQL script file to the source_db database.
+
+The scope of the following procedure is limited to restoring single tables that don't have foreign key relations with other tables. In general, restoring single tables with relations with other tables is difficult, owing to the fact that you may encounter referential integrity issues.
 
 ## Example
 
 The following example assumes the following basic setup:
 
 - a YSQL database named source_db.
-- source_db has 3 tables: table_1, table_2, and table_3; the tables do not have any foreign key references.
+- source_db has 3 tables (table_1, table_2, and table_3) and the tables do not have any foreign key references.
 - source_db has been backed up using YugabyteDB Anywhere.
-
-To restore a single table to source_db, you would perform the following steps:
-
-- Restore the backup of source_db to a new database (called restored_db in the example). This can be done on the same or a different universe.
-- Use ysql_dump to create an SQL script file of the table from the restored_db database.
-- Drop the table present with the same name in the source_db database. This is required to prevent overwriting of data. (This step is only required if the table with the same name exists on the database.)
-- Apply the exported file to the source_db database using ysqlsh meta-commands.
 
 ### Restore the backup to a new database
 
-You can restore a backup to the same or to a different universe.
+You can restore the backup to the same or to a different universe. This example assumes that you restored to the same universe.
 
 During the restore, rename the database. For example, you would rename source_db to restored_db. Because YugabyteDB Anywhere backs up and restores only full databases in YSQL, restored_db has the same tables and data as source_db at the time of backup.
 
-### Create a single table export from restored database
+### Export a single table from the restored database
 
-To create the export file for the table you want to restore, you use ysql_dump. ysql_dump is located in the `postgres/bin` directory of the YugabyteDB home directory.
+Use ysql_dump to create the script file for the table you want to restore. ysql_dump is located in the `postgres/bin` directory of the YugabyteDB home directory on any of the nodes of your universe.
 
-Do the following to create export of the table_1 table from the restored database restored_db:
+Do the following:
 
 1. Connect to one of the nodes of the universe where you restored the backup (that is, the universe with restored_db) and change to the directory where ysql_dump is located. For example:
 
@@ -49,7 +52,7 @@ Do the following to create export of the table_1 table from the restored databas
     [yugabyte@ip-172-151-36-174 ~]$ cd /home/yugabyte/tserver/postgres/bin
     ```
 
-1. Use ysql_dump to export the table to an SQL script file. The syntax used for dumping a single table is as follows:
+1. Use ysql_dump to export the table to a SQL script file. The syntax for dumping a single table is as follows:
 
     ```sh
     [yugabyte@ip-172-151-36-174 ~]$ ./ysql_dump -h <host> -t <table-name> <database-name> > <file-path>
@@ -57,30 +60,30 @@ Do the following to create export of the table_1 table from the restored databas
 
     Replace values as follows:
 
-    - host: The host IP of DB node.
-    - table-name: The name of the table (table_1).
-    - database-name: The name of the database (restored_db).
-    - file-path: The file path for storing the command output, which is an SQL script.
+    - *host* is the host IP of the universe node.
+    - *table-name* is the name of the table (table_1) to export.
+    - *database-name* is the name of the database (restored_db).
+    - *file-path* is the path to the resulting SQL script file.
 
     For example:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ ./ysql_dump -h 172.151.36.174 -t table_1 restored_db > /home/yugabyte/restore_db_table_1.sql
+    [yugabyte@ip-172-151-36-174 ~]$ ./ysql_dump -h 172.151.36.174 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
     ```
 
 ### Drop the table from the source
 
-Before you can restore the table, you need to drop the existing table in the source_db database. To do this, you use ysqlsh, located in the `/bin` directory of the YugabyteDB home directory.
+Before you can restore the table, you need to drop table_1 from the source_db database. To do this, you can use ysqlsh, located in the `/bin` directory of the YugabyteDB home directory.
 
 Do the following to drop a table from the source database source_db:
 
 1. Connect to one of the nodes of the universe with the source database (that is, the universe with source_db) and start ysqlsh. For example:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ tserver/bin/ysqlsh -h 172.151.36.174
+    [yugabyte@ip-172-151-36-174 ~]$ ./tserver/bin/ysqlsh -h 172.151.36.174
     ```
 
-1. Connect to the database source_db:
+1. Connect to the source_db database:
 
     ```sh
     yugabyte=# \c source_db
@@ -109,9 +112,9 @@ Do the following to drop a table from the source database source_db:
      (2 rows)
     ```
 
-### Apply the script to source database
+### Import the script to source database
 
-You apply the SQL file generated using ysql_dump using the ysqlsh `\i` meta-command. For example:
+You import the SQL script file to the source_db database using the ysqlsh `\i` meta-command. For example, assuming restored_db was restored to the universe with source_db, do the following:
 
 ```sh
 source_db=# \i /home/yugabyte/restore_db_table_1.sql
