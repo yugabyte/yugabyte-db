@@ -139,7 +139,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   WriteResponsePB resp_;
   WriteCDCRecordCallback callback_;
   bool called_ = false;
-  const std::shared_ptr<client::YBTable>& table_;
+  const std::shared_ptr<client::YBTable> table_;
 };
 
 rpc::RpcCommandPtr CreateCDCWriteRpc(
