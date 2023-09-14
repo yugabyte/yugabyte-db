@@ -23,5 +23,8 @@ test: yb_pg_tsdicts
 test: yb_pg_collate
 test: yb_pg_collate_icu_utf8
 
+# Yugabyte tests
+test: yb_ts_remote_filter
+
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb_pg_xml
