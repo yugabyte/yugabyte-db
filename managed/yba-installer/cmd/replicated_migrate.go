@@ -52,11 +52,7 @@ var replicatedMigrationStart = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		if !state.CurrentStatus.TransitionValid(ybactlstate.MigratingStatus) {
-			log.Fatal("Unable to start migrating from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.MigratingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
+		if err := state.TransitionStatus(ybactlstate.MigratingStatus); err != nil {
 			log.Fatal("failed to update state: " + err.Error())
 		}
 
@@ -91,7 +87,7 @@ var replicatedMigrationStart = &cobra.Command{
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
-		// Mark install state
+		// Mark install state. Do thi smanually, as we are also updating additional fields.
 		state.CurrentStatus = ybactlstate.MigratingStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("before replicated migration, failed to update state: " + err.Error())
@@ -265,12 +261,8 @@ Are you sure you want to continue?`
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.FinishingStatus) {
-			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.FinishingStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("Failed to save state: " + err.Error())
+		if err := state.TransitionStatus(ybactlstate.FinishingStatus); err != nil {
+			log.Fatal("Failed to update status: " + err.Error())
 		}
 
 		for _, name := range serviceOrder {
@@ -323,12 +315,8 @@ var replicatedRollbackCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
-		if !state.CurrentStatus.TransitionValid(ybactlstate.RollbackStatus) {
-			log.Fatal("Unable to rollback migration from state " + state.CurrentStatus.String())
-		}
-		state.CurrentStatus = ybactlstate.RollbackStatus
-		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("Failed to save state: " + err.Error())
+		if err := state.TransitionStatus(ybactlstate.RollbackStatus); err != nil {
+			log.Fatal("failed to update statue: " + err.Error())
 		}
 
 		prompt := "Rollback to Replicated will not carry over any changes made to YBA after " +

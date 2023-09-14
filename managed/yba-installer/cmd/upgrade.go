@@ -52,9 +52,10 @@ var upgradeCmd = &cobra.Command{
 		if err != nil {
 			state = ybactlstate.New()
 			state.CurrentStatus = ybactlstate.InstalledStatus
-			if err := ybactlstate.StoreState(state); err != nil {
-				log.Fatal("error initializing new state: " + err.Error())
-			}
+		}
+
+		if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
+			log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
 		}
 
 		if err := state.ValidateReconfig(); err != nil {
