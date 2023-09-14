@@ -2,7 +2,6 @@ package ybactlstate
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -14,7 +13,7 @@ func LoadState() (*State, error) {
 	//var state *State
 	state := &State{}
 	sp := filepath.Join(common.YbactlInstallDir(), StateFileName)
-	sf, err := os.Open(sp)
+	sf, err := fs.Open(sp)
 	if err != nil {
 		return state, err
 	}
@@ -31,9 +30,9 @@ func StoreState(state *State) error {
 	// have a way to track if state changes have been made or not.
 	state._internalFields.ChangeID++
 	sp := filepath.Join(common.YbactlInstallDir(), StateFileName)
-	f, err := os.Create(sp)
+	f, err := fs.Create(sp)
 	if err != nil {
-		return nil
+		return err
 	}
 	if err := json.NewEncoder(f).Encode(&state); err != nil {
 		return err
