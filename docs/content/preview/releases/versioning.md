@@ -69,6 +69,7 @@ Changes for EA and GA are always reported in the [YugabyteDB Release Notes](../r
 | Changes | Subject to change | Backwards compatible | Backwards compatible | N/A |
 | Support | N | Y | Y | N |
 | SLA | N | Y | Y | Y |
+| SLA (YBM) | N | N | Y | Y |
 | In Release Notes | N | Y | Y | Y |
 | Availability | By invitation or request | Y | Y | Y |
 | Documentation | Limited | Y | Y | N/A |
@@ -96,6 +97,8 @@ Support for the overall feature will not be dropped, though details may change i
 Recommended only for non-production use.
 
 Any bug fixes or improvements are managed and fixed with the same timeline and processes as those in GA.
+
+EA features in YugabyteDB Managed are not subject to the YBM SLA.
 
 Give feedback on EA features on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
