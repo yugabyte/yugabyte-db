@@ -58,7 +58,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     final String keyspaceName = taskParams().getKeyspace();
     YBClient client = null;
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (tableType == TableType.PGSQL_TABLE_TYPE) {
       try {
         // Build the query to run.

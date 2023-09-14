@@ -26,7 +26,6 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -1015,7 +1014,7 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Universe universe = mock(Universe.class);
-    when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
+    when(universe.getMasterAddresses()).thenReturn("fake_address");
     when(universe.getCertificateNodetoNode()).thenReturn("fake_certificate");
 
     // Disallow on Index Table.
