@@ -77,10 +77,12 @@ public class SpecificGFlags {
     SpecificGFlags newValue = new SpecificGFlags();
     newValue.setInheritFromPrimary(inheritFromPrimary);
     newValue.perProcessFlags = clone(perProcessFlags);
-    perAZ.forEach(
-        (k, v) -> {
-          newValue.perAZ.put(k, clone(v));
-        });
+    if (perAZ != null) {
+      perAZ.forEach(
+          (k, v) -> {
+            newValue.perAZ.put(k, clone(v));
+          });
+    }
     return newValue;
   }
 
@@ -106,8 +108,13 @@ public class SpecificGFlags {
     if (specificGFlags == null) {
       return true;
     }
-    List<PerProcessFlags> allGflags = new ArrayList<>(specificGFlags.perAZ.values());
-    allGflags.add(specificGFlags.getPerProcessFlags());
+    List<PerProcessFlags> allGflags = new ArrayList<>();
+    if (specificGFlags.perAZ != null) {
+      allGflags.addAll(specificGFlags.perAZ.values());
+    }
+    if (specificGFlags.getPerProcessFlags() != null) {
+      allGflags.add(specificGFlags.getPerProcessFlags());
+    }
     for (PerProcessFlags flags : allGflags) {
       if (flags != null && flags.value != null) {
         for (Map<String, String> value : flags.value.values()) {
@@ -130,5 +137,11 @@ public class SpecificGFlags {
             TSERVER, tserverGFlags);
     result.setPerProcessFlags(perProcessFlags);
     return result;
+  }
+
+  public static SpecificGFlags constructInherited() {
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    specificGFlags.setInheritFromPrimary(true);
+    return specificGFlags;
   }
 }

@@ -34,6 +34,8 @@ import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.util.ArrayList;
@@ -495,12 +497,17 @@ public class CustomerTaskManager {
 
     UUID targetUUID;
     if (taskParams instanceof UniverseTaskParams) {
-      targetUUID = ((UniverseTaskParams) taskParams).getUniverseUUID();
+      UniverseTaskParams universeTaskParams = (UniverseTaskParams) taskParams;
+      targetUUID = universeTaskParams.getUniverseUUID();
       Universe universe = Universe.getOrBadRequest(targetUUID);
       if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)
           && !taskUUID.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
         String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+      Optional<Users> userOptional = CommonUtils.maybeGetUserFromContext();
+      if (userOptional.isPresent()) {
+        universeTaskParams.creatingUser = userOptional.get();
       }
     } else if (taskParams instanceof IProviderTaskParams) {
       targetUUID = ((IProviderTaskParams) taskParams).getProviderUUID();

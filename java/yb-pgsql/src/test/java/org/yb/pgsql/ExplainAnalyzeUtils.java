@@ -96,11 +96,12 @@ public class ExplainAnalyzeUtils {
   }
 
   private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing) throws Exception {
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug)
+      throws Exception {
     LOG.info("Query: " + query);
     ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b) %s",
-        timing, query));
+        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b) %s",
+        timing, debug, query));
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -114,12 +115,17 @@ public class ExplainAnalyzeUtils {
 
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true);
+    testExplain(stmt, query, checker, true, false);
+  }
+
+  public static void testExplainDebug(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true, true);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false);
+    testExplain(stmt, query, checker, false, false);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {

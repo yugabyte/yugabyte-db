@@ -9478,7 +9478,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
+      "required" : [ "customerUUID", "isSourceUniversePresent", "restoreKeyspaceList", "restoreSizeInBytes", "restoreUUID", "sourceUniverseName", "sourceUniverseUUID", "state", "targetUniverseName", "universeUUID" ],
       "type" : "object"
     },
     "RestoreSnapshotScheduleParams" : {

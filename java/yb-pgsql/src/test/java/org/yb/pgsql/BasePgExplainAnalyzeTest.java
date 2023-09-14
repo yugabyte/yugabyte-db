@@ -30,4 +30,10 @@ class BasePgExplainAnalyzeTest extends BasePgSQLTest {
       ExplainAnalyzeUtils.testExplain(stmt, query, checker);
     }
   }
+
+  protected void testExplainDebug(String query, Checker checker) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ExplainAnalyzeUtils.testExplainDebug(stmt, query, checker);
+    }
+  }
 }

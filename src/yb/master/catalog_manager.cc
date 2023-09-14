@@ -2751,7 +2751,8 @@ namespace {
 
 Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
-  const auto& source_partition = tablet_info.LockForRead()->pb.partition();
+  // Making a copy of PartitionPB to avoid holding a lock.
+  const auto source_partition = tablet_info.LockForRead()->pb.partition();
 
   if (split_partition_key <= source_partition.partition_key_start() ||
       (!source_partition.partition_key_end().empty() &&

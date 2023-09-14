@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -78,6 +79,10 @@ public class ConfKeysTest extends FakeDBApplication {
             .build();
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
     RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
+
+    // Run the system roles sync migration to validate the UseNewRbacAuthzListener.
+    // Required for the "yb.rbac.use_new_authz" runtime config.
+    R__Sync_System_Roles.syncSystemRoles();
   }
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {

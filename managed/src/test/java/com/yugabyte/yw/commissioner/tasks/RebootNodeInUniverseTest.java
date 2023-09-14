@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -308,5 +309,24 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRebootNodeSequence(subTasksByPosition, RebootType.WITH_MASTER_NO_TSERVER, isHardReboot);
+  }
+
+  @Test
+  @Parameters({"false", "true"})
+  public void testRebootNodeRetries(boolean isHardReboot) {
+    // Set up with master.
+    setUp(true, 4, 3);
+    RebootNodeInUniverse.Params taskParams = new RebootNodeInUniverse.Params();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    taskParams.isHardReboot = isHardReboot;
+    taskParams.nodeName = "host-n1";
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Reboot,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RebootNodeInUniverse,
+        taskParams);
   }
 }

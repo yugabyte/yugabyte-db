@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models.rbac;
 
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.models.Users;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -43,22 +44,37 @@ public class ResourceGroup {
 
   private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
 
-  public static ResourceGroup getSystemDefaultResourceGroup(UUID customerUUID) {
+  public static ResourceGroup getSystemDefaultResourceGroup(UUID customerUUID, Users user) {
     ResourceGroup defaultResourceGroup = new ResourceGroup();
-    for (ResourceType resourceType : ResourceType.values()) {
-      ResourceDefinition resourceDefinition;
-      if (resourceType.equals(ResourceType.OTHER)) {
+    ResourceDefinition resourceDefinition;
+    switch (user.getRole()) {
+      case ConnectOnly:
+        // For connect only role, user should have access to only his user profile, nothing else.
         resourceDefinition =
             ResourceDefinition.builder()
-                .resourceType(resourceType)
+                .resourceType(ResourceType.USER)
                 .allowAll(false)
-                .resourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)))
+                .resourceUUIDSet(new HashSet<>(Arrays.asList(user.getUuid())))
                 .build();
-      } else {
-        resourceDefinition =
-            ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
-      }
-      defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
+        defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
+        break;
+      default:
+        // For all other built-in roles, we can default to all resource types in the resource group.
+        for (ResourceType resourceType : ResourceType.values()) {
+          if (resourceType.equals(ResourceType.OTHER)) {
+            resourceDefinition =
+                ResourceDefinition.builder()
+                    .resourceType(resourceType)
+                    .allowAll(false)
+                    .resourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)))
+                    .build();
+          } else {
+            resourceDefinition =
+                ResourceDefinition.builder().resourceType(resourceType).allowAll(true).build();
+          }
+          defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
+        }
+        break;
     }
     return defaultResourceGroup;
   }

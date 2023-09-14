@@ -33,7 +33,9 @@ public class RestoreResp {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   Date backupCreatedOnDate;
 
+  @ApiModelProperty(required = false)
   TableType backupType;
+
   Restore.State state;
   long restoreSizeInBytes;
   List<RestoreKeyspace> restoreKeyspaceList;

@@ -6329,6 +6329,23 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	index_total_cost +=
 		num_seeks * per_seek_cost + num_nexts * per_next_cost;
 
+	/* Non index filters will be executed as remote and local filters. */
+	foreach(lc, qpquals)
+	{
+		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
+
+		if (ri->yb_pushable)
+		{
+			pushed_down_clauses = lappend(pushed_down_clauses, ri);
+		}
+		else
+		{
+			local_clauses = lappend(local_clauses, ri);
+		}
+	}
+
+	bool has_pushed_down_clauses = list_length(pushed_down_clauses) > 0;
+
 	/**
 	 * DocDB must execute index filter on each row. An overhead is added due to
 	 * context switching between PG and DocDB.
@@ -6336,7 +6353,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	cost_qual_eval(&qual_cost, index_bound_quals, root);
 	Cost		per_tuple_qual_cost =
 		qual_cost.per_tuple +
-		(yb_docdb_remote_filter_overhead_cycles * cpu_operator_cost);
+		(yb_docdb_remote_filter_overhead_cycles *
+		 cpu_operator_cost * has_pushed_down_clauses);
 
 	index_startup_cost += qual_cost.startup;
 	index_total_cost += per_tuple_qual_cost * num_index_tuples;
@@ -6419,28 +6437,9 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		run_cost += num_docdb_blocks_fetched * yb_random_block_cost;
 	}
 
-	/* Non index filters will be executed as remote and local filters. */
-	foreach(lc, qpquals)
-	{
-		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-
-		if (ri->yb_pushable)
-		{
-			pushed_down_clauses = lappend(pushed_down_clauses, ri);
-		}
-		else
-		{
-			local_clauses = lappend(local_clauses, ri);
-		}
-	}
-
 	cost_qual_eval(&qual_cost, pushed_down_clauses, root);
 	startup_cost += qual_cost.startup;
-	run_cost +=
-		(qual_cost.per_tuple + list_length(pushed_down_clauses) *
-		 yb_docdb_remote_filter_overhead_cycles *
-		 cpu_operator_cost) *
-		index_tuples_fetched;
+	run_cost += qual_cost.per_tuple * index_tuples_fetched;
 
 	remote_filtered_rows =
 		clamp_row_est(index_tuples_fetched *
