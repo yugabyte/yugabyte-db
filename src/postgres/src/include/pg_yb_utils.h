@@ -644,9 +644,21 @@ bool IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ * These functions are unsafe to run in a multi-threaded environment. There is
+ * no specific attribute that identifies them as such, so we have to manually
+ * identify them.
+ */
+extern const uint32 yb_funcs_unsafe_for_pushdown[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_pushdown' above.
  */
 extern const int yb_funcs_safe_for_pushdown_count;
+
+/*
+ * Number of functions in 'yb_funcs_unsafe_for_pushdown' above.
+ */
+extern const int yb_funcs_unsafe_for_pushdown_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
