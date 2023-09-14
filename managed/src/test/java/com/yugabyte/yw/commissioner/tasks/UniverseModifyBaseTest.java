@@ -143,6 +143,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     Universe result = createUniverse(universeName, defaultCustomer.getId(), providerType);
     result =
         Universe.saveDetails(

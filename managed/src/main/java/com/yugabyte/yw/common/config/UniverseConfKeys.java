@@ -919,4 +919,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
+      new ConfKeyInfo<>(
+          "yb.edit.allow_volume_decrease",
+          ScopeType.UNIVERSE,
+          "Allow decrease volume size",
+          "Allow decrease volume size for universe during full move",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
