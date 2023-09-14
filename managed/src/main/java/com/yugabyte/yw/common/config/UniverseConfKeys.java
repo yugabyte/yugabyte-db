@@ -927,4 +927,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number of parallel node agent reinstallations at a time",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
+      new ConfKeyInfo<>(
+          "yb.edit.allow_volume_decrease",
+          ScopeType.UNIVERSE,
+          "Allow decrease volume size",
+          "Allow decrease volume size for universe during full move",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

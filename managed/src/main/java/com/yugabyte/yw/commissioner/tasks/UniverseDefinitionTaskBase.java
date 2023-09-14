@@ -1301,14 +1301,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         if (cluster.userIntent.deviceInfo != null
             && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && cluster.userIntent.deviceInfo.numVolumes != null) {
+          int prevSize =
+              univCluster.userIntent.deviceInfo.volumeSize
+                  * univCluster.userIntent.deviceInfo.numVolumes;
+          int curSize =
+              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
+          if (curSize < prevSize
+              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
+            throw new IllegalArgumentException(
+                "Cannot decrease volume size from " + prevSize + " to " + curSize);
+          }
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
@@ -1323,8 +1326,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
-        } else { // During edit universe, overrides can't be changed.
+        } else {
           if (opType == UniverseOpType.EDIT) {
+            if (cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.deviceInfo.volumeSize != null
+                && cluster.userIntent.deviceInfo.volumeSize
+                    < univCluster.userIntent.deviceInfo.volumeSize) {
+              String errMsg =
+                  String.format(
+                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                      univCluster.userIntent.deviceInfo.volumeSize,
+                      cluster.userIntent.deviceInfo.volumeSize);
+              throw new IllegalStateException(errMsg);
+            }
+            // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
