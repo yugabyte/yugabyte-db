@@ -1156,7 +1156,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return Collections.emptyMap();
     }
     Map<String, GetTableSchemaResponse> tableSchemaMap = new HashMap<>();
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       for (String tableUuid : mainTableUuidList) {
@@ -1233,7 +1233,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
       YBClientService ybService, Universe universe, boolean excludeSystemTables) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       ListTablesResponse listTablesResponse =
