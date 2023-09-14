@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
@@ -42,11 +43,15 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.*;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -118,6 +123,8 @@ public class SessionController extends AbstractPlatformController {
   @Inject private LoginHandler loginHandler;
 
   @Inject private RuntimeConfGetter confGetter;
+
+  @Inject private RoleBindingUtil roleBindingUtil;
 
   private final ApiHelper apiHelper;
 
@@ -642,15 +649,16 @@ public class SessionController extends AbstractPlatformController {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
+  @Transactional
   private Result registerCustomer(
       CustomerRegisterFormData data,
       boolean isSuper,
       boolean generateApiToken,
       Http.Request request) {
     Customer cust = Customer.create(data.getCode(), data.getName());
-    Role role = Role.Admin;
+    Users.Role role = Users.Role.Admin;
     if (isSuper) {
-      role = Role.SuperAdmin;
+      role = Users.Role.SuperAdmin;
     }
     passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
 
@@ -658,6 +666,35 @@ public class SessionController extends AbstractPlatformController {
     alertConfigurationService.createDefaultConfigs(cust);
 
     Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
+
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+
+    if (useNewAuthz) {
+      // Sync all the built-in roles when a new customer is created.
+      // After the Customer.create() step.
+      R__Sync_System_Roles.syncSystemRoles();
+      Role newRbacRole = Role.get(cust.getUuid(), role.name());
+
+      // Now add the role binding for the above user.
+      ResourceGroup resourceGroup =
+          ResourceGroup.getSystemDefaultResourceGroup(cust.getUuid(), user);
+      // Create a single role binding for the user.
+      RoleBinding createdRoleBinding =
+          roleBindingUtil.createRoleBinding(
+              user.getUuid(), newRbacRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
+
+      log.info(
+          "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
+              + "with role '{}' (name '{}'), and default role binding '{}'.",
+          user.getUuid(),
+          user.getEmail(),
+          cust.getUuid(),
+          newRbacRole.getRoleUUID(),
+          newRbacRole.getName(),
+          createdRoleBinding.toString());
+    }
+
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.getOrCreateApiToken() : null;
     SessionInfo sessionInfo =
