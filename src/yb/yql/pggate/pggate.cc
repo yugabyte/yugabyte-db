@@ -2055,8 +2055,8 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
-Result<int> PgApiImpl::TabletIDMetadata() {
-  return pg_session_->TabletIDMetadata();
+Result<std::vector<client::YBTableInfo>> PgApiImpl::TableIDMetadata() {
+  return pg_session_->TableIDMetadata();
 }
 
 Status PgApiImpl::SetTopLevelNodeId() {

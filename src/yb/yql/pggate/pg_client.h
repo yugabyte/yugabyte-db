@@ -22,6 +22,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -177,7 +178,7 @@ class PgClient {
       bool size_only, uint32_t db_oid);
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
-  Result<int> TabletIDMetadata();
+  Result<std::vector<client::YBTableInfo>> TableIDMetadata();
   
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

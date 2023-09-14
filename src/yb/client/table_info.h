@@ -50,6 +50,25 @@ struct YBTableInfo {
     }
     return size;
   }
+
+  // void ToPB(PgTableIDMetadataResponsePB* pb) const {
+  //   pb->set_table_name(table_name);
+  //   pb->set_table_id(table_id);
+  //   schema.ToPB(pb->mutable_schema());
+  //   partition_schema.ToPB(pb->mutable_partition_schema());
+  //   index_map.ToPB(pb->mutable_index_map());
+  //   if (index_info) {
+  //       index_info->ToPB(pb->mutable_index_info());
+  //   }
+  //   pb->set_table_type(table_type);
+  //   pb->set_colocated(colocated);
+  //   if (replication_info) {
+  //       pb->mutable_replication_info()->CopyFrom(*replication_info);
+  //   }
+  //   if (wal_retention_secs) {
+  //       pb->set_wal_retention_secs(*wal_retention_secs);
+  //   }
+  // }
 };
 
 Result<YBTableType> PBToClientTableType(TableType table_type_from_pb);

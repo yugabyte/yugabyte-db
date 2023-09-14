@@ -79,7 +79,7 @@ DEFINE_test_flag(uint64, delay_before_get_old_transactions_heartbeat_intervals, 
                  "is used in tests alone.");
 
 DECLARE_uint64(transaction_heartbeat_usec);
-
+using google::protobuf::RepeatedPtrField;
 namespace yb {
 namespace tserver {
 
@@ -772,40 +772,48 @@ class PgClientServiceImpl::Impl {
 
     return Status::OK();
   }
+ 
+  Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp,rpc::RpcContext* context) {
 
-  // void GetTabletInfo(
-  //     tserver::PgTabletIDMetadataResponsePB* resp, yb::util::MessengerType messenger_type) {
-  //   rpc::DumpRunningRpcsRequestPB dump_req;
-  //   rpc::DumpRunningRpcsResponsePB dump_resp;
+    std::vector<client::YBTableInfo> allTableInfo;
+    auto tables_list = VERIFY_RESULT(client().ListTables());
 
-  //   dump_req.set_include_traces(false);
-  //   dump_req.set_get_wait_state(true);
-  //   dump_req.set_dump_timed_out(false);
-
-  //   auto messenger = tablet_server_.GetMessenger(messenger_type);
-
-  //   WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
-    
-  //   // for (auto conns : dump_resp.inbound_connections()) {
-  //   //   for (auto call : conns.calls_in_flight()) {
-  //   //     // if (!call.has_wait_state() || (call.wait_state().has_aux_info()
-  //   //     //     && call.wait_state().aux_info().has_method()
-  //   //     //     && call.wait_state().aux_info().method() == "ActiveUniverseHistory"))
-  //   //     //   continue;
-  //   //     if (messenger_type == util::MessengerType::kTserver) {
-  //   //       resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
-  //   //     } else {
-  //   //       resp->add_cql_wait_states()->CopyFrom(call.wait_state());
-  //   //     }
-  //   //   }
-  //   // }
-  // }
-
-  Status TabletIDMetadata(
-      const PgTabletIDMetadataRequestPB& req, PgTabletIDMetadataResponsePB* resp,
-      rpc::RpcContext* context) {
-    return Status::OK();
+    for (const auto& table_info : tables_list) {
+        client::YBTableInfo yb_table_info;
+        yb_table_info.table_name = table_info.table_name();
+        yb_table_info.table_id = table_info.table_id();
+        yb_table_info.schema = table_info.schema();
+        yb_table_info.partition_schema = table_info.partition_schema();
+        yb_table_info.index_map = table_info.index_map();
+        yb_table_info.index_info = table_info.index_info();
+        yb_table_info.table_type = table_info.table_type();
+        yb_table_info.colocated = table_info.colocated();
+        yb_table_info.replication_info = table_info.replication_info();
+        yb_table_info.wal_retention_secs = table_info.wal_retention_secs();
+        allTableInfo.push_back(yb_table_info);
+        yb_table_info.ToPB(resp->add_table_info);
     }
+    return Status::OK();
+}
+
+    // for (const client::YBTableName& table_name : tables_list) {
+    //     RepeatedPtrField<master::TabletLocationsPB> tablets;
+    //     client::PartitionListVersion partition_list_version;
+    //     Status status = client().GetTablets(table_name,10, &tablets, &partition_list_version);
+        
+    //     if (status.ok()) {
+    //         for (int i = 0; i < tablets.size(); ++i) {
+    //         TabletInfo tablet_info;
+    //         tablet_info.table_index = table_info.id();
+    //         tablet_info.tablet_index = i;
+    //         allTabletInfo.push_back(tablet_info);
+    //     }
+    //     } else {
+    //       LOG(ERROR) << "Failed to get tablets for table " << table_name.ToString() << ": " << status.ToString();
+    //     }
+    //     resp->allTabletInfo = allTabletInfo;
+    // } 
+   
 
   Status GetTserverCatalogVersionInfo(
       const PgGetTserverCatalogVersionInfoRequestPB& req,

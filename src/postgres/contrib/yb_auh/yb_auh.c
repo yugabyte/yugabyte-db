@@ -397,8 +397,10 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
 
   MemoryContextSwitchTo(oldcontext);
   LWLockAcquire(auh_entry_array_lock, LW_SHARED);
-  int x = TabletIDMetadata();
-  ereport(LOG, (errmsg("x: %d", x)));
+  //u_int64_t x = 0;
+  //HandleYBStatus(YBCTabletIDMetadata());
+  // int x = TabletIDMetadata();
+  //ereport(LOG, (errmsg("x: %llu", x)));
   for (i = 0; i < circular_buf_size; i++)
   {
     Datum           values[PG_ACTIVE_UNIVERSE_HISTORY_COLS];

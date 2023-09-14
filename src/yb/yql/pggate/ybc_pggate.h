@@ -690,7 +690,7 @@ void YBCRegisterSysTableForPrefetching(YBCPgOid database_oid,
 YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
-
+YBCStatus YBCTableIDMetadata();
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 
 YBCStatus YBCSetTopLevelNodeId();

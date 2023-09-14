@@ -989,8 +989,8 @@ Result<bool> PgSession::CheckIfPitrActive() {
 Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
-Result<int> PgSession::TabletIDMetadata() {
-  return pg_client_.TabletIDMetadata();
+Result<std::vector<client::YBTableInfo>> PgSession::TableIDMetadata() {
+  return pg_client_.TableIDMetadata();
 }
 
 Status PgSession::SetTopLevelNodeId() {
