@@ -116,7 +116,7 @@ const INITIAL_STATE = {
   universeImport: getInitialState({}),
   alertsConfig: getInitialState({}),
   backupState: getInitialState({}),
-  supportedReleases: getInitialState({})
+  supportedReleases: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -170,7 +170,7 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
     case FETCH_SUPPORTED_RELEASES:
-      return setLoadingState(state, 'supportedReleases', {});
+      return setLoadingState(state, 'supportedReleases', []);
     case FETCH_SUPPORTED_RELEASES_RESPONSE:
       return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:

@@ -199,7 +199,7 @@ function mapStateToProps(state) {
         const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
         if (currentVersion) {
           const supportedSoftwareVersions =
-            state.universe.supportedReleases?.data?.sort(sortVersion) ?? [];
+            state.universe.supportedReleases?.data?.toSorted(sortVersion) ?? [];
           const matchIndex = supportedSoftwareVersions.findIndex(
             (version) => compareYBSoftwareVersions(currentVersion, version) >= 0
           );
