@@ -132,11 +132,9 @@ To remove the index `index_employees_department`, use the following command:
 DROP INDEX index_employees_department;
 ```
 
-## Example scenario using multi-column index
+## Multi-column index
 
-You can speed up queries that search on more than one column by creating a multi-column index.
-
-### Syntax
+Multi-column indexes can be beneficial in situations where queries are searching in more than a single column.
 
 To add a multi-column index to an existing table, you can use the following syntax:
 
@@ -154,7 +152,7 @@ The column order is very important when you create a multi-column index in YCQL 
 
 A column combination like (col2,col4) cannot be used to search or query a table.
 
-### Example
+## Multi-column example
 
 {{% explore-setup-single %}}
 
@@ -215,7 +213,7 @@ ycqlsh:example> EXPLAIN SELECT * FROM employees WHERE first_name='Dave' AND last
 
 To process the preceding query, the whole `employees` table needs to be scanned and all the shards have to be accessed. For large organizations, this will take a significant amount of time as the query is executed sequentially as demonstrated in the preceding EXPLAIN statement.
 
-To speed up the process, you can create an index for the `first_name` and `last_name` columns, as follows:
+To speed up the process, you can create an index for `first_name` and `last_name` columns, as follows:
 
 ```cql
 ycqlsh:example> Create INDEX index_name ON employees2(first_name, last_name);

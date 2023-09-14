@@ -42,6 +42,8 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
+[Multi-column indexes](#multi-column-index) can be beneficial in situations where queries are searching in more than a single column.
+
 You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression Indexes](../../../explore/indexes-constraints/expression-index-ysql/).
 
 YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index](../../../explore/indexes-constraints/gin/).
@@ -135,7 +137,9 @@ The following example shows how to remove `index_employees_department` that was 
 DROP INDEX index_employees_department;
 ```
 
-## Example scenario using multi-column index
+## Multi-column index
+
+Multi-column indexes can be beneficial in situations where queries are searching in more than a single column.
 
 To add a multi-column index during table creation, you can use the following syntax:
 
@@ -165,7 +169,7 @@ The column order is very important when you create a multi-column index in YSQL 
 
 A column combination like (col2,col4) cannot be used to search or query a table.
 
-### Example
+## Multi-column example
 
 {{% explore-setup-single %}}
 

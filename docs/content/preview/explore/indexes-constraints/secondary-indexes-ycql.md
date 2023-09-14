@@ -65,7 +65,7 @@ DROP INDEX index_name;
 
 For additional information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
 
-## Example scenario using YCQL
+## Example
 
 {{% explore-setup-single %}}
 
@@ -134,10 +134,7 @@ DROP INDEX index_employees_department;
 
 ## Multi-column index
 
-Multi-column indexes are also known as compound indexes using which you can create an index with multiple columns.
-Multi-column indexes are similar to standard indexes as they both store a sorted table of pointers to data entries. These indexes provide faster access to data entries as it uses multiple columns to sort through data faster.
-
-### Syntax
+Multi-column indexes can be beneficial in situations where queries are searching in more than a single column.
 
 To add a multi-column index to an existing table, you can use the following syntax:
 
