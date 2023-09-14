@@ -551,6 +551,7 @@ public class Schedule extends Model {
             .fullBackup(CollectionUtils.isEmpty(params.keyspaceTableList))
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
+            .parallelism(params.parallelism)
             .build();
     return backupInfo;
   }
@@ -576,6 +577,7 @@ public class Schedule extends Model {
             .expiryTimeUnit(params.expiryTimeUnit)
             .fullBackup(StringUtils.isEmpty(params.getKeyspace()))
             .useTablespaces(params.useTablespaces)
+            .parallelism(params.parallelism)
             .build();
     return backupInfo;
   }

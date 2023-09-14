@@ -42,5 +42,6 @@ public class ScheduleResp {
     boolean useTablespaces;
     TimeUnit expiryTimeUnit;
     Boolean isTableByTableBackup;
+    long parallelism;
   }
 }
