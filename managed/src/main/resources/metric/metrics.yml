@@ -1469,7 +1469,9 @@ lsm_rocksdb_mem_tracker_db_memtable:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1480,6 +1482,8 @@ lsm_rocksdb_mem_tracker_db_memtable:
       alias:
         "mem_tracker_RegularDB_MemTable": "RegularDB"
         "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
 
 lsm_rocksdb_latencies_get:
   metric: "rocksdb_db_get_micros.avg"
@@ -3016,7 +3020,9 @@ table_mem_tracker_db_memtable:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable"
+    saved_name: "mem_tracker_RegularDB_MemTable|mem_tracker_IntentsDB_MemTable|\
+      mem_tracker_server_PerTablet_RegularDB_MemTable|\
+      mem_tracker_server_PerTablet_IntentsDB_MemTable"
   group_by: "saved_name"
   layout:
     title: "Memtable Size"
@@ -3026,6 +3032,8 @@ table_mem_tracker_db_memtable:
       alias:
         "mem_tracker_RegularDB_MemTable": "RegularDB"
         "mem_tracker_IntentsDB_MemTable": "IntentsDB"
+        "mem_tracker_server_PerTablet_RegularDB_MemTable": "RegularDB"
+        "mem_tracker_server_PerTablet_IntentsDB_MemTable": "IntentsDB"
 
 table_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
