@@ -85,13 +85,13 @@ Do the following to drop a table from the source database source_db:
 
 1. Connect to the source_db database:
 
-    ```sh
+    ```sql
     yugabyte=# \c source_db
     ```
 
 1. Drop table table_1:
 
-    ```sh
+    ```sql
     source_db=# DROP TABLE table_1;
     ```
 
@@ -99,7 +99,7 @@ Do the following to drop a table from the source database source_db:
     DROP TABLE
     ```
 
-    ```sh
+    ```sql
     source_db=# \d
     ```
 
@@ -116,7 +116,7 @@ Do the following to drop a table from the source database source_db:
 
 You import the SQL script file to the source_db database using the ysqlsh `\i` meta-command. For example, assuming restored_db was restored to the universe with source_db, do the following:
 
-```sh
+```sql
 source_db=# \i /home/yugabyte/restore_db_table_1.sql
 source_db=# \d
 ```
