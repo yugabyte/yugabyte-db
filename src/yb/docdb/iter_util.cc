@@ -47,8 +47,9 @@ inline bool IsIterAfterOrAtKey(
 }
 
 inline const rocksdb::KeyValueEntry& SeekPossiblyUsingNext(
-    rocksdb::Iterator* iter, Slice seek_key, int next, SeekStats* stats) {
-  while (next-- > 0) {
+    rocksdb::Iterator* iter, Slice seek_key, SeekStats* stats) {
+  int nexts = FLAGS_max_nexts_to_avoid_seek;
+  while (nexts-- > 0) {
     const auto& entry = iter->Next();
     ++stats->next;
     if (IsIterAfterOrAtKey(entry, iter, seek_key)) {
@@ -83,7 +84,7 @@ const rocksdb::KeyValueEntry& SeekOutOfSubKey(dockv::KeyBytes* key_bytes, rocksd
 
 SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, Slice seek_key) {
   SeekStats result;
-  SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek, &result);
+  SeekPossiblyUsingNext(iter, seek_key, &result);
   return result;
 }
 
@@ -119,7 +120,7 @@ const rocksdb::KeyValueEntry& PerformRocksDBSeek(
       } else if (cmp < 0) {
         VLOG_WITH_FUNC(4)
             << "Seek forward: " << dockv::BestEffortDocDBKeyToStr(seek_key);
-        result = &SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek, &stats);
+        result = &SeekPossiblyUsingNext(iter, seek_key, &stats);
       }
     }
   }
@@ -156,7 +157,7 @@ const rocksdb::KeyValueEntry& SeekForward(Slice slice, rocksdb::Iterator *iter) 
   }
 
   SeekStats stats;
-  return SeekPossiblyUsingNext(iter, slice, FLAGS_max_nexts_to_avoid_seek, &stats);
+  return SeekPossiblyUsingNext(iter, slice, &stats);
 }
 
 
