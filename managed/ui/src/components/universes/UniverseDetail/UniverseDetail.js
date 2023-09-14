@@ -192,12 +192,6 @@ class UniverseDetail extends Component {
     browserHistory.replace(browserHistory.getCurrentLocation().pathname);
   };
 
-  transitToDefaultRoute = () => {
-    const currentLocation = this.props.location;
-    currentLocation.query = currentLocation.query.tab ? { tab: currentLocation.query.tab } : {};
-    this.props.router.push(currentLocation);
-  };
-
   handleSubmitManageKey = (res) => {
     if (res.payload.isAxiosError) {
       this.setState({
@@ -233,7 +227,6 @@ class UniverseDetail extends Component {
       universe,
       tasks,
       universe: { currentUniverse, supportedReleases },
-      location: { query, pathname },
       showSoftwareUpgradesModal,
       showVMImageUpgradeModal,
       showTLSConfigurationModal,
@@ -306,19 +299,6 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ycql')
         ?.value === 'true';
 
-    const type =
-      pathname.indexOf('edit') < 0
-        ? 'Create'
-        : this.props.params.type
-        ? this.props.params.type === 'primary'
-          ? 'Edit'
-          : 'Async'
-        : 'Edit';
-
-    if (pathname === '/universes/create') {
-      return <UniverseFormContainer type="Create" />;
-    }
-
     if (
       getPromiseState(currentUniverse).isLoading() ||
       getPromiseState(currentUniverse).isInit() ||
@@ -328,24 +308,6 @@ class UniverseDetail extends Component {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
-    }
-
-    if (type === 'Async' || (isNonEmptyObject(query) && query.edit && query.async)) {
-      if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query
-        this.transitToDefaultRoute();
-      } else {
-        return <UniverseFormContainer type="Async" />;
-      }
-    }
-
-    if (type === 'Edit' || (isNonEmptyObject(query) && query.edit)) {
-      if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query
-        this.transitToDefaultRoute();
-      } else {
-        return <UniverseFormContainer type="Edit" />;
-      }
     }
 
     if (getPromiseState(currentUniverse).isError()) {

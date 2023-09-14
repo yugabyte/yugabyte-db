@@ -4,11 +4,11 @@ import { browserHistory } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory } from 'history';
 import { Administration } from './Administration';
-import { render } from '../test-utils';
+import { render } from '../../test-utils';
 
-jest.mock('../components/alerts/AlertConfiguration/AlertConfigurationContainer.js');
-jest.mock('../components/users/Users/UsersListContainer.js');
-jest.mock('../components/advanced/RuntimeConfig/RuntimeConfigContainer.tsx');
+jest.mock('../alerts/AlertConfiguration/AlertConfigurationContainer.js');
+jest.mock('../users/Users/UsersListContainer.js');
+jest.mock('../advanced/RuntimeConfig/RuntimeConfigContainer.tsx');
 
 const setup = (storeState = {}) => {
   const history = createMemoryHistory();

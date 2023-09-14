@@ -7,16 +7,18 @@
 import { lazy, Suspense } from 'react';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
 
-const AdministrationComponent = lazy(() =>
-  import('../components/administration/Administration').then(({ Administration }) => ({
-    default: Administration
-  }))
+const ReplicationComponent = lazy(() =>
+  import('../components/xcluster/configDetails/ReplicationDetails').then(
+    ({ ReplicationDetails }) => ({
+      default: ReplicationDetails
+    })
+  )
 );
 
-export const Administration = (props: any) => {
+export const Replication = (props: any) => {
   return (
     <Suspense fallback={YBLoadingCircleIcon}>
-      <AdministrationComponent {...props} />
+      <ReplicationComponent {...props} />
     </Suspense>
   );
 };
