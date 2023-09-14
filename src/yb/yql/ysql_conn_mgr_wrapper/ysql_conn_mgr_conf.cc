@@ -33,6 +33,7 @@ DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_uint32(ysql_conn_mgr_max_client_connections);
 DECLARE_uint32(ysql_conn_mgr_max_conns_per_db);
 DECLARE_uint32(ysql_conn_mgr_idle_time);
+DECLARE_string(ysql_conn_mgr_internal_conn_db);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_uint32(ysql_conn_mgr_num_workers);
@@ -115,6 +116,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%log_file%}", log_file_},
     {"{%pid_file%}", pid_file_},
     {"{%quantiles%}", quantiles_},
+    {"{%control_conn_db%}", FLAGS_ysql_conn_mgr_internal_conn_db},
     {"{%postgres_host%}", postgres_address_.host()},
     {"{%control_connection_pool_size%}", std::to_string(control_connection_pool_size_)},
     {"{%global_pool_size%}", std::to_string(global_pool_size_)},

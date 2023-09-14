@@ -53,6 +53,10 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
     "Password to be used by Ysql Connection Manager while creating database connections.");
 
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_internal_conn_db, "yugabyte",
+    "Database to which Ysql Connection Manager will make connections to "
+    "inorder to execute internal queries.");
+
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
