@@ -101,6 +101,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
       provider.setUsabilityState(Provider.UsabilityState.ERROR);
       provider.save();
       log.error("An error occurred during provider deletion: {}", e.getMessage(), e);
+      throw e;
     }
   }
 }
