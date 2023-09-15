@@ -17,7 +17,7 @@ This page describes the import feature YugabyteDB Voyager provides to bulk load 
 
 ## Prerequisite
 
-* The _only_ requirement to perform bulk load is to manually create the schema of the tables on which data files need to be imported on the target YugabyteDB database.
+* Before you perform bulk load, manually create the schema of the tables on which data files need to be imported to the target YugabyteDB database.
 
 ## Import data files from the local disk
 
@@ -88,3 +88,5 @@ yb-voyager import data file .... \
 The authentication mechanism for accessing blobs using yb-voyager is the same as that used by the Azure CLI. The Azure storage account used for the import should at least have the [Storage Blob Data Reader](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-reader) role assigned to it.
 Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli) for additional details on setting up your Azure blobs.
   {{% /tab %}}
+
+{{< /tabpane >}}
