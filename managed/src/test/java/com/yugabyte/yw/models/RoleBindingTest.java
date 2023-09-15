@@ -90,7 +90,7 @@ public class RoleBindingTest extends FakeDBApplication {
     Role role2 =
         Role.create(
             customer.getUuid(),
-            "FakeRole1",
+            "FakeRole2",
             "testDescription",
             RoleType.Custom,
             new HashSet<>(
