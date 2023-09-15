@@ -99,7 +99,7 @@ To import the script, use the `ysqlsh` command line tool, as follows:
 
 *sql_script* is the path to the SQL script to be imported.
 
-You can also use the `\i` meta-command in the `ysqlsh` shell to import an SQL script, as follows:
+You can also use the `\i` meta-command in the `ysqlsh` shell to import a SQL script, as follows:
 
 ```sql
 yugabyte=# \i <sql_script>

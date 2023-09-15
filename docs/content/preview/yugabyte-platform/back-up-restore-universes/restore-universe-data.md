@@ -88,13 +88,21 @@ To confirm that the restore succeeded, select the **Tables** tab to compare the 
 
 In addition to the basic restore, an advanced option is available for when you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
 
-Before performing the restore, you need the storage address of the database or keyspace backup you want to restore. On the YugabyteDB Anywhere installation with the backup, do the following:
+### Prerequisites
 
-1. In the **Backups** list, select the backup to display the **Backup Details**.
+To perform an advanced restore, you need the following:
 
-1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YBA installation so that the backup can be decrypted.
+- A matching [storage configuration](../configure-backup-storage/) in the target YBA installation with credentials to access the storage where the backup is located.
+- The storage address of the database or keyspace backup you want to restore. On the YugabyteDB Anywhere installation with the backup, do the following:
 
-1. Note the Storage config used by the backup, along with the database or keyspace name.
+    1. In the **Backups** list, click the backup (row) to display the **Backup Details**.
+
+    1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
+
+    1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+
+### Perform an advanced restore
 
 To perform an advanced restore, on the YugabyteDB Anywhere installation where you want to perform the advanced restore, do the following:
 

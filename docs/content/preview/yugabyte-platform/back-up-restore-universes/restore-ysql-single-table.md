@@ -20,8 +20,8 @@ Currently, YugabyteDB Anywhere supports backing up and restoring entire YSQL dat
 Suppose you have a problem with a single table in a database called source_db, and you want to restore the table from a backup taken previously. You would perform the following steps:
 
 1. Using a backup of source_db, restore the backup to a new database (call it restored_db). This can be done on the same or a different universe.
-1. In restored_db, use ysql_dump to export an SQL script file of the table to be restored.
-1. In source_db, use ysqlsh to drop the table with the same name (that is, the table you want restored from the backup), if it exists. (You only need to do this if the table with the same name exists on the database.)
+1. In restored_db, use ysql_dump to export a SQL script file of the table to be restored.
+1. In source_db, use ysqlsh to drop the table with the same name (that is, the table you want restored from the backup). (You only need to do this if the table with the same name exists on the database.)
 1. Use ysqlsh to import the SQL script file to the source_db database.
 
 The scope of the following procedure is limited to restoring single tables that don't have foreign key relations with other tables. In general, restoring single tables with relations with other tables is difficult, owing to the fact that you may encounter referential integrity issues.
@@ -36,7 +36,7 @@ The following example assumes the following basic setup:
 
 ### Restore the backup to a new database
 
-You can restore the backup to the same or to a different universe. This example assumes that you restored to the same universe.
+You can restore the backup to the same or to a different universe. This example assumes that you restored to the _same_ universe.
 
 During the restore, rename the database. For example, you would rename source_db to restored_db. Because YugabyteDB Anywhere backs up and restores only full databases in YSQL, restored_db has the same tables and data as source_db at the time of backup.
 
