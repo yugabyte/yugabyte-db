@@ -1003,7 +1003,7 @@ public class TestPgSelect extends BasePgSQLTest {
       // 2. From 1, seek to 2.
       // 3. From 2, seek to 3.
       RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
-      assertEquals(3, metrics.seekCount);
+      assertLessThanOrEqualTo(3, metrics.seekCount);
     }
   }
 
@@ -1046,8 +1046,10 @@ public class TestPgSelect extends BasePgSQLTest {
       // 6. Seek from (3, 3), found no more key.
       // Note that we need the last seek, since under the condition r1 <= 3, we don't know whether
       // there are more items to be scanned.
+      // Actual number of seeks could be lower because the above query can be executed using
+      // sequential scan (see the index_scan_prefer_sequential_scan_for_boundary_condition flag).
       RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "t");
-      assertEquals(6, metrics.seekCount);
+      assertLessThanOrEqualTo(6, metrics.seekCount);
     }
   }
 

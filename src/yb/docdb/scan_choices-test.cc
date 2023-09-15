@@ -92,6 +92,9 @@ class ScanChoicesTest : public YBTest {
       const std::vector<TestCondition> &conds,
       std::vector<std::vector<OptionRange>> &&expected);
 
+  void ValidateConditionsEncodedInBounds(
+      const Schema &schema, const std::vector<TestCondition> &conds, bool expected_value);
+
  private:
   const Schema *current_schema_;
   std::unique_ptr<HybridScanChoices> choices_;
@@ -310,6 +313,21 @@ void ScanChoicesTest::TestOptionIteration(
   CheckOptions(expected);
 }
 
+void ScanChoicesTest::ValidateConditionsEncodedInBounds(
+    const Schema &schema, const std::vector<TestCondition> &conds, bool expected_value) {
+  PgsqlConditionPB cond;
+  SetupCondition(&cond, conds);
+  dockv::KeyEntryValues empty_components;
+  DocPgsqlScanSpec spec(
+      schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond, boost::none,
+      boost::none, DocKey(), true);
+  const auto &lower_bound = spec.LowerBound();
+  EXPECT_OK(lower_bound);
+  const auto &upper_bound = spec.UpperBound();
+  EXPECT_OK(upper_bound);
+  EXPECT_EQ(spec.is_condition_encoded_in_bounds(), expected_value);
+}
+
 // Check pairs of inputs and outputs of SkipTargetsUpTo
 void ScanChoicesTest::CheckSkipTargetsUpTo(
     const Schema &schema,
@@ -427,6 +445,104 @@ TEST_F(ScanChoicesTest, MixedTupleFilterHybridScan) {
       conds,
       {{{11, 13, 9, 3, 12, 11}, {11, 14, 9, 3, 10, 10}},
        {{12, 11, 4, 23, 14, 22}, {12, 11, 4, 23, 14, 12}}});
+}
+
+TEST_F(ScanChoicesTest, ValidateBoundConditions) {
+  const Schema &schema = test_range_schema;
+
+  auto build_conditions = [](auto outer_op, auto inner_op) -> std::vector<TestCondition> {
+    std::vector<TestCondition> conds = {
+        {{10_ColId}, outer_op, {{21}}}, {{11_ColId}, inner_op, {{21}}}};
+    return conds;
+  };
+
+  // Single column.
+  for (auto op :
+       {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL, QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL,
+        QL_OP_EQUAL}) {
+    SCOPED_TRACE(Format("Op: $0", op));
+    ValidateConditionsEncodedInBounds(schema, {{{10_ColId}, op, {{21}}}}, true);
+  }
+
+  for (auto op :
+       {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL, QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL,
+        QL_OP_EQUAL}) {
+    SCOPED_TRACE(Format("Op: $0", op));
+    ValidateConditionsEncodedInBounds(
+        schema, {{{10_ColId}, op, {{21}}}, {{11_ColId}, op, {{21}}}}, op == QL_OP_EQUAL);
+  }
+
+  ValidateConditionsEncodedInBounds(
+      schema, {{{10_ColId}, QL_OP_NOT_EQUAL, {{21}}}, {{11_ColId}, QL_OP_NOT_EQUAL, {{21}}}},
+      false);
+
+  // Same condition
+  for (auto outer_op : {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL}) {
+    for (auto inner_op : {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL}) {
+      SCOPED_TRACE(Format("OuterOp: $0, InnerOp: $1", outer_op, inner_op));
+      ValidateConditionsEncodedInBounds(schema, build_conditions(outer_op, inner_op), false);
+    }
+  }
+
+  for (auto outer_op : {QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+    for (auto inner_op : {QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+      SCOPED_TRACE(Format("OuterOp: $0, InnerOp: $1", outer_op, inner_op));
+      ValidateConditionsEncodedInBounds(schema, build_conditions(outer_op, inner_op), false);
+    }
+  }
+
+  for (auto outer_op : {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL}) {
+    for (auto inner_op : {QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+      SCOPED_TRACE(Format("OuterOp: $0, InnerOp: $1", outer_op, inner_op));
+      ValidateConditionsEncodedInBounds(schema, build_conditions(outer_op, inner_op), false);
+    }
+  }
+
+  for (auto outer_op : {QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+    for (auto inner_op : {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL}) {
+      SCOPED_TRACE(Format("OuterOp: $0, InnerOp: $1", outer_op, inner_op));
+      ValidateConditionsEncodedInBounds(schema, build_conditions(outer_op, inner_op), false);
+    }
+  }
+
+  for (auto outer_op : {QL_OP_EQUAL, QL_OP_NOT_EQUAL}) {
+    for (auto inner_op :
+         {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL, QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+      SCOPED_TRACE(Format("OuterOp: $0, InnerOp: $1", outer_op, inner_op));
+      ValidateConditionsEncodedInBounds(
+          schema, build_conditions(outer_op, inner_op), outer_op == QL_OP_EQUAL);
+    }
+  }
+
+  {
+    SCOPED_TRACE("Min-max bound with different values");
+    std::vector<TestCondition> conds = {
+        {{10_ColId}, QL_OP_GREATER_THAN_EQUAL, {{21}}},
+        {{10_ColId}, QL_OP_LESS_THAN_EQUAL, {{31}}},
+        {{11_ColId}, QL_OP_GREATER_THAN_EQUAL, {{21}}},
+        {{11_ColId}, QL_OP_LESS_THAN_EQUAL, {{21}}}};
+    ValidateConditionsEncodedInBounds(schema, conds, false);
+  }
+}
+
+TEST_F(ScanChoicesTest, ValidateBoundConditionsForPrefixKey) {
+  const Schema &schema = test_range_schema;
+
+  for (auto op :
+       {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL, QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+    std::vector<TestCondition> conds = {{{10_ColId}, op, {{21}}}};
+    ValidateConditionsEncodedInBounds(schema, conds, true);
+  }
+}
+
+TEST_F(ScanChoicesTest, ValidateBoundConditionsForSuffixKey) {
+  const Schema &schema = test_range_schema;
+
+  for (auto op :
+       {QL_OP_LESS_THAN, QL_OP_LESS_THAN_EQUAL, QL_OP_GREATER_THAN, QL_OP_GREATER_THAN_EQUAL}) {
+    std::vector<TestCondition> conds = {{{11_ColId}, op, {{21}}}};
+    ValidateConditionsEncodedInBounds(schema, conds, false);
+  }
 }
 
 }  // namespace docdb
