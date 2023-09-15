@@ -9,7 +9,7 @@ menu:
     identifier: migrate-live
     parent: migration-types
     weight: 103
-techPreview: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+techPreview: /preview/releases/versioning/#feature-availability
 type: docs
 rightNav:
   hideH4: true

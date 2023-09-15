@@ -4,7 +4,7 @@ linkTitle: Performance Advisor
 description: Scan your universe to discover performance optimizations.
 headcontent: Scan your universe to discover performance optimizations
 image: /images/section_icons/deploy/enterprise.png
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
