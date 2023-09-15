@@ -331,7 +331,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     Role role1 =
         Role.create(
             defaultCustomer.getUuid(),
-            "FakeRole1",
+            "FakeRole2",
             "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission3, permission4)));
