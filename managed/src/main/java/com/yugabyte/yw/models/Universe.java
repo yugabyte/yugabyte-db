@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -54,6 +56,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
+import javax.persistence.PostRemove;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
@@ -1111,5 +1114,10 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @PostRemove
+  public void cleanupUniverse() {
+    RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
   }
 }

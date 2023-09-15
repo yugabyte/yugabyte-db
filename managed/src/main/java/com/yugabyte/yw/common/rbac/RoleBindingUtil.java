@@ -278,4 +278,15 @@ public class RoleBindingUtil {
     }
     return resourcePermissions;
   }
+
+  public static void cleanupRoleBindings(ResourceType resourceType, UUID resourceUUID) {
+    List<RoleBinding> allRoleBindings = RoleBinding.getAll();
+    for (RoleBinding roleBinding : allRoleBindings) {
+      ResourceGroup resourceGroup = roleBinding.getResourceGroup();
+      // This method removes the UUIDs in place for efficiency.
+      ResourceGroup.removeResource(resourceGroup, resourceType, resourceUUID);
+      roleBinding.setResourceGroup(resourceGroup);
+      roleBinding.update();
+    }
+  }
 }
