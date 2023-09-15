@@ -236,6 +236,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
         rpcs_(*rpcs) {
+    TRACE(__func__);
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
@@ -789,6 +790,7 @@ class WaitQueue::Impl {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback) {
+    TRACE(__func__);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
     bool found_blockers = false;
@@ -819,6 +821,8 @@ class WaitQueue::Impl {
         RETURN_NOT_OK(SetupWaiterUnlocked(
             waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
             std::move(blocker_datas), std::move(blockers)));
+        TRACE("pre-wait will block");
+        SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxnConflict);
         return true;
       } else {
         // It's possible that between checking above with a shared lock and checking again with a
@@ -830,6 +834,7 @@ class WaitQueue::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Pre-wait found no blockers for " << waiter_txn_id;
     }
 
+    TRACE("pre-wait no blocks");
     return false;
   }
 
@@ -838,7 +843,6 @@ class WaitQueue::Impl {
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, WaitDoneCallback callback) {
     TRACE(__func__);
-    SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxn);
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " blockers=" << *blockers
@@ -914,6 +918,7 @@ class WaitQueue::Impl {
       std::shared_ptr<ConflictDataManager> blockers) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
+    TRACE(__func__);
     auto scoped_reporter = waiting_txn_registry_->Create();
     if (!waiter_txn_id.IsNil()) {
       // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have

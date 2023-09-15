@@ -571,6 +571,7 @@ Status Log::Open(const LogOptions &options,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
                  CreateNewSegment create_new_segment) {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
@@ -733,6 +734,7 @@ Status Log::CloseCurrentSegment() {
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
   Status status;
   {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
     std::lock_guard lock(active_segment_mutex_);
     status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(),
                                                            &footer_builder_);
@@ -750,6 +752,7 @@ Status Log::RollOver() {
   }
 
   LOG_SLOW_EXECUTION(WARNING, 50, LogPrefix() + "Log roll took a long time") {
+    SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
     SCOPED_LATENCY_METRIC(metrics_, roll_latency);
     RSTATUS_DCHECK(active_segment_, InternalError, "Called RollOver without active segment.");
 
@@ -897,6 +900,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     int64_t start_offset = active_segment_->written_offset();
 
     LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
+      SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
       SCOPED_LATENCY_METRIC(metrics_, append_latency);
       LongOperationTracker long_operation_tracker(
           "Log append", FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms * 1ms);
@@ -1554,6 +1558,7 @@ Status Log::TEST_WriteCorruptedEntryBatchAndSync() {
 
 Status Log::Close() {
   // Allocation pool is used from appender pool, so we should shutdown appender first.
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
   appender_->Shutdown();
   allocation_token_.reset();
 
@@ -1803,6 +1808,7 @@ WritableFileOptions Log::GetNewSegmentWritableFileOptions() {
 }
 
 Status Log::PreAllocateNewSegment() {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::WaitOnWAL);
   TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
 

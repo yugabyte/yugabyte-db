@@ -1836,7 +1836,7 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_req
 
 void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query) {
   TRACE(__func__);
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   if (table_type_ == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     query->Cancel(
         STATUS(NotSupported, "Transaction status table does not support write"));

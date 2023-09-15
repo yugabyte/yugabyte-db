@@ -161,6 +161,7 @@ std::unique_ptr<WriteOperation> WriteQuery::PrepareSubmit() {
 }
 
 void WriteQuery::DoStartSynchronization(const Status& status) {
+  TRACE(__func__);
   std::unique_ptr<WriteQuery> self(this);
   // Move submit_token_ so it is released after this function.
   ScopedRWOperation submit_token(std::move(submit_token_));
@@ -186,7 +187,7 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  SET_WAIT_STATUS(util::WaitStateCode::PassiveOnCPU);
   context_->Submit(self.release()->PrepareSubmit(), term_);
 }
 
@@ -429,7 +430,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
-  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   auto* query_ptr = query.get();
   query_ptr->self_ = std::move(query);
 
@@ -1083,6 +1084,7 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
 }
 
 void WriteQuery::PgsqlExecuteDone(const Status& status) {
+  TRACE(__func__);
   if (!PgsqlCheckSchemaVersion()) {
     return;
   }

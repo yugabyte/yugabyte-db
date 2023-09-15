@@ -730,7 +730,7 @@ class PgClientServiceImpl::Impl {
 
   void GetRPCsWaitStates(
       tserver::PgActiveUniverseHistoryResponsePB* resp, yb::util::MessengerType messenger_type) {
-    SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+    // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
 

@@ -118,9 +118,9 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
   if (VLOG_IS_ON(3)) {
     old_to_string = ToString();
   }
-  if (!WaitsForSomething(c)) {
-    c = WaitStateCode::ActiveOnCPU;
-  }
+  // if (!WaitsForSomething(c)) {
+  //   c = WaitStateCode::ActiveOnCPU;
+  // }
   auto ret = code_.compare_exchange_strong(prev, c);
   if (!ret) {
     return;
@@ -197,6 +197,9 @@ std::string WaitStateInfo::ToString() const {
 }
 
 WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
+  if (!threadlocal_wait_state_) {
+    VLOG(3) << __func__ << " returning nullptr";
+  }
   return threadlocal_wait_state_;
 }
 
@@ -213,6 +216,11 @@ void WaitStateInfo::set_top_level_request_id(uint64_t top_level_request_id) {
 void WaitStateInfo::set_query_id(int64_t query_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.query_id = query_id;
+}
+
+int64_t WaitStateInfo::query_id() {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  return metadata_.query_id;
 }
 
 void WaitStateInfo::set_client_node_ip(const std::string &endpoint) {
@@ -241,10 +249,13 @@ bool WaitsForLock(WaitStateCode c) {
     case WaitStateCode::TakeRWCLock:
     case WaitStateCode::SysCatalogTableSyncWrite:
     case WaitStateCode::RaftWaitingForQuorum:
-    case WaitStateCode::WaitOnTxn:
+    case WaitStateCode::WaitOnTxnConflict:
+    case WaitStateCode::WaitOnTxnResolve:
+    case WaitStateCode::PGWaitingOnDocdb:
+    case WaitStateCode::WaitOnShutdown:
     // We may be taking locks while running in ActiveOnCPU. Distinct wait states
     // have only been created for places where we are waiting on a condition variable.
-    case WaitStateCode::ActiveOnCPU:
+    // case WaitStateCode::ActiveOnCPU:
      return true;
     default:
       return false;
@@ -264,6 +275,9 @@ bool WaitsForIO(WaitStateCode c) {
     case WaitStateCode::WriteInstanceMetadataToDisk:
     case WaitStateCode::WriteSysCatalogSnapshotToDisk:
     case WaitStateCode::SaveRaftGroupMetadataToDisk:
+    case WaitStateCode::RocksDBReadIO:
+    case WaitStateCode::WaitOnWAL:
+    case WaitStateCode::WaitOnShutdown:
      return true;
     default:
       return false;
@@ -280,12 +294,16 @@ bool WaitsForThread(WaitStateCode c) {
     // We could be transitioning from one thread to another. We don't expect
     // theread scheduling to take a lot of time, so no distinct wait state has
     // been defined.
-    case WaitStateCode::ActiveOnCPU:
+    // case WaitStateCode::ActiveOnCPU
+    case WaitStateCode::PassiveOnCPU:
+    case WaitStateCode::WaitOnTxnConflict:
+    case WaitStateCode::WaitOnTxnResolve:
     case WaitStateCode::PgPerformHandling:
     case WaitStateCode::SysCatalogTableSyncWrite:
     // We need this as per log. Not really sure I understand the details.
     case WaitStateCode::MVCCWaitForSafeTime:
     case WaitStateCode::ApplyingRaftEdits:
+    case WaitStateCode::PGWaitingOnDocdb:
 
      return true;
     default:
@@ -322,7 +340,6 @@ simple_spinlock WaitStateInfo::does_wait_lock_;
 std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_io(200);
 std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_wait(200);
 
-
 void WaitStateInfo::AssertIOAllowed() {
   auto wait_state = CurrentWaitState();
   if (wait_state) {
@@ -333,9 +350,9 @@ void WaitStateInfo::AssertIOAllowed() {
       inserted = does_io.try_emplace(state, true).second;
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_io Added " << util::ToString(state);
-    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    // LOG_IF(INFO, !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
-    // DCHECK(WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, inserted && !WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, inserted && !WaitsForIO(state)) << " at\n" << yb::GetStackTrace();
+    DCHECK(wait_state->query_id() == 0  || WaitsForIO(state)) << "WaitForIO( " << util::ToString(state) << ") should be true " << wait_state->ToString();
   }
 }
 
@@ -349,9 +366,11 @@ void WaitStateInfo::AssertWaitAllowed() {
       inserted = does_wait.try_emplace(state, true).second;
     }
     LOG_IF(INFO, inserted) << wait_state->ToString() << " does_wait Added " << util::ToString(state);
-    // LOG_IF(INFO, inserted) << " at\n" << yb::GetStackTrace();
-    // LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
-    // DCHECK(WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    // LOG_IF(INFO, inserted && !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
+    LOG_IF(INFO, !WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true";
+    LOG_IF(INFO, !WaitsForLock(state)) << " at\n" << yb::GetStackTrace();
+    DCHECK(wait_state->query_id() == 0 || WaitsForLock(state)) << "WaitsForLock( " << util::ToString(state) << ") should be true " << wait_state->ToString();
   }
 }
 
@@ -362,14 +381,17 @@ void WaitStateInfo::check_and_update_thread_id(WaitStateCode prev, WaitStateCode
     auto* current_thread = Thread::current_thread();
     if (!current_thread) {
       LOG(ERROR) << "Current thread is not a thread. Thread::current_thread() returns NULL";
+      return;
     }
     auto cur_thread_name = current_thread->name();
     VLOG(1) << "Setting state to " << util::ToString(next) << " on " << cur_thread_name
             << " was previously " << util::ToString(prev) << " set on " << thread_name_;
+    LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true. "
+                << "Setting state to " << util::ToString(next) << " on " << cur_thread_name
+                << " was previously " << util::ToString(prev) << " set on " << thread_name_;
+    DCHECK(query_id() == 0 || WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true " << ToString();
     thread_name_ = std::move(cur_thread_name);
     thread_id_ = tid;
-    // LOG_IF(INFO, !WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
-    // DCHECK(WaitsForThread(prev)) << "WaitsForThread( " << util::ToString(prev) << ") should be true";
   }
 }
 

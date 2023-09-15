@@ -191,6 +191,7 @@ void OperationDriver::ExecuteAsync() {
       std::this_thread::sleep_for(1ms * delay);
     }
   }
+  SET_WAIT_STATUS(util::WaitStateCode::PassiveOnCPU);
   auto s = preparer_->Submit(this);
 
   if (operation_) {
@@ -408,9 +409,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    SET_WAIT_STATUS(util::WaitStateCode::ApplyingRaftEdits);
+    SCOPED_WAIT_STATUS(util::WaitStateCode::ApplyingRaftEdits);
     auto status = operation_->Replicated(leader_term, WasPending::kTrue);
-    SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+    // SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

@@ -79,7 +79,8 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
   TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
-  wait_state_->set_state(util::WaitStateCode::Created);
+  // wait_state_->set_state(util::WaitStateCode::Created);
+  wait_state_->set_state(util::WaitStateCode::PassiveOnCPU);
 }
 
 InboundCall::~InboundCall() {
@@ -93,7 +94,7 @@ InboundCall::~InboundCall() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  wait_state_->set_state(util::WaitStateCode::ActiveOnCPU);
+  // wait_state_->set_state(util::WaitStateCode::ActiveOnCPU);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -200,7 +201,7 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 void InboundCall::QueueResponse(bool is_success) {
-  wait_state_->set_state(util::WaitStateCode::ActiveOnCPU);
+  // wait_state_->set_state(util::WaitStateCode::ActiveOnCPU);
   TRACE_TO(trace(), is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
   bool expected = false;

@@ -181,6 +181,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   void Enqueue(const InboundCallPtr& call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
+    SET_WAIT_STATUS_TO(call->wait_state(), util::WaitStateCode::PassiveOnCPU);
 
     auto task = call->BindTask(this);
     if (!task) {

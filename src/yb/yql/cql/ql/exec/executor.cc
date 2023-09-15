@@ -1892,7 +1892,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
     LOG(DFATAL) << __func__ << " while have " << num_async_calls() << " async calls running";
     return;
   }
-  SET_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
+  SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
   // If the current thread is not the RPC worker thread, call the callback directly. Otherwise,
   // reschedule the call to resume in the RPC worker thread.

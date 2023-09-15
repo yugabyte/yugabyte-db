@@ -106,7 +106,7 @@ Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                                  Tickers block_cache_hit_ticker,
                                  Statistics* statistics,
                                  const QueryId query_id) {
-  SCOPED_WAIT_STATUS(yb::util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(yb::util::WaitStateCode::ActiveOnCPU);
   auto cache_handle = block_cache->Lookup(key, query_id, statistics);
   if (cache_handle != nullptr) {
     PERF_COUNTER_ADD(block_cache_hit_count, 1);
@@ -793,7 +793,7 @@ Status BlockBasedTable::GetDataBlockFromCache(
   }
 
   assert(!compressed_block_cache_key.empty());
-  SCOPED_WAIT_STATUS(yb::util::WaitStateCode::ActiveOnCPU);
+  // SCOPED_WAIT_STATUS(yb::util::WaitStateCode::ActiveOnCPU);
   block_cache_compressed_handle =
       block_cache_compressed->Lookup(compressed_block_cache_key, read_options.query_id);
   // if we found in the compressed cache, then uncompress and insert into
