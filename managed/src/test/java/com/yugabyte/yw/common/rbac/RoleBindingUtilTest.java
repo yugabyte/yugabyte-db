@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.rbac;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -23,6 +24,8 @@ import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
@@ -34,7 +37,8 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
   private RoleBindingUtil roleBindingUtil;
   private Customer customer;
-  private Universe universe;
+  private Universe universe1;
+  private Universe universe2;
   private Users user;
   private Role role;
 
@@ -42,7 +46,8 @@ public class RoleBindingUtilTest extends FakeDBApplication {
   public void setup() {
     roleBindingUtil = new RoleBindingUtil(null);
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
-    universe = ModelFactory.createUniverse(customer.getId());
+    universe1 = ModelFactory.createUniverse("Test Universe 1", customer.getId());
+    universe2 = ModelFactory.createUniverse("Test Universe 2", customer.getId());
     user = ModelFactory.testUser(customer);
     role =
         Role.create(
@@ -177,7 +182,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
             .allowAll(true)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe.getUniverseUUID())))
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe1.getUniverseUUID())))
             .build();
     assertPlatformException(
         () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition1));
@@ -189,7 +194,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
             .allowAll(false)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe.getUniverseUUID())))
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe1.getUniverseUUID())))
             .build();
     roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition2);
 
@@ -259,5 +264,42 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .build();
     assertPlatformException(
         () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4));
+  }
+
+  @Test
+  public void testCleanupUniverseFromRoleBindings() {
+    // Create a role binding with both universe1 and universe2 UUID.
+    ResourceDefinition rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(false)
+            .resourceUUIDSet(
+                new HashSet<>(
+                    Arrays.asList(universe1.getUniverseUUID(), universe2.getUniverseUUID())))
+            .build();
+    ResourceGroup rg1 = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding roleBinding =
+        roleBindingUtil.createRoleBinding(
+            user.getUuid(), role.getRoleUUID(), RoleBindingType.Custom, rg1);
+
+    // Delete universe1. Universe1 UUID should also be removed from the role binding.
+    universe1.delete();
+
+    // Check that the role binding only contains universe2 UUID and not universe1 UUID.
+    List<RoleBinding> roleBindingsForUser = RoleBinding.getAll(user.getUuid());
+    assertEquals(1, roleBindingsForUser.size());
+    assertEquals(
+        1, roleBindingsForUser.get(0).getResourceGroup().getResourceDefinitionSet().size());
+
+    Set<UUID> resourceUUIDs =
+        roleBindingsForUser
+            .get(0)
+            .getResourceGroup()
+            .getResourceDefinitionSet()
+            .iterator()
+            .next()
+            .getResourceUUIDSet();
+    assertFalse(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
   }
 }

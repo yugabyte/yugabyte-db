@@ -15,12 +15,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @ToString
+@Slf4j
 public class ResourceGroup {
 
   @Builder
@@ -77,5 +79,31 @@ public class ResourceGroup {
         break;
     }
     return defaultResourceGroup;
+  }
+
+  /**
+   * This method removes the resources in place from a resource group for efficiency. Works on a
+   * best effort basis as we don't want to halt resource deletion for role binding cleanup. Need to
+   * see if we want to keep it this way.
+   *
+   * @param resourceGroup
+   * @param resourceType
+   * @param resourceUUID
+   * @return
+   */
+  public static void removeResource(
+      ResourceGroup resourceGroup, ResourceType resourceType, UUID resourceUUID) {
+    for (ResourceDefinition resourceDefinition : resourceGroup.getResourceDefinitionSet()) {
+      if (resourceType.equals(resourceDefinition.getResourceType())) {
+        try {
+          resourceDefinition.getResourceUUIDSet().remove(resourceUUID);
+        } catch (Exception e) {
+          log.warn(
+              "Failed to remove resource '{}' from resource UUID set '{}', continuing.",
+              resourceUUID,
+              resourceDefinition.getResourceUUIDSet());
+        }
+      }
+    }
   }
 }
