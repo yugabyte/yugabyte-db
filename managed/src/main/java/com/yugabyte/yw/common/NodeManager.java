@@ -772,7 +772,7 @@ public class NodeManager extends DevopsBase {
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
     Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
-    String masterAddresses = universe.getMasterAddresses(false);
+    String masterAddresses = universe.getMasterAddresses();
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
     Integer num_cores_to_keep =

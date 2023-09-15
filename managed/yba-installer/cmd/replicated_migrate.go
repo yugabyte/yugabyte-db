@@ -67,6 +67,11 @@ var replicatedMigrationStart = &cobra.Command{
 			log.Fatal("failed to export replicated app config: " + err.Error())
 		}
 
+		configView, err := replCtl.AppConfigView()
+		if err != nil {
+			log.Fatal("failed to get the config view: " + err.Error())
+		}
+
 		// Get the uid and gid used by the prometheus container. This is used for rollback.
 		entry := config.Get("installRoot")
 		var replicatedInstallRoot string
@@ -120,8 +125,20 @@ var replicatedMigrationStart = &cobra.Command{
 		// Take a backup of running YBA using replicated settings.
 		replBackupDir := "/tmp/replBackupDir"
 		common.MkdirAllOrFail(replBackupDir, common.DirMode)
-		CreateReplicatedBackupScript(replBackupDir, config.Get("storage_path").Value,
-			config.Get("dbuser").Value, config.Get("db_external_port").Value, true, plat)
+		dataDir, err := configView.Get("storage_path")
+		if err != nil {
+			log.Fatal("no storage path found in config view: " + err.Error())
+		}
+		dbUser, err := configView.Get("dbuser")
+		if err != nil {
+			log.Fatal("no dbuser found in config view: " + err.Error())
+		}
+		dbPort, err := configView.Get("db_external_port")
+		if err != nil {
+			log.Fatal("no db_external_port found in config view: " + err.Error())
+		}
+		CreateReplicatedBackupScript(replBackupDir, dataDir.Get(), dbUser.Get(), dbPort.Get(),
+			true, plat)
 
 		// Stop replicated containers.
 		log.Info("Waiting for Replicated to stop.")
@@ -381,5 +398,9 @@ func init() {
 
 	baseReplicatedMigration.AddCommand(replicatedMigrationStart, replicatedMigrationConfig,
 		replicatedMigrateFinish, replicatedRollbackCmd)
-	rootCmd.AddCommand(baseReplicatedMigration)
+
+	// Feature flag replicated migration for now
+	if os.Getenv("YBA_MODE") == "dev" {
+		rootCmd.AddCommand(baseReplicatedMigration)
+	}
 }

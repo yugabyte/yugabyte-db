@@ -12,6 +12,7 @@ import {
   getUniverseNodeCount,
   getUniverseDedicatedNodeCount
 } from '../../../utils/UniverseUtils';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import '../UniverseDisplayPanel/UniverseDisplayPanel.scss';
 
 export default class ClusterInfoPanel extends Component {
@@ -23,6 +24,7 @@ export default class ClusterInfoPanel extends Component {
     const {
       isDedicatedNodes,
       universeInfo,
+      runtimeConfigs,
       universeInfo: {
         universeDetails,
         universeDetails: { clusters }
@@ -31,10 +33,16 @@ export default class ClusterInfoPanel extends Component {
     const cluster = getPrimaryCluster(clusters);
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
 
+    const useK8CustomResourcesObject = runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
+    );
+    const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
+
     const colocatedNodesCount = getUniverseNodeCount(universeDetails.nodeDetailsSet, cluster);
     const dedicatedNodesCount = isDedicatedNodes
       ? getUniverseDedicatedNodeCount(universeDetails.nodeDetailsSet, cluster)
       : null;
+
     const nodeCount = {
       numTserverNodes: isDedicatedNodes ? dedicatedNodesCount.numTserverNodes : colocatedNodesCount,
       numMasterNodes: isDedicatedNodes ? dedicatedNodesCount.numMasterNodes : 0
@@ -67,17 +75,29 @@ export default class ClusterInfoPanel extends Component {
                   </span>
                 </Col>
               </Row>
-
-              <Row className={'cluster-metadata'}>
-                <Col lg={6} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
-                </Col>
-                <Col lg={6} md={6} sm={6} xs={6}>
-                  <span className={'cluster-metadata__align'}>
-                    {userIntent && userIntent.instanceType}
-                  </span>
-                </Col>
-              </Row>
+              {useK8CustomResources ? (
+                <Row className={'cluster-metadata'}>
+                  <Col lg={8} md={6} sm={6} xs={6}>
+                    <span className={'cluster-metadata__label'}>{'Number of Cores:'}</span>
+                  </Col>
+                  <Col lg={4} md={6} sm={6} xs={6}>
+                    <span className={'cluster-metadata__align'}>
+                      {userIntent?.tserverK8SNodeResourceSpec?.cpuCoreCount}
+                    </span>
+                  </Col>
+                </Row>
+              ) : (
+                <Row className={'cluster-metadata'}>
+                  <Col lg={6} md={6} sm={6} xs={6}>
+                    <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
+                  </Col>
+                  <Col lg={6} md={6} sm={6} xs={6}>
+                    <span className={'cluster-metadata__align'}>
+                      {userIntent && userIntent.instanceType}
+                    </span>
+                  </Col>
+                </Row>
+              )}
               <Row className={'cluster-metadata'}>
                 <Col lg={8} md={6} sm={6} xs={6}>
                   <span className={'cluster-metadata__label'}>{'Replication Factor:'}</span>
@@ -113,16 +133,29 @@ export default class ClusterInfoPanel extends Component {
                       </span>
                     </Col>
                   </Row>
-                  <Row className={'cluster-metadata'}>
-                    <Col lg={6} md={6} sm={6} xs={6}>
-                      <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
-                    </Col>
-                    <Col lg={6} md={6} sm={6} xs={6}>
-                      <span className={'cluster-metadata__align'}>
-                        {userIntent && userIntent.masterInstanceType}
-                      </span>
-                    </Col>
-                  </Row>
+                  {useK8CustomResources ? (
+                    <Row className={'cluster-metadata'}>
+                      <Col lg={8} md={6} sm={6} xs={6}>
+                        <span className={'cluster-metadata__label'}>{'Number of Cores:'}</span>
+                      </Col>
+                      <Col lg={4} md={6} sm={6} xs={6}>
+                        <span className={'cluster-metadata__align'}>
+                          {userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount}
+                        </span>
+                      </Col>
+                    </Row>
+                  ) : (
+                    <Row className={'cluster-metadata'}>
+                      <Col lg={6} md={6} sm={6} xs={6}>
+                        <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
+                      </Col>
+                      <Col lg={6} md={6} sm={6} xs={6}>
+                        <span className={'cluster-metadata__align'}>
+                          {userIntent && userIntent.masterInstanceType}
+                        </span>
+                      </Col>
+                    </Row>
+                  )}
                 </FlexGrow>
               </>
             )}

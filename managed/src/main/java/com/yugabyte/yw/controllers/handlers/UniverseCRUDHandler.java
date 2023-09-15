@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -1297,6 +1298,13 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    if (readOnlyCluster.userIntent.specificGFlags != null
+        && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+          primaryGFlags.getPerProcessFlags());
+      readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+    }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {

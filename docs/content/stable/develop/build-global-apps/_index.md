@@ -62,7 +62,7 @@ Depending on whether the application should read the latest data or stale data, 
 
 - **Consistent reads** - Read from the source of truth, irrespective of latency or location.
 - **Follower reads** - Stale reads to achieve lower latency reads.
-- **Bounded staleness** - Allow stale reads but with bounds on how stale data is.
+- **Read replicas** - Allow stale reads but with bounds on how stale data is.
 
 ## Pick the right pattern
 

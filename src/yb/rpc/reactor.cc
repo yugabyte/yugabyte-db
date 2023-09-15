@@ -103,7 +103,7 @@ DEFINE_RUNTIME_int32(stuck_outbound_call_check_interval_sec, 60,
     "Check and report each stuck outbound call at most once per this number of seconds.");
 TAG_FLAG(stuck_outbound_call_check_interval_sec, advanced);
 
-DEFINE_RUNTIME_int32(reactor_based_outbound_call_expiration_delay_ms, 1000,
+DEFINE_RUNTIME_int32(reactor_based_outbound_call_expiration_delay_ms, 0,
     "Expire OutboundCalls using Reactor-level logic with this delay after the timeout, as an "
     "additional layer of protection against stuck outbound calls. This safety mechanism is "
     "disabled if this flag is set to 0.");

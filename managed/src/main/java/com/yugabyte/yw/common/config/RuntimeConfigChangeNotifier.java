@@ -15,6 +15,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelListener;
 import com.yugabyte.yw.common.config.impl.MonitoredMountRootsListener;
+import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzListener;
 import com.yugabyte.yw.common.config.impl.WSClientKeyListener;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -36,13 +37,15 @@ public class RuntimeConfigChangeNotifier {
   @Inject
   public RuntimeConfigChangeNotifier(
       MetricCollectionLevelListener metricCollectionLevelListener,
-      MonitoredMountRootsListener monitoredMountRootsListener) {
+      MonitoredMountRootsListener monitoredMountRootsListener,
+      UseNewRbacAuthzListener useNewRbacAuthzListener) {
     List<String> refreshableClients = AppConfigHelper.getRefreshableClients();
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
     }
     addListener(metricCollectionLevelListener);
     addListener(monitoredMountRootsListener);
+    addListener(useNewRbacAuthzListener);
   }
 
   public void notifyListeners(UUID scopeUUID, String path) {

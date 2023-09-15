@@ -799,6 +799,12 @@ void YbRefreshSessionStatsDuringExecution();
  */
 void YbToggleSessionStatsTimer(bool timing_on);
 
+/**
+ * Update the global flag indicating what metric changes to capture and return
+ * from the tserver to PG.
+ */
+void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
+
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
  * true, then prevent any server file writes/reads/execution.

@@ -79,4 +79,16 @@ void PgDocMetrics::FlushRequest(uint64_t wait_time) {
   state_.stats.flush_wait += wait_time;
 }
 
+void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) {
+  for (const auto& storage_metric : metrics.gauge_metrics()) {
+    auto metric = storage_metric.metric();
+    // If there is a rolling restart in progress, it's possible for an unknown metric to be
+    // received, but since this is for optional output it's fine to just disregard it.
+    if (metric < 0 || metric >= YB_ANALYZE_METRIC_COUNT) {
+      continue;
+    }
+    state_.stats.storage_metrics[metric] += storage_metric.value();
+  }
+}
+
 }  // namespace yb::pggate

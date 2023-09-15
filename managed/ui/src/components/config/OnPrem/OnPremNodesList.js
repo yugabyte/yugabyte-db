@@ -231,6 +231,12 @@ class OnPremNodesList extends Component {
     }
   };
 
+  componentDidMount() {
+    if (!getPromiseState(this.props.universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
+  }
+
   componentDidUpdate(prevProps) {
     const { tasks } = this.props;
     if (tasks && isNonEmptyArray(tasks.customerTaskList)) {

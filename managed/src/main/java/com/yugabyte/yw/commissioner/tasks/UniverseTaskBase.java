@@ -2112,7 +2112,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
     // Todo: add comments. Backup the whole keyspace.
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
-    String universeMasterAddresses = universe.getMasterAddresses(true /* mastersQueryable */);
+    String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       ListTablesResponse listTablesResponse =
@@ -3197,38 +3197,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add it to the task list.
     subTaskGroup.addSubTask(modifyBlackList);
     // Add the task list to the task queue.
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  protected void createNodePrecheckTasks(
-      NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
-    boolean underReplicatedTabletsCheckEnabled =
-        confGetter.getConfForScope(
-            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
-    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
-      createCheckUnderReplicatedTabletsTask(node).setSubTaskGroupType(subGroupType);
-    }
-  }
-
-  /**
-   * Checks whether cluster contains any under replicated tablets before proceeding.
-   *
-   * @return the created task group.
-   */
-  protected SubTaskGroup createCheckUnderReplicatedTabletsTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
-    Duration maxWaitTime =
-        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
-    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.maxWaitTime = maxWaitTime;
-    params.nodeName = node.nodeName;
-
-    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
-        createTask(CheckUnderReplicatedTablets.class);
-    checkUnderReplicatedTablets.initialize(params);
-    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
