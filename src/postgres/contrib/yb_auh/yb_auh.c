@@ -14,6 +14,7 @@
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
 
+#include "access/hash.h"
 #include "parser/analyze.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
@@ -63,15 +64,11 @@ typedef struct circularBufferIndex
   int index;
 } circularBufferIndex;
 
-/* Current nesting depth of ExecutorRun+ProcessUtility calls */
-static int	nested_level = 0;
-
 /* Saved hook values in case of unload */
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
-static ExecutorRun_hook_type prev_ExecutorRun = NULL;
+static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
-static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 
 ybauhEntry *AUHEntryArray = NULL;
 LWLock *auh_entry_array_lock;
@@ -89,14 +86,8 @@ static Size yb_auh_memsize(void);
 static Size yb_auh_circularBufferIndexSize(void);
 static void ybauh_startup_hook(void);
 static void ybauh_post_parse_analyze(ParseState *pstate, Query *query);
-static void ybauh_ExecutorRun(QueryDesc *queryDesc,
-				 ScanDirection direction,
-				 uint64 count, bool execute_once);
+static void ybauh_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void ybauh_ExecutorEnd(QueryDesc *queryDesc);
-static void ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					ProcessUtilityContext context, ParamListInfo params,
-					QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag);
 static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
@@ -164,12 +155,10 @@ _PG_init(void)
   shmem_startup_hook = ybauh_startup_hook;
   prev_post_parse_analyze_hook = post_parse_analyze_hook;
   post_parse_analyze_hook = ybauh_post_parse_analyze;
-  prev_ExecutorRun = ExecutorRun_hook;
-  ExecutorRun_hook = ybauh_ExecutorRun;
+  prev_ExecutorStart = ExecutorStart_hook;
+	ExecutorStart_hook = ybauh_ExecutorStart;
   prev_ExecutorEnd = ExecutorEnd_hook;
   ExecutorEnd_hook = ybauh_ExecutorEnd;
-  prev_ProcessUtility = ProcessUtility_hook;
-  ProcessUtility_hook = ybauh_ProcessUtility;
 }
 
 /*
@@ -181,9 +170,8 @@ _PG_fini(void)
   /* Uninstall hooks. */
   shmem_startup_hook = prev_shmem_startup_hook;
   post_parse_analyze_hook = prev_post_parse_analyze_hook;
-  ExecutorRun_hook = prev_ExecutorRun;
+  ExecutorStart_hook = prev_ExecutorStart;
   ExecutorEnd_hook = prev_ExecutorEnd;
-  ProcessUtility_hook = prev_ProcessUtility;
 }
 
 static void
@@ -409,32 +397,50 @@ ybauh_post_parse_analyze(ParseState *pstate, Query *query)
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
 
-  MyProc->queryid = query->queryId;
-	YBCSetQueryId(query->queryId);
+	if (query->queryId != UINT64CONST(0))
+	{
+    MyProc->queryid = query->queryId;
+    YBCSetQueryId(query->queryId);
+	}
+  else
+  {
+    const char *redacted_query;
+    int         redacted_query_len;
+    /* Use the redacted query for checking purposes. */
+    redacted_query = pnstrdup(pstate->p_sourcetext, query->stmt_len);
+    redacted_query = RedactPasswordIfExists(redacted_query);
+    redacted_query_len = strlen(redacted_query);
+
+    MyProc->queryid = DatumGetUInt64(hash_any_extended((const unsigned char *)redacted_query, redacted_query_len, 0));
+    YBCSetQueryId(MyProc->queryid);
+  }
 }
 
 static void
-ybauh_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
-				 bool execute_once)
+ybauh_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-  uint64 queryId = queryDesc->plannedstmt->queryId;
-  MyProc->queryid = queryId;
-  YBCSetQueryId(queryId);
-  nested_level++;
-	PG_TRY();
+	if (prev_ExecutorStart)
+		prev_ExecutorStart(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
+
+	if (queryDesc->plannedstmt->queryId != UINT64CONST(0))
 	{
-		if (prev_ExecutorRun)
-			prev_ExecutorRun(queryDesc, direction, count, execute_once);
-		else
-			standard_ExecutorRun(queryDesc, direction, count, execute_once);
-    nested_level--;
+    MyProc->queryid = queryDesc->plannedstmt->queryId;
+    YBCSetQueryId(MyProc->queryid);
 	}
-	PG_CATCH();
-	{
-    nested_level--;
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+  else
+  {
+    const char *redacted_query;
+    int         redacted_query_len;
+    /* Use the redacted query for checking purposes. */
+    redacted_query = pnstrdup(queryDesc->sourceText, queryDesc->plannedstmt->stmt_len);
+    redacted_query = RedactPasswordIfExists(redacted_query);
+    redacted_query_len = strlen(redacted_query);
+
+    MyProc->queryid = DatumGetUInt64(hash_any_extended((const unsigned char *)redacted_query, redacted_query_len, 0));
+    YBCSetQueryId(MyProc->queryid);
+  }
 }
 
 static void
@@ -450,39 +456,6 @@ ybauh_ExecutorEnd(QueryDesc *queryDesc)
 		prev_ExecutorEnd(queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
-}
-
-/*
- * ProcessUtility hook
- */
-static void
-ybauh_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					ProcessUtilityContext context,
-					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, char *completionTag)
-{
-  uint64		queryId = pstmt->queryId;
-  MyProc->queryid = queryId;
-  YBCSetQueryId(queryId);
-  nested_level++;
-  PG_TRY();
-  {
-    if (prev_ProcessUtility)
-      prev_ProcessUtility(pstmt, queryString,
-                context, params, queryEnv,
-                dest, completionTag);
-    else
-      standard_ProcessUtility(pstmt, queryString,
-                  context, params, queryEnv,
-                  dest, completionTag);
-    nested_level--;
-  }
-  PG_CATCH();
-  {
-    nested_level--;
-    PG_RE_THROW();
-  }
-  PG_END_TRY();
 }
 
 static void

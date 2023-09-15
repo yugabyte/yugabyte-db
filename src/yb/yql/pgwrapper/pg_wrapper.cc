@@ -393,15 +393,15 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   // Gather the default extensions:
   vector<string> metricsLibs;
+  if (FLAGS_ysql_auh_enabled) {
+    metricsLibs.push_back("yb_auh");
+  }
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_ysql_auh_enabled) {
-    metricsLibs.push_back("yb_auh");
-  }
 
   vector<string> lines;
   string line;
