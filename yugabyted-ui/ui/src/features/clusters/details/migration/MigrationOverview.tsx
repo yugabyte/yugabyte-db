@@ -6,17 +6,15 @@ import {
   Link,
   makeStyles,
   MenuItem,
-  Paper,
   Typography,
 } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { GenericFailure, YBButton, YBDropdown } from "@app/components";
+import { YBDropdown } from "@app/components";
 import { MigrationList } from "./MigrationList";
 import TriangleDownIcon from "@app/assets/caret-down.svg";
 import { MigrationDetails } from "./MigrationDetails";
 import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import { useGetVoyagerMigrationTasksQuery, VoyagerMigrationDetails } from "@app/api/src";
-import RefreshIcon from "@app/assets/refresh.svg";
 import { StringParam, useQueryParams } from "use-query-params";
 
 const useStyles = makeStyles((theme) => ({
@@ -35,9 +33,6 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     marginTop: theme.spacing(1.5),
     marginBottom: theme.spacing(1.5),
-  },
-  heading: {
-    marginBottom: theme.spacing(4),
   },
   link: {
     "&:link, &:focus, &:active, &:visited, &:hover": {
@@ -175,28 +170,12 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
       {!isLoadingMigrationTasks && (
         <>
           {!selectedMigration ? (
-            <Box>
-              <Paper>
-                <Box p={4}>
-                  <Box display="flex" justifyContent="space-between" alignItems="start">
-                    <Typography variant="h4" className={classes.heading}>
-                      {t("clusterDetail.voyager.migrations")}
-                    </Typography>
-                    <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
-                      {t("clusterDetail.performance.actions.refresh")}
-                    </YBButton>
-                  </Box>
-                  {isErrorMigrationTasks ? (
-                    <GenericFailure />
-                  ) : (
-                    <MigrationList
-                      migrationData={migrationData}
-                      onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
-                    />
-                  )}
-                </Box>
-              </Paper>
-            </Box>
+            <MigrationList
+              migrationData={migrationData}
+              onSelectMigration={({ migration_uuid }) => setQueryParams({ migration_uuid })}
+              hasError={isErrorMigrationTasks}
+              onRefresh={refetch}
+            />
           ) : (
             <MigrationDetails
               steps={migrationSteps}

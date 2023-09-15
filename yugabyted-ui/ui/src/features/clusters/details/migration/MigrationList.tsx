@@ -1,14 +1,15 @@
 import React, { FC } from "react";
-import { Box, Typography, makeStyles, useTheme } from "@material-ui/core";
+import { Box, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { YBButton, YBTable } from "@app/components";
+import { GenericFailure, YBButton, YBTable } from "@app/components";
 import type { Migration } from "./MigrationOverview";
 import { MigrationsGetStarted } from "./MigrationGetStarted";
 import { migrationPhases } from "./migration";
 import CaretRightIcon from "@app/assets/caret-right.svg";
 import CaretDownIcon from "@app/assets/caret-down.svg";
+import RefreshIcon from "@app/assets/refresh.svg";
 import { useLocalStorage } from "react-use";
 
 const useStyles = makeStyles((theme) => ({
@@ -69,12 +70,16 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
 
 interface MigrationListProps {
   migrationData?: Migration[];
+  hasError?: boolean;
+  onRefresh?: () => void;
   onSelectMigration: (migration: Migration) => void;
 }
 
 export const MigrationList: FC<MigrationListProps> = ({
   migrationData: migrationDataProp,
   onSelectMigration,
+  hasError,
+  onRefresh,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -303,156 +308,184 @@ export const MigrationList: FC<MigrationListProps> = ({
 
   return (
     <Box>
-      <YBTable
-        data={migrationData.unarchivedMigrations}
-        columns={migrationUnarchivedColumns}
-        options={{
-          pagination: false,
-          rowHover: !archiveMode && !!migrationData.unarchivedMigrations.length,
-          selectableRows: archiveMode ? "multiple" : undefined,
-          rowsSelected: selectedMigrations,
-          onRowSelectionChange: (
-            _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
-            _allRowsSelected: { index: number; dataIndex: number }[],
-            rowsSelected: undefined | number[]
-          ) => {
-            setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
-          },
-          onRowClick: !archiveMode
-            ? (_, { dataIndex }) => onSelectMigration(migrationData.unarchivedMigrations[dataIndex])
-            : undefined,
-        }}
-        withBorder={false}
-      />
-      <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
-        {!archiveMode && (
-          <>
-            {migrationData.unarchivedMigrations.length > 0 && (
-              <YBButton
-                variant="ghost"
-                onClick={() => {
-                  setUnarchiveMode(false);
-                  setArchiveMode(true);
+      <Paper>
+        <Box p={4}>
+          <Box display="flex" justifyContent="space-between" alignItems="start">
+            <Typography variant="h4" className={classes.heading}>
+              {t("clusterDetail.voyager.migrations")}
+            </Typography>
+            <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefresh}>
+              {t("clusterDetail.performance.actions.refresh")}
+            </YBButton>
+          </Box>
+          {hasError ? (
+            <GenericFailure />
+          ) : (
+            <Box>
+              <YBTable
+                data={migrationData.unarchivedMigrations}
+                columns={migrationUnarchivedColumns}
+                options={{
+                  pagination: false,
+                  rowHover: !archiveMode && !!migrationData.unarchivedMigrations.length,
+                  selectableRows: archiveMode ? "multiple" : undefined,
+                  rowsSelected: selectedMigrations,
+                  onRowSelectionChange: (
+                    _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
+                    _allRowsSelected: { index: number; dataIndex: number }[],
+                    rowsSelected: undefined | number[]
+                  ) => {
+                    setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                  },
+                  onRowClick: !archiveMode
+                    ? (_, { dataIndex }) =>
+                        onSelectMigration(migrationData.unarchivedMigrations[dataIndex])
+                    : undefined,
                 }}
-              >
-                {t("clusterDetail.voyager.archiveMigrations")}
-              </YBButton>
-            )}
-            {!!archivedMigrations.length && (
-              <YBButton
-                variant="ghost"
-                endIcon={showArchived ? <CaretDownIcon /> : <CaretRightIcon />}
-                onClick={() => setShowArchived((s) => !s)}
-              >
-                {showArchived
-                  ? t("clusterDetail.voyager.hideArchived", { count: archivedMigrations.length })
-                  : t("clusterDetail.voyager.showArchived", { count: archivedMigrations.length })}
-              </YBButton>
-            )}
-          </>
-        )}
-        {archiveMode && (
-          <>
-            <YBButton
-              variant="ghost"
-              onClick={() => {
-                setArchiveMode(false);
-              }}
-            >
-              {t("common.cancel")}
-            </YBButton>
-            <YBButton
-              variant="primary"
-              disabled={!selectedMigrations.length}
-              onClick={() => {
-                setArchivedMigrations((m) => [
-                  ...(m ? m : []),
-                  ...selectedMigrations.map(
-                    (index) => migrationData.unarchivedMigrations[index].migration_uuid
-                  ),
-                ]);
-                setShowArchived(true);
-                setArchiveMode(false);
-              }}
-            >
-              {t("clusterDetail.voyager.archiveSelected")}
-            </YBButton>
-          </>
-        )}
-      </Box>
+                withBorder={false}
+              />
+              <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
+                {!archiveMode && (
+                  <>
+                    {migrationData.unarchivedMigrations.length > 0 && (
+                      <YBButton
+                        variant="ghost"
+                        onClick={() => {
+                          setUnarchiveMode(false);
+                          setArchiveMode(true);
+                        }}
+                      >
+                        {t("clusterDetail.voyager.archiveMigrations")}
+                      </YBButton>
+                    )}
+                    {!!archivedMigrations.length && (
+                      <YBButton
+                        variant="ghost"
+                        endIcon={showArchived ? <CaretDownIcon /> : <CaretRightIcon />}
+                        onClick={() => setShowArchived((s) => !s)}
+                      >
+                        {showArchived
+                          ? t("clusterDetail.voyager.hideArchived")
+                          : t("clusterDetail.voyager.showArchived")}
+                      </YBButton>
+                    )}
+                  </>
+                )}
+                {archiveMode && (
+                  <>
+                    <YBButton
+                      variant="ghost"
+                      onClick={() => {
+                        setArchiveMode(false);
+                      }}
+                    >
+                      {t("common.cancel")}
+                    </YBButton>
+                    <YBButton
+                      variant="primary"
+                      disabled={!selectedMigrations.length}
+                      onClick={() => {
+                        setArchivedMigrations((m) => [
+                          ...(m ? m : []),
+                          ...selectedMigrations.map(
+                            (index) => migrationData.unarchivedMigrations[index].migration_uuid
+                          ),
+                        ]);
+                        setShowArchived(true);
+                        setArchiveMode(false);
+                      }}
+                    >
+                      {t("clusterDetail.voyager.archiveSelected")}
+                    </YBButton>
+                  </>
+                )}
+              </Box>
+            </Box>
+          )}
+        </Box>
+      </Paper>
 
       {showArchived && (
-        <Box mt={4}>
-          <Typography variant="h4" className={classes.heading}>
-            {t("clusterDetail.voyager.archivedMigrations")}
-          </Typography>
-          <YBTable
-            data={migrationData.archivedMigrations}
-            columns={migrationArchivedColumns}
-            options={{
-              pagination: false,
-              rowHover: !unarchiveMode && !!migrationData.archivedMigrations.length,
-              selectableRows: unarchiveMode ? "multiple" : undefined,
-              rowsSelected: selectedMigrations,
-              onRowSelectionChange: (
-                _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
-                _allRowsSelected: { index: number; dataIndex: number }[],
-                rowsSelected: undefined | number[]
-              ) => {
-                setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
-              },
-              onRowClick: !unarchiveMode
-                ? (_, { dataIndex }) =>
-                    onSelectMigration(migrationData.archivedMigrations[dataIndex])
-                : undefined,
-            }}
-            withBorder={false}
-          />
-          <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
-            {!unarchiveMode && migrationData.archivedMigrations.length > 0 && (
-              <YBButton
-                variant="ghost"
-                onClick={() => {
-                  setArchiveMode(false);
-                  setUnarchiveMode(true);
-                }}
-              >
-                {t("clusterDetail.voyager.unarchiveMigrations")}
-              </YBButton>
-            )}
-            {unarchiveMode && (
-              <>
-                <YBButton
-                  variant="ghost"
-                  onClick={() => {
-                    setUnarchiveMode(false);
+        <Box mt={2}>
+          <Paper>
+            <Box p={4}>
+              <Box>
+                <Typography variant="h4" className={classes.heading}>
+                  {t("clusterDetail.voyager.archivedMigrations")}
+                </Typography>
+                <YBTable
+                  data={migrationData.archivedMigrations}
+                  columns={migrationArchivedColumns}
+                  options={{
+                    pagination: false,
+                    rowHover: !unarchiveMode && !!migrationData.archivedMigrations.length,
+                    selectableRows: unarchiveMode ? "multiple" : undefined,
+                    rowsSelected: selectedMigrations,
+                    onRowSelectionChange: (
+                      _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
+                      _allRowsSelected: { index: number; dataIndex: number }[],
+                      rowsSelected: undefined | number[]
+                    ) => {
+                      setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                    },
+                    onRowClick: !unarchiveMode
+                      ? (_, { dataIndex }) =>
+                          onSelectMigration(migrationData.archivedMigrations[dataIndex])
+                      : undefined,
                   }}
-                >
-                  {t("common.cancel")}
-                </YBButton>
-                <YBButton
-                  variant="primary"
-                  disabled={!selectedMigrations.length}
-                  onClick={() => {
-                    const newArchivedMigraions =
-                      archivedMigrations.filter(
-                        (uuid) =>
-                          !selectedMigrations
-                            .map((index) => migrationData.archivedMigrations[index].migration_uuid)
-                            ?.includes(uuid)
-                      ) || [];
-                    setArchivedMigrations(newArchivedMigraions);
-                    setUnarchiveMode(false);
-                    if (newArchivedMigraions.length === 0) {
-                      setShowArchived(false);
-                    }
-                  }}
-                >
-                  {t("clusterDetail.voyager.unarchiveSelected")}
-                </YBButton>
-              </>
-            )}
-          </Box>
+                  withBorder={false}
+                />
+                <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
+                  {!unarchiveMode && migrationData.archivedMigrations.length > 0 && (
+                    <YBButton
+                      variant="ghost"
+                      onClick={() => {
+                        setArchiveMode(false);
+                        setUnarchiveMode(true);
+                      }}
+                    >
+                      {t("clusterDetail.voyager.unarchiveMigrations")}
+                    </YBButton>
+                  )}
+                  {unarchiveMode && (
+                    <>
+                      <YBButton
+                        variant="ghost"
+                        onClick={() => {
+                          setUnarchiveMode(false);
+                        }}
+                      >
+                        {t("common.cancel")}
+                      </YBButton>
+                      <YBButton
+                        variant="primary"
+                        disabled={!selectedMigrations.length}
+                        onClick={() => {
+                          const newArchivedMigraions =
+                            archivedMigrations.filter(
+                              (uuid) =>
+                                !selectedMigrations
+                                  .map(
+                                    (index) =>
+                                      migrationData.archivedMigrations[index].migration_uuid
+                                  )
+                                  ?.includes(uuid)
+                            ) || [];
+                          setArchivedMigrations(newArchivedMigraions);
+                          setUnarchiveMode(false);
+                          if (newArchivedMigraions.length === 0) {
+                            setShowArchived(false);
+                          }
+                        }}
+                      >
+                        {t("clusterDetail.voyager.unarchiveSelected")}
+                      </YBButton>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
         </Box>
       )}
     </Box>
