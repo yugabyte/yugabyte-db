@@ -302,7 +302,7 @@ export const MigrationList: FC<MigrationListProps> = ({
       : []),
   ];
 
-  if (!migrationDataProp?.length) {
+  if (!migrationDataProp?.length && !hasError) {
     return <MigrationsGetStarted />;
   }
 
@@ -405,7 +405,7 @@ export const MigrationList: FC<MigrationListProps> = ({
         </Box>
       </Paper>
 
-      {showArchived && (
+      {showArchived && !hasError && (
         <Box mt={2}>
           <Paper>
             <Box p={4}>
