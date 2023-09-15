@@ -2560,7 +2560,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * case, use inner_run_cost for the first matched tuple and
 			 * inner_rescan_run_cost for additional ones.
 			 */
-			run_cost += inner_run_cost * inner_scan_frac;
+
+			if (outer_matched_rows > 0)
+				run_cost += inner_run_cost * inner_scan_frac;
+
 			if (outer_matched_rows > yb_batch_size)
 				run_cost +=
 					((outer_matched_rows - yb_batch_size) / yb_batch_size) *
@@ -2573,11 +2576,11 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * since we used inner_run_cost once already.
 			 */
 
-			 /*
-			  * YB: We assume that when we are using batched nested loop joins,
-			  * the chances of us coming up with an non-matching batch are
-			  * negligible.
-			  */
+			/*
+			 * YB: We assume that when we are using batched nested loop joins,
+			 * the chances of us coming up with a non-matching batch are
+			 * negligible.
+			 */
 			if (yb_batch_size == 1)
 				run_cost += outer_unmatched_rows *
 					inner_rescan_run_cost / inner_path_rows;
@@ -4138,7 +4141,7 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 	Selectivity jselec;
 	Selectivity nselec;
 	Selectivity avgmatch;
-	SpecialJoinInfo norm_sjinfo;
+	SpecialJoinInfo temp_sjinfo;
 	List	   *joinquals;
 	ListCell   *l;
 
@@ -4164,36 +4167,54 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 		joinquals = restrictlist;
 
 	/*
+	 * YB: The following code was modified to fix a PG bug detailed in #19021.
+	 * Note to PG15 mergers: temp_sjinfo was previously known as "norm_sjinfo".
+	 */
+	temp_sjinfo.type = T_SpecialJoinInfo;
+	temp_sjinfo.min_lefthand = outerrel->relids;
+	temp_sjinfo.min_righthand = innerrel->relids;
+	temp_sjinfo.syn_lefthand = outerrel->relids;
+	temp_sjinfo.syn_righthand = innerrel->relids;
+	temp_sjinfo.jointype = (jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI;
+	/* we don't bother trying to make the remaining fields valid */
+	temp_sjinfo.lhs_strict = false;
+	temp_sjinfo.delay_upper_joins = false;
+	temp_sjinfo.semi_can_btree = false;
+	temp_sjinfo.semi_can_hash = false;
+	temp_sjinfo.semi_operators = NIL;
+	temp_sjinfo.semi_rhs_exprs = NIL;
+
+	/*
 	 * Get the JOIN_SEMI or JOIN_ANTI selectivity of the join clauses.
 	 */
 	jselec = clauselist_selectivity(root,
 									joinquals,
 									0,
 									(jointype == JOIN_ANTI) ? JOIN_ANTI : JOIN_SEMI,
-									sjinfo);
+									&temp_sjinfo);
 
 	/*
 	 * Also get the normal inner-join selectivity of the join clauses.
 	 */
-	norm_sjinfo.type = T_SpecialJoinInfo;
-	norm_sjinfo.min_lefthand = outerrel->relids;
-	norm_sjinfo.min_righthand = innerrel->relids;
-	norm_sjinfo.syn_lefthand = outerrel->relids;
-	norm_sjinfo.syn_righthand = innerrel->relids;
-	norm_sjinfo.jointype = JOIN_INNER;
+	temp_sjinfo.type = T_SpecialJoinInfo;
+	temp_sjinfo.min_lefthand = outerrel->relids;
+	temp_sjinfo.min_righthand = innerrel->relids;
+	temp_sjinfo.syn_lefthand = outerrel->relids;
+	temp_sjinfo.syn_righthand = innerrel->relids;
+	temp_sjinfo.jointype = JOIN_INNER;
 	/* we don't bother trying to make the remaining fields valid */
-	norm_sjinfo.lhs_strict = false;
-	norm_sjinfo.delay_upper_joins = false;
-	norm_sjinfo.semi_can_btree = false;
-	norm_sjinfo.semi_can_hash = false;
-	norm_sjinfo.semi_operators = NIL;
-	norm_sjinfo.semi_rhs_exprs = NIL;
+	temp_sjinfo.lhs_strict = false;
+	temp_sjinfo.delay_upper_joins = false;
+	temp_sjinfo.semi_can_btree = false;
+	temp_sjinfo.semi_can_hash = false;
+	temp_sjinfo.semi_operators = NIL;
+	temp_sjinfo.semi_rhs_exprs = NIL;
 
 	nselec = clauselist_selectivity(root,
 									joinquals,
 									0,
 									JOIN_INNER,
-									&norm_sjinfo);
+									&temp_sjinfo);
 
 	/* Avoid leaking a lot of ListCells */
 	if (IS_OUTER_JOIN(jointype))

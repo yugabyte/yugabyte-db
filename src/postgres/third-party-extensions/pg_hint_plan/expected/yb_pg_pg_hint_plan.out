@@ -677,9 +677,9 @@ error hint:
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -719,9 +719,9 @@ DETAIL:  Closing parenthesis is necessary.
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -744,9 +744,9 @@ Leading()
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -769,9 +769,9 @@ Leading(t3)
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -867,9 +867,9 @@ Leading(t3 t4 t1 t2 t1)
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -892,9 +892,9 @@ Leading(t3 t4 t4)
                ->  Seq Scan on t4
                ->  Index Scan using t1_pkey on t1
                      Index Cond: (id = t4.id)
-         ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
                Index Cond: (id = t1.id)
-   ->  Index Scan using t3_pkey on t3
+   ->  Index Scan using t2_pkey on t2
          Index Cond: (id = t1.id)
 (10 rows)
 
@@ -3252,6 +3252,7 @@ error hint:
                     QUERY PLAN
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t2.id = t1.id)
    ->  Nested Loop
          Join Filter: (t3.id = t2.id)
          ->  Nested Loop
@@ -3266,8 +3267,8 @@ error hint:
          ->  Index Scan using t2_pkey on t2
                Index Cond: (id = t5.id)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: (id = t2.id)
-(16 rows)
+         Index Cond: (id = t5.id)
+(17 rows)
 
 /*+Leading(((t1 t2)(t3(t4 t5))))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
