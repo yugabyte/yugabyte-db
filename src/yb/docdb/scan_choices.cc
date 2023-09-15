@@ -24,9 +24,13 @@
 #include "yb/docdb/intent_aware_iterator_interface.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+
+DEFINE_RUNTIME_bool(index_scan_prefer_sequential_scan_for_boundary_condition, true,
+    "Use sequential scan for index scan queries where condition is encoded in lower/upper bound.");
 
 namespace yb {
 namespace docdb {
@@ -883,7 +887,9 @@ ScanChoicesPtr ScanChoices::Create(
     LOG(WARNING) << "Prefix length: " << prefixlen << " is invalid for schema: "
                   << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }
-  if (doc_spec.options() || doc_spec.range_bounds() || valid_prefixlen) {
+  if ((doc_spec.options() || doc_spec.range_bounds() || valid_prefixlen) &&
+      !(FLAGS_index_scan_prefer_sequential_scan_for_boundary_condition &&
+        doc_spec.is_condition_encoded_in_bounds())) {
     return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
   }
 

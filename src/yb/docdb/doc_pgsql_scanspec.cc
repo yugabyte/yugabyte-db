@@ -150,6 +150,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     if (options_ == nullptr)
       options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     InitOptions(*condition);
+  } else if (rangebounds && !schema.has_yb_hash_code()) {
+    condition_encoded_in_bounds_ = IsConditionEncodedInBoundKey();
   }
 
   auto lower_bound_key = bound_key(schema, true);
@@ -351,6 +353,39 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
       // We don't support any other operators at this level.
       break;
   }
+}
+
+bool DocPgsqlScanSpec::IsConditionEncodedInBoundKey() const {
+  if (prefix_length() > 0) return false;
+
+  const auto rangebounds = range_bounds();
+  bool skipping_prefix = true;
+  for (size_t idx = 0; idx < schema().num_range_key_columns(); idx++) {
+    const auto& range = rangebounds->RangeFor(schema().column_id(idx));
+    VLOG(1) << "idx: " << idx << ", ql_range: min_bound=" << range.min_bound.has_value()
+            << ", max_bound=" << range.max_bound.has_value()
+            << ", is_non_null=" << range.is_not_null;
+    if (range.is_not_null) {
+      return false;
+    }
+
+    auto sorting_type = schema().column(idx).sorting_type();
+    auto min_bound = GetQLRangeBound(range, sorting_type, /*lower_bound = */ true);
+    auto max_bound = GetQLRangeBound(range, sorting_type, /*lower_bound = */ false);
+    if (skipping_prefix) {
+      if (min_bound && max_bound && min_bound->Matches(*max_bound)) {
+        continue;
+      } else if (idx == 0 && (!min_bound && !max_bound)) {
+        return false;
+      } else {
+        skipping_prefix = false;
+      }
+    } else if (min_bound || max_bound) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {

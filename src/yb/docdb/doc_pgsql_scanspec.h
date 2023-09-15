@@ -99,6 +99,9 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   // scanning.
   void InitOptions(const PgsqlConditionPB& condition);
 
+  // Checks if range bounds are encoded in lower/upper key for the scan.
+  bool IsConditionEncodedInBoundKey() const;
+
   // The range/hash value options if set (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<qlexpr::OptionList>> options_;
 
