@@ -850,6 +850,7 @@ class YBClient {
   // Provide the completion status of 'txn' to the YB-Master.
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
+  Status ListTableInfo(master::ListTablesResponsePB* response);
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,

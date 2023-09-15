@@ -718,73 +718,11 @@ message PgActiveUniverseHistoryResponsePB {
 
 message PgTableIDMetadataRequestPB {}
 
-message YBTableName {
-  YQLDatabase namespace_type = 1;
-  string namespace_id = 2;
-  string namespace_name = 3;
-  string table_id = 4;
-  string table_name = 5;
-  string pgschema_name = 6;
-  master.RelationType relation_type = 7;
-}
-
-message YBSchema {
-  repeated Schema.ColumnSchema columns = 1;
-  TableProperties table_properties = 2;
-  uint32 version = 3;
-  bool is_compatible_with_previous_version = 4;
-}
-
-message Partition {
-  repeated int32 hash_buckets = 1;
-  bytes range_key_start = 2;
-  bytes range_key_end = 3;
-  string partition_key_start = 4;
-  string partition_key_end = 5;
-}
-message IndexMap {
-  repeated IndexInfo indexes = 1;
-}
-message IndexInfo {
-  string table_id = 1;
-  string indexed_table_id = 2;
-  uint32 schema_version = 3;
-  bool is_local = 4;
-  bool is_unique = 5;
-  repeated IndexColumn columns = 6;
-  int32 hash_column_count = 7;
-  int32 range_column_count = 8;
-  IndexPermissions index_permissions = 9;
-  string backfill_error_message = 10;
-  uint64 num_rows_processed_by_backfill_job = 11;
-}
-enum IndexPermissions {
-  INDEX_PERM_READ_WRITE_AND_DELETE = 0;
-}
-message YBTableInfo {
-  YBTableName table_name = 2;
-  string table_id = 3;
-  YBSchema schema = 4;
-  dockv::PartitionSchema partition_schema = 5;
-  qlexpr::IndexMap index_map = 6;
-  boost::optional<qlexpr::IndexInfo> index_info = 7;
-  YBTableType table_type = 9;
-  bool colocated = 10;
-  boost::optional<master::ReplicationInfoPB> replication_info = 11;
-  boost::optional<uint32> wal_retention_secs = 12;
-}
-
 message PgTableIDMetadataResponsePB {
   AppStatusPB status = 1;
-  repeated YBTableInfo allTableInfo = 2;
+  repeated master.ListTablesResponsePB.TableInfo tables = 2;
 }
-enum YBTableType {
-  YQL_TABLE_TYPE = 2;
-  REDIS_TABLE_TYPE = 3;
-  PGSQL_TABLE_TYPE = 4;
-  TRANSACTION_STATUS_TABLE_TYPE = 5;
-  UNKNOWN_TABLE_TYPE = -1;
-}
+
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
 
 message PgGetActiveTransactionListResponsePB {

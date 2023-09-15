@@ -27,6 +27,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
@@ -35,6 +36,8 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -772,49 +775,35 @@ class PgClientServiceImpl::Impl {
 
     return Status::OK();
   }
- 
-  Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp,rpc::RpcContext* context) {
-
-    std::vector<client::YBTableInfo> allTableInfo;
-    auto tables_list = VERIFY_RESULT(client().ListTables());
-
-    for (const auto& table_info : tables_list) {
-        client::YBTableInfo yb_table_info;
-        yb_table_info.table_name = table_info.table_name();
-        yb_table_info.table_id = table_info.table_id();
-        yb_table_info.schema = table_info.schema();
-        yb_table_info.partition_schema = table_info.partition_schema();
-        yb_table_info.index_map = table_info.index_map();
-        yb_table_info.index_info = table_info.index_info();
-        yb_table_info.table_type = table_info.table_type();
-        yb_table_info.colocated = table_info.colocated();
-        yb_table_info.replication_info = table_info.replication_info();
-        yb_table_info.wal_retention_secs = table_info.wal_retention_secs();
-        allTableInfo.push_back(yb_table_info);
-        yb_table_info.ToPB(resp->add_table_info);
+  // Status TabletIDMetadata(const ListTabletsRequestPB& req, ListTabletsRequestPB* resp, rpc::RpcContext* context) {
+    
+  //   rpc::RpcController rpc;
+  //   // rpc.set_timeout(timeout_);
+  //   // for (const auto& live_ts : live_tservers) {
+  //   //   const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+  //   //   auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+  //   //  auto proxy = remote_tserver->proxy();
+  //     RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
+  //   }
+  // }
+  Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
+  //   YBClient::ListTableInfo(resp);
+    std::vector<client::YBTableName> list_of_tables = VERIFY_RESULT(client().ListTables());
+    // master::ListTablesRequestPB request;
+    // master::ListTablesResponsePB response;
+    // CALL_SYNC_LEADER_MASTER_RPC(request, response, TableIDMetadata);
+    for (const auto& table : list_of_tables) {
+      if(!table.has_table_id())
+      {
+        resp->add_tables()->set_id("");
+      }
+      auto tables = resp->add_tables();
+      tables->set_id((table.table_id()));
+      tables->set_name((table.table_name()));
     }
     return Status::OK();
-}
-
-    // for (const client::YBTableName& table_name : tables_list) {
-    //     RepeatedPtrField<master::TabletLocationsPB> tablets;
-    //     client::PartitionListVersion partition_list_version;
-    //     Status status = client().GetTablets(table_name,10, &tablets, &partition_list_version);
-        
-    //     if (status.ok()) {
-    //         for (int i = 0; i < tablets.size(); ++i) {
-    //         TabletInfo tablet_info;
-    //         tablet_info.table_index = table_info.id();
-    //         tablet_info.tablet_index = i;
-    //         allTabletInfo.push_back(tablet_info);
-    //     }
-    //     } else {
-    //       LOG(ERROR) << "Failed to get tablets for table " << table_name.ToString() << ": " << status.ToString();
-    //     }
-    //     resp->allTabletInfo = allTabletInfo;
-    // } 
-   
-
+  } 
+  
   Status GetTserverCatalogVersionInfo(
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,

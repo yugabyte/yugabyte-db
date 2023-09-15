@@ -1650,6 +1650,13 @@ YBCStatus YBCTableIDMetadata() {
   return YBCStatusOK();
 }
 
+// YBCStatus YBCTabletIDMetadata() {
+//   const auto result = (pgapi->TabletIDMetadata());
+//   if (!result.ok()) {
+//     return ToYBCStatus(result.status());
+//   }
+//   return YBCStatusOK();
+// }
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {

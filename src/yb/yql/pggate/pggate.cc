@@ -2055,7 +2055,12 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
-Result<std::vector<client::YBTableInfo>> PgApiImpl::TableIDMetadata() {
+
+// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TabletIDMetadata() {
+//   return pg_session_->TabletIDMetadata();
+// }
+
+Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TableIDMetadata() {
   return pg_session_->TableIDMetadata();
 }
 
