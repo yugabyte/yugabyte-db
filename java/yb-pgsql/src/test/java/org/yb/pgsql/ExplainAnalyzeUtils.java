@@ -100,6 +100,13 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder totalCost(Checker checker);
     PlanCheckerBuilder actualStartupTime(Checker checker);
     PlanCheckerBuilder actualTotalTime(Checker checker);
+
+    // Seek and Next Estimation
+    PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+
+    // DocDB Metric
+    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
   }
 
   public static void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimitBytes)
@@ -117,12 +124,13 @@ public class ExplainAnalyzeUtils {
   }
 
   private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing, boolean debug)
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug, boolean verbose)
       throws Exception {
     LOG.info("Query: " + query);
     ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b) %s",
-        timing, debug, query));
+        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b, " +
+        "VERBOSE %b) %s",
+        timing, debug, verbose, query));
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -136,17 +144,22 @@ public class ExplainAnalyzeUtils {
 
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true, false);
+    testExplain(stmt, query, checker, true, false, false);
   }
 
   public static void testExplainDebug(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true, true);
+    testExplain(stmt, query, checker, true, true, false);
+  }
+
+  public static void testExplainDebugVerbose(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true, true, true);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false, false);
+    testExplain(stmt, query, checker, false, false, false);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {
