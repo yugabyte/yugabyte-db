@@ -61,7 +61,7 @@ YugabyteDB features are made available as one of the following:
 - Early Access (EA)
 - General Availability (GA)
 
-Changes for EA and GA are always reported in the [YugabyteDB Release Notes](../releases/).
+Changes for EA and GA are always reported in the Release Notes.
 
 | Description | TP | EA | GA | Deprecated |
 | :--- | :--- | :--- | :--- | :--- |
