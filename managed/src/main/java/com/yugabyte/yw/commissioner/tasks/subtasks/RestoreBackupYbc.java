@@ -257,6 +257,10 @@ public class RestoreBackupYbc extends YbcTaskBase {
       String restoreUniverseDBVersion =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       ObjectMapper mapper = new ObjectMapper();
+      String extendedArgs = taskParams().successMarker.extendedArgsString;
+      if (StringUtils.isEmpty(extendedArgs)) {
+        return;
+      }
       YbcBackupUtil.YbcSuccessBackupConfig backupConfig =
           mapper.readValue(
               taskParams().successMarker.extendedArgsString,
