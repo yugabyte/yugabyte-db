@@ -88,6 +88,10 @@ public final class Checkers {
     return doubleChecker(Range.atLeast(value));
   }
 
+  public static ValueChecker<Double> closed(double lower_value, double upper_value) {
+    return doubleChecker(Range.closed(lower_value, upper_value));
+  }
+
   // Array
   public static ArrayChecker array(List<Checker> checkers) {
     return new BasicArrayChecker(checkers);
