@@ -323,7 +323,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate/migrate-steps/#import-data-file) in CSV or text format directly to the YugabyteDB database. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate/migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate/migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate/migrate-steps/#import-data-file-from-azure-blob-storage-containers).
+[Load all your data files](../../migrate/bulk-data-load/#import-data-files-from-the-local-disk) in CSV or text format directly to the YugabyteDB database. These data files can be located either on a local filesystem, an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Import data files from cloud storage](../../migrate/bulk-data-load/#import-data-files-from-cloud-storage).
 
 #### Syntax
 
@@ -749,7 +749,7 @@ Default: 20000; rows.
 
 ### --data-dir
 
-Path to the directory containing the data files to import. You can also provide an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), and [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers) as a path to the data directory.
+Path to the directory containing the data files to import. You can also provide an AWS S3 bucket, GCS bucket, or an Azure blob as a path to the data directory. For more details, see [Import data files from cloud storage](../../migrate/bulk-data-load/#import-data-files-from-cloud-storage).
 
 ### --file-table-map
 
