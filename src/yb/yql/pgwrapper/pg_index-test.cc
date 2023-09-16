@@ -119,12 +119,8 @@ TEST_F(PgIndexTest, SplitOption) {
     auto res = ASSERT_RESULT(conn_->Fetch(query));
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
-    std::vector<std::string> values{
-      ASSERT_RESULT(GetString(res.get(), 0, 0)),
-      ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    };
-    ASSERT_EQ(values[0], "ab");
-    ASSERT_EQ(values[1], "bc");
+    ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), "ab");
+    ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)), "bc");
   }
 
   // Hash partitioning is currently not possible, so we can't test hash splitting.

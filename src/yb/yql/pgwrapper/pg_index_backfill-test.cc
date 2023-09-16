@@ -357,8 +357,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], -1);
     ASSERT_EQ(values[1], -2);
@@ -372,8 +372,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], 4);
     ASSERT_EQ(values[1], 3);
@@ -401,14 +401,14 @@ TEST_F(PgIndexBackfillTest, Expression) {
   ASSERT_EQ(PQnfields(res.get()), 3);
   std::array<std::array<int, 3>, 2> values = {{
     {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 2)),
     },
     {
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 2)),
     },
   }};
   ASSERT_EQ(values[0][0], 14);
@@ -915,11 +915,9 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking postgres schema";
   {
     // Check number of indexes.
-    PGResultPtr res = ASSERT_RESULT(conn_->FetchFormat(
-        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    ASSERT_EQ(actual, kIndexName);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<std::string>(
+                Format("SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName))),
+              kIndexName);
 
     // Check whether index is public using index scan.
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
@@ -974,10 +972,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking if index still works";
   {
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, 7);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), 7);
   }
 }
 
@@ -1297,10 +1292,10 @@ TEST_F_EX(PgIndexBackfillTest,
   ASSERT_EQ(1, lines);
   int columns = PQnfields(res.get());
   ASSERT_EQ(2, columns);
-  int32_t key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
   ASSERT_EQ(key, 3);
   // Make sure that the update is visible.
-  int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 1));
+  auto value = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1));
   ASSERT_EQ(value, 113);
 }
 
@@ -1374,14 +1369,8 @@ TEST_F_EX(PgIndexBackfillTest,
         kTableName,
         key);
     ASSERT_OK(WaitForIndexScan(query));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    int lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-    int columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
     // Make sure that the update is visible.
-    int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, key + 110);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), key + 110);
   }
 }
 
@@ -2044,7 +2033,7 @@ TEST_F_EX(PgIndexBackfillTest,
   // Assert that the phase is still "backfilling" and that the number of tuples done is still 0
   // within this txn.
   res = ASSERT_RESULT(conn_->Fetch(index_progress_query));
-  ASSERT_EQ(ASSERT_RESULT(GetString(res.get(), 0, 0)), "backfilling");
+  ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), "backfilling");
   ASSERT_EQ(ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 1)), 0);
   ASSERT_OK(conn_->ExecuteFormat("COMMIT"));
 }
