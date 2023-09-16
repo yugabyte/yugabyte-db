@@ -4,7 +4,7 @@ headerTitle: Prerequisites for YBA
 linkTitle: YBA prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere using YBA Installer
 headContent: What you need to install YugabyteDB Anywhere
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:
     identifier: prerequisites-installer
