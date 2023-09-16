@@ -1208,9 +1208,9 @@ TEST_F(PgDdlAtomicitySanityTest, DropColumnWithMissingDefaultTest) {
   // Verify data.
   auto check_result = [&res] {
     for (int i = 1; i <= 9; ++i) {
-      const auto value1 = ASSERT_RESULT(GetInt32(res.get(), i - 1, 0));
+      const auto value1 = ASSERT_RESULT(GetValue<int32_t>(res.get(), i - 1, 0));
       ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetString(res.get(), i - 1, 1));
+      const auto value2 = ASSERT_RESULT(GetValue<std::string>(res.get(), i - 1, 1));
       if (i <= 3) {
         ASSERT_EQ(value2, "default");
       } else if (i <= 6) {

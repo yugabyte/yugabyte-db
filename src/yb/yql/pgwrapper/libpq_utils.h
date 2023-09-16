@@ -114,17 +114,6 @@ Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>>
   return GetValue<typename T::value_type>(result, row, column);
 }
 
-inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
-  return GetValue<int32_t>(result, row, column);
-}
-
-inline Result<int64_t> GetInt64(PGresult* result, int row, int column) {
-  return GetValue<int64_t>(result, row, column);
-}
-inline Result<std::string> GetString(PGresult* result, int row, int column) {
-  return GetValue<std::string>(result, row, column);
-}
-
 const std::string& DefaultColumnSeparator();
 const std::string& DefaultRowSeparator();
 

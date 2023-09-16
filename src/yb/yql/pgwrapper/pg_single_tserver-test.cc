@@ -419,9 +419,9 @@ TEST_F_EX(
     auto res = ASSERT_RESULT(read_conn.FetchMatrix("SELECT v FROM test", kNumRows, 1));
 
     // Ensure that all rows in the table have the same value.
-    auto common_value_for_all_rows = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto common_value_for_all_rows = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
     for (auto i = 1u; i < kNumRows; ++i) {
-      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
     }
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }

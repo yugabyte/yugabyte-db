@@ -418,7 +418,7 @@ Status XClusterYsqlTestBase::ValidateRows(
 
   int result;
   for (int i = 0; i < row_count; ++i) {
-    result = VERIFY_RESULT(pgwrapper::GetInt32(results.get(), i, 0));
+    result = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(results.get(), i, 0));
     SCHECK(i == result, Corruption, Format("Expected row value $0 but got $1", i, result));
   }
 

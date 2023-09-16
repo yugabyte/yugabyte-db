@@ -486,7 +486,7 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   auto fetched_rows = PQntuples(table_names_res.get());
   ASSERT_EQ(fetched_rows, 3);
   for (int i = 0; i < fetched_rows; ++i) {
-    std::string value = ASSERT_RESULT(GetString(table_names_res.get(), i, 0));
+    std::string value = ASSERT_RESULT(GetValue<std::string>(table_names_res.get(), i, 0));
     ASSERT_TRUE(table_names.find(value) != table_names.end());
   }
   fetched_locks.CountDown();
