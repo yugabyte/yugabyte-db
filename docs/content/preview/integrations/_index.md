@@ -10,9 +10,72 @@ type: indexpage
 
 Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many third-party integrations out of the box.
 
-For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and ORMs](../../drivers-orms/).
+For information on YugabyteDB-compatible drivers, ORMs, and frameworks, refer to [Drivers and ORMs](../../drivers-orms/).
 
-### Choose your integration
+## Choose your integration
+
+### Development stuff
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Akka Persistence | | Full | [Akka Persistence](akka-ysql/) |
+| Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
+| AtomicJar Testcontainers | | Full | [AtomicJar Testcontainers](atomicjar/) |
+| Hasura | | Full | [Hasura](hasura/) |
+| Jaeger | | Full | [Jaeger](jaeger/) |
+| JanusGraph | | Full | [JanusGraph](janusgraph/) |
+
+### Compliance
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Apache Atlas | | Full | [Apache Atlas](atlas-ycql/) |
+
+### Data analytics
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Ataccama DQ Analyzer | | Full | [Ataccama DQ Analyzer](ataccama/) |
+| Camunda | | Full | [Camunda](camunda/) |
+| Dataedo | | Full | [Dataedo](dataedo/) |
+| Datahub | | Full | [Datahub](datahub/) |
+| Hevo Data | | Full | [Hevo Data](hevodata/) |
+
+### Data migration
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| PGmigrate | | Full | [PGmigrate](pgmigrate/) |
+| YSQL Loader (pgloader) | | Full | [YSQL Loader](ysqlloader/) |
+
+### Data security
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Hashicorp Vault | | Full | [Hashicorp Vault](hashicorp-vault/) |
+| WSO2 Identity Server | | Full | [WSO2 Identity Server](wso2/) |
+
+### Data streaming
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Apache Beam | | Full | [Apache Beam](apache-beam/) |
+| Apache Flink | | Full | [Apache Flink](apache-flink/) |
+
+### Integrated development environments
+
+| IDE | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Superblocks | | Full | [Superblocks](superblocks/) |
+
+### Schema migration
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Flyway | | Full | [Flyway](flyway/) |
+| Liquibase | | Full | [Liquibase](liquibase/) |
+| Prisma | | Full | [Prisma](prisma/) |
+| Schema Evolution Manager | | Full | [Schema Evolution Manager](schema-evolution-mgr/) |
 
 <ul class="nav yb-pills">
 
