@@ -218,6 +218,31 @@ class InvokeCallbackTask : public rpc::ThreadPoolTask {
   OutboundCallPtr call_;
 };
 
+class CompletedCallQueue {
+ public:
+  CompletedCallQueue() {}
+  virtual ~CompletedCallQueue() {}
+
+  // Called when a callback finishes running for a particular call.
+  void AddCompletedCall(int32_t call_id);
+
+  std::optional<int32_t> Pop() ON_REACTOR_THREAD;
+
+  void Shutdown();
+
+ private:
+  struct CompletedCallEntry : MPSCQueueEntry<CompletedCallEntry> {
+    explicit CompletedCallEntry(int call_id_) : call_id(call_id_) {}
+    int32_t call_id;
+  };
+
+  // We use this queue to notify the reactor thread that calls have completed so we would stop
+  // tracking them.
+  MPSCQueue<CompletedCallEntry> completed_calls_;
+
+  std::atomic<bool> stopping_{false};
+};
+
 // Tracks the state of this OutboundCall in relation to the active_calls_ structure in Connection.
 // Needed for debugging of stuck OutboundCalls where the callback never gets called.
 YB_DEFINE_ENUM(ActiveCallState,
@@ -327,6 +352,7 @@ class OutboundCall : public RpcCall {
   }
 
   void SetConnection(const ConnectionPtr& connection);
+  void SetCompletedCallQueue(const std::shared_ptr<CompletedCallQueue>& completed_call_queue);
 
   void SetInvalidStateTransition(RpcCallState old_state, RpcCallState new_state);
 
@@ -532,6 +558,7 @@ class OutboundCall : public RpcCall {
 
   // This is used in Reactor-based timeout enforcement and for logging.
   std::atomic<CoarseTimePoint> expires_at_{CoarseTimePoint::max()};
+  WriteOnceWeakPtr<CompletedCallQueue> completed_call_queue_;
 
   // ----------------------------------------------------------------------------------------------
   // Fields with custom synchronization

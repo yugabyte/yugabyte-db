@@ -103,7 +103,6 @@ void ActiveCallExpired(
   auto erase = false;
   if (!call->IsFinished()) {
     call->SetTimedOut();
-    reactor->FinalizeTrackedCall(call);
     if (handle != kUnknownCallHandle) {
       erase = stream->Cancelled(handle);
     }
@@ -216,7 +215,6 @@ void Connection::Shutdown(const Status& provided_status) {
     if (v.call) {
       if (!v.call->IsFinished()) {
         v.call->SetFailed(status);
-        reactor_->FinalizeTrackedCall(v.call);
       }
       v.call->SetActiveCallState(ActiveCallState::kErasedOnConnectionShutdown);
     }
@@ -685,7 +683,6 @@ void Connection::ForceCallExpiration(const OutboundCallPtr& call) {
     ActiveCallExpired(active_calls_, it, reactor_, stream_.get());
   } else if (!call->IsFinished()) {
     call->SetTimedOut();
-    reactor_->FinalizeTrackedCall(call);
   }
 }
 
