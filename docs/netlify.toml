@@ -800,10 +800,10 @@
   to = "https://docs-archive.yugabyte.com/v2.6/"
   force = true
 
-# [[redirects]]
-#   from = "/v2.6/*"
-#   to = "https://docs-archive.yugabyte.com/v2.6/"
-#   force = true
+[[redirects]]
+  from = "/v2.8/*"
+  to = "https://docs-archive.yugabyte.com/v2.8/"
+  force = true
 
 # Build an app was in quick-start, now in develop
 
