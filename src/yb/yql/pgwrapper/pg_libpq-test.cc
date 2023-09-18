@@ -3496,7 +3496,6 @@ class PgLibPqTestStatementTimeout : public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--ysql_pg_conf_csv=statement_timeout=$0", kClientStatementTimeoutSeconds * 1000));
     options->extra_tserver_flags.push_back("--enable_wait_queues=true");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=true");
   }
 
   Result<std::future<Status>> ExpectBlockedAsync(

@@ -270,6 +270,7 @@ DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
                  "Whether to disable flushing memtable on shutdown.");
 
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
@@ -567,7 +568,7 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
-  if (FLAGS_enable_wait_queues) {
+  if (FLAGS_enable_wait_queues && !PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
     waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         client_future(), scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
         waiting_txn_pool());
