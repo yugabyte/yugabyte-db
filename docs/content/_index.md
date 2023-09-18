@@ -61,16 +61,41 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="Products"
-    description="Open source, enterprise DBaas, or fully managed."
-    linkText1="YugabyteDB"
-    linkUrl1="/preview/"
-    linkText2="YugabyteDB Anywhere"
-    linkUrl2="/preview/yugabyte-platform/"
-    linkText3="YugabyteDB Managed"
-    linkUrl3="/preview/yugabyte-cloud/"
-    linkText4="YugabyteDB Voyager"
-    linkUrl4="/preview/yugabyte-voyager/"
+    title="Migrate"
+    description="Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration."
+    linkText1="YugabyteDB Voyager"
+    linkUrl1="/preview/yugabyte-voyager/"
+  >}}
+{{< /sections/3-boxes >}}
+
+### Products
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="YugabyteDB"
+    description="The open source cloud-native distributed SQL database."
+    buttonText="Explore YugabyteDB"
+    buttonUrl="/preview/"
+    imageAlt="YugabyteDB Core"
+    imageUrl="/icons/database.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Anywhere"
+    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-platform/"
+    imageAlt="YugabyteDB Anywhere"
+    imageUrl="/icons/server.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Managed"
+    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-cloud/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/icons/cloud.svg"
   >}}
 {{< /sections/3-boxes >}}
 
@@ -124,7 +149,6 @@ resources:
     buttonUrl="/preview/develop/common-patterns//"
   >}}
 {{< /sections/3-boxes >}}
--->
 
 ### Operations
 
@@ -148,38 +172,6 @@ resources:
     description="Use YugabyteDB Voyager to manage end-to-end database migration."
     buttonText="Migrate"
     buttonUrl="/preview/yugabyte-voyager/"
-  >}}
-{{< /sections/3-boxes >}}
-
-<!--
-### Products
-
-{{< sections/3-boxes >}}
-  {{< sections/3-box-card
-    title="YugabyteDB"
-    description="The open source cloud-native distributed SQL database."
-    buttonText="Explore YugabyteDB"
-    buttonUrl="/preview/"
-    imageAlt="YugabyteDB Core"
-    imageUrl="/icons/database.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Anywhere"
-    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-platform/"
-    imageAlt="YugabyteDB Anywhere"
-    imageUrl="/icons/server.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Managed"
-    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-cloud/"
-    imageAlt="YugabyteDB Managed"
-    imageUrl="/icons/cloud.svg"
   >}}
 {{< /sections/3-boxes >}}
 
@@ -250,13 +242,10 @@ resources:
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-    title="Explore Yugabyte University"
-    linkText1="Read real world availability usecases"
-    linkUrl1="https://university.yugabyte.com/courses/introduction-to-distributed-sql"
-    linkText2="Introduction to YugabyteDB"
-    linkUrl2="https://university.yugabyte.com/courses/introduction-to-yugabytedb"
-    linkText3="YugabyteDB Managed Basics"
-    linkUrl3="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
+    title="Yugabyte University"
+    description="Learn YugabyteDB via self-paced courses, virtual training, and builder workshops."
+    buttonText="Learn more"
+    buttonUrl="https://university.yugabyte.com/"
   >}}
 
   {{< sections/3-box-card
@@ -268,7 +257,7 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="Learn more"
+    title="More links"
     linkText1="Download"
     linkUrl1="https://download.yugabyte.com"
     linkText2="Key concepts"
