@@ -25,15 +25,11 @@ menu:
 type: indexpage
 ---
 
-With YugabyteDB, you can add nodes to upscale your universe efficiently and reliably to achieve more read and write IOPS (input/output operations per second), without any downtime.
-
-A YugabyteDB universe can be scaled out to handle the following:
+YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../../architecture/docdb-sharding/sharding/?), called tablets. You can either add more nodes to distribute the tablets or increase the specs of your nodes to scale your universe efficiently and reliably to handle the following:
 
 * High transactions per second
 * High number of concurrent client connections
 * Large datasets
-
-YugabyteDB can be scaled either horizontally or vertically depending on your needs.
 
 ## Horizontal scaling (scale out)
 
@@ -47,9 +43,24 @@ Horizontal scaling is the most common scaling model in YugabyteDB, and has sever
 
 ## Vertical scaling (scale up)
 
-Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on. Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible. But note that cluster rebalancing operations perform better with multiple smaller nodes compared to a small number of larger nodes because of limits per node and higher parallelism you can achieve over the network.
+Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on. Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible.
 
 In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling may be used to achieve the desired performance and scalability goals.
+
+## Horizontal vs Vertical Scaling
+
+The following table lists the pros and cons of Horizontal/Vertical scaling of a YugabyteDB cluster.
+
+|                     |           Horizontal Scaling            |                               Vertical Scaling                                |
+| ------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
+| Also known as       | Scale out                               | Scale up                                                                      |
+| No. of nodes        | Increases                               | Remains the same                                                              |
+| Ease of effort      | Add new nodes to the cluster            | Add more powerful nodes, drain the old node, and remove them from the cluster |
+| Fault Tolerance     | Increases as more nodes have been added | Remains the same                                                              |
+| Cluster rebalancing | Faster                                  | Slower                                                                        |
+| Future scaling      | More nodes can be added                 | Limited to the most powerful machines available today                         |
+| Added costs         | Cost of newer machines                  | Difference in cost of the new and old machines                                |
+| Disk | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and Memory, disks should also be updgraded to handle increased workloads |
 
 ## Learn more
 
