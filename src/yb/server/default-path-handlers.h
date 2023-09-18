@@ -58,7 +58,7 @@ class RpcServerBase;
 void AddDefaultPathHandlers(Webserver* webserver);
 
 // Adds an endpoint to get metrics in JSON format.
-void RegisterMetricsJsonHandler(Webserver* webserver, MetricRegistry* const metrics);
+void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics);
 
 // Adds an endpoint to display path usage.
 void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager);

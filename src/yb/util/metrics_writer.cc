@@ -22,22 +22,33 @@
 namespace yb {
 
 PrometheusWriter::PrometheusWriter(std::stringstream* output,
-                                   ExportHelpAndType export_help_and_type)
+                                   ExportHelpAndType export_help_and_type,
+                                   AggregationMetricLevel aggregation_Level)
     : output_(output),
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count()),
-      export_help_and_type_(export_help_and_type) {}
+      export_help_and_type_(export_help_and_type),
+      aggregation_level_(aggregation_Level) {}
 
 PrometheusWriter::~PrometheusWriter() {}
 
-Status PrometheusWriter::FlushAggregatedValues() {
-  for (const auto& [metric_name, entity] : aggregated_values_) {
-    for (const auto& [id, value] : entity) {
-      auto it = metric_help_and_type_.find(metric_name);
+Status PrometheusWriter::FlushAggregatedValues(
+    uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex) {
+  uint32_t counter = 0;
+  std::regex p_regex(priority_regex);
+  for (const auto& [metric, map] : aggregated_values_) {
+    if (!priority_regex.empty() && !std::regex_match(metric, p_regex)) {
+      continue;
+    }
+    for (const auto& [id, value] : map) {
+      auto it = metric_help_and_type_.find(metric);
       if (it != metric_help_and_type_.end()) {
-        FlushHelpAndType(metric_name, it->second.type, it->second.help);
+        FlushHelpAndType(metric, it->second.type, it->second.help);
       }
-      RETURN_NOT_OK(FlushSingleEntry(aggregated_attributes_[id], metric_name, value));
+      RETURN_NOT_OK(FlushSingleEntry(aggregated_attributes_[id], metric, value));
+    }
+    if (++counter >= max_tables_metrics_breakdowns) {
+      break;
     }
   }
   return Status::OK();
@@ -76,15 +87,20 @@ void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregatio
 }
 
 void PrometheusWriter::AddAggregatedEntry(
-    const std::string& id, const MetricEntity::AttributeMap& attr,
+    const std::string& entity_id, const MetricEntity::AttributeMap& attr,
     const std::string& metric_name, int64_t value, AggregationFunction aggregation_function,
     const char* type, const char* description) {
   // For #TYPE and #HELP.
   if (export_help_and_type_) {
     metric_help_and_type_.try_emplace(metric_name, MetricHelpAndType{type, description});
   }
-  aggregated_attributes_.try_emplace(id, attr);
-  auto& stored_value = aggregated_values_[metric_name][id];
+  // For tablet level metrics, we roll up on the table level.
+  auto it = aggregated_attributes_.find(entity_id);
+  if (it == aggregated_attributes_.end()) {
+    // If it's the first time we see this table, create the aggregate attrs.
+    aggregated_attributes_.emplace(entity_id, attr);
+  }
+  auto& stored_value = aggregated_values_[metric_name][entity_id];
   switch (aggregation_function) {
     case kSum:
       stored_value += value;
@@ -92,7 +108,7 @@ void PrometheusWriter::AddAggregatedEntry(
     case kMax:
       // If we have a new max, also update the metadata so that it matches correctly.
       if (value > stored_value) {
-        aggregated_attributes_[id] = attr;
+        aggregated_attributes_[entity_id] = attr;
         stored_value = value;
       }
       break;
@@ -103,51 +119,38 @@ void PrometheusWriter::AddAggregatedEntry(
 }
 
 Status PrometheusWriter::WriteSingleEntry(
-    const MetricEntity::AttributeMap& attr,
-    const std::string& name,
-    int64_t value,
-    AggregationFunction aggregation_function,
-    const char* type,
-    const char* description,
-    const AggregationLevels aggregation_levels) {
-  auto metric_type_it = attr.find("metric_type");
-  DCHECK(metric_type_it != attr.end());
-  auto tablet_id_it = attr.find("table_id");
-  if (aggregation_levels & kServerLevel) {
-    if (tablet_id_it == attr.end()) {
-      // Metric type is server, so no need to aggregate.
-      if (export_help_and_type_) {
-        FlushHelpAndType(name, type, description);
-      }
-      return FlushSingleEntry(attr, name, value);
+    const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+    AggregationFunction aggregation_function, const char* type,
+    const char* description) {
+  auto it = attr.find("table_id");
+  if (it == attr.end()) {
+    if (export_help_and_type_) {
+      FlushHelpAndType(name, type, description);
     }
+    return FlushSingleEntry(attr, name, value);
+  }
+  switch (aggregation_level_) {
+  case AggregationMetricLevel::kServer:
+  {
     MetricEntity::AttributeMap new_attr = attr;
     new_attr.erase("table_id");
     new_attr.erase("table_name");
     new_attr.erase("table_type");
     new_attr.erase("namespace_name");
-    AddAggregatedEntry(metric_type_it->second, new_attr, name, value, aggregation_function,
-        type, description);
+    AddAggregatedEntry("", new_attr, name, value, aggregation_function, type, description);
+    break;
   }
-
-  if (aggregation_levels & kTableLevel) {
-    if (metric_type_it->second == "table") {
-      if (export_help_and_type_) {
-        FlushHelpAndType(name, type, description);
-      }
-      return FlushSingleEntry(attr, name, value);
+  case AggregationMetricLevel::kStream:
+  {
+    if (attr.find("stream_id") != attr.end()) {
+        AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value,
+            aggregation_function, type, description);
     }
-    DCHECK(tablet_id_it != attr.end());
-    AddAggregatedEntry(tablet_id_it->second, attr, name, value, aggregation_function,
-        type, description);
+    break;
   }
-
-  if (aggregation_levels & kStreamLevel) {
-    DCHECK(metric_type_it->second == "cdc" || metric_type_it->second == "cdcsdk");
-    auto stream_id_it = attr.find("stream_id");
-    DCHECK(stream_id_it != attr.end());
-    AddAggregatedEntry(stream_id_it->second, attr, name, value, aggregation_function,
-        type, description);
+  case AggregationMetricLevel::kTable:
+    AddAggregatedEntry(it->second, attr, name, value, aggregation_function, type, description);
+    break;
   }
   return Status::OK();
 }

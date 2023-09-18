@@ -32,7 +32,8 @@ class PrometheusWriter {
 
   explicit PrometheusWriter(
       std::stringstream* output,
-      ExportHelpAndType export_help_and_type);
+      ExportHelpAndType export_help_and_type,
+      AggregationMetricLevel aggregation_Level = AggregationMetricLevel::kTable);
 
   virtual ~PrometheusWriter();
 
@@ -51,15 +52,14 @@ class PrometheusWriter {
   }
 
   Status WriteSingleEntry(
-      const MetricEntity::AttributeMap& attr,
-      const std::string& name,
-      int64_t value,
-      AggregationFunction aggregation_function,
-      const char* type = "unknown",
-      const char* description = "unknown",
-      const AggregationLevels aggregation_levels = kServerLevel | kTableLevel);
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+      AggregationFunction aggregation_function, const char* type = "unknown",
+      const char* description = "unknown");
 
-  Status FlushAggregatedValues();
+  Status FlushAggregatedValues(
+      uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
+
+  AggregationMetricLevel GetAggregationMetricLevel() const { return aggregation_level_; }
 
  private:
   friend class MetricsTest;
@@ -82,13 +82,12 @@ class PrometheusWriter {
 
   // Map metric name to type and description.
   std::unordered_map<std::string, MetricHelpAndType> metric_help_and_type_;
+  // Map entity id to attributes
+  std::unordered_map<std::string, MetricEntity::AttributeMap> aggregated_attributes_;
   // Map entity id to values
   using EntityValues = std::unordered_map<std::string, int64_t>;
-  // Map entity id to attributes
-  using EntityAtrributes = std::unordered_map<std::string, MetricEntity::AttributeMap>;
   // Map from metric name to EntityValues
   std::unordered_map<std::string, EntityValues> aggregated_values_;
-  EntityAtrributes aggregated_attributes_;
 
   // Output stream
   std::stringstream* output_;
@@ -96,6 +95,8 @@ class PrometheusWriter {
   int64_t timestamp_;
 
   ExportHelpAndType export_help_and_type_;
+
+  AggregationMetricLevel aggregation_level_;
 };
 
 // Native Metrics Storage Writer - writes prometheus metrics into system table.
