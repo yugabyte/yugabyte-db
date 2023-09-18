@@ -630,7 +630,9 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics?reset_histograms=false");
+  DisplayIconTile(
+      output, "fa-line-chart", "Metrics",
+      "/prometheus-metrics?reset_histograms=false&show_help=true");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
