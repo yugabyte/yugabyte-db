@@ -58,6 +58,7 @@ DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
+DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 
 using namespace std::literals;
 
@@ -754,22 +755,31 @@ class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
       60s * kTimeMultiplier,
       Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
   }
+
+  void TestAddServersAndValidate() {
+    constexpr int kNumTablets = 15;
+    constexpr int kNumWaiters = 30;
+
+    ASSERT_OK(SetupData(kNumTablets));
+    ASSERT_OK(cluster_->FlushTablets());
+    auto conn = ASSERT_RESULT(SetupWaitersAndBlocker(kNumWaiters));
+
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(WaitForLoadBalance(4));
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(WaitForLoadBalance(5));
+
+    UnblockWaitersAndValidate(&conn, kNumWaiters);
+  }
 };
 
 TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServers)) {
-  constexpr int kNumTablets = 15;
-  constexpr int kNumWaiters = 30;
+  TestAddServersAndValidate();
+}
 
-  ASSERT_OK(SetupData(kNumTablets));
-  ASSERT_OK(cluster_->FlushTablets());
-  auto conn = ASSERT_RESULT(SetupWaitersAndBlocker(kNumWaiters));
-
-  ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(WaitForLoadBalance(4));
-  ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(WaitForLoadBalance(5));
-
-  UnblockWaitersAndValidate(&conn, kNumWaiters);
+TEST_F(PgLeaderChangeWaitQueuesTest, AddTwoServersDelayBlockerStatusRpcCallback) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_rpc_status_req_callback_ms) = 100;
+  TestAddServersAndValidate();
 }
 
 TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer)) {
