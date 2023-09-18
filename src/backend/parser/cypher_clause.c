@@ -4269,11 +4269,12 @@ transform_match_create_path_variable(cypher_parsestate *cpstate,
                                      cypher_path *path, List *entities)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    Oid build_path_oid;
-    FuncExpr *fexpr;
-    int resno;
+    Oid build_path_oid = InvalidOid;
+    Expr *expr = NULL;
+    int resno = -1;
     List *entity_exprs = NIL;
-    ListCell *lc;
+    ListCell *lc = NULL;
+    bool null_path_entity = false;
 
     if (list_length(entities) < 1)
     {
@@ -4283,28 +4284,51 @@ transform_match_create_path_variable(cypher_parsestate *cpstate,
                  parser_errposition(pstate, path->location)));
     }
 
-    // extract the expr for each entity
+    /* extract the expr for each entity */
     foreach (lc, entities)
     {
         transform_entity *entity = lfirst(lc);
 
         if (entity->expr != NULL)
         {
+            /*
+             * Is it a NULL constant, meaning there was an invalid label?
+             * If so, flag it for later
+             */
+            if (IsA(entity->expr, Const) &&
+                ((Const*)(entity->expr))->constisnull)
+            {
+                null_path_entity = true;
+            }
+
             entity_exprs = lappend(entity_exprs, entity->expr);
         }
     }
 
-    // get the oid for the path creation function
+    /* get the oid for the path creation function */
     build_path_oid = get_ag_func_oid("_agtype_build_path", 1, ANYOID);
 
-    // build the expr node for the function
-    fexpr = makeFuncExpr(build_path_oid, AGTYPEOID, entity_exprs, InvalidOid,
-                         InvalidOid, COERCE_EXPLICIT_CALL);
+    /*
+     * If we have a NULL in the path, there is an invalid label, so there aren't
+     * any paths to be selected - the path variable will be NULL. In this case
+     * we need to return a NULL constant instead.
+     */
+    if (null_path_entity)
+    {
+        expr = (Expr*)makeNullConst(AGTYPEOID, -1, InvalidOid);
+    }
+    /* otherwise, build the expr node for the function */
+    else
+    {
+        expr = (Expr*)makeFuncExpr(build_path_oid, AGTYPEOID, entity_exprs,
+                                   InvalidOid, InvalidOid,
+                                   COERCE_EXPLICIT_CALL);
+    }
 
     resno = cpstate->pstate.p_next_resno++;
 
-    // create the target entry
-    return makeTargetEntry((Expr *)fexpr, resno, path->var_name, false);
+    /* create the target entry */
+    return makeTargetEntry(expr, resno, path->var_name, false);
 }
 
 /*

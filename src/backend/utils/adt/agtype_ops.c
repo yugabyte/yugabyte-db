@@ -1163,8 +1163,10 @@ PG_FUNCTION_INFO_V1(agtype_contains);
  */
 Datum agtype_contains(PG_FUNCTION_ARGS)
 {
-    agtype_iterator *constraint_it, *property_it;
-    agtype *properties, *constraints;
+    agtype_iterator *constraint_it = NULL;
+    agtype_iterator *property_it = NULL;
+    agtype *properties = NULL;
+    agtype *constraints = NULL;
 
     if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
     {
@@ -1174,8 +1176,13 @@ Datum agtype_contains(PG_FUNCTION_ARGS)
     properties = AG_GET_ARG_AGTYPE_P(0);
     constraints = AG_GET_ARG_AGTYPE_P(1);
 
-    constraint_it = agtype_iterator_init(&constraints->root);
+    if (AGT_ROOT_IS_OBJECT(properties) != AGT_ROOT_IS_OBJECT(constraints))
+    {
+        PG_RETURN_BOOL(false);
+    }
+
     property_it = agtype_iterator_init(&properties->root);
+    constraint_it = agtype_iterator_init(&constraints->root);
 
     PG_RETURN_BOOL(agtype_deep_contains(&property_it, &constraint_it));
 }

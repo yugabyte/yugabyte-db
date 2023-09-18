@@ -96,6 +96,8 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn);
 static Node *transform_WholeRowRef(ParseState *pstate, ParseNamespaceItem *pnsi,
                                    int location, int sublevels_up);
 static ArrayExpr *make_agtype_array_expr(List *args);
+static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
+                                                  ColumnRef *cr);
 
 /* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
@@ -806,6 +808,52 @@ static ArrayExpr *make_agtype_array_expr(List *args)
     return newa;
 }
 
+/*
+ * Transform a ColumnRef for indirection. Try to find the rte that the ColumnRef
+ * references and pass the properties of that rte as what the ColumnRef is
+ * referencing. Otherwise, reference the Var.
+ */
+static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
+                                                  ColumnRef *cr)
+{
+    ParseState *pstate = (ParseState *)cpstate;
+    ParseNamespaceItem *pnsi = NULL;
+    Node *field1 = linitial(cr->fields);
+    char *relname = NULL;
+    Node *node = NULL;
+    int levels_up = 0;
+
+    Assert(IsA(field1, String));
+    relname = strVal(field1);
+
+    /* locate the referenced RTE (used to be find_rte(cpstate, relname)) */
+    pnsi = refnameNamespaceItem(pstate, NULL, relname, cr->location,
+                                &levels_up);
+
+    /* if we didn't find anything, return NULL */
+    if (!pnsi)
+    {
+        return NULL;
+    }
+
+    /* find the properties column of the NSI and return a var for it */
+    node = scanNSItemForColumn(pstate, pnsi, 0, "properties", cr->location);
+
+    /*
+     * Error out if we couldn't find it.
+     *
+     * TODO: Should we error out or return NULL for further processing?
+     *       For now, just error out.
+     */
+    if (!node)
+    {
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+                        errmsg("could not find properties for %s", relname)));
+    }
+
+    return node;
+}
+
 static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                                      A_Indirection *a_ind)
 {
@@ -827,8 +875,25 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     func_slice_oid = get_ag_func_oid("agtype_access_slice", 3, AGTYPEOID,
                                      AGTYPEOID, AGTYPEOID);
 
-    /* transform indirection argument expression */
-    ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
+    /*
+     * If the indirection argument is a ColumnRef, we want to pull out the
+     * properties, as a var node, if possible.
+     */
+    if (IsA(a_ind->arg, ColumnRef))
+    {
+        ColumnRef *cr = (ColumnRef *)a_ind->arg;
+
+        ind_arg_expr = transform_column_ref_for_indirection(cpstate, cr);
+    }
+
+    /*
+     * If we didn't get the properties from a ColumnRef, just transform the
+     * indirection argument.
+     */
+    if (ind_arg_expr == NULL)
+    {
+        ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
+    }
 
     /* get the location of the expression */
     location = exprLocation(ind_arg_expr);
