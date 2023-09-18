@@ -87,7 +87,6 @@ public class TestPgTransactions extends BasePgSQLTest {
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     Map<String, String> disableWaitOnConflict = new TreeMap<String, String>();
     disableWaitOnConflict.put("enable_wait_queues", "false");
-    disableWaitOnConflict.put("enable_deadlock_detection", "false");
     markClusterNeedsRecreation();
     restartClusterWithFlags(disableWaitOnConflict, disableWaitOnConflict);
   }

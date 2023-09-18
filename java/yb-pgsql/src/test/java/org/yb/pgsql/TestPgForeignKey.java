@@ -38,7 +38,6 @@ public class TestPgForeignKey extends BasePgSQLTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     flagMap.put("enable_wait_queues", "false");
-    flagMap.put("enable_deadlock_detection", "false");
     return flagMap;
   }
 

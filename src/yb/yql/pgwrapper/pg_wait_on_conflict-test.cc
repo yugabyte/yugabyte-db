@@ -41,7 +41,6 @@
 #include "yb/util/pb_util.h"
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -73,7 +72,6 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
@@ -804,7 +802,6 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgTabletSplitTestBase::SetUp();
@@ -897,7 +894,6 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
