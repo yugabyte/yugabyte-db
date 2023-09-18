@@ -76,3 +76,21 @@ Deploy YugabyteDB anywhere, in any combination - public, private, and hybrid clo
 - Align the specific features and capabilities of different clouds with the requirements of your applications
 
 --> [Explore hybrid- and multi-cloud capabilities](../develop/multi-cloud/)
+
+## Next steps
+
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="Quick start"
+    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
+    buttonText="Get Started"
+    buttonUrl="../quick-start-yugabytedb-managed/"
+  >}}
+
+  {{< sections/bottom-image-box
+    title="Explore YugabyteDB"
+    description="Test YugabyteDB's features through examples including API compatibility, availability, scalability, and more."
+    buttonText="Explore"
+    buttonUrl="../explore/"
+  >}}
+{{< /sections/2-boxes >}}

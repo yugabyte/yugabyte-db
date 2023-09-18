@@ -37,6 +37,152 @@ resources:
   >}}
 {{< /sections/2-boxes >}}
 
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="New to YugabyteDB"
+    description="Why YugabyteDB should power your next cloud-native application."
+    linkText1="Key benefits"
+    linkUrl1="/preview/features/"
+    linkText2="Quick start"
+    linkUrl2="/preview/quick-start-yugabytedb-managed"
+    linkText3="Explore YugabyteDB"
+    linkUrl3="/preview/explore/"
+  >}}
+
+  {{< sections/3-box-card
+    title="For developers"
+    description="Get instantly productive with familiar APIs and drivers."
+    linkText1="Build a Hello world application"
+    linkUrl1="/preview/develop/build-apps/"
+    linkText2="Connect using drivers and ORMs"
+    linkUrl2="/preview/drivers-orms/"
+    linkText3="Distributed SQL APIs"
+    linkUrl3="/preview/api/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Products"
+    description="Open source, enterprise DBaas, or fully managed."
+    linkText1="YugabyteDB"
+    linkUrl1="/preview/"
+    linkText2="YugabyteDB Anywhere"
+    linkUrl2="/preview/yugabyte-platform/"
+    linkText3="YugabyteDB Managed"
+    linkUrl3="/preview/yugabyte-cloud/"
+    linkText4="YugabyteDB Voyager"
+    linkUrl4="/preview/yugabyte-voyager/"
+  >}}
+{{< /sections/3-boxes >}}
+
+<!--
+### New to YugabyteDB?
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Key benefits"
+    description="What is YugabyteDB, and why it should power your cloud-native applications."
+    buttonText="Key benefits"
+    buttonUrl="/preview/features/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Quick start"
+    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes."
+    buttonText="Get Started"
+    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Explore YugabyteDB"
+    description="Test YugabyteDB's features through examples, including API compatibility, availability, scalability, and more."
+    buttonText="Explore"
+    buttonUrl="/preview/explore/"
+  >}}
+{{< /sections/3-boxes >}}
+
+### For developers
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Build a Hello world application"
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
+    buttonText="Build a Hello world application"
+    buttonUrl="/preview/develop/build-apps/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Connect using drivers and ORMs"
+    description="Connect applications using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
+    buttonText="Drivers and ORMs"
+    buttonUrl="/preview/drivers-orms/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Common patterns"
+    description="Leverage common data models to design robust and efficient cloud-native applications."
+    buttonText="Common patterns"
+    buttonUrl="/preview/develop/common-patterns//"
+  >}}
+{{< /sections/3-boxes >}}
+-->
+
+### Operations
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Deploy YugabyteDB"
+    description="Deploy YugabyteDB to the public cloud, a private data center, or Kubernetes."
+    buttonText="Deploy YugabyteDB"
+    buttonUrl="/preview/deploy/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Manage your deployment"
+    description="Back up, change cluster configuration, and upgrade deplopyments."
+    buttonText="Manage your deployment"
+    buttonUrl="/preview/manage/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Migrate"
+    description="Use YugabyteDB Voyager to manage end-to-end database migration."
+    buttonText="Migrate"
+    buttonUrl="/preview/yugabyte-voyager/"
+  >}}
+{{< /sections/3-boxes >}}
+
+<!--
+### Products
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="YugabyteDB"
+    description="The open source cloud-native distributed SQL database."
+    buttonText="Explore YugabyteDB"
+    buttonUrl="/preview/"
+    imageAlt="YugabyteDB Core"
+    imageUrl="/icons/database.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Anywhere"
+    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-platform/"
+    imageAlt="YugabyteDB Anywhere"
+    imageUrl="/icons/server.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Managed"
+    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-cloud/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/icons/cloud.svg"
+  >}}
+{{< /sections/3-boxes >}}
+
 ## Learn through examples
 
 {{< sections/3-boxes-top-image >}}
@@ -68,37 +214,6 @@ resources:
   >}}
 {{< /sections/3-boxes-top-image >}}
 
-## Products
-
-{{< sections/3-boxes >}}
-  {{< sections/3-box-card
-    title="YugabyteDB"
-    description="Explore the features of the open source cloud-native distributed SQL database."
-    buttonText="Explore YugabyteDB"
-    buttonUrl="/preview/explore/"
-    imageAlt="Explore YugabyteDB"
-    imageUrl="/icons/database.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Anywhere"
-    description="Deploy YugabyteDB across any cloud and manage deployments via automation."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-platform/"
-    imageAlt="YugabyteDB Anywhere"
-    imageUrl="/icons/server.svg"
-  >}}
-
-  {{< sections/3-box-card
-    title="YugabyteDB Managed"
-    description="Create and connect to a scalable, resilient, PostgreSQL-compatible database in minutes."
-    buttonText="Documentation"
-    buttonUrl="/preview/yugabyte-cloud/"
-    imageAlt="YugabyteDB Managed"
-    imageUrl="/icons/cloud.svg"
-  >}}
-{{< /sections/3-boxes >}}
-
 ## Key concepts
 
 {{< sections/3-boxes >}}
@@ -129,8 +244,9 @@ resources:
     imageUrl="/icons/geo.svg"
   >}}
 {{< /sections/3-boxes >}}
+-->
 
-## More resources
+### More resources
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
@@ -149,10 +265,19 @@ resources:
     linkUrl1="/preview/architecture/"
     linkText2="Benchmark YugabyteDB"
     linkUrl2="/preview/benchmark/"
-    linkText3="Drivers and ORMs"
-    linkUrl3="/preview/drivers-orms/"
   >}}
 
+  {{< sections/3-box-card
+    title="Learn more"
+    linkText1="Download"
+    linkUrl1="https://download.yugabyte.com"
+    linkText2="Key concepts"
+    linkUrl2="https://www.yugabyte.com/tech/database-sharding/"
+    linkText3="YugabyteDB Blog"
+    linkUrl3="https://www.yugabyte.com/blog/"
+  >}}
+
+<!--
   {{< sections/3-box-card
     title="Distributed SQL APIs"
     linkText1="YSQL"
@@ -160,4 +285,5 @@ resources:
     linkText2="YCQL"
     linkUrl2="/preview/api/ycql/"
   >}}
+-->
 {{< /sections/3-boxes >}}
