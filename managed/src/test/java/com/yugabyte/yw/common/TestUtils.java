@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,5 +47,11 @@ public class TestUtils {
     } catch (Exception e) {
       throw new RuntimeException("Error deserializing object: ", e);
     }
+  }
+
+  public static String generateLongString(int length) {
+    char[] chars = new char[length];
+    Arrays.fill(chars, 'A');
+    return new String(chars);
   }
 }
