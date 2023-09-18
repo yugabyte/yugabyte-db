@@ -55,6 +55,10 @@ const useStyles = makeStyles((theme) => ({
   storageTypeSelectField: {
     maxWidth: theme.spacing(35.25),
     minWidth: theme.spacing(30)
+  },
+  unitLabelField: {
+    marginLeft: theme.spacing(2),
+    alignSelf: 'center'
   }
 }));
 
@@ -270,6 +274,11 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     inputMode="numeric"
                   />
                 </Box>
+                <span className={classes.unitLabelField}>
+                  {provider?.code === CloudType.kubernetes
+                    ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
+                    : t('universeForm.instanceConfig.volumeSizeUnit')}
+                </span>
               </Box>
             </Box>
           </Box>
@@ -376,6 +385,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 inputMode="numeric"
               />
             </Box>
+            <span className={classes.unitLabelField}>
+              {t('universeForm.instanceConfig.throughputUnit')}
+            </span>
           </Box>
         </Grid>
       </Grid>
