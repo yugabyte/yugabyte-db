@@ -188,12 +188,14 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
   MetricRegistry* registry = this->harness()->metrics_registry();
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(registry->WriteAsJson(&writer, MetricJsonOptions()));
+  MetricEntityOptions entity_opts;
+  entity_opts.metrics.push_back("*");
+  ASSERT_OK(registry->WriteAsJson(&writer, entity_opts, MetricJsonOptions()));
   // Open tablet, should still work. Need a new writer though, as we should not overwrite an already
   // existing root.
   ASSERT_OK(this->harness()->Open());
   JsonWriter new_writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(registry->WriteAsJson(&new_writer, MetricJsonOptions()));
+  ASSERT_OK(registry->WriteAsJson(&new_writer, entity_opts, MetricJsonOptions()));
 }
 
 TYPED_TEST(TestTablet, TestFlushedOpId) {
