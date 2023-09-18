@@ -1,3 +1,10 @@
+hypopg (1.4.0-2) unstable; urgency=medium
+
+  * Upload for PostgreSQL 16.
+  * Use ${postgresql:Depends}.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 18 Sep 2023 12:05:56 +0200
+
 hypopg (1.4.0-1) unstable; urgency=medium
 
   * New upstream version.
