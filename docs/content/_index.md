@@ -260,8 +260,6 @@ resources:
     title="More links"
     linkText1="Download"
     linkUrl1="https://download.yugabyte.com"
-    linkText2="Key concepts"
-    linkUrl2="https://www.yugabyte.com/tech/database-sharding/"
     linkText3="YugabyteDB Blog"
     linkUrl3="https://www.yugabyte.com/blog/"
   >}}
