@@ -300,7 +300,10 @@
         "title": "Instance Configuration",
         "useTimeSync": "Use {{provider}} Time Sync",
         "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
-        "volumeInfo": "Volume Info"
+        "volumeInfo": "Volume Info",
+        "volumeSizeUnit": "GB",
+        "throughputUnit": "MB/s",
+        "k8VolumeSizeUnit": "Gib"
       },
       "securityConfig": {
         "title": "Security Configurations",

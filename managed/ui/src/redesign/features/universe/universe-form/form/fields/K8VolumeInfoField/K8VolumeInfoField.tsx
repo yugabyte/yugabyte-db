@@ -17,6 +17,10 @@ import {
 const useStyles = makeStyles((theme) => ({
   volumeInfoTextField: {
     width: theme.spacing(15.5)
+  },
+  unitLabelField: {
+    marginLeft: theme.spacing(2),
+    alignSelf: 'center'
   }
 }));
 
@@ -123,6 +127,9 @@ export const K8VolumeInfoField = ({
                         inputMode="numeric"
                       />
                     </Box>
+                    <span className={classes.unitLabelField}>
+                      {t('universeForm.instanceConfig.k8VolumeSizeUnit')}
+                    </span>
                   </Box>
                 </Box>
               </Box>
