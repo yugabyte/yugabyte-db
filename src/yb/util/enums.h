@@ -123,8 +123,7 @@ class AllEnumItemsIterable {
 #define YB_ENUM_MAX_PREFIX(enum_name, prefix, value) prefix
 #define YB_ENUM_MAX_VALUE(enum_name, prefix, value) value
 
-#define YB_DEFINE_ENUM_IMPL(enum_name, prefix, list) \
-  enum class enum_name { \
+#define YB_DEFINE_ENUM_IMPL_BODY(enum_name, prefix, list) { \
     BOOST_PP_SEQ_FOR_EACH(YB_ENUM_ITEM, prefix, list) \
   }; \
   \
@@ -172,9 +171,19 @@ class AllEnumItemsIterable {
   } \
   /**/
 
+#define YB_DEFINE_ENUM_IMPL(enum_name, prefix, list) \
+  enum class enum_name \
+  YB_DEFINE_ENUM_IMPL_BODY(enum_name, prefix, list)
+
+#define YB_DEFINE_ENUM_IMPL_TYPE(enum_name, type, prefix, list) \
+  enum class enum_name : type \
+  YB_DEFINE_ENUM_IMPL_BODY(enum_name, prefix, list)
+
 // Please see the usage of YB_DEFINE_ENUM before the auxiliary macros above.
 #define YB_DEFINE_ENUM(enum_name, list) YB_DEFINE_ENUM_IMPL(enum_name, BOOST_PP_NIL, list)
 #define YB_DEFINE_ENUM_EX(enum_name, prefix, list) YB_DEFINE_ENUM_IMPL(enum_name, (prefix), list)
+#define YB_DEFINE_TYPED_ENUM(enum_name, type, list) \
+  YB_DEFINE_ENUM_IMPL_TYPE(enum_name, type, BOOST_PP_NIL, list)
 
 // This macro can be used after exhaustive (compile-time-checked) switches on enums without a
 // default clause to handle invalid values due to memory corruption.
