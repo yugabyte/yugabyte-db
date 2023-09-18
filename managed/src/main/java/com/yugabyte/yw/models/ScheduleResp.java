@@ -46,5 +46,6 @@ public class ScheduleResp {
     long timeBeforeDelete;
     boolean useTablespaces;
     TimeUnit expiryTimeUnit;
+    long parallelism;
   }
 }

@@ -1404,7 +1404,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
     ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
 
     LOG(INFO) << "Reading Rows";
-    auto select_res = ASSERT_RESULT(conn.FetchValue<int>(Format("SELECT * FROM $0", table_name)));
+    auto select_res = ASSERT_RESULT(conn.FetchValue<int32_t>(
+        Format("SELECT * FROM $0", table_name)));
     LOG(INFO) << "Read result: " << select_res;
     ASSERT_EQ(select_res, 1);
 

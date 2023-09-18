@@ -190,7 +190,7 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
 
-DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, false,
+DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, true,
     "Whether to return changed metrics for YSQL queries in RPC response.");
 
 DEFINE_UNKNOWN_bool(cleanup_intents_sst_files, true,
@@ -1648,7 +1648,9 @@ Status Tablet::HandlePgsqlReadRequest(
     if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
       TraceScopedMetrics();
     }
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
+    auto metrics_capture = pgsql_read_request.metrics_capture();
+    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+        metrics_capture == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
       scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
       scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);
     }
@@ -2308,7 +2310,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   auto& res = result.get();
   CHECK_EQ(PQntuples(res.get()), 1);
   CHECK_EQ(PQnfields(res.get()), 1);
-  const auto returned_spec = CHECK_RESULT(pgwrapper::GetString(res.get(), 0, 0));
+  const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
   VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
 
   PgsqlBackfillSpecPB spec;

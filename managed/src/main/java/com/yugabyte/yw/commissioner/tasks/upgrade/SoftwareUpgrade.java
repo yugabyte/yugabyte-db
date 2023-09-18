@@ -85,7 +85,7 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
                   createSoftwareInstallTasks(
                       nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
-              SOFTWARE_UPGRADE_CONTEXT,
+              getUpgradeContext(),
               false);
 
           if (taskParams().installYbc) {

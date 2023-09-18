@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-techPreview: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+techPreview: /preview/releases/versioning/#feature-availability
 rightNav:
   hideH4: true
 type: docs

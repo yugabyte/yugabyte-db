@@ -150,13 +150,13 @@ export const getUniverseDedicatedNodeCount = (nodeDetailsSet, cluster = null) =>
     (node) =>
       (cluster === null || node.placementUuid === cluster.uuid) &&
       _.includes(nodeInClusterStates, node.state) &&
-      node.dedicatedTo === 'TSERVER'
+      node.isTserver
   ).length;
   const numMasterNodes = nodes.filter(
     (node) =>
       (cluster === null || node.placementUuid === cluster.uuid) &&
       _.includes(nodeInClusterStates, node.state) &&
-      node.dedicatedTo === 'MASTER'
+      node.isMaster
   ).length;
   return {
     numTserverNodes,

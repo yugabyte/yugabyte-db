@@ -230,7 +230,9 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
 
 class PgSession::RunHelper {
  public:
-  RunHelper(PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit)
+  RunHelper(PgSession* pg_session,
+            SessionType session_type,
+            HybridTime in_txn_limit)
       : pg_session_(*pg_session),
         session_type_(session_type),
         in_txn_limit_(in_txn_limit) {

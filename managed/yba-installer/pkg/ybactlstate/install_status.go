@@ -47,6 +47,7 @@ const (
 )
 
 var toStatus = map[string]status{
+	"NoStatus":     NoStatus,
 	"Installed":    InstalledStatus,
 	"Installing":   InstallingStatus,
 	"Upgrading":    UpgradingStatus,
@@ -54,6 +55,7 @@ var toStatus = map[string]status{
 	"Soft Cleaned": SoftCleanStatus,
 	"Uninstalled":  UninstalledStatus,
 	"Migrating":    MigratingStatus,
+	"Migrate":      MigrateStatus,
 	"Rollback":     RollbackStatus,
 	"Finishing":    FinishingStatus,
 }
@@ -61,6 +63,8 @@ var toStatus = map[string]status{
 // String value of the status
 func (s status) String() string {
 	switch s {
+	case NoStatus:
+		return "NoStatus"
 	case InstalledStatus:
 		return "Installed"
 	case InstallingStatus:
@@ -75,6 +79,8 @@ func (s status) String() string {
 		return "Uninstalled"
 	case MigratingStatus:
 		return "Migrating"
+	case MigrateStatus:
+		return "Migrate"
 	case RollbackStatus:
 		return "Rollback"
 	case FinishingStatus:

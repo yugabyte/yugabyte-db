@@ -1238,7 +1238,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
       // Wrapping into a block to unlock tablet after parsing is done.
       {
         const auto middle_tablet = (++tablets.begin())->second;
-        const auto& partition = middle_tablet->LockForRead()->pb.partition();
+        const auto partition = middle_tablet->LockForRead()->pb.partition();
         ASSERT_TRUE(partition.has_partition_key_start());
         ASSERT_TRUE(partition.has_partition_key_end());
         partition_start = ASSERT_RESULT(parse_partition_key(partition.partition_key_start()));
@@ -1324,7 +1324,7 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
     expected_clause << "SPLIT AT VALUES (";
     bool need_comma = false;
     for (size_t n = 0; n < tablets.size(); ++n) {
-      const auto& partition = tablets[n]->LockForRead()->pb.partition();
+      const auto partition = tablets[n]->LockForRead()->pb.partition();
       if (partition.has_partition_key_start()) {
         if (partition.partition_key_start().empty()) {
           continue;

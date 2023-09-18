@@ -199,8 +199,6 @@ public class UsersController extends AuthenticatedController {
       if (formData.getRole() != null && formData.getRoleResourceDefinitions() == null) {
         // Get the built-in role UUID by name.
         Role role = Role.getOrBadRequest(customerUUID, formData.getRole().toString());
-        // Need to define all available resources in resource group as default.
-        ResourceGroup resourceGroup = ResourceGroup.getSystemDefaultResourceGroup(customerUUID);
         // Create the user.
         user =
             Users.create(
@@ -209,6 +207,9 @@ public class UsersController extends AuthenticatedController {
                 formData.getRole(),
                 customerUUID,
                 false);
+        // Need to define all available resources in resource group as default.
+        ResourceGroup resourceGroup =
+            ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
         // Create a single role binding for the user.
         List<RoleBinding> createdRoleBindings =
             roleBindingUtil.setUserRoleBindings(
@@ -371,7 +372,7 @@ public class UsersController extends AuthenticatedController {
       // Get the built-in role UUID by name.
       Role newRbacRole = Role.getOrBadRequest(customerUUID, role);
       // Need to define all available resources in resource group as default.
-      ResourceGroup resourceGroup = ResourceGroup.getSystemDefaultResourceGroup(customerUUID);
+      ResourceGroup resourceGroup = ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
       // Create a single role binding for the user.
       List<RoleBinding> createdRoleBindings =
           roleBindingUtil.setUserRoleBindings(

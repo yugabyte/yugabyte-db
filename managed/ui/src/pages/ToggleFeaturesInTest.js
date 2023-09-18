@@ -1,9 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-import { ToggleFeatureInTest } from '../components/toggleFeatureInTest';
+import { lazy, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const ToggleFeatureComponent = lazy(() => import('../components/toggleFeatureInTest'));
 
 const ToggleFeaturesInTest = () => {
-  return <ToggleFeatureInTest />;
+  return (
+    <Suspense fallback={YBLoadingCircleIcon}>
+      <ToggleFeatureComponent />
+    </Suspense>
+  );
 };
 
 export default ToggleFeaturesInTest;

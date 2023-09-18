@@ -239,6 +239,10 @@ public class YbcBackupUtil {
     @JsonProperty("universe_keys")
     @Valid
     public JsonNode universeKeys;
+
+    @JsonProperty("master_key_metadata")
+    @Valid
+    public JsonNode masterKeyMetadata;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -947,7 +951,8 @@ public class YbcBackupUtil {
       ObjectNode universeKeyHistory =
           encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID());
       if (universeKeyHistory != null) {
-        config.universeKeys = universeKeyHistory;
+        config.universeKeys = universeKeyHistory.get("universe_keys");
+        config.masterKeyMetadata = universeKeyHistory.get("master_key_metadata");
       }
       BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
           BackupServiceTaskExtendedArgs.newBuilder();

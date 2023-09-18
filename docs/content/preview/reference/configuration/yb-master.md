@@ -736,6 +736,12 @@ Home page of the YB-Master server that gives a high level overview of the cluste
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
 
+### Namespaces
+
+List of namespaces present in the cluster.
+
+![master-namespaces](/images/admin/master-namespaces.png)
+
 ### Tables
 
 List of tables present in the cluster.

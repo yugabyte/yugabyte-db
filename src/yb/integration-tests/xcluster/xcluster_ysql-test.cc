@@ -148,7 +148,6 @@ using client::YBTable;
 using client::YBTableName;
 using master::GetNamespaceInfoResponsePB;
 
-using pgwrapper::GetInt32;
 using pgwrapper::GetValue;
 using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
@@ -544,7 +543,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         }
         int result;
         for (int i = 0; i < num_results; ++i) {
-          result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+          result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
           if (i != result) {
             return false;
           }
@@ -643,7 +642,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
           }
           int result;
           for (int i = 0; i < num_results; ++i) {
-            result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+            result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
             if (i != result) {
               return false;
             }
@@ -779,7 +778,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         LOG(INFO) << "Read records: " << num_read_records;
         if (commit_all_transactions) {
           for (uint32_t i = 0; i < num_read_records; ++i) {
-            auto val = ASSERT_RESULT(GetInt32(consumer_results.get(), i, 0));
+            auto val = ASSERT_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
             ASSERT_EQ(val, i);
           }
         }
@@ -1688,7 +1687,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
     ASSERT_EQ(kNumRecords, PQntuples(producer_results.get()));
     int result;
     for (int i = 0; i < kNumRecords; ++i) {
-      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
       ASSERT_EQ(i, result);
     }
   }
@@ -1715,7 +1714,7 @@ void XClusterYsqlTest::ValidateSimpleReplicationWithPackedRowsUpgrade(
       }
       int result;
       for (int i = 0; i < num_results; ++i) {
-        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
         if (i != result) {
           return false;
         }
@@ -1864,7 +1863,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
     }
     int result;
     for (int i = 0; i < num_results; ++i) {
-      result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+      result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
       if (i != result) {
         LOG(INFO) << "Different value for key " << i << ": " << result;
         return false;
@@ -2264,7 +2263,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
       }
       int result;
       for (int i = 0; i < 5; ++i) {
-        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
         if ((1000 + i) != result) {
           return false;
         }
@@ -2427,7 +2426,7 @@ TEST_F(XClusterYsqlTest, TablegroupReplication) {
       }
       int result;
       for (int i = 0; i < num_results; ++i) {
-        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
         if (i != result) {
           return false;
         }
@@ -2574,7 +2573,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
     ASSERT_EQ(100, PQntuples(producer_results.get()));
     int result;
     for (int i = 0; i < 100; ++i) {
-      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
       ASSERT_EQ(i, result);
     }
   }
@@ -2712,7 +2711,7 @@ TEST_F(XClusterYsqlTest, DeleteTableChecks) {
     ASSERT_EQ(100, PQntuples(producer_results.get()));
     int result;
     for (int i = 0; i < 100; ++i) {
-      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
       ASSERT_EQ(i, result);
     }
   }
@@ -2771,7 +2770,7 @@ TEST_F(XClusterYsqlTest, DeleteTableChecks) {
       }
       int result;
       for (int i = 0; i < num_results; ++i) {
-        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
         if (i != result) {
           return false;
         }
@@ -2820,7 +2819,7 @@ TEST_F(XClusterYsqlTest, TruncateTableChecks) {
     ASSERT_EQ(100, PQntuples(producer_results.get()));
     int result;
     for (int i = 0; i < 100; ++i) {
-      result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+      result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
       ASSERT_EQ(i, result);
     }
   }
@@ -2844,7 +2843,7 @@ TEST_F(XClusterYsqlTest, TruncateTableChecks) {
       }
       int result;
       for (int i = 0; i < num_results; ++i) {
-        result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+        result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
         if (i != result) {
           return false;
         }
@@ -3236,7 +3235,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   int result;
 
   for (int i = 0; i < batch_insert_count; ++i) {
-    result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+    result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
     ASSERT_EQ(i, result);
   }
 
@@ -3255,7 +3254,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     }
     int result;
     for (int i = 0; i < num_results; ++i) {
-      result = VERIFY_RESULT(GetInt32(consumer_results.get(), i, 0));
+      result = VERIFY_RESULT(GetValue<int32_t>(consumer_results.get(), i, 0));
       if (i != result) {
         return false;
       }
@@ -3303,7 +3302,7 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
   producer_results = ScanToStrings(producer_table_->name(), &producer_cluster_);
   ASSERT_EQ(batch_insert_count * 2, PQntuples(producer_results.get()));
   for (int i = 10; i < 20; ++i) {
-    result = ASSERT_RESULT(GetInt32(producer_results.get(), i, 0));
+    result = ASSERT_RESULT(GetValue<int32_t>(producer_results.get(), i, 0));
     ASSERT_EQ(i, result);
   }
   // 5. Make sure this data is also replicated now.

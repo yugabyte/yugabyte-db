@@ -1232,21 +1232,21 @@ Default: `1GB`
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
 
-### Home
-
-Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of this specific instance.
-
-![tserver-home](/images/admin/tserver-home.png)
-
 ### Dashboards
 
-Here's a list of all dashboards to review the ongoing operations:
+List of all dashboards to review ongoing operations.
 
 ![tserver-dashboards](/images/admin/tserver-dashboards.png)
 
+### Tables
+
+List of all tables managed by this specific instance, sorted by [namespace](../yb-master/#namespaces).
+
+![tserver-tablets](/images/admin/tserver-tables.png)
+
 ### Tablets
 
-List of all tablets managed by this specific instance, sorted by the table name.
+List of all tablets managed by this specific instance.
 
 ![tserver-tablets](/images/admin/tserver-tablets.png)
 

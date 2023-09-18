@@ -3,7 +3,7 @@ title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Managed cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear

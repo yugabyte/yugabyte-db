@@ -62,6 +62,8 @@ module.exports = {
         })
       ];
 
+      webpackConfig.optimization.nodeEnv = 'production';
+
       webpackConfig.module.rules.unshift({
         test: /\.svg$/,
         use: [

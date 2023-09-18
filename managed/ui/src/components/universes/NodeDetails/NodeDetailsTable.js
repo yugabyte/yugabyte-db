@@ -111,14 +111,26 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getIpPortLinks = (cell, row) => {
+      const cluster =
+        clusterType === 'primary'
+          ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
+          : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
+      const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
+
       return (
         <Fragment>
-          {row.dedicatedTo === NodeType.Master.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.Master.toUpperCase() &&
             formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {row.dedicatedTo === NodeType.TServer.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.TServer.toUpperCase() &&
             formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
         </Fragment>
       );
     };

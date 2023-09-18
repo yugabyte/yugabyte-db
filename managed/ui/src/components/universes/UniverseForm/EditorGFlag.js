@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import AceEditor from 'react-ace';
 //Icons
 import Bulb from '../images/bulb.svg';

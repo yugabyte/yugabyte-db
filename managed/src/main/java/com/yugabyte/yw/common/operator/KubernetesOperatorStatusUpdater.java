@@ -14,6 +14,8 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.*;
+import io.yugabyte.operator.v1alpha1.Backup;
+import io.yugabyte.operator.v1alpha1.BackupStatus;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -81,6 +83,46 @@ public class KubernetesOperatorStatusUpdater {
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
+    }
+  }
+  /*
+   * Update Backup Status
+   */
+  public void updateBackupStatus(
+      com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
+    try {
+      if (backup != null) {
+        log.info("Update Backup Status called for task {} ", taskUUID);
+        try (final KubernetesClient kubernetesClient =
+            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+
+          for (Backup backupCr :
+              kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
+            if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+              // Found our backup.
+              log.info("Found Backup {} task {} ", backupCr, taskUUID);
+              BackupStatus status = backupCr.getStatus();
+
+              status.setMessage("Backup State: " + backup.getState().name());
+              status.setResourceUUID(backup.getBackupUUID().toString());
+              status.setTaskUUID(taskUUID.toString());
+
+              backupCr.setStatus(status);
+              kubernetesClient
+                  .resources(Backup.class)
+                  .inNamespace(namespace)
+                  .resource(backupCr)
+                  .replaceStatus();
+              log.info("Updated Status for Backup CR {}", backupCr);
+              break;
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      // This can happen for a variety of reasons.
+      // We might fail to talk to the API server, might need to add retries around this logic
+      log.error("Exception in updating backup cr status {}", e);
     }
   }
 

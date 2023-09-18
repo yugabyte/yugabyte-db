@@ -68,26 +68,26 @@ SET yb_enable_base_scans_cost_model = ON;
 SET yb_bnl_batch_size = 1024;
 SET yb_enable_optimizer_statistics = ON;
 EXPLAIN (costs off) SELECT count(*) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
-
+  
 EXPLAIN (costs off) SELECT sum(v1) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
-
+  
 EXPLAIN (costs off) SELECT avg(v1) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
 

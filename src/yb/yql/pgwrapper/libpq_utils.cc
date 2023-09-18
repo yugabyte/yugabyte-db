@@ -473,7 +473,7 @@ Result<bool> PGConn::HasScanType(const std::string& query, const std::string exp
   }
 
   for (int line = 0; line < PQntuples(res.get()); ++line) {
-    std::string value = VERIFY_RESULT(GetString(res.get(), line, 0));
+    auto value = VERIFY_RESULT(GetValue<std::string>(res.get(), line, 0));
     if (value.find(Format("$0 Scan", expected_scan_type)) != std::string::npos) {
       return true;
     }

@@ -61,8 +61,6 @@ namespace {
 
 constexpr std::chrono::duration<int64> kRpcTimeout = std::chrono::seconds(60) * kTimeMultiplier;
 
-const std::string empty_partition_key;
-
 bool IsTabletInCollection(const master::TabletInfoPtr& tablet, const master::TabletInfos& tablets) {
   return tablets.end() != std::find_if(
       tablets.begin(), tablets.end(),
@@ -267,11 +265,8 @@ PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table
   // as we are holding a std::string_view to partition_key_start.
   PartitionKeyTabletMap tablets;
   for (auto& t : table->GetTablets()) {
-    const auto& partition = t->LockForRead()->pb.partition();
-    const auto& partition_key =
-        partition.has_partition_key_start() ? partition.partition_key_start()
-                                            : empty_partition_key;
-    tablets.emplace(partition_key, t);
+    const auto partition = t->LockForRead()->pb.partition();
+    tablets.emplace(partition.has_partition_key_start() ? partition.partition_key_start() : "", t);
   }
   return tablets;
 }
