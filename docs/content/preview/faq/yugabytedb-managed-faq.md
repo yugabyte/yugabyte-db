@@ -311,7 +311,7 @@ YugabyteDB Managed runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
-Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
+Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys. Backups for Azure clusters are encrypted using Azure-managed server-side encryption keys and client-side encryption is done using [GCM mode with AES](https://learn.microsoft.com/en-us/azure/storage/common/storage-service-encryption#client-side-encryption-for-blobs-and-queues).
 
 Currently, YugabyteDB Managed does not support backups of Sandbox clusters.
 
