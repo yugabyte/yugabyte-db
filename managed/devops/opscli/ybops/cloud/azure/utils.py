@@ -17,7 +17,8 @@ from azure.mgmt.privatedns import PrivateDnsManagementClient
 from collections import OrderedDict
 from msrestazure.azure_exceptions import CloudError
 from ybops.cloud.common.utils import maybe_fault_injected
-from ybops.common.exceptions import YBOpsRuntimeError, YBOpsFaultInjectionError
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsFaultInjectionError, \
+    YBOpsRecoverableError
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -1202,12 +1203,13 @@ class AzureCloudAdmin():
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
 
     def get_vm_status(self, vm_name):
-        return (
-            self.compute_client.virtual_machines.get(RESOURCE_GROUP,
-                                                     vm_name,
-                                                     expand='instanceView')
-            .instance_view.statuses[1].display_status
-        )
+        vm_statuses = self.compute_client.virtual_machines.get(RESOURCE_GROUP,
+                                                               vm_name, expand='instanceView') \
+                          .instance_view.statuses
+        for status in vm_statuses:
+            if status.display_status.startswith("PowerState"):
+                return status.display_status
+        raise YBOpsRecoverableError("Could not find last PowerState for VM {}.".format(vm_name))
 
     def deallocate_instance(self, vm_name):
         async_vm_deallocate = self.compute_client.virtual_machines.begin_deallocate(RESOURCE_GROUP,
