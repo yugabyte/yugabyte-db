@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.controllers.JWTVerifier;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -46,7 +46,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   private static final String CUSTOMERS = "customers";
 
   private final Config config;
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfigCache runtimeConfigCache;
   private final PlaySessionStore sessionStore;
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
@@ -60,20 +60,19 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   public AuthorizationHandler(
       Config config,
       PlaySessionStore sessionStore,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier,
       TokenAuthenticator tokenAuthenticator) {
     this.config = config;
     this.sessionStore = sessionStore;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
     this.tokenAuthenticator = tokenAuthenticator;
   }
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
-    boolean useNewAuthz =
-        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+    boolean useNewAuthz = runtimeConfigCache.getBoolean("yb.rbac.use_new_authz");
     if (!useNewAuthz) {
       return delegate.call(request);
     }

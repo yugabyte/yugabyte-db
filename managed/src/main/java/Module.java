@@ -58,6 +58,7 @@ import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -144,6 +145,7 @@ public class Module extends AbstractModule {
     install(new ProviderConfKeys());
     install(new GlobalConfKeys());
     install(new UniverseConfKeys());
+    bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
     CollectorRegistry.defaultRegistry.clear();
