@@ -83,8 +83,10 @@ const mapDispatchToProps = (dispatch) => {
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
+          toast.error('Configuration failed to update');
           dispatch(updateProfileFailure(response.payload));
         } else {
+          toast.success('Configuration updated successfully');
           dispatch(updateProfileSuccess(response.payload));
         }
       });
@@ -92,7 +94,7 @@ const mapDispatchToProps = (dispatch) => {
     createAlertChannel: (payload) => {
       return dispatch(createAlertChannel(payload)).then((response) => {
         if (response.error) {
-          if(handleCACertErrMsg(response.payload)){
+          if (handleCACertErrMsg(response.payload)) {
             return;
           }
           toast.error(createErrorMessage(response.payload));
@@ -142,14 +144,16 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     sendTestAlert: (uuid) => {
-      sendTestAlert(uuid).then((response) => {
-        toast.success(response.data.message);
-      }).catch((error) => {
-        if(handleCACertErrMsg(error)){
-          return;
-        }
-        toast.error(createErrorMessage(error));
-      });
+      sendTestAlert(uuid)
+        .then((response) => {
+          toast.success(response.data.message);
+        })
+        .catch((error) => {
+          if (handleCACertErrMsg(error)) {
+            return;
+          }
+          toast.error(createErrorMessage(error));
+        });
     },
     updateAlertDestination: (payload, uuid) => {
       return dispatch(updateAlertDestination(payload, uuid)).then((response) => {
