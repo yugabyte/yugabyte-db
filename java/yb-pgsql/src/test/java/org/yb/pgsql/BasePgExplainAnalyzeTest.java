@@ -6,9 +6,6 @@ import java.util.Map;
 
 import org.yb.util.json.Checker;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
 class BasePgExplainAnalyzeTest extends BasePgSQLTest {
   @Override
   protected int getReplicationFactor() {
@@ -37,13 +34,6 @@ class BasePgExplainAnalyzeTest extends BasePgSQLTest {
   protected void testExplainDebug(String query, Checker checker) throws Exception {
     try (Statement stmt = connection.createStatement()) {
       ExplainAnalyzeUtils.testExplainDebug(stmt, query, checker);
-    }
-  }
-
-  public static ExplainAnalyzeUtils.Cost getExplainTotalCost(String query)
-  throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      return ExplainAnalyzeUtils.getExplainTotalCost(stmt, query);
     }
   }
 }
