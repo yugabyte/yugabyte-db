@@ -7,6 +7,8 @@ pgtap-schema.sql
 uninstall_pgtap.sql
 results
 pgtap.so
+pgtap.dylib
+pgtap.dll
 regression.*
 *.html
 *.html1

@@ -4,6 +4,18 @@ Revision history for pgTAP
 1.3.1
 --------------------------
 
+* Revamped the handling of data type declarations in `col_type_is()` to always
+  accurately normalize data type representations, whether using aliases, such
+  as `varchar` for `character varying`, or more complicated types that failed
+  to work in v1.3.0, such as `interval second(0)`. This is done by delegating
+  the parsing of the type declaration to a core PostgresSQL function. Many
+  thanks to Erik Wienhold for the report and for ultimately uncovering and
+  implementing an SQL interface to the `parseTypeString()` core function
+  (#315).
+* Removed the documentation for `pg_typeof()`, which was removed from pgTAP
+  when support for PostgreSQL 8.3 was dropped, since the same function has
+  been available in the PostgreSQL core since then.
+
 1.3.0 2023-08-14T22:14:20Z
 --------------------------
 * Fixed an issue with xUnit tests where they would exit immediately on

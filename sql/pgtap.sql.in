@@ -22,6 +22,11 @@ CREATE OR REPLACE FUNCTION pgtap_version()
 RETURNS NUMERIC AS 'SELECT __VERSION__;'
 LANGUAGE SQL IMMUTABLE;
 
+CREATE FUNCTION parse_type(type text, OUT typid oid, OUT typmod int4)
+RETURNS RECORD
+AS '$libdir/pgtap'
+LANGUAGE C STABLE STRICT;
+
 CREATE OR REPLACE FUNCTION plan( integer )
 RETURNS TEXT AS $$
 DECLARE
@@ -1461,6 +1466,13 @@ EXCEPTION WHEN undefined_object THEN RETURN $1;
 END;
 $$ LANGUAGE PLPGSQL STABLE;
 
+CREATE OR REPLACE FUNCTION format_type_string ( TEXT )
+RETURNS TEXT AS $$
+BEGIN RETURN format_type(p.typid, p.typmod) from parse_type($1) p;
+EXCEPTION WHEN OTHERS THEN RETURN NULL;
+END;
+$$ LANGUAGE PLPGSQL STABLE;
+
 CREATE OR REPLACE FUNCTION _quote_ident_like(TEXT, TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -1489,7 +1501,18 @@ BEGIN
         );
     END IF;
 
-    want_type := quote_ident($4) || '.' || _quote_ident_like($5, have_type);
+    IF quote_ident($4) = ANY(current_schemas(true)) THEN
+        want_type := quote_ident($4) || '.' || format_type_string($5);
+    ELSE
+        want_type := format_type_string(quote_ident($4) || '.' || $5);
+    END IF;
+
+    IF want_type IS NULL THEN
+        RETURN fail( $6 ) || E'\n' || diag (
+            '    Type ' || quote_ident($4) || '.' || $5 || ' does not exist'
+        );
+    END IF;
+
     IF have_type = want_type THEN
         -- We're good to go.
         RETURN ok( true, $6 );
@@ -1531,7 +1554,13 @@ BEGIN
         );
     END IF;
 
-    want_type := _quote_ident_like($4, have_type);
+    want_type := format_type_string($4);
+    IF want_type IS NULL THEN
+        RETURN fail( $5 ) || E'\n' || diag (
+            '    Type ' || $4 || ' does not exist'
+        );
+    END IF;
+
     IF have_type = want_type THEN
         -- We're good to go.
         RETURN ok( true, $5 );

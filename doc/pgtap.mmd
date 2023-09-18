@@ -375,9 +375,9 @@ discrepancy between the planned number of tests and the number actually run:
 
 If you need to throw an exception if some test failed, you can pass an
 option to `finish()`.
-    
-    SELECT * FROM finish(true);    
-    
+
+    SELECT * FROM finish(true);
+
 What a sweet unit!
 ------------------
 
@@ -4504,21 +4504,23 @@ fourth the type's schema, the fifth the type, and the sixth is the test
 description.
 
 If the table schema is omitted, the table must be visible in the search path.
-If the type schema is omitted, it must be visible in the search path;
-otherwise, the diagnostics will report the schema it's actually in. The schema
-can optionally be included in the `:type` argument, e.g., `'contrib.citext`.
+If the type schema is omitted, it must be visible in the search path. The
+schema can optionally be included in the `:type` argument, e.g.,
+"contrib.citext".
 
 If the test description is omitted, it will be set to "Column
 `:schema.:table.:column` should be type `:schema.:type`". Note that this test
 will fail if the table or column in question does not exist.
 
-The type argument should be formatted as it would be displayed in the view of
-a table using the `\d` command in `psql`. For example, if you have a numeric
-column with a precision of 8, you should specify "numeric(8,0)". If you
-created a `varchar(64)` column, you should pass the type as "varchar(64)" or
-"character varying(64)". Example:
+The type argument may be formatted using the full name of the type or any
+supported alias. For example, if you created a `varchar(64)` column, you can
+pass the type as either "varchar(64)" or "character varying(64)". Example:
 
-    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'numeric(10,2)' );
+    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'timespantz(3)' );
+
+Types with case-sensitive names or special characters must be double-quoted:
+
+    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', '"myType"' );
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -4530,8 +4532,8 @@ Will produce something like this:
     #         have: name
     #         want: text
 
-It will even tell you if the test fails because a column doesn't exist or
-actually has no default. But use `has_column()` to make sure the column exists
+It will even tell you if the test fails because a column doesn't exist or if
+the type doesn't exist. But use `has_column()` to make sure the column exists
 first, eh?
 
 ### `col_default_is()` ###
@@ -8190,7 +8192,7 @@ the stringified version number displayed in the first part of the core
 `version()` function and stored in the "server_version" setting:
 
     try=% select current_setting( 'server_version'), pg_version();
-     current_setting | pg_version 
+     current_setting | pg_version
     -----------------+------------
      12.2            | 12.2
     (1 row)
@@ -8273,23 +8275,50 @@ included in the display. For example:
 Used internally by pgTAP to compare operators, but may be more generally
 useful.
 
-### `pg_typeof()` ###
+### `parse_type()` ###
 
-    SELECT pg_typeof(:any);
+    SELECT * FROM parse_type( :text );
 
 **Parameters**
 
-`:any`
-: Any SQL value.
+`:text`
+: An SQL type declaration, optionally schema-qualified.
 
-Returns a `regtype` identifying the type of value passed to the function. This
-function is used internally by `cmp_ok()` to properly construct types when
-executing the comparison, but might be generally useful.
+Parses a string representing an SQL type declaration as used in a `CREATE TABLE`
+statement, optionally schema-qualified. Returns a record with two fields,
+`typid` and `typmod`, representing the OID and modifier for the type. These are
+the underlying values that define column data types, and which can be passed to
+the PostgreSQL core
+[`format_type()`](https://www.postgresql.org/docs/current/functions-info.html#FUNCTIONS-INFO-CATALOG)
+function to display the normalized string representation of the data type.
+Raises an error if the specify type does not exist or cannot be found in the
+search path.
 
-    try=% select pg_typeof(12), pg_typeof(100.2);
-     pg_typeof | pg_typeof
-    -----------+-----------
-     integer   | numeric
+    try=% SELECT format_type(p.typid, p.typmod)
+    try-%   FROM parse_type('timestamp(4)') p;
+            format_type
+    --------------------------------
+    timestamp(4) without time zone
+
+### `format_type_string()` ###
+
+    SELECT format_type_string( :text );
+
+**Parameters**
+
+`:text`
+: An SQL type declaration, optionally schema-qualified.
+
+This function normalizes data type declarations for accurate comparison
+to table columns by `col_type_is()`. It's effectively the identical to
+the calling `format_type()` with the values returned by `parse_type()`,
+but returns a `NULL` on an invalid or missing type, rather than raising
+an error.
+
+    try=# SELECT format_type_string('timestamp(3)');
+        format_type_string
+    --------------------------------
+    timestamp(3) without time zone
 
 ### `findfuncs()` ###
 
@@ -8308,7 +8337,6 @@ executing the comparison, but might be generally useful.
 
 `:pattern`
 : Regular expression pattern to exclude functions with matching names.
-
 
 This function searches the named schema or, if no schema is passed, the search
 patch, for all functions that match the regular expression pattern. The

@@ -1,10 +1,17 @@
 \unset ECHO
 \i test/setup.sql
+-- \i sql/pgtap.sql
 
-SELECT plan(243);
---SELECT * from no_plan();
+SELECT plan(276);
+-- SELECT * from no_plan();
 
 CREATE TYPE public."myType" AS (
+    id INT,
+    foo INT
+);
+
+CREATE SCHEMA hidden;
+CREATE TYPE hidden.stuff AS (
     id INT,
     foo INT
 );
@@ -29,7 +36,11 @@ CREATE TABLE public.sometab(
     ltime   TIME DEFAULT LOCALTIME,
     ltstz   TIMESTAMPTZ DEFAULT LOCALTIMESTAMP,
     plain   INTEGER,
-    camel   "myType"
+    camel   "myType",
+    inval   INTERVAL(0),
+    isecd   INTERVAL SECOND(0),
+    iyear   INTERVAL YEAR,
+    stuff   hidden.stuff
 );
 
 CREATE OR REPLACE FUNCTION fakeout( eok boolean, name text )
@@ -201,7 +212,7 @@ SELECT * FROM check_test(
 
 -- Try case-sensitive type name.
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'camel', 'public', 'myType', 'camel is myType' ),
+    col_type_is( 'public', 'sometab', 'camel', 'public', '"myType"', 'camel is myType' ),
     true,
     'col_type_is( sch, tab, camel, sch, type, desc )',
     'camel is myType',
@@ -209,18 +220,85 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'camel', 'public'::name, 'myType' ),
+    col_type_is( 'public', 'sometab', 'camel', 'public'::name, '"myType"' ),
     true,
-    'col_type_is( sch, tab, camel, sch, type, desc )',
-    'Column public.sometab.camel should be type public.myType',
+    'col_type_is( sch, tab, camel, sch, type )',
+    'Column public.sometab.camel should be type public."myType"',
     ''
 );
 
 SELECT * FROM check_test(
-    col_type_is( 'public', 'sometab', 'camel', 'myType', 'whatever' ),
+    col_type_is( 'public', 'sometab', 'camel', '"myType"', 'whatever' ),
     true,
     'col_type_is( sch, tab, camel, type, desc )',
     'whatever',
+    ''
+);
+
+-- Try interval.
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'inval', 'pg_catalog', 'interval(0)', 'inval is interval(0)' ),
+    true,
+    'col_type_is( sch, tab, interval, sch, type, desc )',
+    'inval is interval(0)',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'inval', 'pg_catalog'::name, 'interval(0)' ),
+    true,
+    'col_type_is( sch, tab, interval, sch, type, desc )',
+    'Column public.sometab.inval should be type pg_catalog.interval(0)',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'inval', 'interval(0)', 'whatever' ),
+    true,
+    'col_type_is( sch, tab, inval, type, desc )',
+    'whatever',
+    ''
+);
+
+-- Try interval second.
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'isecd', 'pg_catalog', 'interval second(0)', 'isecd is interval second(0)' ),
+    true,
+    'col_type_is( sch, tab, intsec, sch, type, desc )',
+    'isecd is interval second(0)',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'inval', 'pg_catalog'::name, 'interval(0)' ),
+    true,
+    'col_type_is( sch, tab, interval, sch, type, desc )',
+    'Column public.sometab.inval should be type pg_catalog.interval(0)',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'inval', 'interval(0)', 'whatever' ),
+    true,
+    'col_type_is( sch, tab, inval, type, desc )',
+    'whatever',
+    ''
+);
+
+-- Try type not in search path.
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'stuff', 'hidden', 'stuff', 'stuff is stuff' ),
+    true,
+    'col_type_is( sch, tab, stuff, sch, type, desc )',
+    'stuff is stuff',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'stuff', 'hidden'::name, 'stuff' ),
+    true,
+    'col_type_is( sch, tab, stuff, sch, type, desc )',
+    'Column public.sometab.stuff should be type hidden.stuff',
     ''
 );
 
@@ -239,8 +317,7 @@ SELECT * FROM check_test(
     false,
     'col_type_is( sch, tab, col, sch, non-type, desc )',
     'whatever',
-    '        have: pg_catalog.text
-        want: pg_catalog.blech'
+    '    Type pg_catalog.blech does not exist'
 );
 
 SELECT * FROM check_test(
@@ -248,8 +325,31 @@ SELECT * FROM check_test(
     false,
     'col_type_is( sch, tab, col, non-sch, type, desc )',
     'whatever',
-    '        have: pg_catalog.text
-        want: fooey.text'
+    '    Type fooey.text does not exist'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'fooey', 'text', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, col, non-sch, type, desc )',
+    'whatever',
+    '    Type fooey.text does not exist'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'nonesuch', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, col, non-type, desc )',
+    'whatever',
+    '    Type nonesuch does not exist'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'sometab', 'name', 'nonesuch', 'whatever' ),
+    false,
+    'col_type_is( tab, col, non-type, desc )',
+    'whatever',
+    '    Type nonesuch does not exist'
 );
 
 SELECT * FROM check_test(
@@ -336,7 +436,7 @@ SELECT * FROM check_test(
     'col_type_is precision fail',
     'should be numeric(7)',
     '        have: numeric(8,0)
-        want: numeric(7)'
+        want: numeric(7,0)'
 );
 
 /****************************************************************************/
