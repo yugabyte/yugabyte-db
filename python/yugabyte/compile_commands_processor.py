@@ -76,6 +76,10 @@ class CompileCommandProcessor:
             if def_name in def_value_map:
                 values |= set(def_value_map[def_name])
 
+        if not values:
+            logging.debug("Did not find a value for preprocessor definition %s in compiler "
+                          "commands, skipping", def_name)
+            return
         if len(values) != 1:
             raise ValueError(
                 "Expected exactly one value for compiler definition %s, got %s" %
