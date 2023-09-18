@@ -23,7 +23,7 @@ For more details see, [build global applications](../build-global-apps).
 {{</tip>}}
 
 ## Colocation
-Colocated tables helps to optimize for low-latency, high-performance data access by reducing the need for additional trips across the network for small tables. It also reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and the storage for these per node.
+Colocated tables optimize latency and performance for data access by reducing the need for additional trips across the network for small tables. Additionally, it reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and their storage per node.
 
 {{<tip>}}
 For more details, see [colocation](../../architecture/docdb-sharding/colocated-tables/).
