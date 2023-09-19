@@ -61,6 +61,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 
 DEFINE_UNKNOWN_string(log_filename, "",
