@@ -122,6 +122,7 @@ public class SupportBundleReconciler
     markStatusGenerating(bundle, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
+    taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(bundle));
     UUID taskUUID = commissioner.submit(TaskType.CreateSupportBundle, taskParams);
 
     CustomerTask.create(
