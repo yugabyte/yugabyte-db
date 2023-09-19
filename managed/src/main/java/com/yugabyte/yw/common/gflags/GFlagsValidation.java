@@ -200,6 +200,15 @@ public class GFlagsValidation {
     return null;
   }
 
+  /**
+   * Returns list of auto flags from auto_flags.json. This list contains all auto flags present in a
+   * version.
+   *
+   * @param version
+   * @param serverType
+   * @return
+   * @throws IOException
+   */
   public AutoFlagsPerServer extractAutoFlags(String version, String serverType) throws IOException {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
@@ -235,6 +244,15 @@ public class GFlagsValidation {
     return filteredList;
   }
 
+  /**
+   * Return list of auto flags from gflags metadata files. The list might not contains hidden auto
+   * flags.
+   *
+   * @param version
+   * @param serverType
+   * @return
+   * @throws IOException
+   */
   public List<GFlagDetails> listAllAutoFlags(String version, String serverType) throws IOException {
     List<GFlagDetails> allGFlags = extractGFlags(version, serverType, false /* mostUsedGFlags */);
     return allGFlags.stream().filter(flag -> isAutoFlag(flag)).collect(Collectors.toList());
