@@ -19,6 +19,10 @@ resources:
     url: /preview/yugabyte-voyager/
 ---
 
+YugabyteDB is a scalable, resilient, and secure cloud-native database for powering global, internet-scale applications.
+
+YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. YugabyteDB can be deployed across public and private clouds as well as in Kubernetes environments.
+
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started in the Cloud"
@@ -50,7 +54,7 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="For developers"
+    title="For Developers"
     description="Get instantly productive with familiar APIs and drivers."
     linkText1="Build a Hello world application"
     linkUrl1="/preview/develop/build-apps/"
@@ -61,11 +65,16 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="Migrate"
-    description="Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration."
-    linkText1="YugabyteDB Voyager"
-    linkUrl1="/preview/yugabyte-voyager/"
+    title="For DevOps"
+    description="Get flexible deployment and maintenance without downtime."
+    linkText1="Hybrid and multi-cloud deployment"
+    linkUrl1="/preview/develop/multi-cloud/"
+    linkText2="Built-in resilience and availability"
+    linkUrl2="/preview/explore/fault-tolerance/"
+    linkText3="Effortless horizontal scaling"
+    linkUrl3="/preview/explore/linear-scalability/"
   >}}
+
 {{< /sections/3-boxes >}}
 
 ### Products
@@ -96,6 +105,15 @@ resources:
     buttonUrl="/preview/yugabyte-cloud/"
     imageAlt="YugabyteDB Managed"
     imageUrl="/icons/cloud.svg"
+  >}}
+
+  {{< sections/3-box-card
+    title="YugabyteDB Voyager"
+    description="Simplify migration from legacy and cloud databases to YugabyteDB."
+    buttonText="Documentation"
+    buttonUrl="/preview/yugabyte-voyager/"
+    imageAlt="YugabyteDB Managed"
+    imageUrl="/images/migrate/migration-icon.svg"
   >}}
 {{< /sections/3-boxes >}}
 
@@ -249,7 +267,7 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="Get under the hood"
+    title="Get Under the Hood"
     linkText1="YugabyteDB architecture"
     linkUrl1="/preview/architecture/"
     linkText2="Benchmark YugabyteDB"
@@ -257,7 +275,7 @@ resources:
   >}}
 
   {{< sections/3-box-card
-    title="More links"
+    title="More Links"
     linkText1="Download"
     linkUrl1="https://download.yugabyte.com"
     linkText3="YugabyteDB Blog"
