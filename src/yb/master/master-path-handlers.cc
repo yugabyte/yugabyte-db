@@ -183,7 +183,7 @@ void MasterPathHandlers::RedirectToLeader(
   if (!redirect_result) {
     auto s = redirect_result.status();
     LOG(WARNING) << s.ToString();
-    *output << "<h2>" << s.ToString() << "</h2>\n";
+    *output << "<h2>" << EscapeForHtmlToString(s.ToString()) << "</h2>\n";
     return;
   }
   std::string redirect = *redirect_result;
@@ -197,7 +197,8 @@ void MasterPathHandlers::RedirectToLeader(
     LOG(WARNING) << "Error retrieving leader master URL: " << redirect
                  << ", error :" << s.ToString();
     *output << "Error retrieving leader master URL: <a href=\"" << redirect
-            << "\">" + redirect + "</a><br> Error: " << s.ToString() << ".<br>";
+            << "\">" + redirect + "</a><br> Error: "
+            << EscapeForHtmlToString(s.ToString()) << ".<br>";
     return;
   }
   *output << buf.ToString();
@@ -471,9 +472,12 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       }
 
-      *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
-      *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
-      *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
+      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_cloud())
+              << "</td>";
+      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_region())
+              << "</td>";
+      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_zone())
+              << "</td>";
 
       if (viewType == TServersViewType::kTServersDefaultView) {
         *output << "    <td>" << (no_tablets ? 0
@@ -514,7 +518,9 @@ void MasterPathHandlers::DisplayTabletZonesTable(
     }
 
     *output << "<tr>\n"
-            << "  <td rowspan=\"" << total_size_rows <<"\">" << cloud_iter.first << "</td>\n";
+            << "  <td rowspan=\"" << total_size_rows <<"\">"
+            << EscapeForHtmlToString(cloud_iter.first)
+            << "</td>\n";
 
     for (const auto& region_iter : region_tree) {
       const auto& zone_tree = region_iter.second;
@@ -524,7 +530,8 @@ void MasterPathHandlers::DisplayTabletZonesTable(
         needs_new_row = false;
       }
 
-      *output << "  <td rowspan=\"" << zone_tree.size() <<"\">" << region_iter.first
+      *output << "  <td rowspan=\"" << zone_tree.size() <<"\">"
+              << EscapeForHtmlToString(region_iter.first)
               << "</td>\n";
 
       for (const auto& zone_iter : zone_tree) {
@@ -534,7 +541,7 @@ void MasterPathHandlers::DisplayTabletZonesTable(
           *output << "<tr>\n";
         }
 
-        *output << "  <td>" << zone_iter.first << "</td>\n";
+        *output << "  <td>" << EscapeForHtmlToString(zone_iter.first) << "</td>\n";
 
         uint32_t user_leaders = counts.tablet_counts.user_tablet_leaders;
         uint32_t user_total = user_leaders + counts.tablet_counts.user_tablet_followers;
@@ -620,7 +627,8 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
   if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
     return;
   }
 
@@ -1092,7 +1100,7 @@ void MasterPathHandlers::HandleCatalogManager(
 
     table_row[kTableName] = Format(
         "<a href=\"/table?id=$0\">$1</a>",
-        EscapeForHtmlToString(href_table_id),
+        UrlEncodeToString(href_table_id),
         EscapeForHtmlToString(table_name));
 
     table_row[kUuid] = EscapeForHtmlToString(table_uuid);
@@ -1509,8 +1517,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         ? GetDefaultDatabaseType(keyspace_arg->second)
         : DatabaseTypeByName(keyspace_type_arg->second));
     if (keyspace_type == YQLDatabase::YQL_DATABASE_UNKNOWN) {
-      *output << "Wrong keyspace_type found '" << keyspace_type_arg->second << "'."
-              << "Possible values are: " << kDBTypeNameCql << ", "
+      *output << "Wrong keyspace_type found '" << EscapeForHtmlToString(keyspace_type_arg->second)
+              << "'. Possible values are: " << kDBTypeNameCql << ", "
               << kDBTypeNamePgsql << ", " << kDBTypeNameRedis << ".";
       return;
     }
@@ -1564,7 +1572,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       auto replication_info = master_->catalog_manager()->GetTableReplicationInfo(
           l->pb.replication_info(), tablespace_id);
       if (replication_info.ok()) {
-        *output << "    <pre class=\"prettyprint\">" << replication_info->DebugString() << "</pre>";
+        *output << "    <pre class=\"prettyprint\">"
+                << EscapeForHtmlToString(replication_info->DebugString()) << "</pre>";
       } else {
         LOG(WARNING) << replication_info.status().CloneAndPrepend(
             "Unable to determine Tablespace information.");
@@ -1602,7 +1611,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
               << "  </td></tr>\n";
       if (contains_alter && !l->is_being_created_by_ysql_ddl_txn()) {
         *output << "  <tr><td>Previous table name: </td><td>"
-                << l->pb.ysql_ddl_txn_verifier_state(0).previous_table_name()
+                << EscapeForHtmlToString(l->pb.ysql_ddl_txn_verifier_state(0).previous_table_name())
                 << "  </td></tr>\n </table>\n";
         Schema previous_schema;
         Status s =
@@ -1624,7 +1633,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
-      *output << "Unable to decode partition schema: " << s.ToString();
+      *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
     tablets = table->GetTablets(IncludeInactive::kTrue);
@@ -1750,7 +1759,7 @@ string TSDescriptorToJson(const TSDescriptor& desc,
         "$0://$1/tablet?id=$2",
         GetProtocol(),
         HostPortPBToString(*public_http_hp),
-        EscapeForHtmlToString(tablet_id));
+        UrlEncodeToString(tablet_id));
   } else {
     return EscapeForHtmlToString(desc.permanent_uuid());
   }
@@ -2234,7 +2243,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   for (const std::pair<TabletInfoPtr, string>& t : leaderless_tablets) {
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
-        EscapeForHtmlToString(t.first->table()->id()),
+        UrlEncodeToString(t.first->table()->id()),
         EscapeForHtmlToString(t.first->table()->name()),
         EscapeForHtmlToString(t.first->table()->id()),
         EscapeForHtmlToString(t.first.get()->tablet_id()),
@@ -2264,7 +2273,7 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
         "<td>$3</td><td>$4</td><td>$5</td></tr>\n",
-        EscapeForHtmlToString(tablet->table()->id()),
+        UrlEncodeToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->table()->name()),
         EscapeForHtmlToString(tablet->table()->id()),
         EscapeForHtmlToString(tablet->tablet_id()),
@@ -2354,7 +2363,8 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
   if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
     return;
   }
 
@@ -2505,7 +2515,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
       "<i class='fa fa-key yb-dashboard-icon' aria-hidden='true'></i>",
       "Encryption Status ",
       encryption_status_icon,
-      encryption_status_str);
+      EscapeForHtmlToString(encryption_status_str));
 
   (*output) << "</table>";
   (*output) << "</div> <!-- panel-body -->\n";
@@ -2526,7 +2536,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
   if (!s.ok()) {
     s = s.CloneAndPrepend("Unable to list Masters");
     LOG(WARNING) << s.ToString();
-    *output << "<h1>" << s.ToString() << "</h1>\n";
+    *output << "<h1>" << EscapeForHtmlToString(s.ToString()) << "</h1>\n";
     return;
   }
   (*output) << "<div class='panel panel-default'>\n"
@@ -2569,9 +2579,9 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
     string raft_role = master.has_role() ? PeerRole_Name(master.role()) : "N/A";
     auto delta = Env::Default()->NowMicros() - master.instance_id().start_time_us();
     string uptime = UptimeString(MonoDelta::FromMicroseconds(delta).ToSeconds());
-    string cloud = reg.cloud_info().placement_cloud();
-    string region = reg.cloud_info().placement_region();
-    string zone = reg.cloud_info().placement_zone();
+    string cloud = EscapeForHtmlToString(reg.cloud_info().placement_cloud());
+    string region = EscapeForHtmlToString(reg.cloud_info().placement_region());
+    string zone = EscapeForHtmlToString(reg.cloud_info().placement_zone());
 
     *output << "  <tr>\n"
             << "    <td>" << reg_text << "</td>\n"
@@ -2813,12 +2823,13 @@ void MasterPathHandlers::HandleGetClusterConfig(
   SysClusterConfigEntryPB config;
   Status s = master_->catalog_manager()->GetClusterConfig(&config);
   if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
     return;
   }
 
   *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
-  << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
+  << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(config.DebugString()) << "</pre>";
 }
 
 void MasterPathHandlers::HandleGetClusterConfigJSON(
@@ -2859,13 +2870,15 @@ void MasterPathHandlers::HandleGetXClusterConfig(
   Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
 
   if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">" << s.ToString() << "</div>";
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
     return;
   }
   *output << "<div class=\"alert alert-success\">Successfully got xcluster config!</div>"
-          << "<pre class=\"prettyprint\">" << xcluster_config.DebugString()
+          << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(xcluster_config.DebugString())
           << "consumer_registry {\n"
-          << cluster_config.consumer_registry().DebugString() << "}</pre>";
+          << EscapeForHtmlToString(cluster_config.consumer_registry().DebugString())
+          << "}</pre>";
 }
 
 void MasterPathHandlers::HandleGetXClusterConfigJSON(
@@ -2994,7 +3007,8 @@ void MasterPathHandlers::HandlePrettyLB(
 
     *output << Format("<div class='panel $0'>\n", zone_panel_display);
     *output << Format("<div class='panel-heading'>"
-                          "<h6 class='panel-title'>Zone: $0</h6></div>\n", zone.first);
+                          "<h6 class='panel-title'>Zone: $0</h6></div>\n",
+                      EscapeForHtmlToString(zone.first));
     *output << "<div class='row'>\n";
 
     // Tservers for this panel.
@@ -3024,7 +3038,8 @@ void MasterPathHandlers::HandlePrettyLB(
                             "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
                             "<i class='fa $2'></i></a></h6></div>\n",
                             GetProtocol(),
-                            GetHttpHostPortFromServerRegistration(reg.common()),
+                            EscapeForHtmlToString(
+                                GetHttpHostPortFromServerRegistration(reg.common())),
                             icon_type);
 
       *output << "<table class='table table-borderless table-hover'>\n";
@@ -3040,9 +3055,9 @@ void MasterPathHandlers::HandlePrettyLB(
         *output << Format("<td><h4><a href='$0://$1/table?id=$2'>"
                               "<i class='fa fa-table'></i>    $3</a></h4>\n",
                               GetProtocol(),
-                              GetHttpHostPortFromServerRegistration(reg),
-                              table.first,
-                              tname);
+                              EscapeForHtmlToString(GetHttpHostPortFromServerRegistration(reg)),
+                              UrlEncodeToString(table.first),
+                              EscapeForHtmlToString(tname));
         // Replicas of this table.
         for (const auto& replica : table.second) {
           // All the replicas of the same tablet will have the same color, so
@@ -3277,8 +3292,8 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
     return Format(
         "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
         GetProtocol(),
-        HostPortPBToString(*public_http_hp),
-        EscapeForHtmlToString(tablet_id),
+        EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
+        UrlEncodeToString(tablet_id),
         EscapeForHtmlToString(public_http_hp->host()));
   } else {
     return EscapeForHtmlToString(desc.permanent_uuid());
@@ -3292,7 +3307,7 @@ string MasterPathHandlers::RegistrationToHtml(
   if (public_http_hp) {
     link_html = Format("<a href=\"$0://$1/\">$2</a>",
                            GetProtocol(),
-                           HostPortPBToString(*public_http_hp),
+                           EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
                            link_html);
   }
   return link_html;
@@ -3427,7 +3442,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
         "<td><a href=\"/table?id=$1\">$2</a></td>"
         "<td>$3</td>",
         EscapeForHtmlToString(keyspace),
-        EscapeForHtmlToString(table_id),
+        UrlEncodeToString(table_id),
         EscapeForHtmlToString(table_name),
         tablet_count);
     for (auto& tserver_desc : descs) {

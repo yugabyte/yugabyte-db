@@ -208,18 +208,8 @@ bool Base64Decode(const string& in, string* out) {
 }
 
 void EscapeForHtml(const string& in, std::stringstream* out) {
-  DCHECK(out != nullptr);
-  for (const char& c : in) {
-    switch (c) {
-      case '<': (*out) << "&lt;";
-                break;
-      case '>': (*out) << "&gt;";
-                break;
-      case '&': (*out) << "&amp;";
-                break;
-      default: (*out) << c;
-    }
-  }
+  auto ss = std::istringstream(in);
+  EscapeForHtml(&ss, out);
 }
 
 std::string EscapeForHtmlToString(const std::string& in) {
