@@ -2924,6 +2924,36 @@ CREATE OPERATOR ->> (
   FUNCTION = ag_catalog.agtype_array_element_text
 );
 
+CREATE FUNCTION ag_catalog.agtype_extract_path(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- return the extracted path as agtype
+CREATE OPERATOR #> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_extract_path
+);
+
+CREATE FUNCTION ag_catalog.agtype_extract_path_text(agtype, agtype)
+RETURNS text
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- return the extracted path as text
+CREATE OPERATOR #>> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_extract_path_text
+);
+
 --
 -- Contains operators @> <@
 --
