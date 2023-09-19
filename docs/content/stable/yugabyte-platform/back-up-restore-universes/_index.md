@@ -20,6 +20,7 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 - [Incremental backups](back-up-universe-data/#create-incremental-backups). Create a schedule to take full backups periodically and incremental backups between those full backups.
 - [Configurable performance parameters](back-up-universe-data/#configure-backup-performance-parameters). Tune parallelization and buffers for faster backup and restore performance. In most cases, this results in 5x or more speed improvements in backups and restores.
 - [Point-in-time recovery](pitr/). Recover universe data from a specific point in time.
+- [Flexible storage](configure-backup-storage/). Store backups in the cloud or in your data center.
 
 {{< note title="Note" >}}
 Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YBA 2.16 or later for universes with YugabyteDB version 2.16 or later.
