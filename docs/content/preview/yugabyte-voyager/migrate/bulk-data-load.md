@@ -32,7 +32,8 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        –-data-dir </path/to/files/dir/> \
-       --file-table-map <filename1:table1,filename2:table2> \ # Optional arguments as per data format
+       --file-table-map <filename1:table1,filename2:table2> \
+       # Optional arguments as per data format
        --delimiter <DELIMITER> \
        --escape-char <ESCAPE_CHAR> \
        --quote-char <QUOTE_CHAR> \
@@ -44,7 +45,7 @@ Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) fo
 
 ### Incremental data loading
 
-The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag <fileName>:<tableName> entry for each file, or by passing a glob expression in place of the file name.
+The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
 
 For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
 
