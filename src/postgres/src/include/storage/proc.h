@@ -281,6 +281,7 @@ typedef struct PROC_HDR
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
+extern PGPROC *KilledProcToClean;
 
 extern PGPROC *PreparedXactProcs;
 
