@@ -96,6 +96,7 @@ lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -327,6 +328,7 @@ externalResolvers := {
     ).value
   buildUI.value
   versionGenerate.value
+  downloadThirdPartyDeps.value
 }
 
 cleanPlatform := {
@@ -386,6 +388,12 @@ generateCrdObjects := {
   val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
   val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
+  status
+}
+
+downloadThirdPartyDeps := {
+  ybLog("Downloading third-party dependencies...")
+  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
