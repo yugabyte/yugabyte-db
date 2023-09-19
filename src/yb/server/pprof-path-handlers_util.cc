@@ -27,6 +27,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/symbolize.h"
+#include "yb/util/url-coding.h"
 
 using std::vector;
 
@@ -234,7 +235,7 @@ void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples
     (*output) << Format("<td>$0</td>", entry.second.count);
     (*output) << Format("<td>$0</td>",
         entry.second.count <= 0 ? 0 : entry.second.bytes / entry.second.count);
-    (*output) << Format("<td><pre>$0</pre></td>", entry.first);
+    (*output) << Format("<td><pre>$0</pre></td>", EscapeForHtmlToString(entry.first));
     (*output) << "</tr>";
   }
   (*output) << "</table>";
