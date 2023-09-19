@@ -41,6 +41,8 @@ YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with lo
   >}}
 {{< /sections/2-boxes >}}
 
+### Explore
+
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
     title="New to YugabyteDB"
