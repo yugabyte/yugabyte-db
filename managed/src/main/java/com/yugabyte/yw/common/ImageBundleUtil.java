@@ -9,16 +9,21 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -214,5 +219,26 @@ public class ImageBundleUtil {
         Architecture.aarch64,
         aarch64YBADefaultBundleMarkedDefault,
         true);
+  }
+
+  public Map<UUID, ImageBundle> collectUniversesImageBundles() {
+    Map<UUID, ImageBundle> imageBundleMap = new HashMap<>();
+    for (Customer customer : Customer.getAll()) {
+      Set<Universe> universes = Universe.getAllWithoutResources(customer);
+
+      for (Universe universe : universes) {
+        // Assumption both the primary & rr cluster uses the same provider.
+        UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        if (userIntent != null) {
+          UUID imageBundleUUID = userIntent.imageBundleUUID;
+          if (!imageBundleMap.containsKey(imageBundleUUID)) {
+            ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+            imageBundleMap.put(imageBundleUUID, bundle);
+          }
+        }
+      }
+    }
+
+    return imageBundleMap;
   }
 }
