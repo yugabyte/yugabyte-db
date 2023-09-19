@@ -39,7 +39,7 @@ CREATE INDEX index_name ON table_name(column_list);
 
 YCQL supports [Unique](../../../explore/indexes-constraints/unique-index-ycql/), [Partial](../../../explore/indexes-constraints/partial-index-ycql/), [Covering](../../../explore/indexes-constraints/covering-index-ycql/), and [Multi-column](#multi-column-index) secondary indexes.
 
-For additional information on creating indexes, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For more information, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
 ## List indexes and verify the query plan
 
@@ -49,11 +49,11 @@ You can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to che
 DESCRIBE INDEX <index_name>
 ```
 
-For additional information, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
+For more information, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
-For more information, see [EXPLAIN statement in YCQL](../../../api/ycql/explain/).
+For more information, see [EXPLAIN](../../../api/ycql/explain/).
 
 ## Remove indexes
 
@@ -63,7 +63,7 @@ You can remove an index using the `DROP INDEX` statement in YCQL using the follo
 DROP INDEX index_name;
 ```
 
-For additional information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
+For more information, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
 
 ## Example
 

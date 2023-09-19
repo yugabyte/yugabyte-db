@@ -42,6 +42,8 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index (multi-column index).
 
+For more information, see [CREATE INDEX](../../../api/ysql/the-sql-language/statements/ddl_create_index/).
+
 [Multi-column indexes](#multi-column-index) can be beneficial in situations where queries are searching in more than a single column.
 
 You can also create a functional index in YSQL, in which case you would replace any element of *column_list* with an expression. For more information, see [Expression indexes](../../../explore/indexes-constraints/expression-index-ysql/).
@@ -66,7 +68,7 @@ For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
-For more information, see [EXPLAIN statement in YSQL](../../../api/ysql/the-sql-language/statements/perf_explain/).
+For more information, see [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain/).
 
 ## Remove indexes
 
@@ -76,7 +78,7 @@ You can remove one or more existing indexes using the `DROP INDEX` statement in 
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 
-For additional information, see [DROP INDEX YCQL API](../../../api/ycql/ddl_drop_index/).
+For more information, see [DROP INDEX](../../../api/ysql/the-sql-language/statements/ddl_drop_index/).
 
 ## Example
 
@@ -128,10 +130,6 @@ QUERY PLAN
 Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=10 width=68)
 Index Cond: (department = 'Operations'::text)
 ```
-
-For additional information, see:
-
-- [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
 
 To remove the index `index_employees_department`, use the following command:
 
