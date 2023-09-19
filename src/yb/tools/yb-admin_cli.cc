@@ -505,7 +505,9 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
-    str << ' ' << i + 1 << ". " << commands_[i].name_ << commands_[i].usage_arguments_ << endl;
+    str << ' ' << i + 1 << ". " << commands_[i].name_
+        << (commands_[i].usage_arguments_.empty() ? "" : " ") << commands_[i].usage_arguments_
+        << endl;
   }
 
   str << endl;
