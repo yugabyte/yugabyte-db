@@ -187,7 +187,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
   }
 
   AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
@@ -390,7 +390,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
     if (restore_at) {
-      RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+      RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
   }
 
@@ -481,7 +481,7 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
   }
 
   return dest_dir;
