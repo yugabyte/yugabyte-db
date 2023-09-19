@@ -2,7 +2,7 @@
 title: Steps for a bulk data load
 headerTitle: Bulk data load from files
 linkTitle: Bulk data load
-headcontent: Steps for loading bulk data from flat files to YugabyteDB using YugabyteDB Voyager.
+headcontent: Import data from flat files using YugabyteDB Voyager
 description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -17,7 +17,7 @@ This page describes the steps to import data in CSV or TEXT format from flat fil
 
 ## Prerequisite
 
-* Before you perform bulk load, manually create the schema of the tables on which data files need to be imported to the target YugabyteDB database.
+* Before you perform a bulk load, in your target YugabyteDB database, create the schema of the tables into which the data in the flat files will be imported.
 
 ## Import data files from the local disk
 
@@ -45,17 +45,18 @@ Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) fo
 ### Incremental data loading
 
 The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag <fileName>:<tableName> entry for each file, or by passing a glob expression in place of the file name.
+
 For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
 
 ## Import data files from cloud storage
 
-The `import data file` command supports importing data from files present on cloud storage like AWS S3, GCS buckets, and Azure blob. This feature helps reduce disk requirements to store the downloaded files on a local disk and then import them to YugabyteDB.
+Using the `import data file` command, you can import data from files in cloud storage, including AWS S3, GCS buckets, and Azure blob. Importing from cloud storage reduces local disk requirements for storing the data while it is imported to your YugabyteDB database.
 
 {{< tabpane text=true >}}
 
   {{% tab header="AWS S3" %}}
 
-Import data file allows you to load directly from your data files stored on AWS S3. The S3 bucket URI can be provided to the `data-dir` flag as follows:
+To import data from AWS S3, provide the S3 bucket URI in the `data-dir` flag as follows:
 
 ```sh
 yb-voyager import data file .... \
@@ -67,7 +68,7 @@ The authentication mechanism for accessing an S3 bucket using yb-voyager is the 
   {{% /tab %}}
 
   {{% tab header="GCS buckets" %}}
-Import data file allows you to load directly from your data files stored on GCS buckets. The GCS bucket URI can be provided to the `data-dir` flag as follows:
+To import data from GCS buckets, provide the GCS bucket URI in the `data-dir` flag as follows:
 
 ```sh
 yb-voyager import data file .... \
@@ -78,7 +79,7 @@ The authentication mechanism for accessing a GCS bucket using yb-voyager is the 
   {{% /tab %}}
 
   {{% tab header="Azure blob" %}}
-Import data file allows you to load directly from your data files stored on Azure blob storage containers. The Azure container URI can be provided to the `data-dir` flag as follows:
+To import data from Azure blob storage containers, provide the Azure container URI in the `data-dir` flag as follows:
 
 ```sh
 yb-voyager import data file .... \

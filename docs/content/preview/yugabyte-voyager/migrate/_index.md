@@ -59,7 +59,7 @@ You can perform migration by taking your applications offline to perform the mig
         <div class="title">Bulk data load from files</div>
       </div>
       <div class="body">
-        Bulk load data from flat files present on local disk, or cloud storage providers.
+        Bulk load data from flat files stored locally or in cloud storage.
       </div>
     </a>
   </div>
