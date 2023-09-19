@@ -63,13 +63,24 @@ message KeyValueWriteBatchPB {
   optional bool enable_replicate_transaction_status_table = 12;
 }
 
+message PerDbFilterPB {
+  optional uint32 db_oid = 1;
+  optional fixed64 ht_filter = 2;
+}
+
 message ConsensusFrontierPB {
   optional OpIdPB op_id = 1;
   optional fixed64 hybrid_time = 2;
   optional fixed64 history_cutoff = 3;
+  // Filter applies to all the entries of the sst file.
+  // Only set for the largest frontier.
   optional fixed64 hybrid_time_filter = 4;
   optional fixed64 max_value_level_ttl_expiration_time = 5;
   repeated TableSchemaVersionPB table_schema_version = 6;
+  // Used only for sys catalog tablet during PITR restores
+  // to selectively restore some databases. Only set for
+  // the largest frontier.
+  repeated PerDbFilterPB db_oid_to_ht_filter = 7;
 }
 
 message ApplyTransactionStatePB {

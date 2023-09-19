@@ -755,7 +755,7 @@ class TestUserFrontier : public UserFrontier {
     return Status::OK();
   }
 
-  Slice Filter() const override {
+  Slice FilterAsSlice() override {
     return Slice();
   }
 

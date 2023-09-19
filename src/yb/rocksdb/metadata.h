@@ -89,7 +89,7 @@ class UserFrontier {
   virtual bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const = 0;
 
   // Should return value that will be passed to iterator replacer.
-  virtual Slice Filter() const = 0;
+  virtual Slice FilterAsSlice() = 0;
 
   virtual void ResetFilter() = 0;
 

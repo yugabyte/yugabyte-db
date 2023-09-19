@@ -1001,7 +1001,7 @@ Status CompactionJob::OpenCompactionOutputFile(
     }
   }
   out.finished = false;
-  // Reset the filter post compaction.
+  // Newly created files after compaction should not have any HT filter.
   if (out.meta.largest.user_frontier) {
     out.meta.largest.user_frontier->ResetFilter();
   }

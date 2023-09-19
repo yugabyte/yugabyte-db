@@ -536,7 +536,8 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
       const FileDescriptor* fd =
           reinterpret_cast<const FileDescriptor*>(meta_handle.data());
       return table_cache_->NewIterator(
-          read_options_, env_options_, icomparator_, *fd, Slice() /* filter */,
+          read_options_, env_options_, icomparator_, *fd,
+          Slice() /* filter */,
           nullptr /* don't need reference to table*/, file_read_hist_,
           for_compaction_, nullptr /* arena */, skip_filters_);
     }
@@ -3510,7 +3511,8 @@ uint64_t VersionSet::ApproximateSize(Version* v, const FdWithBoundaries& f, cons
     // approximate offset of "key" within the table.
     TableReader* table_reader_ptr;
     InternalIterator* iter = v->cfd_->table_cache()->NewIterator(
-        ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd, Slice() /* filter */,
+        ReadOptions(), env_options_, v->cfd_->internal_comparator(), f.fd,
+        Slice() /* filter */,
         &table_reader_ptr);
     if (table_reader_ptr != nullptr) {
       result = table_reader_ptr->ApproximateOffsetOf(key);
@@ -3592,7 +3594,8 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
           RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_NOT_FILTERED);
           list[num++] = cfd->table_cache()->NewIterator(
               read_options, env_options_compactions_,
-              cfd->internal_comparator(), flevel->files[i].fd, flevel->files[i].user_filter_data,
+              cfd->internal_comparator(), flevel->files[i].fd,
+              flevel->files[i].user_filter_data,
               nullptr, nullptr /* no per level latency histogram*/,
               true /* for compaction */);
         }

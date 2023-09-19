@@ -89,6 +89,8 @@ class HybridTime {
   // Hybrid times are converted to debug strings as <this_string_constant>(<hybrid_time_value>).
   static const char* const kHybridTimeDebugStrPrefix;
 
+  static const size_t SizeOfHybridTimeRepr = sizeof(HybridTimeRepr);
+
   // ----------------------------------------------------------------------------------------------
   // Constructors / static factories
 
