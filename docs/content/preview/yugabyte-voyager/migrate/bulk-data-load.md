@@ -13,7 +13,7 @@ type: docs
 ---
 
 
-This page describes the import feature YugabyteDB Voyager provides to bulk load data from flat files present on local disk or cloud storage like AWS S3, GCS buckets, and Azure Blob.
+This page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
 
 ## Prerequisite
 
