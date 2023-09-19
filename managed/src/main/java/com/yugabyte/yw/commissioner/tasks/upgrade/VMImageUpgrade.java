@@ -122,6 +122,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       processTypes.forEach(
           processType -> {
+            // Todo: remove the following subtask.
+            // We have an issue where the tserver gets running once the VM with the new image is
+            // up.
+            createServerControlTask(node, processType, "stop");
             createGFlagsOverrideTasks(
                 nodeList,
                 processType,
