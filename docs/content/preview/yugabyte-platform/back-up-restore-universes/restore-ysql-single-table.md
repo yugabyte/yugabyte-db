@@ -36,7 +36,7 @@ The following example assumes the following basic setup:
 
 ### Restore the backup to a new database
 
-You can restore the backup to the same or to a different universe. This example assumes that you restored to the _same_ universe.
+You can restore the backup to the same or to a different universe. This example assumes that you restored to the *same* universe.
 
 During the restore, rename the database. For example, you would rename source_db to restored_db. Because YugabyteDB Anywhere backs up and restores only full databases in YSQL, restored_db has the same tables and data as source_db at the time of backup.
 
