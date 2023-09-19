@@ -336,6 +336,17 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
         use_transaction);
   }
 
+  Status DeleteRowsInProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
+      bool use_transaction = false) {
+    if (!producer_table) {
+      producer_table = producer_table_;
+    }
+    return WriteWorkload(
+        start, end, &producer_cluster_, producer_table->name(), /* delete_op */ true,
+        use_transaction);
+  }
+
   Status WriteWorkload(
       uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table,
       bool delete_op = false, bool use_transaction = false) {
@@ -2579,24 +2590,11 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   }
 
   // 3. IsBootstrapRequired on already replicating streams should return false.
-  rpc::RpcController rpc;
-  cdc::IsBootstrapRequiredRequestPB req;
-  cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_id.ToString());
-  req.add_tablet_ids(tablet_ids[0]);
-
-  ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error());
-  ASSERT_FALSE(resp.bootstrap_required());
-
-  auto should_bootstrap = ASSERT_RESULT(
-      producer_cluster_.client_->IsBootstrapRequired({producer_tables_[0]->id()}, stream_id));
-  ASSERT_FALSE(should_bootstrap);
+  ASSERT_FALSE(
+      ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()}, {stream_id})));
 
   // 4. IsBootstrapRequired without a valid stream should return true.
-  should_bootstrap =
-      ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired({producer_tables_[0]->id()}));
-  ASSERT_TRUE(should_bootstrap);
+  ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
 
   // 4. Setup replication with data should fail.
   ASSERT_NOK(
@@ -3682,5 +3680,38 @@ TEST_F(XClusterYsqlTest, RandomFailuresAfterApply) {
   }
   ASSERT_OK(VerifyNumRecords(producer_table_, &producer_cluster_, batch_count * kBatchSize));
   ASSERT_OK(VerifyWrittenRecords());
+}
+
+TEST_F(XClusterYsqlTest, IsBootstrapRequiredColocatedDB) {
+  // Make sure IsBootstrapRequired returns false when tables are empty and true when even one table
+  // in a colocated DB has data.
+  constexpr int kNTablets = 1;
+  std::vector<uint32_t> tables_vector = {kNTablets, kNTablets};
+  // Create two colocated tables on each cluster.
+  ASSERT_OK(SetUpWithParams(
+      tables_vector, tables_vector, /* replication_factor */ 3, /* num_masters */ 1,
+      true /* colocated */));
+  auto colocated_parent_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
+
+  // Empty DB should not require bootstrap.
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
+
+  // Adding table to replication should not make it require bootstrap.
+  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
+
+  // Inserting data into one table should make it require bootstrap.
+  ASSERT_OK(InsertRowsInProducer(0, 1, producer_tables_[0]));
+  ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
+
+  // Delete all rows in the first table and inserting data into another table should still make it
+  // require bootstrap.
+  ASSERT_OK(DeleteRowsInProducer(0, 1, producer_tables_[0]));
+  ASSERT_OK(InsertRowsInProducer(0, 1, producer_tables_[1]));
+  ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
+
+  // Delete all rows in the second table should make it not require bootstrap.
+  ASSERT_OK(DeleteRowsInProducer(0, 1, producer_tables_[1]));
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({colocated_parent_table_id})));
 }
 }  // namespace yb

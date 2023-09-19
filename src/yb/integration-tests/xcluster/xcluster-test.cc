@@ -1360,25 +1360,11 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
       {
         auto start_time = CoarseMonoClock::Now();
 
-        auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-            &producer_client()->proxy_cache(),
-            ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-        master::IsBootstrapRequiredRequestPB req;
-        master::IsBootstrapRequiredResponsePB resp;
+        std::vector<TableId> table_ids;
         for (const auto& producer_table : producer_tables) {
-          req.add_table_ids(producer_table->id());
+          table_ids.emplace_back(producer_table->id());
         }
-        rpc::RpcController rpc;
-        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-
-        ASSERT_OK(master_proxy->IsBootstrapRequired(req, &resp, &rpc));
-        SCOPED_TRACE(resp.DebugString());
-        ASSERT_FALSE(resp.has_error());
-        ASSERT_EQ(resp.results_size(), producer_tables.size());
-        for (const auto& result : resp.results()) {
-          ASSERT_TRUE(result.has_bootstrap_required() && !result.bootstrap_required());
-        }
+        ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired(table_ids)));
 
         is_bootstrap_required_latency[a] = CoarseMonoClock::Now() - start_time;
         LOG(INFO) << "IsBootstrapRequired [" << a
@@ -3839,5 +3825,64 @@ TEST_F_EX(XClusterTest, RandomFailuresAfterApply, XClusterTestTransactionalOnly)
   ASSERT_OK(txn->CommitFuture().get());
   ASSERT_OK(VerifyNumRecordsOnProducer(batch_count * kBatchSize));
   ASSERT_OK(VerifyRowsMatch());
+}
+
+TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
+  // This test makes sure IsBootstrapRequired returns false when tables are empty and true when
+  // table has data. Adding and removing an empty table to replication should also not require us to
+  // bootstrap.
+
+  const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
+  ASSERT_OK(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  ASSERT_OK(WaitForLoadBalancersToStabilize());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+
+  // Empty table should not require bootstrap.
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // Leader failover should not require bootstrap.
+  const auto kTimeout = 10s * kTimeMultiplier;
+  auto tablet_ids = ListTabletIdsForTable(producer_cluster(), producer_table_->id());
+  ASSERT_EQ(tablet_ids.size(), 1);
+  const auto& tablet_id = *tablet_ids.begin();
+
+  auto leader_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  master::MasterClusterProxy master_proxy(
+      &producer_client()->proxy_cache(), leader_master->bound_rpc_addr());
+  auto ts_map =
+      ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &producer_client()->proxy_cache()));
+
+  itest::TServerDetails* leader_ts = nullptr;
+  ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kTimeout, &leader_ts));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
+  ASSERT_OK(itest::LeaderStepDown(leader_ts, tablet_id, nullptr, kTimeout));
+  itest::TServerDetails* new_leader_ts = nullptr;
+  ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kTimeout, &new_leader_ts));
+
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // Adding table to replication should not make it require bootstrap.
+  ASSERT_OK(SetupReplication());
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // Table with data should require a bootstrap.
+  ASSERT_OK(InsertRowsInProducer(0, 100));
+  ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // After we delete all rows, we should not require a bootstrap.
+  ASSERT_OK(DeleteRows(0, 100));
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // Delete and recreate replication and make sure bootstrap is not required.
+  ASSERT_OK(DeleteUniverseReplication());
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+  ASSERT_OK(SetupReplication());
+  ASSERT_FALSE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+
+  // Table with data should require a bootstrap.
+  ASSERT_OK(InsertRowsInProducer(0, 1));
+  ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
 }
 }  // namespace yb

@@ -3823,57 +3823,6 @@ void CDCServiceImpl::IsBootstrapRequired(
   context.RespondSuccess();
 }
 
-Result<bool> CDCServiceImpl::IsBootstrapRequiredForTablet(
-    tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline) {
-  auto log = tablet_peer->log();
-  const auto latest_opid = log->GetLatestEntryOpId();
-
-  if (min_op_id.index < 0) {
-    // The first index is a NoOp which can be ignored.
-    if (latest_opid.index > 1) {
-      // Bootstrap is needed if there is any data in the log.
-      // This is because only locally generated data is replicated via xcluster. This prevents
-      // infinite replication in bidirectional mode. But if the data in the log was from a prior
-      // xcluster stream (xcluster DR cases) then it will not get replicated even if we can read
-      // the log here. Reading the entire log to determine if any entries are external is too
-      // expensive so just assume a bootstrap is needed.
-      LOG(INFO) << "Tablet " << tablet_peer->tablet_id() << " has " << latest_opid.index
-                << " ops. Bootstrap is required.";
-      return true;
-    }
-
-    // No data in the log, so no bootstrap is needed.
-    return false;
-  }
-
-  if (min_op_id.index == latest_opid.index) {
-    // Consumer has caught up to producer.
-    return false;
-  }
-
-  OpId next_index = min_op_id;
-  next_index.index++;
-
-  int64_t last_readable_opid_index;
-  auto consensus = VERIFY_RESULT_OR_SET_CODE(
-      tablet_peer->GetConsensus(), CDCError(CDCErrorPB::LEADER_NOT_READY));
-
-  auto log_result = consensus->ReadReplicatedMessagesForCDC(
-      next_index, &last_readable_opid_index, deadline, true /* fetch_single_entry */);
-
-  if (!log_result.ok()) {
-    if (log_result.status().IsNotFound()) {
-      LOG(INFO) << "Couldn't read index " << next_index << ". Bootstrap required for tablet "
-                << tablet_peer->tablet_id() << ": " << log_result.status();
-      return true;
-    }
-
-    return log_result.status().CloneAndAddErrorCode(CDCError(CDCErrorPB::INTERNAL_ERROR));
-  }
-
-  return false;
-}
-
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
   const OpId& children_op_id = OpId();
