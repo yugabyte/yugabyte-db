@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -56,6 +60,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     this.kubernetesStatus = kubernetesStatus;
   }
 
+  public static class KubernetesParams extends DestroyUniverse.Params {
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    KubernetesResourceDetails kubernetesResourceDetails;
+  }
+
+  @Override
+  protected DestroyKubernetesUniverse.KubernetesParams taskParams() {
+    return (DestroyKubernetesUniverse.KubernetesParams) taskParams;
+  }
+
   @Override
   public void run() {
     try {
@@ -68,7 +84,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
@@ -203,9 +220,19 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), null);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          null);
     } catch (Throwable t) {
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), t);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          t);
       // If for any reason destroy fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();

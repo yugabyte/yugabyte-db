@@ -112,6 +112,8 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     BackupRequestParams backupRequestParams = null;
     try {
       backupRequestParams = getBackupTaskParamsFromCr(backup);
+      backupRequestParams.setKubernetesResourceDetails(
+          KubernetesResourceDetails.fromResource(backup));
     } catch (Exception e) {
       log.error("Got Exception in converting to backup params {}", e);
     }

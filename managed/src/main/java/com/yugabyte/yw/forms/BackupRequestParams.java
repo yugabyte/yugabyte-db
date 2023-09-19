@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
@@ -132,6 +133,11 @@ public class BackupRequestParams extends UniverseTaskParams {
   // If null, proceeds with usual behaviour.
   @ApiModelProperty(value = "Overrides whether you want to use YBC based or script based backup.")
   public BackupCategory backupCategory = null;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
