@@ -113,7 +113,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
         <div class="title">Export metrics</div>
       </div>
       <div class="body">
-        Export cluster metrics to third-party tools such as Datadog.
+        Export cluster metrics to third-party tools such as Datadog and Grafana.
       </div>
     </a>
   </div>
