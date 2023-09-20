@@ -17,7 +17,7 @@
     "action": "READ",
     "name": "View Resource",
     "description": "Permission to read a resource instance.",
-    "permissionValidOnResource": true,
+    "permissionValidOnResource": false,
     "prerequisitePermissions": []
   },
   {
@@ -25,7 +25,7 @@
     "action": "UPDATE",
     "name": "Update Resource",
     "description": "Permission to update a resource instance.",
-    "permissionValidOnResource": true,
+    "permissionValidOnResource": false,
     "prerequisitePermissions": [
       {
         "resourceType": "OTHER",
@@ -38,7 +38,7 @@
     "action": "DELETE",
     "name": "Delete Resource",
     "description": "Permission to delete a resource instance.",
-    "permissionValidOnResource": true,
+    "permissionValidOnResource": false,
     "prerequisitePermissions": [
       {
         "resourceType": "OTHER",
