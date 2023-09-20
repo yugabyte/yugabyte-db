@@ -45,7 +45,6 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(TEST_enable_replicate_transaction_status_table);
-DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
@@ -952,10 +951,8 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
       "Waiting for load balancer to be idle"));
 
   // Add delays to all rpc calls to simulate live environment.
-  FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 5;
-  FLAGS_rpc_throttle_threshold_bytes = 0;
-  // Enable parallelized version of BootstrapProducer.
-  FLAGS_parallelize_bootstrap_producer = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 0;
 
   // Check that bootstrap_cdc_producer returns within time limit.
   ASSERT_OK(WaitFor(

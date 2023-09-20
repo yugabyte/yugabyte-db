@@ -358,6 +358,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
   Result<HybridTime> LeaderSafeTime() const override;
 
+  bool IsLeaderAndReady() const;
+  bool IsNotLeader() const;
+
   HybridTime HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {

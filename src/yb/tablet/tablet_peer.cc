@@ -1493,6 +1493,14 @@ consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
+bool TabletPeer::IsLeaderAndReady() const {
+  return LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+}
+
+bool TabletPeer::IsNotLeader() const {
+  return LeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+}
+
 HybridTime TabletPeer::HtLeaseExpiration() const {
   HybridTime result(
       CHECK_RESULT(consensus_->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max())), 0);

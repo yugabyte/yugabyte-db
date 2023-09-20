@@ -101,6 +101,7 @@ set(CDC_SRCS
   cdc_service.cc
   cdc_metrics.cc
   cdc_producer.cc
+  xcluster_producer_bootstrap.cc
   cdcsdk_producer.cc
   cdc_rpc.cc
   xrepl_stream_metadata.cc)
