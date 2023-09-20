@@ -19,7 +19,7 @@ In YugabyteDB, the rows are [sharded into tablets](../sharding-data) based on th
 
 YugabyteDB can clock more than 1 million writes/second in both [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) APIs.
 
-## Results for 1 million YSQL writes/second
+## YSQL - 1 million writes/second
 
 On a 100-node YugabyteDB cluster set up with c5.4xlarge instances (16 vCPUs at 3.3GHz) in a single zone, the cluster performed 1.26 million writes/second with 1.7ms latency.
 
@@ -27,7 +27,7 @@ The cluster configuration is shown in the following illustration.
 
 ![YSQL write latency](https://www.yugabyte.com/wp-content/uploads/2019/09/yugabyte-db-vs-aws-aurora-cockroachdb-benchmarks-5.png)
 
-## Results for 1 million YCQL writes/second
+## YCQL - 1 million writes/second
 
 On a 50-node YugabyteDB cluster on GCP using n1-standard-16 instances (16 vCPUs at 2.20GHz), YCQL clocked 1.2M writes/second with 3.1ms average latency.
 

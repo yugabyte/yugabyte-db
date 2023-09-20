@@ -9,32 +9,13 @@ menu:
     name: Scale out a universe
     identifier: explore-transactions-scaling-transactions-2-ysql
     parent: explore-scalability
-    weight: 10
+    weight: 100
 type: docs
 ---
 
 YugabyteDB can scale seamlessly while running a read-write workload. You can see this by using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node universe with a replication factor of 3 and add a node while the workload is running. Using the built-in metrics, you can observe how the universe scales out by verifying that the number of read and write IOPS are evenly distributed across all nodes at all times.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li>
-    <a href="../scaling-transactions/" class="nav-link">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local
-    </a>
-  </li>
-  <li>
-    <a href="../scaling-transactions-cloud/" class="nav-link">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
-    </a>
-  </li>
-  <li>
-    <a href="../scaling-transactions-yba/" class="nav-link active">
-      <img src="/icons/server.svg" alt="Server Icon">
-      YugabyteDB Anywhere
-    </a>
-  </li>
-</ul>
+{{<product-tabs>}}
 
 ## Set up a universe
 
