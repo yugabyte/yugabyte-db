@@ -10,8 +10,6 @@
 
 set -e
 
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
-
 . "${BASH_SOURCE%/*}"/bin/common.sh
 
 # Use dynamic paths to shorten shebangs below 64 characters.

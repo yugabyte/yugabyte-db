@@ -13,9 +13,6 @@ useCoursier := false
 // Constants
 // ------------------------------------------------------------------------------------------------
 
-// This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), default = true)
-
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
 
@@ -423,7 +420,7 @@ cleanModules := {
 }
 
 def get_venv_dir(): String = {
-  if (USE_PYTHON3) "venv" else "python_virtual_env"
+  "venv"
 }
 
 cleanVenv := {
