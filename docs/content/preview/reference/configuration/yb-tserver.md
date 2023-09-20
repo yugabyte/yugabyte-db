@@ -462,7 +462,7 @@ Default: `50`
 
 ##### --ysql_colocate_database_by_default
 
-When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the yb-master and yb-tserver services.
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
 For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
 
