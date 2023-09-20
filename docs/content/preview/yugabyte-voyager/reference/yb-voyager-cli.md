@@ -323,7 +323,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate/migrate-steps/#import-data-file) in CSV or text format directly to the YugabyteDB database. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate/migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate/migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate/migrate-steps/#import-data-file-from-azure-blob-storage-containers).
+Load data from files in CSV or text format directly to the YugabyteDB database. These data files can be located either on a local filesystem, an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../migrate/bulk-data-load/).
 
 #### Syntax
 
@@ -393,7 +393,7 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
-For live migration, get the status report of [import data](#import-data). For live migration with fall forward, the report also includes the status of [fall forward setup](#fall-forward-setup-tech-preview). The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
+For live migration, get the status report of [import data](#import-data). For live migration with fall forward, the report also includes the status of [fall forward setup](#fall-forward-setup). The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
 #### Syntax
 
@@ -683,7 +683,7 @@ For Oracle, you can specify only one schema name using this option.
 
 For PostgreSQL, you can specify a list of comma-separated schema names.
 
-Case-sensitive schema names are not yet supported. Refer to [Import issue with case-sensitive schema names](../../known-issues/#import-issue-with-case-sensitive-schema-names) for more details.
+Case-sensitive schema names are not yet supported. Refer to [Importing with case-sensitive schema names](../../known-issues/general-issues/#importing-with-case-sensitive-schema-names) for more details.
 
 ### --output-format
 
@@ -731,7 +731,7 @@ Specifies the number of tables to be exported in parallel from the source databa
 
 Default: 4; exports 4 tables at a time by default.
 
-If you use [BETA_FAST_DATA_EXPORT](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored.
+If you use [BETA_FAST_DATA_EXPORT](../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored.
 
 #### For import data
 
@@ -743,13 +743,13 @@ Default: If yb-voyager can determine the total number of cores N in the Yugabyte
 
 ### --batch-size
 
-Specifies the number of rows in each batch generated for ingestion during [import data](../../migrate-steps/#import-data).
+Specifies the number of rows in each batch generated for ingestion during [import data](../../migrate/migrate-steps/#import-data).
 
 Default: 20000; rows.
 
 ### --data-dir
 
-Path to the directory containing the data files to import. You can also provide an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), and [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers) as a path to the data directory.
+Path to the directory containing the data files to import. You can also provide the URI of an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../migrate/bulk-data-load/).
 
 ### --file-table-map
 
@@ -926,11 +926,11 @@ Default: false
 
 ### --fs-utilization-threshold
 
-Specifies disk utilization percentage after which you can [archive changes](#archive-changes-tech-preview).
+Specifies disk utilization percentage after which you can [archive changes](#archive-changes).
 
 ### --move-to
 
-Specifies the destination path to which [archive changes](#archive-changes-tech-preview) should move the files to.
+Specifies the destination path to which [archive changes](#archive-changes) should move the files to.
 
 ---
 

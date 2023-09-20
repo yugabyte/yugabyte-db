@@ -325,61 +325,6 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
-#### Import data file
-
-If all your data files are in CSV format and you have already created a schema in your target YugabyteDB database, you can use the `yb-voyager import data file` command to load the data into the target table directly from the CSV file(s). This command doesn't require performing other migration steps ([export and analyze schema](#export-and-analyze-schema), [export data](#export-data), or [import schema](#import-schema) prior to import. It only requires a table present in the target database to perform the import.
-
-```sh
-# Replace the argument values with those applicable for your migration.
-yb-voyager import data file --export-dir <EXPORT_DIR> \
-        --target-db-host <TARGET_DB_HOST> \
-        --target-db-user <TARGET_DB_USER> \
-        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        –-data-dir </path/to/files/dir/> \
-        --file-table-map <filename1:table1,filename2:table2> \
-        --delimiter <DELIMITER> \
-        –-has-header \
-        --null-string "<NULL_STRING>"
-
-```
-
-Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
-
-#### Import data file from AWS S3
-
-Import data file also allows you to load directly from your data files stored on AWS S3. The S3 bucket URI can be provided to the `data-dir` flag as follows:
-
-```sh
-yb-voyager import data file .... \
-        --data-dir s3://voyager-data
-```
-
-The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configure the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details on setting up your S3 bucket.
-
-#### Import data file from GCS buckets
-
-Import data file also allows you to load directly from your data files stored on GCS buckets. The GCS bucket URI can be provided to the `data-dir` flag as follows:
-
-```sh
-yb-voyager import data file .... \
-        --data-dir gs://voyager-data
-```
-
-The authentication mechanism for accessing a GCS bucket using yb-voyager is the Application Default Credentials (ADC) strategy for GCS. Refer to [Set up Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc) for additional details on setting up your GCS buckets.
-
-#### Import data file from Azure blob
-
-Import data file also allows you to load directly from your data files stored on Azure blob storage containers. The Azure container URI can be provided to the `data-dir` flag as follows:
-
-```sh
-yb-voyager import data file .... \
-        --data-dir https://<account_name>.blob.core.windows.net/<container_name>...
-```
-
-The authentication mechanism for accessing blobs using yb-voyager is the same as that used by the Azure CLI. The Azure storage account used for the import should at least have the [Storage Blob Data Reader](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-reader) role assigned to it. Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli) for additional details on setting up your GCS buckets.
-
 ### Import indexes and triggers
 
 Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
@@ -406,7 +351,7 @@ After the schema and data import is complete, the automated part of the database
 
 Suppose you have a scenario where,
 
-- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- [import data](#import-data) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
