@@ -495,7 +495,7 @@ Perform the following steps as part of the cutover process:
 
 Suppose you have the following scenario:
 
-- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- [import data](#import-data) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 
@@ -542,7 +542,7 @@ Perform the following steps as part of the switchover process:
 
 Suppose you have a scenario where,
 
-- [import data](#import-data) or [import data file](#import-data-file) command fails.
+- [import data](#import-data) or [import data file](../bulk-data-load/#import-data-files-from-the-local-disk) command fails.
 - To resolve this issue, you delete some of the rows from the split files.
 - After retrying, the import data command completes successfully.
 

@@ -24,7 +24,7 @@ There are several factors that slow down data-ingestion performance in any datab
 
 yb-voyager improves performance when migrating data into a newly created empty database in several ways:
 
-- Creates secondary indexes after the data import is complete. During the [post-import data](../migrate-steps/#import-indexes-and-triggers) phase, yb-voyager creates the secondary indexes (except the unique indexes) after it completes data loading on all the tables. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance. (Unique indexes are created in the [import-schema](../migrate-steps/#import-schema) phase, to avoid any issues during import of schema because of foreign key dependencies on the index.)
+- Creates secondary indexes after the data import is complete. During the [post-import data](../migrate/migrate-steps/#import-indexes-and-triggers) phase, yb-voyager creates the secondary indexes (except the unique indexes) after it completes data loading on all the tables. Then, it uses [Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) to update indexes after data is loaded. This is much faster than online index maintenance. (Unique indexes are created in the [import-schema](../migrate/migrate-steps/#import-schema) phase, to avoid any issues during import of schema because of foreign key dependencies on the index.)
 
 - Disables foreign key constraints during data import. However, other constraints like primary key constraints, check constraints, unique key constraints, and so on are not disabled. It's safe to disable some constraint checks as the data is from a reliable source. For maximum throughput, it is also preferable to not follow any order when populating tables.
 
@@ -64,7 +64,7 @@ Use one or more of the following techniques to improve import data performance:
 
 The following performance test results demonstrate the preceding techniques.
 
-[Import data](../migrate-steps/#import-data) was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
+[Import data](../migrate/migrate-steps/#import-data) was tested using varying configurations, including more parallel jobs, multiple disks, and a larger cluster. The tests were run using a 28GB CSV file with 350 million rows on YugabyteDB version 2.16.0.0-b90.
 
 The table schema for the test was as follows:
 
@@ -96,7 +96,7 @@ As more optimizations are introduced, average throughput increases. The followin
 
 - The more optimizations you use, the more CPU you will require. Allowing CPU use greater than 60% may not be advisable as the database requires some cycles for internal operations.
 
-- These performance optimizations apply whether you are importing data using the yb-voyager [import data command](../migrate-steps/#import-data) or the [import data file command](../migrate-steps/#import-data-file).
+- These performance optimizations apply whether you are importing data using the yb-voyager [import data command](../migrate/migrate-steps/#import-data) or the [import data file command](../migrate/bulk-data-load/#import-data-files-from-the-local-disk).
 
 {{< /note >}}
 
@@ -104,4 +104,4 @@ As more optimizations are introduced, average throughput increases. The followin
 
 By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
 
-If you use BETA_FAST_DATA_EXPORT to [accelerate data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), yb-voyager exports only one table at a time and the `--parallel-jobs` argument is ignored.
+If you use BETA_FAST_DATA_EXPORT to [accelerate data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), yb-voyager exports only one table at a time and the `--parallel-jobs` argument is ignored.

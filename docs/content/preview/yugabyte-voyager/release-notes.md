@@ -34,7 +34,7 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 * In addition to AWS S3, `import data file` now supports directly importing objects (CSV/TEXT files) stored in GCS and Azure Blob Storage. You can specify GCS and Azure Blob Storage "directories" by prefixing them with `gs://` and `https://`.
 
-* When using the [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
+* When using the [accelerated data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
 
 * The `analyze-schema` command now reports unsupported data types.
 
@@ -56,7 +56,7 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 ### Key enhancements
 
-* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate-steps/#export-data) for more details.
+* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate/migrate-steps/#export-data) for more details.
 
 * Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/yb-voyager-cli/#file-opts) in import data file.
 
