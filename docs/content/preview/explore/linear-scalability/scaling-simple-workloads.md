@@ -3,7 +3,7 @@ title: Simple workloads
 headerTitle: Simple workloads
 linkTitle: Simple workloads
 description: Simple workloads
-headcontent: Understand how YugabyteDB handles large simple workloads
+headcontent: Performance running simple workloads when scaling out
 menu:
   preview:
     name: Simple workloads
