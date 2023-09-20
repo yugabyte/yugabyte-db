@@ -130,6 +130,41 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that finalize YugabyteDB software version upgrade on a universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Finalize Upgrade",
+      notes = "Queues a task to finalize upgrade in a universe.",
+      nickname = "finalizeUpgrade",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_params",
+          value = "Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.SoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result finalizeUpgrade(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::finalizeUpgrade,
+        SoftwareUpgradeParams.class,
+        Audit.ActionType.FinalizeUpgrade,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that upgrades gflags in all nodes of primary cluster. Supports rolling, non-rolling, and
    * non-restart upgrades upgrade of the universe.
    *

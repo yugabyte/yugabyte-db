@@ -576,6 +576,8 @@ public enum TaskType {
 
   SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
 
+  FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
+
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
   LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
@@ -631,6 +633,7 @@ public enum TaskType {
           .put(SoftwareKubernetesUpgrade, 48)
           .put(UpdateKubernetesDiskSize, 49)
           .put(UpgradeKubernetesUniverse, 50)
+          .put(FinalizeUpgrade, 51)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
