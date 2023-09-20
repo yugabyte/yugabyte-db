@@ -51,8 +51,12 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/bits.h"
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/master/master_heartbeat.pb.h"
 
+#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/rate_limiter.h"
 
@@ -68,6 +72,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/format.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -87,6 +92,8 @@ DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
+DECLARE_int32(db_block_cache_num_shard_bits);
+DECLARE_int32(num_cpus);
 
 namespace yb {
 namespace tserver {
@@ -233,6 +240,63 @@ class TsTabletManagerTest : public YBTest {
 
   string test_data_root_;
 };
+
+TEST_F_EX(TsTabletManagerTest, TestDbBlockCacheNumShardBits, YBTest) {
+  auto make_pair_same_kv = [](int32_t arg) {
+    return std::make_pair(arg, arg);
+  };
+
+  auto random_pair_same_kv = [](int32_t range_min, int32_t range_max) {
+    const auto rand_num = RandomUniformInt<int32_t>(range_min, range_max);
+    return std::make_pair(rand_num, rand_num);
+  };
+
+  auto random_pair_log_v = [](int32_t range_min, int32_t range_max) {
+    const auto rand_num = RandomUniformInt<int32_t>(range_min, range_max);
+    return std::make_pair(rand_num, Bits::Log2Ceiling(rand_num));
+  };
+
+  const std::vector<std::pair<int32_t, int32_t>> kNumShardBitsByFlag {
+    { 0, 0 }, { 1, 1 }, random_pair_same_kv(2, rocksdb::kSharedLRUCacheMaxNumShardBits - 2),
+    make_pair_same_kv(rocksdb::kSharedLRUCacheMaxNumShardBits - 1),
+    make_pair_same_kv(rocksdb::kSharedLRUCacheMaxNumShardBits),
+    { rocksdb::kSharedLRUCacheMaxNumShardBits + 1, rocksdb::kSharedLRUCacheMaxNumShardBits },
+    { RandomUniformInt<int32_t>(rocksdb::kSharedLRUCacheMaxNumShardBits + 2,
+                                std::numeric_limits<int32_t>::max()),
+      rocksdb::kSharedLRUCacheMaxNumShardBits }
+  };
+
+  for (const auto& num_shard_bits_by_flag_info : kNumShardBitsByFlag) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_num_shard_bits) =
+        num_shard_bits_by_flag_info.first;
+    const auto num_shard_bits = yb::tserver::GetDbBlockCacheNumShardBits();
+    ASSERT_EQ(num_shard_bits, num_shard_bits_by_flag_info.second);
+  }
+
+  const std::vector<std::pair<int32_t, int32_t>> kNumShardBitsByCpuNum {
+    { 1, 4 }, { 2, 4 }, { 3, 4 }, { 4, 4 }, { RandomUniformInt<int32_t>(5, 15), 4 }, { 16, 4 },
+    { 17, 5 }, { 18, 5 }, { RandomUniformInt<int32_t>(19, 30), 5 }, { 31, 5 }, { 32, 5 },
+    { 33, 6 }, { RandomUniformInt<int32_t>(34, 62), 6 }, { 63, 6 }, { 64, 6 }, { 65, 7 },
+    { RandomUniformInt<int32_t>(66, 126), 7 }, { 127, 7 }, { 128, 7 }, { 129, 8 },
+    { RandomUniformInt<int32_t>(130, 254), 8 }, { 255, 8 }, { 256, 8 }, { 257, 9 },
+    random_pair_log_v(258, std::pow(2, rocksdb::kSharedLRUCacheMaxNumShardBits) - 1),
+    { RandomUniformInt<int32_t>(std::pow(2, rocksdb::kSharedLRUCacheMaxNumShardBits) + 1,
+                                std::pow(2, 30)),
+      rocksdb::kSharedLRUCacheMaxNumShardBits }
+  };
+
+  const std::vector<int32_t> kNegativeFlagValues {
+    -1, RandomUniformInt(std::numeric_limits<int32_t>::min(), -2)
+  };
+  for (const auto flag_value : kNegativeFlagValues) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_num_shard_bits) = flag_value;
+    for (const auto& num_shard_bits_by_cpu_num_info : kNumShardBitsByCpuNum) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = num_shard_bits_by_cpu_num_info.first;
+      const auto num_shard_bits = yb::tserver::GetDbBlockCacheNumShardBits();
+      ASSERT_EQ(num_shard_bits, num_shard_bits_by_cpu_num_info.second);
+    }
+  }
+}
 
 TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Create a new tablet.

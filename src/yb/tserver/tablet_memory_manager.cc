@@ -16,8 +16,10 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/gutil/bits.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/memory_monitor.h"
@@ -72,8 +74,11 @@ DEFINE_UNKNOWN_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes. "
              "Defaults to -3 (use default percentage as defined by master or tserver).");
 
-DEFINE_UNKNOWN_int32(db_block_cache_num_shard_bits, 4,
-             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
+DEFINE_RUNTIME_int32(db_block_cache_num_shard_bits, -1,
+             "-1 indicates a dynamic scheme that evaluates to 4 if number of cores is less than "
+             "or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on. If the value is "
+             "overridden, that value would be used in favor of the dynamic scheme. "
+             "The maximum permissible value is 19.");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
@@ -197,7 +202,7 @@ void TabletMemoryManager::InitBlockCache(
 
   if (block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
-                                                FLAGS_db_block_cache_num_shard_bits);
+                                                GetDbBlockCacheNumShardBits());
     options->block_cache->SetMetrics(metrics);
     block_based_table_gc_ = std::make_shared<LRUCacheGC>(options->block_cache);
     block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
@@ -340,6 +345,25 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
   return Substitute("T $0 P $1 : ",
       peer->tablet_id(),
       peer->permanent_uuid());
+}
+
+int32_t GetDbBlockCacheNumShardBits() {
+  auto num_cache_shard_bits = FLAGS_db_block_cache_num_shard_bits;
+  if (num_cache_shard_bits < 0) {
+    const auto num_cores = base::NumCPUs();
+    if (num_cores <= 16) {
+      return rocksdb::kSharedLRUCacheDefaultNumShardBits;
+    }
+    num_cache_shard_bits = Bits::Log2Ceiling(num_cores);
+  }
+  if (num_cache_shard_bits > rocksdb::kSharedLRUCacheMaxNumShardBits) {
+    LOG(INFO) << Format(
+        "The value of db_block_cache_num_shard_bits is higher than the "
+        "maximum permissible value of $0. The value used will be $0.",
+        rocksdb::kSharedLRUCacheMaxNumShardBits);
+    return rocksdb::kSharedLRUCacheMaxNumShardBits;
+  }
+  return num_cache_shard_bits;
 }
 
 }  // namespace tserver

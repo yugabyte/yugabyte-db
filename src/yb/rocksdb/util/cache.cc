@@ -841,8 +841,6 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   }
 }
 
-static int kNumShardBits = 4;          // default values, can be overridden
-
 class ShardedLRUCache : public Cache {
  private:
   LRUCache* shards_;
@@ -1020,7 +1018,7 @@ class ShardedLRUCache : public Cache {
 }  // end anonymous namespace
 
 shared_ptr<Cache> NewLRUCache(size_t capacity) {
-  return NewLRUCache(capacity, kNumShardBits, false);
+  return NewLRUCache(capacity, kSharedLRUCacheDefaultNumShardBits, false);
 }
 
 shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
@@ -1029,7 +1027,7 @@ shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits) {
 
 shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                               bool strict_capacity_limit) {
-  if (num_shard_bits >= 20) {
+  if (num_shard_bits > kSharedLRUCacheMaxNumShardBits) {
     return nullptr;  // the cache cannot be sharded into too many fine pieces
   }
   return std::make_shared<ShardedLRUCache>(capacity, num_shard_bits,

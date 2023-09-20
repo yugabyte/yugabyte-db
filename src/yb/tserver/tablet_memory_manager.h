@@ -105,5 +105,8 @@ class TabletMemoryManager {
   std::shared_ptr<rocksdb::MemoryMonitor> memory_monitor_;
 };
 
+// Evaluates the number of bits used to shard the block cache depending on the number of cores.
+int32_t GetDbBlockCacheNumShardBits();
+
 }  // namespace tserver
 }  // namespace yb
