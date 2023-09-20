@@ -30,7 +30,7 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 ### Grafana
 
 - Grafana account and stack.
-- Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see the [Grafana documentation](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/).
+- Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see the [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/) in the Grafana documentation.
 
 ## Export configuration
 
