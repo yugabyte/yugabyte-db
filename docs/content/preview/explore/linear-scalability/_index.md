@@ -75,7 +75,7 @@ The following table lists the pros and cons of horizontal and vertical scaling o
   {{<index/item
     title="Transactions"
     body="See how transactions scale in YugabyteDB."
-    href="scaling-transactions-bench/"
+    href="scaling-transactions/"
     icon="/images/section_icons/explore/auto_sharding.png">}}
 
   {{<index/item

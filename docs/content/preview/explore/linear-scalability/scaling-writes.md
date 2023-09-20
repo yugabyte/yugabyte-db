@@ -15,7 +15,7 @@ type: docs
 
 Writes scale linearly in YugabyteDB as more nodes are added to the cluster.
 
-In YugabyteDB, the rows are [sharded into tablets](../sharding-data) based on the primary key (or the row ID when a primary key is not defined), and these tablets are distributed across the nodes in the cluster. Because data is distributed across the different nodes in the cluster, YugabyteDB can perform parallel write operations, which results in linear scaling of performance when nodes are added to the cluster.
+In YugabyteDB, the rows are [sharded into tablets](../../../architecture/docdb-sharding/sharding/) based on the primary key (or the row ID when a primary key is not defined), and these tablets are distributed across the nodes in the cluster. Because data is distributed across the different nodes in the cluster, YugabyteDB can perform parallel write operations, which results in linear scaling of performance when nodes are added to the cluster.
 
 YugabyteDB can clock more than 1 million writes/second in both [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) APIs.
 
