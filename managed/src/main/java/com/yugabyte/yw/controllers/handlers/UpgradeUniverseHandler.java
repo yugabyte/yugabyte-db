@@ -171,6 +171,18 @@ public class UpgradeUniverseHandler {
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
   }
 
+  public UUID finalizeUpgrade(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+    // TODO(vbansal): Add validations for finalize based on universe state.
+    // Will add them in subsequent diffs.
+    return submitUpgradeTask(
+        TaskType.FinalizeUpgrade,
+        CustomerTask.TaskType.FinalizeUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
