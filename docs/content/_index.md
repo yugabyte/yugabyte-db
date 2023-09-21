@@ -19,9 +19,9 @@ resources:
     url: /preview/yugabyte-voyager/
 ---
 
-YugabyteDB is a scalable, resilient, and secure cloud-native database for powering global, internet-scale applications.
+YugabyteDB is a scalable, resilient, and secure PostgreSQL-compatible cloud-native database for powering global, internet-scale applications.
 
-YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. YugabyteDB can be deployed across public and private clouds as well as in Kubernetes environments.
+YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. With support for hybrid and multi-cloud setups, YugabyteDB can be deployed across public and private clouds as well as in Kubernetes environments.
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
