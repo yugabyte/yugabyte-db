@@ -451,9 +451,6 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
-  Result<bool> IsBootstrapRequiredForTablet(
-      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
-
   void AddTabletCheckpoint(OpId op_id, const CDCStreamId& stream_id, const TabletId& tablet_id);
 
   rpc::Rpcs rpcs_;
