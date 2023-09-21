@@ -12,7 +12,6 @@ menu:
 type: docs
 ---
 
-
 This page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
 
 ## Prerequisite
@@ -31,13 +30,13 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \
-       –-data-dir </path/to/files/dir/> \
+       --data-dir </path/to/files/dir/> \
        --file-table-map <filename1:table1,filename2:table2> \
        # Optional arguments as per data format
        --delimiter <DELIMITER> \
        --escape-char <ESCAPE_CHAR> \
        --quote-char <QUOTE_CHAR> \
-       –-has-header \
+       --has-header \
        --null-string "<NULL_STRING>"
 ```
 
