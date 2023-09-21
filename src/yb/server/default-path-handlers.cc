@@ -91,7 +91,7 @@ DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
 TAG_FLAG(web_log_bytes, advanced);
 
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
-    "Include #TYPE and #HELP in promethus metrics output");
+    "Include #TYPE and #HELP in Prometheus metrics output by default");
 
 DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
@@ -498,6 +498,11 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
                    MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     prometheus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
+      prometheus_opts->export_help_and_type =
+          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
+    }
   }
 
   if (json_mode) {
@@ -527,6 +532,8 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
+  opts.export_help_and_type =
+      ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
@@ -545,10 +552,8 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
     entities_opts[AggregationMetricLevel::kTable].exclude_metrics.push_back("cdcsdk");
   }
 
-  ExportHelpAndType export_help_and_type_in_prometheus_metrics(
-      GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
   for (const auto& entity_options : entities_opts) {
-    PrometheusWriter writer(output, export_help_and_type_in_prometheus_metrics,
+    PrometheusWriter writer(output, opts.export_help_and_type,
         entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
                 "Couldn't write text metrics for Prometheus");
