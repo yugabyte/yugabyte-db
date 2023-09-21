@@ -63,6 +63,7 @@
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 class HostPort;
@@ -186,7 +187,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
 
   // Signals that a response was received from the peer. This method does response handling that
   // requires IO or may block.
-  void ProcessResponse();
+  void ProcessResponse(TracePtr trace);
 
   // Signals that a heartbeat response was received from the peer.
   void ProcessHeartbeatResponse(const Status& status);
