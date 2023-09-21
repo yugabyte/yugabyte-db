@@ -2056,10 +2056,6 @@ Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
-// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TabletIDMetadata() {
-//   return pg_session_->TabletIDMetadata();
-// }
-
 Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TableIDMetadata() {
   return pg_session_->TableIDMetadata();
 }

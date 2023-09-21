@@ -748,13 +748,13 @@ class PgClient::Impl {
   // Result<std::vector<master::ListTablesResponsePB::TableInfo>>TabletIDMetadata() {
   // }
 
-  Result<std::vector<PgTableIDMetadataResponsePB>>TableIDMetadata() {
+  Result<std::vector<master::ListTablesResponsePB::TableInfo>>TableIDMetadata() {
     tserver::PgTableIDMetadataRequestPB req; 
     tserver::PgTableIDMetadataResponsePB resp;
     RETURN_NOT_OK(proxy_->TableIDMetadata(req, &resp, PrepareController()));
-    RETURN_NOT_OK(ResponseStatus(resp));
+    //RETURN_NOT_OK(ResponseStatus(resp));
     //std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
-    std::vector<PgTableIDMetadataResponsePB> result(resp.tables().begin(), resp.tables().end());
+    std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
     return result;
   }
 
@@ -1033,10 +1033,6 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
 }
-
-// Result<std::vector<master::ListTablesResponsePB::TableInfo>>PgClient::TabletIDMetadata() {
-//   return impl_->TabletIDMetadata();
-// }
 
 Result<std::vector<master::ListTablesResponsePB::TableInfo>>PgClient::TableIDMetadata() {
   return impl_->TableIDMetadata();

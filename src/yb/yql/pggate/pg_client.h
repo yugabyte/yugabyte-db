@@ -179,7 +179,7 @@ class PgClient {
       bool size_only, uint32_t db_oid);
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
-//   Result<std::vector<master::ListTablesResponsePB::TableInfo>> TabletIDMetadata();
+  
   Result<std::vector<master::ListTablesResponsePB::TableInfo>> TableIDMetadata();
   
   using ActiveTransactionCallback = LWFunction<Status(

@@ -1642,6 +1642,7 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   }
   return ToYBCStatus(res.status());
 }
+
 YBCStatus YBCTableIDMetadata() {
   const auto result = (pgapi->TableIDMetadata());
   if (!result.ok()) {
@@ -1650,13 +1651,6 @@ YBCStatus YBCTableIDMetadata() {
   return YBCStatusOK();
 }
 
-// YBCStatus YBCTabletIDMetadata() {
-//   const auto result = (pgapi->TabletIDMetadata());
-//   if (!result.ok()) {
-//     return ToYBCStatus(result.status());
-//   }
-//   return YBCStatusOK();
-// }
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {

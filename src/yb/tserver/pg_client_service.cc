@@ -775,31 +775,28 @@ class PgClientServiceImpl::Impl {
 
     return Status::OK();
   }
-  // Status TabletIDMetadata(const ListTabletsRequestPB& req, ListTabletsRequestPB* resp, rpc::RpcContext* context) {
-    
-  //   rpc::RpcController rpc;
-  //   // rpc.set_timeout(timeout_);
-  //   // for (const auto& live_ts : live_tservers) {
-  //   //   const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-  //   //   auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
-  //   //  auto proxy = remote_tserver->proxy();
-  //     RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
-  //   }
-  // }
+  
   Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
-  //   YBClient::ListTableInfo(resp);
+
     std::vector<client::YBTableName> list_of_tables = VERIFY_RESULT(client().ListTables());
-    // master::ListTablesRequestPB request;
-    // master::ListTablesResponsePB response;
-    // CALL_SYNC_LEADER_MASTER_RPC(request, response, TableIDMetadata);
     for (const auto& table : list_of_tables) {
-      if(!table.has_table_id())
-      {
+      if(!table.has_table_id()) {
         resp->add_tables()->set_id("");
       }
-      auto tables = resp->add_tables();
-      tables->set_id((table.table_id()));
-      tables->set_name((table.table_name()));
+      else {
+
+        auto tables = resp->add_tables();
+        tables->set_id(table.table_id());
+        tables->set_name(table.table_name()); 
+        tables->set_namespace_id(table.namespace_id());
+        // if(!table.has_relation_type()) {
+        //   tables->set_relation_type(table.relation_type());
+        // }
+        tables->set_pgschema_name(table.pgschema_name());
+        //tables->set_table_type(table.table_type());
+        //tables->set_state(table.state());
+        //tables->set_colocated_info(table.colocated_info());  
+      }
     }
     return Status::OK();
   } 
