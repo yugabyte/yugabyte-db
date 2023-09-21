@@ -545,3 +545,22 @@ select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
 on (x1 = xx1) where (y2 is not null) order by 1;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
 on (x1 = xx1) where (xx2 is not null) order by 1;
+
+-- Tests for EXPLAIN output of BNL
+-- These tests ensure we don't resolve fieldnames for batched expressions in Index Cond
+CREATE FUNCTION public.dummy(OUT a integer, OUT b integer)
+RETURNS SETOF record
+LANGUAGE sql
+IMMUTABLE PARALLEL SAFE STRICT
+AS 'SELECT 1, 1';
+EXPLAIN (COSTS OFF) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS ss WHERE t.oid = (ss.x).a;
+
+CREATE TABLE tbl (c1 INT, c2 INT, PRIMARY KEY (c1 ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.c1 = (ss.x).a AND tbl.c2 = (ss2.x2).a;
+
+CREATE TABLE tbl2 (c1 int, c2 int, PRIMARY KEY(c1  ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.c1 FROM tbl, tbl2) j1 ON j1.c1 = (ss.x).a;
+
+/*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);
