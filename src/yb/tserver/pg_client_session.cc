@@ -929,7 +929,8 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
-  if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+  auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
+  if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.

@@ -451,6 +451,7 @@ message PgPerformOptionsPB {
   CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
   bool trace_requested = 19;
+  bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
 }
 
 message PgPerformRequestPB {
