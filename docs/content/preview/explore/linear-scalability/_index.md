@@ -6,7 +6,6 @@ description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
 aliases:
   - /explore/linear-scalability/
-  - /preview/explore/linear-scalability/
   - /preview/explore/postgresql/linear-scalability/
   - /preview/explore/linear-scalability-macos/
   - /preview/explore/linear-scalability/linux/
@@ -22,12 +21,13 @@ menu:
     identifier: explore-scalability
     parent: explore
     weight: 220
+showRightNav: true
 type: indexpage
 ---
 
-YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../../architecture/docdb-sharding/sharding/?), called tablets. You can either add more nodes to distribute the tablets or increase the specs of your nodes to scale your universe efficiently and reliably to handle the following:
+YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../architecture/docdb-sharding/sharding/), called tablets. You can either add more nodes to distribute the tablets, or increase the specifications of your nodes to scale your universe efficiently and reliably to handle the following:
 
-* High transactions per second
+* More transactions per second
 * High number of concurrent client connections
 * Large datasets
 
@@ -39,7 +39,7 @@ Horizontal scaling is the most common scaling model in YugabyteDB, and has sever
 
 * **Improved performance** - More nodes can process requests in parallel, reducing response times.
 * **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
-* **Elastic scaling** - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
+* **Elastic scaling** - You can add new nodes as needed to accommodate growth. For example, scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
 
 ## Vertical scaling (scale up)
 
@@ -47,36 +47,23 @@ Vertical scaling involves upgrading the existing hardware or resources of each o
 
 In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling may be used to achieve the desired performance and scalability goals.
 
-## Horizontal vs Vertical Scaling
+## Horizontal vs vertical scaling
 
-The following table lists the pros and cons of Horizontal/Vertical scaling of a YugabyteDB cluster.
+The following table lists the pros and cons of horizontal and vertical scaling of a YugabyteDB cluster.
 
-|                     |           Horizontal Scaling            |                               Vertical Scaling                                |
-| ------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
-| Also known as       | Scale out                               | Scale up                                                                      |
-| No. of nodes        | Increases                               | Remains the same                                                              |
-| Ease of effort      | Add new nodes to the cluster            | Add more powerful nodes, drain the old node, and remove them from the cluster |
-| Fault Tolerance     | Increases as more nodes have been added | Remains the same                                                              |
-| Cluster rebalancing | Faster                                  | Slower                                                                        |
-| Future scaling      | More nodes can be added                 | Limited to the most powerful machines available today                         |
-| Added costs         | Cost of newer machines                  | Difference in cost of the new and old machines                                |
-| Disk | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and Memory, disks should also be updgraded to handle increased workloads |
+|                     |         Horizontal (Scale out)          |                             Vertical (Scale up)                                |
+| ------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| Number of nodes     | Increases                               | Remains the same                                                               |
+| Ease of effort      | Add new nodes to the cluster            | Add more powerful nodes, drain the old nodes, and remove them from the cluster |
+| Fault tolerance     | Increases as more nodes are added       | Remains the same                                                               |
+| Cluster&nbsp;rebalancing | Faster                             | Slower                                                                         |
+| Future scaling      | More nodes can be added                 | Limited to the most powerful machines available today                          |
+| Added costs         | Cost of new (commodity) machines        | Difference in cost of the new and old machines                                 |
+| Disk | Same disks as other nodes can be used, as data and connections are distributed | Along with CPU and memory, disks should also be updgraded to handle increased workloads |
 
 ## Learn more
 
 {{<index/block>}}
-
-  {{<index/item
-    title="Scaling transactions per second"
-    body="Scale out a universe to handle a greater number of concurrent transactions per second."
-    href="scaling-transactions-cloud/"
-    icon="/images/section_icons/explore/linear_scalability.png">}}
-
-  {{<index/item
-    title="Distribute data across nodes"
-    body="Automatic data distribution across the universe's nodes using transparent sharding of tables."
-    href="sharding-data/"
-    icon="fa-solid fa-building">}}
 
   {{<index/item
     title="Writes"
@@ -87,7 +74,7 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
   {{<index/item
     title="Transactions"
     body="See how transactions scale in YugabyteDB."
-    href="scaling-transactions-bench/"
+    href="scaling-transactions/"
     icon="/images/section_icons/explore/auto_sharding.png">}}
 
   {{<index/item
@@ -101,5 +88,11 @@ The following table lists the pros and cons of Horizontal/Vertical scaling of a 
     body="See how large datasets scale in YugabyteDB."
     href="scaling-large-datasets/"
     icon="fa-solid fa-weight-hanging">}}
+
+  {{<index/item
+    title="Scale out a universe"
+    body="Add nodes to a universe to handle a greater number of concurrent transactions per second."
+    href="scaling-universe/"
+    icon="/images/section_icons/explore/linear_scalability.png">}}
 
 {{</index/block>}}
