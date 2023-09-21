@@ -154,6 +154,11 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Safe to be called from other threads.
   std::string ToString() const;
 
+  // Dump the connection state for provided call id. This includes the information realted to
+  // connection shutdown time, and whether the call id is present in the active_calls_ or not.
+  // call_ptr is used only for logging to correlate with OutboundCall trace.
+  void QueueDumpConnectionState(int32_t call_id, const void* call_ptr) const;
+
   Direction direction() const { return direction_; }
 
   // Queue a call response back to the client on the server side.
@@ -211,6 +216,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   StreamReadBuffer& ReadBuffer() override;
 
   void CleanupExpirationQueue(CoarseTimePoint now);
+  // call_ptr is used only for logging to correlate with OutboundCall trace.
+  void DumpConnectionState(int32_t call_id, const void* call_ptr) const;
 
   std::string LogPrefix() const;
 
@@ -269,6 +276,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Responses that are currently being processed.
   // It could be in function variable, but declared as member for optimization.
   std::vector<OutboundDataPtr> outbound_data_being_processed_;
+  std::atomic<CoarseTimePoint> shutdown_time_{CoarseTimePoint::min()};
 
   std::shared_ptr<ReactorTask> process_response_queue_task_;
 
@@ -280,6 +288,11 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   std::unique_ptr<ConnectionContext> context_;
 
   std::atomic<uint64_t> responded_call_count_{0};
+  std::atomic<size_t> active_calls_during_shutdown_{0};
+  std::atomic<size_t> calls_queued_after_shutdown_{0};
+  std::atomic<size_t> responses_queued_after_shutdown_{0};
+
+  std::atomic<bool> queued_destroy_connection_{false};
 };
 
 }  // namespace rpc
