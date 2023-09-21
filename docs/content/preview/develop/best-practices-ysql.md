@@ -119,6 +119,25 @@ Use `BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE` for ba
 For more details, see [Large scans and batch jobs](../../develop/learn/transactions/transactions-performance-ysql/#large-scans-and-batch-jobs).
 {{</tip>}}
 
+
+## JSONB datatype
+YugabyteDB has [`jsonb`](../../api/ysql/datatypes/type_json) datatype that makes it easy to model json data which does not have a set schema and might change often. 
+It is the same as Postgresql [`jsonb`](https://www.postgresql.org/docs/11/datatype-json.html) datatype.
+You can use jsonb to group less interesting / lesser accessed columns of a table. 
+YSQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
+
+{{< note title="Use jsonb columns only when necessary" >}}
+`jsonb` columns are slower to read/write compared to normal columns.
+
+They also take more space because they need to store keys in strings and make keeping data consistency harder and 
+needing complex queries to get/set jsonb values. 
+A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic values. 
+Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
+primitive columns.
+
+{{< /note >}}
+
+
 ## Paralleling across tablets
 
 For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can parallelize your operation by creating queries that affect only a specific part of the tablet using the `yb_hash_code` function.
