@@ -127,6 +127,14 @@ For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can
 For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</tip>}}
 
+## Row size limit
+Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, we suggest keeping the size in the `10MB` range or less, maximum `32MB`. 
+
+
+## Column size limit
+For consistent latency/performance, we suggest keeping columns in the `2MB` range or less even though we support an individual column/row being about `32MB`.
+
+
 ## TRUNCATE tables instead of DELETE
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
