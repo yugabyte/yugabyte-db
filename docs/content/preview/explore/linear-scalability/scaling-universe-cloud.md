@@ -7,7 +7,7 @@ headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
     name: Scale out a universe
-    identifier: explore-transactions-scaling-transactions-3-ysql
+    identifier: scale-out-a-universe-2
     parent: explore-scalability
     weight: 100
 type: docs

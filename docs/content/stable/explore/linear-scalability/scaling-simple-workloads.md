@@ -5,7 +5,7 @@ linkTitle: Simple workloads
 description: Simple workloads
 headcontent: Performance running simple workloads when scaling out
 menu:
-  preview:
+  stable:
     name: Simple workloads
     identifier: scaling-simple-workloads
     parent: explore-scalability
