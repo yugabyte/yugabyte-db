@@ -43,6 +43,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <sstream>
 #include <string>
 #include <vector>

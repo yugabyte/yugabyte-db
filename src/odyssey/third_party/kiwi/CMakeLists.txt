@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(kiwi C)
 
-add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+add_extra_yb_flags_in_odyssey()
 
 set(CLANGCOMPILERSTANDART gnu11)
 

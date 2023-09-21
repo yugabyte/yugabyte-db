@@ -959,10 +959,10 @@ endfunction()
 # -------------------------------------------------------------------------------------------------
 
 macro(yb_setup_odyssey)
+  # Flags common to C and C++.
   set(OD_EXTRA_COMPILER_FLAGS
       -Wno-implicit-fallthrough
       -Wno-missing-field-initializers
-      -Wno-strict-prototypes
       -Wno-unused-but-set-variable
       -Wno-unused-function
       -Wno-unused-parameter
@@ -973,6 +973,12 @@ macro(yb_setup_odyssey)
       # for the uninitialized variables throughout the odyssey code base.
       -Wno-uninitialized
      )
+  set(OD_EXTRA_C_FLAGS
+      -Wno-strict-prototypes
+      # https://gist.githubusercontent.com/mbautin/323dd6fe9c6685377288397d4adf826c/raw
+      -Wno-incompatible-pointer-types
+     )
+
   if(IS_CLANG)
     list(APPEND OD_EXTRA_COMPILER_FLAGS
          -Wno-language-extension-token
@@ -983,10 +989,12 @@ macro(yb_setup_odyssey)
         )
   endif()
   if(IS_GCC)
-    list(APPEND OD_EXTRA_COMPILER_FLAGS
-         -Wno-pedantic
-         -Wno-incompatible-pointer-types
-        )
+    list(APPEND OD_EXTRA_COMPILER_FLAGS -Wno-pedantic)
+    if("${COMPILER_VERSION}" MATCHES "^12[.].*$")
+      # To work around:
+      # https://gist.github.com/mbautin/c4d4193ff1c2c310ff6ed4d8a01bd385
+      list(APPEND OD_EXTRA_COMPILER_FLAGS -Wno-address)
+    endif()
   endif()
 
   set(MACHINARIUM_INCLUDE_DIRS "${YB_SRC_ROOT}/src/odyssey/third_party/machinarium/sources")
@@ -1007,4 +1015,13 @@ macro(yb_setup_odyssey)
   add_subdirectory(src/odyssey/third_party/machinarium)
   add_subdirectory(src/odyssey/third_party/kiwi)
   add_subdirectory(src/odyssey)
+endmacro()
+
+# This macro is invoked in each Odyssey CMake file.
+macro(add_extra_yb_flags_in_odyssey)
+  add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OD_EXTRA_EXE_LINKER_FLAGS}")
+  foreach(od_extra_c_flag IN LISTS OD_EXTRA_C_FLAGS)
+    string(APPEND CMAKE_C_FLAGS " ${od_extra_c_flag}")
+  endforeach()
 endmacro()

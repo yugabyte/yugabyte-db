@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 
 namespace yb {

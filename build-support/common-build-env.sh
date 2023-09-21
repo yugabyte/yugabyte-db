@@ -228,6 +228,7 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
