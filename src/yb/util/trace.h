@@ -99,6 +99,8 @@ DECLARE_int32(tracing_level);
 #define TRACE_FUNC() \
   TRACE(__func__)
 
+#define TRACE_BEGIN_END_FUNC(t) yb::ScopedBeginEndFunc _begin_end_scope(__func__);
+
 #define PLAIN_TRACE_TO(trace, message) \
   do { \
     if ((trace)) { \
@@ -272,6 +274,24 @@ class ScopedAdoptTrace {
   scoped_refptr<Trace> trace_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
+};
+
+// Adds a Begin/End trace call in the constructor/destructor.
+// This should only be used on the stack (and thus created and destroyed
+// on the same thread).
+class ScopedBeginEndFunc {
+ public:
+  explicit ScopedBeginEndFunc(std::string function) : function_name_(std::move(function)) {
+    TRACE("Begin: $0", function_name_);
+  }
+  ~ScopedBeginEndFunc() {
+    TRACE("End: $0", function_name_);
+  }
+
+ private:
+  std::string function_name_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedBeginEndFunc);
 };
 
 // PlainTrace could be used in simple cases when we trace only up to 20 entries with const message.
