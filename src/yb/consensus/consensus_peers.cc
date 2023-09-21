@@ -84,6 +84,11 @@ DEFINE_UNKNOWN_int32(max_wait_for_processresponse_before_closing_ms,
              "finish before returning proceding to close the Peer and return");
 TAG_FLAG(max_wait_for_processresponse_before_closing_ms, advanced);
 
+DEFINE_RUNTIME_bool(collect_update_consensus_traces, false,
+    "If true, collected traces from followers for UpdateConsensus "
+    "running on a different server. ");
+TAG_FLAG(collect_update_consensus_traces, advanced);
+
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
@@ -191,6 +196,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
         }
       }
     }
+    TRACE("Could not get the lock to send update request for peer $0", peer_pb().permanent_uuid());
     return Status::OK();
   }
 
@@ -392,6 +398,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     return;
   }
 
+  TracePtr trace(Trace::CurrentTrace());
+  if (trace && GetAtomicFlag(&FLAGS_collect_update_consensus_traces)) {
+    update_request_->set_trace_requested(true);
+  }
   // The minimum_viable_heartbeat_ represents the
   // heartbeat that is sent immediately following this op.
   // Any heartbeats which are outstanding are considered no longer viable.
@@ -405,7 +415,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
   proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
-                      std::bind(&Peer::ProcessResponse, retain_self));
+                      std::bind(&Peer::ProcessResponse, retain_self, trace));
 }
 
 std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
@@ -486,7 +496,8 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
   return queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), *response);
 }
 
-void Peer::ProcessResponse() {
+void Peer::ProcessResponse(TracePtr trace) {
+  ADOPT_TRACE(trace.get());
   DCHECK(performing_update_mutex_.is_locked()) << "Got a response when nothing was pending.";
   auto status = controller_.status();
   if (status.ok()) {
@@ -495,6 +506,10 @@ void Peer::ProcessResponse() {
   last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
   controller_.Reset();
 
+  if (update_response_->has_trace_buffer()) {
+    TRACE("Received response from $0:\n BEGIN UpdateConsensus\n$1 END UpdateConsensus",
+            peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
+  }
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
