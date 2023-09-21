@@ -3588,12 +3588,17 @@ TEST_F_EX(XClusterYsqlTest, DmlOperationsBlockedOnStandbyCluster, XClusterYsqlTe
   ASSERT_OK(SetRoleToStandbyAndWaitForValidSafeTime());
 
   // Test that INSERT, UPDATE, and DELETE operations fail while the cluster is on STANDBY mode.
+  const std::string allow_writes = "SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;";
   for (auto& conn : consumer_conns) {
     for (const auto& query : queries) {
       const auto status = conn.Execute(query);
       ASSERT_NOK(status);
       ASSERT_STR_CONTAINS(
           status.ToString(), "Data modification by DML is forbidden with STANDBY xCluster role");
+
+      // Writes should be allowed when yb_non_ddl_txn_for_sys_tables_allowed is set
+      // which happens during ysql_upgrades
+      ASSERT_OK(conn.Execute(Format("$0 $1", allow_writes, query)));
     }
     ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
   }

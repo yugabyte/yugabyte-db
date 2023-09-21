@@ -696,9 +696,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_force_global_transaction(global_transaction);
 
+  // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
+  // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
   options.set_use_xcluster_database_consistency(
       yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode()));
+      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
+        yb_non_ddl_txn_for_sys_tables_allowed));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
