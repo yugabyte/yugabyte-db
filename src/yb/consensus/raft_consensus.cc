@@ -2279,7 +2279,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
   std::unique_lock<decltype(update_mutex_)> update_guard(update_mutex_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
-    update_guard.try_lock();
+    auto try_lock_result [[maybe_unused]] = update_guard.try_lock();  // NOLINT
   } else {
     // If failure detection is not enabled, then we can't just reject the vote,
     // because there will be no automatic retry later. So, block for the lock.
