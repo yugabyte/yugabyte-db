@@ -39,7 +39,7 @@ DEFINE_NON_RUNTIME_bool(
 TAG_FLAG(enable_pg_savepoints, stable);
 TAG_FLAG(enable_pg_savepoints, advanced);
 
-DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kNewInstallsOnly, false, true,
+DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kLocalPersisted, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
