@@ -97,6 +97,7 @@ lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
+lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -403,6 +404,12 @@ compileJavaGenClient := {
   status
 }
 
+devSpaceReload := {
+  (Universal / packageBin).value
+  val status = Process("devspace run extract-archive").!
+  status
+}
+
 cleanUI := {
   ybLog("Cleaning UI...")
   val status = Process("rm -rf node_modules", baseDirectory.value / "ui").!
@@ -466,6 +473,9 @@ lazy val gogen = project.in(file("client/go"))
   )
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
+
+// Being used by DevSpace tool to build an archive without building the UI
+Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 runPlatformTask := {
   (Compile / run).toTask("").value
