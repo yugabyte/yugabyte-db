@@ -26,7 +26,7 @@ The overall behavior of a user-defined function or procedure is determined by a 
 
 You can see the names of all of these rules in the grammars for _create [or replace] function_, _create [or replace] procedure_, _alter function_, and _alter procedure_, below:
 
-{{%ebnf%}}
+{{%ebnf localrefs="alterable_fn_only_attribute,alterable_fn_and_proc_attribute,special_fn_and_proc_attribute,unalterable_fn_attribute,unalterable_proc_attribute" %}}
   create_function,
   create_procedure,
   alter_function,
