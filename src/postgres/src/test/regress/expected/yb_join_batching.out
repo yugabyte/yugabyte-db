@@ -1801,3 +1801,69 @@ on (x1 = xx1) where (xx2 is not null) order by 1;
   2 | 22 |  2 | 222 |   2 |  22
   4 | 44 |  4 |     |   4 |  44
 (3 rows)
+
+-- Tests for EXPLAIN output of BNL
+-- These tests ensure we don't resolve fieldnames for batched expressions in Index Cond
+CREATE FUNCTION public.dummy(OUT a integer, OUT b integer)
+RETURNS SETOF record
+LANGUAGE sql
+IMMUTABLE PARALLEL SAFE STRICT
+AS 'SELECT 1, 1';
+EXPLAIN (COSTS OFF) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS ss WHERE t.oid = (ss.x).a;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t.oid = (((dummy())).a)::oid)
+   ->  ProjectSet
+         ->  Result
+   ->  Index Scan using pg_type_oid_index on pg_type t
+         Index Cond: (oid = ANY (ARRAY[(((dummy())).a)::oid, (($1))::oid, (($2))::oid]))
+(6 rows)
+
+CREATE TABLE tbl (c1 INT, c2 INT, PRIMARY KEY (c1 ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.c1 = (ss.x).a AND tbl.c2 = (ss2.x2).a;
+                                                         QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (tbl.c2 = ((dummy())).a)
+   ->  ProjectSet
+         ->  Result
+   ->  YB Batched Nested Loop Join
+         Join Filter: (tbl.c1 = ((dummy())).a)
+         ->  ProjectSet
+               ->  Result
+         ->  Index Scan using tbl_pkey on tbl
+               Index Cond: ((c1 = ANY (ARRAY[((dummy())).a, ($1), ($2)])) AND (c2 = ANY (ARRAY[((dummy())).a, ($4), ($5)])))
+(10 rows)
+
+CREATE TABLE tbl2 (c1 int, c2 int, PRIMARY KEY(c1  ASC, c2 ASC));
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.c1 FROM tbl, tbl2) j1 ON j1.c1 = (ss.x).a;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (tbl.c1 = ((dummy())).a)
+   ->  ProjectSet
+         ->  Result
+   ->  Nested Loop
+         ->  Index Scan using tbl_pkey on tbl
+               Index Cond: (c1 = ANY (ARRAY[((dummy())).a, ($1), ($2)]))
+         ->  Seq Scan on tbl2
+(8 rows)
+
+/*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
+EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE tbl2.c1 = (ss.x).a AND (ss.x).a < 40 AND tbl.c1 = ANY(ARRAY[(ss.x).a, (ss.x).a]);
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((ss.x).a = tbl2.c1)
+   ->  Nested Loop
+         ->  Subquery Scan on ss
+               Filter: ((ss.x).a < 40)
+               ->  ProjectSet
+                     ->  Result
+         ->  Index Scan using tbl_pkey on tbl
+               Index Cond: (c1 = ANY (ARRAY[(ss.x).a, (ss.x).a]))
+   ->  Index Scan using tbl2_pkey on tbl2
+         Index Cond: (c1 = ANY (ARRAY[(ss.x).a, ($2), ($3)]))
+(11 rows)
