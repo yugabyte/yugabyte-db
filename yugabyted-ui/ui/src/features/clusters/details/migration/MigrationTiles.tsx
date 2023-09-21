@@ -4,7 +4,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { STATUS_TYPES, YBStatus, YBTooltip } from "@app/components";
-import { MigrationPhase, MigrationStep, migrationPhases, migrationSteps } from "./migration";
+import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import {
   MigrateSchemaTaskInfo,
   MigrationAssesmentInfo,
@@ -110,22 +110,15 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
 
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Plan and Assess"]]) {
-      return migrationPhases[MigrationPhase["Analyze Schema"]];
+      return ""; // Tooltip for plan and assess
     } else if (step === migrationSteps[MigrationStep["Migrate Schema"]]) {
-      return [
-        migrationPhases[MigrationPhase["Analyze Schema"]],
-        migrationPhases[MigrationPhase["Export Schema"]],
-        migrationPhases[MigrationPhase["Import Schema"]],
-      ].join(", ");
+      return ""; // Tooltip for migrate schema
     } else if (step === migrationSteps[MigrationStep["Migrate Data"]]) {
-      return [
-        migrationPhases[MigrationPhase["Export Data"]],
-        migrationPhases[MigrationPhase["Import Data"]],
-      ].join(", ");
+      return ""; // Tooltip for migrate data
     } else if (step === migrationSteps[MigrationStep["Verify"]]) {
-      return migrationPhases[MigrationPhase["Verify"]];
+      return ""; // Tooltip for verify
     } else {
-      return step;
+      return undefined;
     }
   };
 
@@ -192,6 +185,8 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           }
         }
 
+        const tooltip = getTooltip(step);
+
         return (
           <Card key={step} className={clsx(classes.card, disabled && classes.disabledCard)}>
             <CardActionArea
@@ -204,11 +199,12 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             >
               {disabled && <Box className={classes.disabledOverlay} />}
               <Box display="flex" alignItems="center" gridGap={10}>
-                {/* <span className={classes.icon}>{(index + 1).toString()}</span> */}
                 <Typography variant="h5">{step}</Typography>
-                <Box ml={-1}>
-                  <YBTooltip title={getTooltip(step)} />
-                </Box>
+                {tooltip &&
+                  <Box ml={-1}>
+                    <YBTooltip title={tooltip} />
+                  </Box>
+                }
               </Box>
               {isFetching ? (
                 <YBStatus
