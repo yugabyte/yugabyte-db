@@ -32,6 +32,8 @@
 
 #include "yb/rpc/connection.h"
 
+#include <atomic>
+#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -46,6 +48,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -125,9 +128,18 @@ std::string Connection::ReasonNotIdle() const {
   return reason;
 }
 
-void Connection::Shutdown(const Status& status) {
+void Connection::Shutdown(const Status& provided_status) {
   DCHECK(reactor_->IsCurrentThread());
 
+  if (provided_status.ok()) {
+    LOG_WITH_PREFIX(DFATAL)
+        << "Connection shutdown called with an OK status, replacing with an error:\n"
+        << GetStackTrace();
+  }
+  const Status status =
+      provided_status.ok()
+          ? STATUS_FORMAT(RuntimeError, "Connection shutdown called with OK status")
+          : provided_status;
   {
     std::vector<OutboundDataPtr> outbound_data_being_processed;
     {
@@ -137,8 +149,11 @@ void Connection::Shutdown(const Status& status) {
       shutdown_status_ = status;
     }
 
+    shutdown_time_.store(reactor_->cur_time(), std::memory_order_release);
+
+    auto self = shared_from_this();
     for (auto& call : outbound_data_being_processed) {
-      call->Transferred(status, this);
+      call->Transferred(status, self);
     }
   }
 
@@ -146,6 +161,7 @@ void Connection::Shutdown(const Status& status) {
   stream_->Shutdown(status);
 
   // Clear any calls which have been sent and were awaiting a response.
+  active_calls_during_shutdown_.store(active_calls_.size(), std::memory_order_release);
   for (auto& v : active_calls_) {
     if (v.call && !v.call->IsFinished()) {
       v.call->SetFailed(status);
@@ -165,11 +181,12 @@ void Connection::OutboundQueued() {
   auto status = stream_->TryWrite();
   if (!status.ok()) {
     VLOG_WITH_PREFIX(1) << "Write failed: " << status;
-    auto scheduled = reactor_->ScheduleReactorTask(
-        MakeFunctorReactorTask(
-            std::bind(&Reactor::DestroyConnection, reactor_, this, status),
-            shared_from_this(), SOURCE_LOCATION()));
-    LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule destroy";
+    if (!queued_destroy_connection_.exchange(true, std::memory_order_acq_rel)) {
+      auto scheduled = reactor_->ScheduleReactorTask(MakeFunctorReactorTask(
+          std::bind(&Reactor::DestroyConnection, reactor_, this, status), shared_from_this(),
+          SOURCE_LOCATION()));
+      LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule destroy";
+    }
   }
 }
 
@@ -277,7 +294,8 @@ size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch
     YB_LOG_EVERY_N_SECS(INFO, 5) << "Connection::DoQueueOutboundData data: "
                                  << AsString(outbound_data) << " shutdown_status_: "
                                  << shutdown_status_;
-    outbound_data->Transferred(shutdown_status_, this);
+    outbound_data->Transferred(shutdown_status_, shared_from_this());
+    calls_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
     return std::numeric_limits<size_t>::max();
   }
 
@@ -375,6 +393,50 @@ std::string Connection::ToString() const {
   }
 }
 
+void Connection::QueueDumpConnectionState(int32_t call_id, const void* call_ptr) const {
+  auto task = MakeFunctorReactorTask(
+      std::bind(&Connection::DumpConnectionState, this, call_id, call_ptr), shared_from_this(),
+      SOURCE_LOCATION());
+  auto scheduled = reactor_->ScheduleReactorTask(task);
+  LOG_IF_WITH_PREFIX(DFATAL, !scheduled) << "Failed to schedule call to dump connection state.";
+}
+
+void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) const {
+  auto earliest_expiry = active_calls_.empty()
+                             ? CoarseTimePoint()
+                             : active_calls_.get<ExpirationTag>().begin()->expires_at;
+  auto found_call_id = active_calls_.find(call_id) != active_calls_.end();
+  LOG_WITH_PREFIX(INFO) << Format(
+      "LastActivityTime: $0, "
+      "ActiveCalls stats: { "
+      "during shutdown: $1, "
+      "current size: $2, "
+      "earliest expiry: $3, "
+      "}, "
+      "OutboundCall: { "
+      "ptr: $4, "
+      "call id: $5, "
+      "is active: $6 "
+      "}, "
+      "Shutdown status: $7, "
+      "Shutdown time: $8, "
+      "Queue attempts after shutdown: { "
+      "calls: $9, "
+      "responses: $10 "
+      "}",
+      /* $0 */ last_activity_time(),
+      /* $1 */ active_calls_during_shutdown_.load(std::memory_order_acquire),
+      /* $2 */ active_calls_.size(),
+      /* $3 */ earliest_expiry,
+      /* $4 */ call_ptr,
+      /* $5 */ call_id,
+      /* $6 */ found_call_id,
+      /* $7 */ shutdown_status_,
+      /* $8 */ shutdown_time_,
+      /* $9 */ calls_queued_after_shutdown_.load(std::memory_order_acquire),
+      /* $10 */ responses_queued_after_shutdown_.load(std::memory_order_acquire));
+}
+
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcConnectionPB* resp) {
   DCHECK(reactor_->IsCurrentThread());
@@ -430,6 +492,7 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
           std::bind(&OutboundData::Transferred, outbound_data, _2, /* conn */ nullptr),
           SOURCE_LOCATION());
       lock.unlock();
+      responses_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
       auto scheduled = reactor_->ScheduleReactorTask(task, true /* schedule_even_closing */);
       LOG_IF_WITH_PREFIX(DFATAL, !scheduled) << "Failed to schedule OutboundData::Transferred";
       return;
@@ -526,11 +589,13 @@ void Connection::UpdateLastWrite() {
 }
 
 void Connection::Transferred(const OutboundDataPtr& data, const Status& status) {
-  data->Transferred(status, this);
+  data->Transferred(status, shared_from_this());
 }
 
 void Connection::Destroy(const Status& status) {
-  reactor_->DestroyConnection(this, status);
+  if (!queued_destroy_connection_.exchange(true, std::memory_order_acq_rel)) {
+    reactor_->DestroyConnection(this, status);
+  }
 }
 
 std::string Connection::LogPrefix() const {

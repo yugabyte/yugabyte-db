@@ -197,7 +197,8 @@ RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
     : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
 
 RedisInboundCall::~RedisInboundCall() {
-  Status status;
+  Status status =
+      STATUS(ServiceUnavailable, "Shutdown connection", "" /* msg2 */, Errno(ESHUTDOWN));
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
