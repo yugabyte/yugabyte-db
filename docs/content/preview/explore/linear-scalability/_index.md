@@ -27,7 +27,7 @@ type: indexpage
 
 YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../architecture/docdb-sharding/sharding/), called tablets. You can either add more nodes to distribute the tablets, or increase the specifications of your nodes to scale your universe efficiently and reliably to handle the following:
 
-* High transactions per second
+* More transactions per second
 * High number of concurrent client connections
 * Large datasets
 
