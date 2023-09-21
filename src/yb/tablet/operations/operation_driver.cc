@@ -223,6 +223,7 @@ bool OperationDriver::StartOperation() {
 
 Status OperationDriver::PrepareAndStart() {
   ADOPT_TRACE(trace());
+  TRACE_FUNC();
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
@@ -305,6 +306,7 @@ void OperationDriver::HandleFailure(const Status& status) {
 
 void OperationDriver::ReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
+  TRACE_BEGIN_END_FUNC();
   LOG_IF(DFATAL, status.ok() && !GetOpId().valid()) << "Invalid op id after replication";
 
   PrepareState prepare_state_copy;

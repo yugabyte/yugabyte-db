@@ -333,6 +333,9 @@ message ConsensusRequestPB {
 
   // Hybrid time on the leader when this request was generated.
   optional fixed64 propagated_hybrid_time = 11;
+
+  // If enabled, a trace will be collected for this RPC and returned in the response.
+  optional bool trace_requested = 12;
 }
 
 message ConsensusResponsePB {
@@ -356,6 +359,9 @@ message ConsensusResponsePB {
 
   // Hybrid time on the follower when this request was processed.
   optional fixed64 propagated_hybrid_time = 6;
+
+  // The trace for the RPC as a string, returned only if requested.
+  optional string trace_buffer = 7;
 }
 
 message MultiRaftConsensusRequestPB {

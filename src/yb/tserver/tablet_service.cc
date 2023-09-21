@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/forward_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
@@ -1879,6 +1877,10 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
 
   CompleteUpdateConsensusResponse(tablet_peer, resp);
 
+  auto trace = Trace::CurrentTrace();
+  if (trace && req->trace_requested()) {
+    resp->set_trace_buffer(trace->DumpToString(true));
+  }
   context.RespondSuccess();
 }
 

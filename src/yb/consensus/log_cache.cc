@@ -213,9 +213,14 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
     prepare_result = PrepareAppendOperations(msgs);
   }
 
+  TracePtr current_trace(Trace::CurrentTrace());
   Status log_status = log_->AsyncAppendReplicates(
     msgs, committed_op_id, batch_mono_time,
-    Bind(&LogCache::LogCallback, Unretained(this), prepare_result.last_idx_in_batch, callback));
+    Bind(&LogCache::LogCallback,
+         Unretained(this),
+         prepare_result.last_idx_in_batch,
+         current_trace,
+         callback));
 
   if (!log_status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Couldn't append to log: " << log_status;
@@ -229,8 +234,11 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& com
 }
 
 void LogCache::LogCallback(int64_t last_idx_in_batch,
+                           TracePtr trace,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
+  ADOPT_TRACE(trace.get());
+  TRACE("Appended till idx $0 to the local log", last_idx_in_batch);
   if (log_status.ok()) {
     std::lock_guard<simple_spinlock> l(lock_);
     if (min_pinned_op_index_ <= last_idx_in_batch) {
