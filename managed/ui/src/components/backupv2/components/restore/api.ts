@@ -25,15 +25,21 @@ export type PerLocationBackupInfo = {
     backupLocation: string,
     perBackupLocationKeyspaceTables: {
         originalKeyspace: string,
-        tableNameList: string[]
+        tableNameList: string[],
+    },
+    tablespaceResponse: {
+        unsupportedTablespaces?: string[],
+        conflictingTablespaces?: string[],
+        containsTablespaces: boolean
     }
 }
 export type PreflightResponseParams = {
     hasKMSHistory: boolean,
     backupCategory: IBackup['category'],
+    loggingID: string,
     perLocationBackupInfoMap: {
         [key: string]: PerLocationBackupInfo
-    }
+    },
 }
 
 export const getPreflightCheck = (payload: PreflightParams) => {

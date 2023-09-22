@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.backuprestore;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
@@ -20,6 +21,7 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonNet.CloudInfoPB;
@@ -97,6 +99,8 @@ public class Tablespace {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Builder
     @Jacksonized
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @EqualsAndHashCode
     public static class PlacementBlock {
       @NotNull
       @Size(min = 1)

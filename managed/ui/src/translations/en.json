@@ -641,6 +641,7 @@
       "restoreSuccess": "Success. Click <0>here</0> for task details",
       "allKeyspaces": "All Keyspaces",
       "preparingRestore": "Preparing Restore...",
+      "waitingMsg": "This can take a few seconds",
       "backupInfoBanner": {
         "backupSource": "Backup source (universe name)",
         "createdAt": "Created at",
@@ -653,6 +654,7 @@
       "generalSettings": {
         "restore": "Restore",
         "next": "Next",
+        "verifying": "Verifying",
         "universeSelection": {
           "title": "Select target",
           "selectTargetUniverse": "Select target universe",
@@ -712,6 +714,21 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      },
+      "tablespaces": {
+        "checkboxTitle": "Restore tablespaces and data to their respective regions",
+        "checkboxHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+        "unSupportedModal": {
+          "title": "Unable to Restore Tablespaces",
+          "warningText": "<b>Note!</b> You can proceed without restoring tablespaces, however none of the tablespaces are preserved and all their data is written to the primary region [location]. After the restore, you will have to re-add all the tablespaces. <a>Learn more</a>",
+          "submitLabel": "Restore Without Tablespaces",
+          "cancelLabel": "Cancel Restore",
+          "subTitle": "Tablespaces that don't meet the requirements for the restore",
+          "logs": "See the <a>logs</a> for more information.",
+          "topologyMismatch": "Topology mismatch with the target Universe",
+          "nameAlreadyExists": "Name already exists in the target universe",
+          "tablespaceName": "Tablespace name"
+        }
       }
     },
     "rbac": {
