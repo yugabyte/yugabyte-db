@@ -291,7 +291,7 @@ Each retry will use a newer snapshot of the database in anticipation that the co
 
 Note that the retries will not be performed in case the amount of data to be sent from YSQL to the client proxy exceeds the TServer gflag `ysql_output_buffer_size`.
 
-## Wait-on-Conflict [[Beta]](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag) {#wait-on-conflict}
+## Wait-on-Conflict [[Tech Preview]](/preview/releases/versioning/#feature-availability) {#wait-on-conflict}
 
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
