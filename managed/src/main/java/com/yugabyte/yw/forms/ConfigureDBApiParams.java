@@ -174,7 +174,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     if (enableYSQL) {
       return;
     }
-    // Validate ysql tables only while disabling ysql
+    // Validate ysql tables exists only while disabling YSQL.
     Customer customer = Customer.get(universe.getCustomerId());
     List<TableInfoForm.TableInfoResp> tables =
         tableHandler.listTables(
@@ -185,6 +185,24 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
             false /* includeColocatedParentTables */);
     if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.PGSQL_TABLE_TYPE))) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YSQL if any tables exists");
+    }
+  }
+
+  public void validateYCQLTables(Universe universe, UniverseTableHandler tableHandler) {
+    if (enableYCQL) {
+      return;
+    }
+    // Validate ycql tables exists only while disabling YCQL.
+    Customer customer = Customer.get(universe.getCustomerId());
+    List<TableInfoForm.TableInfoResp> tables =
+        tableHandler.listTables(
+            customer.getUuid(),
+            universe.getUniverseUUID(),
+            false /*includeParentTableInfo */,
+            false /* excludeColocatedTables */,
+            false /* includeColocatedParentTables */);
+    if (tables.stream().anyMatch(t -> t.tableType.equals(TableType.YQL_TABLE_TYPE))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot disable YCQL if any tables exists");
     }
   }
 
