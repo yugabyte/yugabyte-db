@@ -110,7 +110,7 @@ you can also batch multiple upserts in a single `INSERT ON CONFLICT` statement f
 
 In case the row already exists, you can access the existing values using `EXCLUDED.<column_name>` in the query.
 
-In the example below we have a table with where we are keeping counters of different products and incrementing rows in batches:
+The following example creates a table to track the quantity of products, and increments rows in batches:
 
 ```postgresql
 CREATE TABLE products
