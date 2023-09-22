@@ -97,7 +97,7 @@ INSERT INTO users(name,surname) VALUES ('bill', 'jane');
 INSERT INTO users(name,surname) VALUES ('billy', 'bob');
 INSERT INTO users(name,surname) VALUES ('joey', 'does');
 ```
-Do group values into a single statement:
+Instead, group values into a single statement as follows:
 ```postgresql
 INSERT INTO users(name,surname) VALUES ('bill', 'jane'), ('billy', 'bob'), ('joe', 'does');
 ``` 
