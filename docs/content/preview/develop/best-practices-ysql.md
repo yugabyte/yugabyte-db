@@ -88,7 +88,7 @@ For more details, see [Partition data by time](../common-patterns/timeseries/par
 {{</tip>}}
 
 ## Use multi row inserts wherever possible
-If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per-batch
+If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per batch
 and test different batch sizes to find the sweet spot.
 
 Don't use multiple statements:
