@@ -16,21 +16,21 @@
 from age.models import Vertex
 import unittest
 import decimal
-import age 
+import age
 import argparse
 
-DSN = "host=127.0.0.1 port=5432 dbname=postgres user=postgres password=agens"
+DSN = "host=localhost port=5432 dbname=postgres user=dehowefeng password=agens"
+TEST_HOST = "localhost"
+TEST_PORT = 5432
+TEST_DB = "postgres"
+TEST_USER = "postgres"
+TEST_PASSWORD = "agens"
+TEST_GRAPH_NAME = "test_graph"
 
 class TestAgeBasic(unittest.TestCase):
     ag = None
     def setUp(self):
         print("Connecting to Test Graph.....")
-        TEST_DB = self.args.database
-        TEST_USER = self.args.user
-        TEST_PASSWORD = self.args.password
-        TEST_PORT = self.args.port
-        TEST_HOST = self.args.host
-        TEST_GRAPH_NAME = self.args.graphName
         self.ag = age.connect(graph=TEST_GRAPH_NAME, host=TEST_HOST, port=TEST_PORT, dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
 
 
@@ -52,7 +52,7 @@ class TestAgeBasic(unittest.TestCase):
         for row in cursor:
             print("Vertex: %s , Type: %s " % (Vertex, type(row[0])))
 
-        
+
         # Create and Return multi columns
         cursor = ag.execCypher("CREATE (n:Person {name: %s, title: %s}) RETURN id(n), n.name", cols=['id','name'], params=('Jack','Manager'))
         row = cursor.fetchone()
@@ -62,8 +62,8 @@ class TestAgeBasic(unittest.TestCase):
         print("\nTest 1 Successful....")
 
 
-            
-        
+
+
     def testQuery(self):
 
         print("\n--------------------------------------------------")
@@ -75,10 +75,10 @@ class TestAgeBasic(unittest.TestCase):
         ag.execCypher("CREATE (n:Person {name: %s}) ", params=('Andy',))
         ag.execCypher("CREATE (n:Person {name: %s}) ", params=('Smith',))
         ag.execCypher("MATCH (a:Person), (b:Person) WHERE a.name = 'Andy' AND b.name = 'Jack' CREATE (a)-[r:worksWith {weight: 3}]->(b)")
-        ag.execCypher("""MATCH (a:Person), (b:Person) 
-                    WHERE  a.name = %s AND b.name = %s 
+        ag.execCypher("""MATCH (a:Person), (b:Person)
+                    WHERE  a.name = %s AND b.name = %s
                     CREATE p=((a)-[r:worksWith]->(b)) """, params=('Jack', 'Smith',))
-        
+
         ag.commit()
 
         cursor = ag.execCypher("MATCH p=()-[:worksWith]-() RETURN p")
@@ -86,7 +86,7 @@ class TestAgeBasic(unittest.TestCase):
             path = row[0]
             print("START:", path[0])
             print("EDGE:", path[1])
-            print("END:", path[2])  
+            print("END:", path[2])
 
         cursor = ag.execCypher("MATCH p=(a)-[b]-(c) WHERE b.weight>2 RETURN a,label(b), b.weight, c", cols=["a","bl","bw", "c"], params=(2,))
         for row in cursor:
@@ -94,12 +94,12 @@ class TestAgeBasic(unittest.TestCase):
             edgel = row[1]
             edgew = row[2]
             end = row[3]
-            print("Relationship: %s %s %s. Edge weight: %s" % (start["name"] , edgel,end["name"], edgew)) 
+            print("Relationship: %s %s %s. Edge weight: %s" % (start["name"] , edgel,end["name"], edgew))
             #Assert that the weight of the edge is greater than 2
-            self.assertEqual(edgew > 2, True)  
+            self.assertEqual(edgew > 2, True)
         print("\nTest 2 Successful...")
 
-        
+
     def testChangeData(self):
 
         print("\n-------------------------------------------------------")
@@ -114,18 +114,18 @@ class TestAgeBasic(unittest.TestCase):
         cursor = ag.execCypher("CREATE (n:Person {name: %s, title: 'Developer'}) RETURN n", params=('Smith',))
         row = cursor.fetchone()
         print("CREATED: ", row[0])
-        
+
         # You must commit explicitly
         ag.commit()
 
         cursor = ag.execCypher("MATCH (n:Person {name: %s}) SET n.title=%s RETURN n", params=('Smith','Manager',))
         row = cursor.fetchone()
-        vertex = row[0] 
+        vertex = row[0]
         title1 = vertex["title"]
         print("SET title: ", title1)
 
         ag.commit()
-    
+
         cursor = ag.execCypher("MATCH (p:Person {name: 'Smith'}) RETURN p.title")
         row = cursor.fetchone()
         title2 = row[0]
@@ -137,7 +137,7 @@ class TestAgeBasic(unittest.TestCase):
         vertex = row[0]
         for row in cursor:
             print("SET bigNum: ", vertex['bigNum'])
-        
+
         bigNum1 = vertex["bigNum"]
 
         self.assertEqual(decimal.Decimal("-6.45161e+46"), bigNum1)
@@ -161,7 +161,7 @@ class TestAgeBasic(unittest.TestCase):
         # You must commit explicitly
         ag.commit()
 
-    
+
     def testCypher(self):
 
         print("\n--------------------------")
@@ -195,18 +195,18 @@ class TestAgeBasic(unittest.TestCase):
             except Exception as ex:
                 print(ex)
                 ag.rollback()
-        
+
 
         # With Params
-        cursor = ag.execCypher("""MATCH (a:Person), (b:Person) 
-                WHERE  a.name = %s AND b.name = %s 
-                CREATE p=((a)-[r:worksWith]->(b)) RETURN p""", 
+        cursor = ag.execCypher("""MATCH (a:Person), (b:Person)
+                WHERE  a.name = %s AND b.name = %s
+                CREATE p=((a)-[r:worksWith]->(b)) RETURN p""",
                 params=('Andy', 'Smith',))
 
         for row in cursor:
             print("CREATED EDGE: %s" % row[0])
-            
-        cursor = ag.execCypher("""MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Jack'}) 
+
+        cursor = ag.execCypher("""MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Jack'})
                 CREATE p=((a)-[r:worksWith {weight: 5}]->(b))
                 RETURN p """)
 
@@ -215,7 +215,7 @@ class TestAgeBasic(unittest.TestCase):
             self.assertEqual(row[0][1].properties['weight'], 5)
 
         print("\nTest 4 Successful...")
-            
+
 
 
     def testMultipleEdges(self):
@@ -251,7 +251,7 @@ class TestAgeBasic(unittest.TestCase):
                 raise ex
 
 
-        cursor = ag.execCypher("""MATCH p=(:Country {name:"USA"})-[:distance]-(:Country)-[:distance]-(:Country) 
+        cursor = ag.execCypher("""MATCH p=(:Country {name:"USA"})-[:distance]-(:Country)-[:distance]-(:Country)
                 RETURN p""")
 
         count = 0
@@ -265,7 +265,7 @@ class TestAgeBasic(unittest.TestCase):
                     output.append("---- (distance " + str(e["value"]) + " " + e["unit"] + ") --->")
                 else:
                     output.append("Unknown element. " + str(e))
-                
+
                 count += 1
 
         formatted_output = " ".join(output)
@@ -283,7 +283,7 @@ class TestAgeBasic(unittest.TestCase):
         print("--------------------------\n")
 
         ag = self.ag
-        
+
         with ag.connection.cursor() as cursor:
             try :
                 ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Joe',))
@@ -319,7 +319,7 @@ class TestAgeBasic(unittest.TestCase):
                 print(nm, "worksWith", [i["name"] for i in collected])
                 self.assertEqual(3,len(collected))
 
-   
+
         print(" -------- TESTING COLLECT #2 --------")
         for row in ag.execCypher("MATCH (a)-[:worksWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V1","CV"]):
             nm = row[0]
@@ -330,32 +330,32 @@ class TestAgeBasic(unittest.TestCase):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    
-    parser.add_argument('-host', 
-                        '--host', 
-                        help='Optional Host Name. Default Host is "127.0.0.1" ', 
+
+    parser.add_argument('-host',
+                        '--host',
+                        help='Optional Host Name. Default Host is "127.0.0.1" ',
                         default="127.0.0.1")
-    parser.add_argument('-port', 
-                        '--port', 
-                        help='Optional Port Number. Default port no is 5432', 
+    parser.add_argument('-port',
+                        '--port',
+                        help='Optional Port Number. Default port no is 5432',
                         default=5432)
-    parser.add_argument('-db', 
-                        '--database', 
-                        help='Required Database Name', 
+    parser.add_argument('-db',
+                        '--database',
+                        help='Required Database Name',
                         required=True)
-    parser.add_argument('-u', 
-                        '--user', 
-                        help='Required Username Name', 
+    parser.add_argument('-u',
+                        '--user',
+                        help='Required Username Name',
                         required=True)
-    parser.add_argument('-pass', 
-                        '--password', 
-                        help='Required Password for authentication', 
+    parser.add_argument('-pass',
+                        '--password',
+                        help='Required Password for authentication',
                         required=True)
-    parser.add_argument('-gn', 
-                        '--graphName', 
-                        help='Optional Graph Name to be created. Default graphName is "test_graph"', 
+    parser.add_argument('-gn',
+                        '--graphName',
+                        help='Optional Graph Name to be created. Default graphName is "test_graph"',
                         default="test_graph")
-    
+
     args = parser.parse_args()
     suite = unittest.TestSuite()
     suite.addTest(TestAgeBasic('testExec'))
