@@ -28,6 +28,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -93,6 +94,8 @@ class XClusterConsumer {
   std::vector<std::string> TEST_producer_tablets_running();
 
   std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers();
+
+  std::vector<XClusterPollerStats> GetPollerStats() const;
 
   std::string LogPrefix();
 
@@ -162,7 +165,7 @@ class XClusterConsumer {
   rw_spinlock master_data_mutex_;
 
   // Mutex for producer_pollers_map_.
-  rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
+  mutable rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
   std::function<int64_t(const TabletId&)> get_leader_term_;
