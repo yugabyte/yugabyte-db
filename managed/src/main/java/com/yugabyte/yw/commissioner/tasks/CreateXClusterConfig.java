@@ -4,6 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -179,6 +182,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
 
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                null /* drConfigState */,
+                SourceUniverseState.ReadyToReplicate,
+                null /* targetUniverseState */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
       // Set up PITRs for txn xCluster.
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
@@ -263,6 +275,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
+    boolean isFirstNamespace = true;
     for (String namespaceName : dbToTablesInfoMapNeedBootstrap.keySet()) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap =
           dbToTablesInfoMapNeedBootstrap.get(namespaceName);
@@ -283,18 +296,27 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       createBootstrapProducerTask(xClusterConfig, tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
 
+      // Create the following subtask only when the subtasks to set up replication for the first
+      // namespace are being created.
+      if (isFirstNamespace && xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                null /* drConfigState */,
+                SourceUniverseState.ReadyToReplicate,
+                null /* targetUniverseState */)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
+      // Backup from the source universe.
       boolean useYbc =
           sourceUniverse.isYbcEnabled()
               && targetUniverse.isYbcEnabled()
               && confGetter.getGlobalConf(GlobalConfKeys.enableYbcForXCluster);
-
-      // Backup from the source universe.
       BackupRequestParams backupRequestParams =
           getBackupRequestParams(sourceUniverse, bootstrapParams, tablesInfoListNeedBootstrap);
       Backup backup =
           createAllBackupSubtasks(
               backupRequestParams, UserTaskDetails.SubTaskGroupType.CreatingBackup, useYbc);
-
       backupList.add(backup);
 
       // Assign the created backup UUID for the tables in the DB.
@@ -344,6 +366,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       if (waitTime.compareTo(Duration.ZERO) > 0) {
         createWaitForDurationSubtask(targetUniverse, waitTime)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+      }
+
+      if (isFirstNamespace && xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                null /* drConfigState */,
+                SourceUniverseState.WaitingForDr,
+                TargetUniverseState.Bootstrapping)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
       // Restore to the target universe.
@@ -401,6 +432,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         isReplicationConfigCreated = true;
       }
+      isFirstNamespace = false;
+    }
+
+    // After all the other subtasks are done, set the DR states to show replication is happening.
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
 

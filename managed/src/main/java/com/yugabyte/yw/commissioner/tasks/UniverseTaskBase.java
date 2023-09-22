@@ -28,6 +28,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.*;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -4131,16 +4133,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createSetDrStatesTask(
+      XClusterConfig xClusterConfig,
+      @Nullable DrConfigStates.State drConfigState,
+      @Nullable SourceUniverseState sourceUniverseState,
+      @Nullable TargetUniverseState targetUniverseState) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SetDrStates");
+    SetDrStates.Params params = new SetDrStates.Params();
+    params.xClusterConfig = xClusterConfig;
+    params.drConfigState = drConfigState;
+    params.sourceUniverseState = sourceUniverseState;
+    params.targetUniverseState = targetUniverseState;
+
+    SetDrStates task = createTask(SetDrStates.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected void createDeleteXClusterConfigSubtasks(
       XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
     // If target universe is destroyed, ignore creating this subtask.
-    if (xClusterConfig.getTargetUniverseUUID() != null) {
-      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        // Set back the target universe role to Active.
-        createChangeXClusterRoleTask(
-                xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-      }
+    if (xClusterConfig.getTargetUniverseUUID() != null
+        && xClusterConfig.getType().equals(ConfigType.Txn)) {
+      // Set back the target universe role to Active.
+      createChangeXClusterRoleTask(
+              xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
 
     // Delete the replication CDC streams on the target universe.

@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -223,6 +224,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Create xCluster config object.
     XClusterConfig xClusterConfig = XClusterConfig.create(createFormData, requestedTableInfoList);
+    xClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
     verifyTaskAllowed(xClusterConfig, TaskType.CreateXClusterConfig);
 
     // Submit task to set up xCluster config.
@@ -1194,13 +1196,14 @@ public class XClusterConfigController extends AuthenticatedController {
                 notFoundTableIds));
       }
 
-      if (xClusterConfig.getStatus() == XClusterConfig.XClusterConfigStatusType.Failed
+      if ((xClusterConfig.getStatus() == XClusterConfig.XClusterConfigStatusType.Failed
+              || xClusterConfig.getStatus() == XClusterConfigStatusType.Initialized)
           && formData.tables.size() < xClusterConfig.getTableIdsExcludeIndexTables().size()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Per DB/table xCluster config restart cannot be done because the creation of the "
-                + "xCluster config failed; please do not specify the `tables` field so the whole "
-                + "xCluster config restarts");
+                + "xCluster config failed or is in initialized state; please do not specify the "
+                + "`tables` field so the whole xCluster config restarts");
       }
     } else {
       formData.tables = tableIds;
