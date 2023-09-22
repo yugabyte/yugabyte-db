@@ -20,12 +20,18 @@ YugabyteDB supports the following four (of five &mdash; `timetravel` is not curr
 * `moddatetime` functions track last modification times.
 * `refint` functions implement referential integrity.
 
-1. Set up a table with triggers for tracking modification time and user (role). Connect using `ysqlsh` and run the following commands:
+## Example
+
+1. Connect using `ysqlsh` and run the following commands:
 
     ```sql
     CREATE EXTENSION insert_username;
     CREATE EXTENSION moddatetime;
+    ```
 
+1. Set up a table with triggers for tracking modification time and user (role):
+
+    ```sql
     CREATE TABLE spi_test (
       id int primary key,
       content text,

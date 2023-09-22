@@ -13,6 +13,8 @@ type: docs
 
 The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) PostgreSQL module provides a means for logging execution plans of slow statements automatically, without having to run EXPLAIN by hand. This is especially helpful for tracking down un-optimized queries in large applications.
 
+## Enable auto_explain
+
 To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
@@ -20,6 +22,8 @@ To enable the auto_explain extension, add `auto_explain` to `shared_preload_libr
 ```
 
 Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
+
+## Customize auto_explain
 
 You can customize the following auto_explain parameters:
 
