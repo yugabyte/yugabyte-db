@@ -148,6 +148,7 @@ public class SetUniverseKey {
               "Error setting universe encryption key for universe %s",
               u.getUniverseUUID().toString());
       log.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
   }
 
