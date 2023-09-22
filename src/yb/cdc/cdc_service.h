@@ -55,6 +55,12 @@ class TableHandle;
 
 }
 
+namespace xrepl {
+
+struct StreamTabletStats;
+
+}  // namespace xrepl
+
 namespace cdc {
 
 class CDCStateTable;
@@ -220,6 +226,7 @@ class CDCServiceImpl : public CDCServiceIf {
       uint32_t xcluster_config_version);
 
   uint32_t GetXClusterConfigVersion() const;
+  std::vector<xrepl::StreamTabletStats> GetAllStreamTabletStats() const EXCLUDES(mutex_);
 
  private:
   friend class XClusterProducerBootstrap;
