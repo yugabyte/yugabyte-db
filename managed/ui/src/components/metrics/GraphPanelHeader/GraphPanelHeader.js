@@ -34,6 +34,7 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -548,7 +549,6 @@ class GraphPanelHeader extends Component {
       origin,
       universe: { currentUniverse },
       prometheusQueryEnabled,
-      customer: { currentUser },
       showModal,
       closeModal,
       visibleModal,
@@ -724,10 +724,7 @@ class GraphPanelHeader extends Component {
                   <form name="GraphPanelFilterForm">
                     <div id="reportrange" className="pull-right">
                       <div className="timezone">
-                        Timezone:{' '}
-                        {currentUser.data.timezone
-                          ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
-                          : moment().format('[UTC]ZZ')}
+                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
                       </div>
                       <div className="graph-interval-container">
                         <Dropdown

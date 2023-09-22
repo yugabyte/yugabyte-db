@@ -2,7 +2,7 @@ export interface HistogramBucket {
   [interval: string]: number;
 }
 
-export interface YSQLSlowQuery {
+export interface YsqlSlowQuery {
   calls: number;
   datname: string;
   local_blks_hit: number;
@@ -23,4 +23,35 @@ export interface YSQLSlowQuery {
   rolname: string;
   yb_latency_histogram: HistogramBucket[];
 }
-export type YSQLSlowQueryPrimativeFields = keyof Omit<YSQLSlowQuery, 'yb_latency_histogram'>;
+
+export interface YsqlLiveQuery {
+  appName: string;
+  clientHost: string;
+  clientPort: string;
+  dbName: string;
+  elapsedMillis: number;
+  id: string;
+  nodeName: string;
+  privateIp: string;
+  query: string;
+  queryStartTime: string;
+  sessionStatus: string;
+}
+
+export interface YcqlLiveQuery {
+  clientHost: string;
+  clientPort: string;
+  keyspace: string;
+  elapsedMillis: number;
+  id: string;
+  nodeName: string;
+  privateIp: string;
+  query: string;
+  type: string;
+}
+
+export type YsqlSlowQueryPrimativeFields = keyof Omit<YsqlSlowQuery, 'yb_latency_histogram'>;
+export type YsqlLiveQueryPrimativeFields = keyof YsqlLiveQuery;
+export type YcqlLiveQueryPrimativeFields = keyof YcqlLiveQuery;
+
+export type QueryResponseKeys = keyof YcqlLiveQuery | keyof YsqlLiveQuery | keyof YsqlSlowQuery;
