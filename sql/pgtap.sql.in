@@ -1827,6 +1827,12 @@ RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, $2, 'p' ), $3 );
 $$ LANGUAGE sql;
 
+-- has_pk( schema, table )
+CREATE OR REPLACE FUNCTION has_pk ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT has_pk( $1, $2, 'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should have a primary key' );
+$$ LANGUAGE sql;
+
 -- has_pk( table, description )
 CREATE OR REPLACE FUNCTION has_pk ( NAME, TEXT )
 RETURNS TEXT AS $$

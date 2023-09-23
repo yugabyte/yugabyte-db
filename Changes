@@ -23,6 +23,9 @@ Revision history for pgTAP
     * `domain_type_isnt()`
     * `has_operator()`
     * `hasnt_operator()`
+* Added the `has_pk( :schema, :table )` variant, which requires that `:table` be
+  cast to `name` to avoid confusion with the `has_pk( :schema, :description )`
+  variant. Thanks to Adrian Klaver for the report (#287)!
 
 1.3.0 2023-08-14T22:14:20Z
 --------------------------

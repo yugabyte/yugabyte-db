@@ -14,7 +14,7 @@
      RETURN ok( FALSE, descr ) || E'\n' || diag(
             '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
      );
-@@ -6669,12 +6664,7 @@
+@@ -6675,12 +6670,7 @@
                  GET STACKED DIAGNOSTICS
                      detail  = PG_EXCEPTION_DETAIL,
                      hint    = PG_EXCEPTION_HINT,

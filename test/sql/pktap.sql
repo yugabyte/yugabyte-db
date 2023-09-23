@@ -1,7 +1,8 @@
 \unset ECHO
 \i test/setup.sql
+-- \i sql/pgtap.sql
 
-SELECT plan(90);
+SELECT plan(96);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -38,10 +39,26 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    has_pk( 'public', 'sometab'::name ),
+    true,
+    'has_pk( schema, table )',
+    'Table public.sometab should have a primary key',
+    ''
+);
+
+SELECT * FROM check_test(
     has_pk( 'hide', 'hidesometab', 'hide.sometab should have a pk' ),
     true,
     'has_pk( hideschema, hidetable, description )',
     'hide.sometab should have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_pk( 'hide', 'hidesometab'::name ),
+    true,
+    'has_pk( hideschema, hidetable )',
+    'Table hide.hidesometab should have a primary key',
     ''
 );
 

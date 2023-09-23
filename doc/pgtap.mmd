@@ -4636,6 +4636,7 @@ the diagnostics will tell you that, too. But you use `has_column()` and
 ### `has_pk()` ###
 
     SELECT has_pk( :schema, :table, :description );
+    SELECT has_pk( :schema, :table );
     SELECT has_pk( :table, :description );
     SELECT has_pk( :table );
 
@@ -4656,6 +4657,11 @@ If the schema is omitted, the table must be visible in the search path. If the
 test description is omitted, it will be set to "Table `:table` should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
+
+If you find that the function call confuses the table name for a
+description, cast the table to the `NAME` type:
+
+    SELECT has_pk( 'myschema', 'mytable'::name );
 
 ### `hasnt_pk()` ###
 

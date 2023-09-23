@@ -205,6 +205,7 @@ uninstall-all:
 	rm -f $(EXTENSION_DIR)/pgtap*
 
 # TODO: switch this whole thing to a perl or shell script that understands the file naming convention and how to compare that to $VERSION.
+# VERSION = 9.1.0 # Uncomment to test all patches.
 sql/pgtap.sql: sql/pgtap.sql.in
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE "^(9[.][0123456]|8[.][1234])" && echo yes || echo no),yes)
