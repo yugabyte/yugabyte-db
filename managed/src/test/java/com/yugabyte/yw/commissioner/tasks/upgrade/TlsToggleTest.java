@@ -18,7 +18,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -56,7 +55,6 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class TlsToggleTest extends UpgradeTaskTest {
@@ -75,7 +73,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
@@ -91,7 +89,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -124,9 +122,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
     tlsToggle.setUserTaskUUID(UUID.randomUUID());
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(TlsToggleParams requestParams) {

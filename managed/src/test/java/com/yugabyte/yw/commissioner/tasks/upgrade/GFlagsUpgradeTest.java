@@ -86,7 +86,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
@@ -102,7 +102,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.SetNodeState);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
@@ -127,9 +127,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     super.setUp();
     gFlagsUpgrade.setUserTaskUUID(UUID.randomUUID());
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
     try {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
     } catch (Exception e) {
