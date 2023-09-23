@@ -294,6 +294,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
 
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
  protected:
   virtual Status RegisterServices();
 
