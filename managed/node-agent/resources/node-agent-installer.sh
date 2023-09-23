@@ -391,6 +391,17 @@ main() {
         echo "$NODE_AGRNT_CERT_PATH is not found."
         exit 1
       fi
+      if [ "$SUDO_ACCESS" = "true" ]; then
+        # Disable existing node-agent if sudo access is available.
+        local RUNNING=""
+        set +e
+        RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+        if [ -n "$RUNNING" ]; then
+          sudo systemctl stop yb-node-agent
+          sudo systemctl disable yb-node-agent
+        fi
+        set -e
+      fi
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
