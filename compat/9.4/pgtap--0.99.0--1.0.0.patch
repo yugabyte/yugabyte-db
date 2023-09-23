@@ -1,6 +1,6 @@
 --- sql/pgtap--0.99.0--1.0.0.sql
 +++ sql/pgtap--0.99.0--1.0.0.sql
-@@ -7,233 +7,6 @@ RETURNS text AS $$
+@@ -11,233 +11,6 @@ RETURNS text AS $$
      ), $2);
  $$ LANGUAGE SQL immutable;
  

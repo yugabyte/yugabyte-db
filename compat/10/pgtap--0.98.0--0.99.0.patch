@@ -8,7 +8,7 @@
  CREATE OR REPLACE VIEW tap_funky
   AS SELECT p.oid         AS oid,
             n.nspname     AS schema,
-@@ -124,7 +124,7 @@ CREATE OR REPLACE VIEW tap_funky
+@@ -144,7 +144,7 @@ CREATE OR REPLACE VIEW tap_funky
               || p.prorettype::regtype AS returns,
             p.prolang     AS langoid,
             p.proisstrict AS is_strict,
