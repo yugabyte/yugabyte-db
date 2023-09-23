@@ -35,7 +35,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
 
   private static final int MAX_DELAY_MS = 130000;
 
-  private static final String URL_SUFFIX = "/api/v1/tablet-under-replication";
+  public static final String URL_SUFFIX = "/api/v1/tablet-under-replication";
 
   private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14 = "2.14.12.0-b1";
 
