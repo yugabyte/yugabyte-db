@@ -56,6 +56,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
     public String nodeAgentHome;
     public UUID customerUuid;
+    public boolean reinstall;
   }
 
   @Override
@@ -96,7 +97,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
-      if (nodeAgent.getState() == State.READY) {
+      if (!taskParams().reinstall && nodeAgent.getState() == State.READY) {
         return;
       }
       nodeAgentManager.purge(nodeAgent);
