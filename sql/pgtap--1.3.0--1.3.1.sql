@@ -96,3 +96,118 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _cmp_types(oid, name)
+RETURNS BOOLEAN AS $$
+    SELECT pg_catalog.format_type($1, NULL) = _typename($2);
+$$ LANGUAGE sql;
+
+-- domain_type_is( schema, domain, schema, type, description )
+CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1, $2, true);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $5 ) || E'\n' || diag (
+            '   Domain ' || quote_ident($1) || '.' || $2
+            || ' does not exist'
+        );
+    END IF;
+
+    IF quote_ident($3) = ANY(current_schemas(true)) THEN
+        RETURN is( actual_type, quote_ident($3) || '.' || _typename($4), $5);
+    END IF;
+    RETURN is( actual_type, _typename(quote_ident($3) || '.' || $4), $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- domain_type_is( schema, domain, type, description )
+CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1, $2, false);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $4 ) || E'\n' || diag (
+            '   Domain ' || quote_ident($1) || '.' || $2
+            || ' does not exist'
+        );
+    END IF;
+
+    RETURN is( actual_type, _typename($3), $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- domain_type_is( domain, type, description )
+CREATE OR REPLACE FUNCTION domain_type_is( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $3 ) || E'\n' || diag (
+            '   Domain ' ||  $1 || ' does not exist'
+        );
+    END IF;
+
+    RETURN is( actual_type, _typename($2), $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- domain_type_isnt( schema, domain, schema, type, description )
+CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1, $2, true);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $5 ) || E'\n' || diag (
+            '   Domain ' || quote_ident($1) || '.' || $2
+            || ' does not exist'
+        );
+    END IF;
+
+    IF quote_ident($3) = ANY(current_schemas(true)) THEN
+        RETURN isnt( actual_type, quote_ident($3) || '.' || _typename($4), $5);
+    END IF;
+    RETURN isnt( actual_type, _typename(quote_ident($3) || '.' || $4), $5);
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- domain_type_isnt( schema, domain, type, description )
+CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1, $2, false);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $4 ) || E'\n' || diag (
+            '   Domain ' || quote_ident($1) || '.' || $2
+            || ' does not exist'
+        );
+    END IF;
+
+    RETURN isnt( actual_type, _typename($3), $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- domain_type_isnt( domain, type, description )
+CREATE OR REPLACE FUNCTION domain_type_isnt( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_dtype($1);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $3 ) || E'\n' || diag (
+            '   Domain ' ||  $1 || ' does not exist'
+        );
+    END IF;
+
+    RETURN isnt( actual_type, _typename($2), $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+DROP FUNCTION _quote_ident_like(TEXT, TEXT);

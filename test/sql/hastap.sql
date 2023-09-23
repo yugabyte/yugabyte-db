@@ -1,5 +1,6 @@
 \unset ECHO
 \i test/setup.sql
+-- \i sql/pgtap.sql
 
 SELECT plan(1004);
 --SELECT * FROM no_plan();
@@ -47,7 +48,6 @@ CREATE DOMAIN public.us_postal_code AS TEXT CHECK(
 CREATE DOMAIN public."myDomain" AS TEXT CHECK(TRUE);
 
 CREATE SEQUENCE public.someseq;
-
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
@@ -1109,10 +1109,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_cast( 'integer', 'bigint', 'pg_catalog', 'int8'::name),
+    has_cast( 'int4', 'BIGINT', 'pg_catalog', 'int8'::name),
     true,
     'has_cast( src, targ, schema, func )',
-    'Cast ("integer" AS "bigint") WITH FUNCTION pg_catalog.int8() should exist',
+    'Cast (int4 AS "BIGINT") WITH FUNCTION pg_catalog.int8() should exist',
     ''
 );
 
@@ -1125,10 +1125,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_cast( 'integer', 'bigint', 'int8'::name),
+    has_cast( 'INT4', 'BIGINT', 'int8'::name),
     true,
     'has_cast( src, targ, func)',
-    'Cast ("integer" AS "bigint") WITH FUNCTION int8() should exist',
+    'Cast ("INT4" AS "BIGINT") WITH FUNCTION int8() should exist',
     ''
 );
 
@@ -1141,10 +1141,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_cast( 'integer', 'bigint' ),
+    has_cast( 'int4', 'BIGINT' ),
     true,
     'has_cast( src, targ )',
-    'Cast ("integer" AS "bigint") should exist',
+    'Cast (int4 AS "BIGINT") should exist',
     ''
 );
 
@@ -1157,7 +1157,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_cast( 'integer', 'bigint', 'foo', 'desc' ),
+    has_cast( 'INT4', 'BIGINT', 'foo', 'desc' ),
     false,
     'has_cast( src, targ, func, desc ) fail',
     'desc',
@@ -1184,10 +1184,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_cast( 'integer', 'bigint', 'pg_catalog', 'int8'::name),
+    hasnt_cast( 'int4', 'int8', 'pg_catalog', 'int8'::name),
     false,
     'hasnt_cast( src, targ, schema, func )',
-    'Cast ("integer" AS "bigint") WITH FUNCTION pg_catalog.int8() should not exist',
+    'Cast (int4 AS int8) WITH FUNCTION pg_catalog.int8() should not exist',
     ''
 );
 
@@ -1200,10 +1200,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_cast( 'integer', 'bigint', 'int8'::name),
+    hasnt_cast( 'INT4', 'INT8', 'int8'::name),
     false,
     'hasnt_cast( src, targ, func)',
-    'Cast ("integer" AS "bigint") WITH FUNCTION int8() should not exist',
+    'Cast ("INT4" AS "INT8") WITH FUNCTION int8() should not exist',
     ''
 );
 
@@ -1216,10 +1216,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_cast( 'integer', 'bigint' ),
+    hasnt_cast( 'int4', 'int8' ),
     false,
     'hasnt_cast( src, targ )',
-    'Cast ("integer" AS "bigint") should not exist',
+    'Cast (int4 AS int8) should not exist',
     ''
 );
 
@@ -1232,7 +1232,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_cast( 'integer', 'bigint', 'foo', 'desc' ),
+    hasnt_cast( 'INT4', 'INT8', 'foo', 'desc' ),
     true,
     'hasnt_cast( src, targ, func, desc ) fail',
     'desc',
@@ -1259,10 +1259,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'integer', 'bigint', 'implicit' ),
+    cast_context_is( 'int4', 'int8', 'implicit' ),
     true,
     'cast_context_is( src, targ, context )',
-    'Cast ("integer" AS "bigint") context should be implicit',
+    'Cast (int4 AS int8) context should be implicit',
     ''
 );
 
@@ -1275,7 +1275,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'integer', 'bigint', 'IMPL', 'desc' ),
+    cast_context_is( 'INT4', 'INT8', 'IMPL', 'desc' ),
     true,
     'cast_context_is( src, targ, IMPL, desc )',
     'desc',
@@ -1291,7 +1291,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'bigint', 'smallint', 'a', 'desc' ),
+    cast_context_is( 'int4', 'int2', 'a', 'desc' ),
     true,
     'cast_context_is( src, targ, a, desc )',
     'desc',
@@ -1307,7 +1307,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'bit', 'integer', 'explicit', 'desc' ),
+    cast_context_is( 'bit(128)', 'integer', 'explicit', 'desc' ),
     true,
     'cast_context_is( src, targ, explicit, desc )',
     'desc',
@@ -1315,7 +1315,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'bit', 'integer', 'e', 'desc' ),
+    cast_context_is( 'bit', 'int4', 'e', 'desc' ),
     true,
     'cast_context_is( src, targ, e, desc )',
     'desc',
@@ -1331,7 +1331,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'integer', 'bigint', 'ex', 'desc' ),
+    cast_context_is( 'integer', 'int8', 'ex', 'desc' ),
     false,
     'cast_context_is( src, targ, context, desc ) fail',
     'desc',
@@ -1340,10 +1340,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'integer', 'bigint', 'ex' ),
+    cast_context_is( 'INT4', 'INT8', 'ex' ),
     false,
     'cast_context_is( src, targ, context ) fail',
-    'Cast ("integer" AS "bigint") context should be explicit',
+    'Cast ("INT4" AS "INT8") context should be explicit',
     '        have: implicit
         want: explicit'
 );
@@ -1368,10 +1368,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean'::name ),
+  has_operator( 'int4', 'pg_catalog', '<=', 'integer', 'boolean'::name ),
   true,
   'has_operator( left, schema, name, right, result )',
-  'Operator pg_catalog.<=(integer,integer) RETURNS boolean should exist',
+  'Operator pg_catalog.<=(int4,integer) RETURNS boolean should exist',
   ''
 );
 
@@ -1384,10 +1384,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', '<=', 'integer', 'boolean'::name ),
+  has_operator( 'integer', '<=', 'int4', 'boolean'::name ),
   true,
   'has_operator( left, name, right, result )',
-  'Operator <=(integer,integer) RETURNS boolean should exist',
+  'Operator <=(integer,int4) RETURNS boolean should exist',
   ''
 );
 
@@ -1400,10 +1400,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  has_operator( 'integer', '<=', 'integer'::name ),
+  has_operator( 'integer', '<=', 'int4'::name ),
   true,
   'has_operator( left, name, right )',
-  'Operator <=(integer,integer) should exist',
+  'Operator <=(integer,int4) should exist',
   ''
 );
 
@@ -2269,7 +2269,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'int', 'whatever'),
+    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'int4', 'whatever'),
     false,
     'domain_type_is(schema, domain, schema, type, desc) fail',
     'whatever',

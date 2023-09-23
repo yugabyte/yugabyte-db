@@ -3834,13 +3834,15 @@ resolve the function name as a description. For example:
 
 pgTAP will generate a useful description if you don't provide one.
 
-Note that pgTAP does not compare typemods. So if you wanted to test for a cast
-between, say, a `uuid` type and `bit(128)`, this will not work:
+Types can be defined by their canonical names or their aliases,
+e.g., `character varying` or `varchar`, so both these tests will pass:
+
+    SELECT has_cast( 'text', 'character varying' );
+    SELECT has_cast( 'text', 'varchar' );
+
+Note that pgTAP ignores typemods, so either of these tests will pass:
 
     SELECT has_cast( 'integer', 'bit(128)' );
-
-But this will:
-
     SELECT has_cast( 'integer', 'bit' );
 
 ### `hasnt_cast()` ###
@@ -3906,6 +3908,10 @@ given schema, name, left and right arguments, and return value, the test will
 pass. If the operator does not exist, the test will fail. Example:
 
     SELECT has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean' );
+
+Types can be defined by their canonical names or their aliases, e.g.,
+`timestamp with time zone` or `timestamptz`, or `character varying` or
+`varchar`.
 
 If you omit the schema name, then the operator must be visible in the search
 path. If you omit the test description, pgTAP will generate a reasonable one
@@ -6139,7 +6145,7 @@ omit the test description, it will be set to "Enum `:enum` should have labels
 `:description`
 : A short description of the test.
 
-Tests the data type underlying a domain. The first two   arguments are the
+Tests the data type underlying a domain. The first two arguments are the
 schema and name of the domain. The second two are the schema and name of the
 type that the domain should extend. The fifth argument is a description. If
 there is no description, a reasonable default description will be created.
@@ -6147,6 +6153,10 @@ there is no description, a reasonable default description will be created.
 The schema arguments are also optional. However, if there is no `:schema`
 argument, there cannot be a `:type_schema` argument, either, though the
 schema can be included in the `type` argument, e.g., `contrib.citext`.
+
+Types can be defined by their canonical names or their aliases, e.g.,
+`timestamp with time zone` or `timestamptz`, or `character varying` or
+`varchar`.
 
 For the 3- and 4-argument forms with schemas, cast the schemas to `NAME` to
 avoid ambiguities. Example:
@@ -6229,12 +6239,14 @@ Example:
 
     SELECT cast_context_is( 'integer', 'bigint', 'implicit' );
 
-The data types should be passed as they are displayed by
-`pg_catalog.format_type()`. For example, you would need to pass "character
-varying", and not "VARCHAR".
+The data types may be defined by their canonical names or their aliases,
+e.g., `character varying` or `varchar`, so both these tests will pass:
 
-The The supported contexts are "implicit", "assignment", and "explicit". You
-can also just pass in "i", "a", or "e". Consult the PostgreSQL [`CREATE
+    SELECT cast_context_is( 'text', 'character varying', 'implicit' );
+    SELECT cast_context_is( 'text', 'varchar', 'implicit' );
+
+The supported contexts are "implicit", "assignment", and "explicit". You can
+also just pass in "i", "a", or "e". Consult the PostgreSQL [`CREATE
 CAST`](https://www.postgresql.org/docs/current/static/sql-createcast.html)
 documentation for the differences between these contexts (hint: they
 correspond to the default context, `AS IMPLICIT`, and `AS ASSIGNMENT`). If you
