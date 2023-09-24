@@ -5,7 +5,7 @@ Release:	  1%{?dist}
 Group:		  Applications/Databases
 License:	  PostgreSQL
 URL:		    https://pgtap.org/
-Source0:	  https://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
+Source0:    https://api.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
 Provides:   %{name}
 Provides:   %{name}-core

@@ -75,7 +75,7 @@ Here are the steps to take to make a release of pgTAP:
 
     +   Commit the changes, but don't push them yet.
 
-*   Go back to the `master` branch and proofread the additions to the `Changes`
+*   Go back to the `main` branch and proofread the additions to the `Changes`
     file since the last release. Make sure all relevant changes are recorded
     there, and that any typos or formatting errors are corrected.
 

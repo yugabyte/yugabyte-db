@@ -470,7 +470,7 @@ updatecheck_deps: pgtap-version-$(UPDATE_FROM) test/sql/update.sql
 # pg_regress --launcher not supported prior to 9.1
 # There are some other failures in 9.1 and 9.2 (see https://travis-ci.org/decibel/pgtap/builds/358206497).
 # TODO: find something that can generically compare majors (ie: GE91 from
-# https://github.com/decibel/pgxntool/blob/master/base.mk).
+# https://github.com/decibel/pgxntool/blob/0.1.10/base.mk).
 updatecheck_setup: updatecheck_deps
 	@if echo $(VERSION) | grep -qE "8[.]|9[.][012]"; then echo "updatecheck is not supported prior to 9.3"; exit 1; fi
 	$(eval SETUP_SCH = test/schedule/update.sch)
