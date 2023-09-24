@@ -485,7 +485,7 @@ updatecheck_setup: updatecheck_deps
 updatecheck_run: updatecheck_setup installcheck
 
 latest-changes.md: Changes
-	perl -e 'while (<>) {last if /^(v?\Q${DISTVERSION}\E)/; } print "Changes for v${DISTVERSION}:\n"; while (<>) { last if /^\s*$$/; s/^\s+//; print }' Changes > $@
+	perl -e 'while (<>) {last if /^(v?\Q${DISTVERSION}\E)/; } print "Changes for v${DISTVERSION}\n"; while (<>) { last if /^\s*$$/; s/\s+$$//; if (/^\s*[*]/) { print "\n" } else { s/^\s+/ / } print } print "\n"' $< > $@
 
 #
 # STOLEN FROM pgxntool

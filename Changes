@@ -6,7 +6,6 @@ Revision history for pgTAP
 
 1.3.1 2023-09-24T15:29:42Z
 --------------------------
-
 * Revamped the handling of data type declarations in `col_type_is()` to always
   accurately normalize data type representations, whether using aliases, such
   as `varchar` for `character varying`, or more complicated types that failed
