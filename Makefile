@@ -490,15 +490,14 @@ latest-changes.md: Changes
 #
 # STOLEN FROM pgxntool
 #
-
-# TARGET results: runs `make test` and copies all result files to test/expected/. DO NOT RUN THIS UNLESS YOU'RE CERTAIN ALL YOUR TESTS ARE PASSING!
+# TARGET results: runs `make test` and copies all result files to
+# test/expected/. Use for basic test changes with the latest version of
+# Postgres, but be aware that alternate `_n.out` files will not be updated.
+# DO NOT RUN THIS UNLESS YOU'RE CERTAIN ALL YOUR TESTS ARE PASSING!
 .PHONY: results
-results: installcheck result-rsync
-
-.PHONY:
-result-rsync:
+results:
+	$(MAKE) installcheck || true
 	rsync -rlpgovP results/ test/expected
-
 
 # To use this, do make print-VARIABLE_NAME
 print-%	: ; $(info $* is $(flavor $*) variable set to "$($*)") @true

@@ -6,14 +6,19 @@ pgtap-core.sql
 pgtap-schema.sql
 uninstall_pgtap.sql
 results
-pgtap.so
-pgtap.dylib
-pgtap.dll
 regression.*
 *.html
 *.html1
 *.sql.orig
 bbin
+
+# Compiler-generated files (borrowed from
+# https://github.com/github/gitignore/blob/main/C.gitignore)
+*.o
+*.dll
+*.so
+*.so.*
+*.dylib
 
 /sql/pgtap--?.??.?.sql
 /sql/pgtap--?.?.?.sql
