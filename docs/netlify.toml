@@ -749,7 +749,7 @@
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
-  to = "/preview/yugabyte-cloud/"
+  to = "/preview/yugabyte-cloud/:splat"
   force = true
 
 # Redirect EOL docs to the archive site
