@@ -184,7 +184,7 @@ inline void CQLEncodeFloat(
 
 inline void CQLEncodeBytes(const std::string& val, WriteBuffer* buffer) {
   CQLEncodeLength(val.size(), buffer);
-  buffer->Append(val);
+  buffer->Append(Slice(val));
 }
 
 //--------------------------------------------------------------------------------------------------
