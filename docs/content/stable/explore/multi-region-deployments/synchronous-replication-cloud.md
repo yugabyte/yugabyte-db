@@ -44,13 +44,13 @@ This deployment provides the following advantages:
 
 Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](../../../yugabyte-cloud/managed-freetrial/).
 
-To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
+To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
-- Each region in a multi-region cluster must be [deployed in a VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
-- Set up a [peering connection](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
+- Each region in a multi-region cluster must be [deployed in a VPC](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
+- Set up a [peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
 - Copy the YB Workload Simulator application to the peered VPC and run it from there.
 
-YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 ## Start a workload
 
