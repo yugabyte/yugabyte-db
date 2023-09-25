@@ -848,8 +848,10 @@ public class NodeManager extends DevopsBase {
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
+
+    // Set on both master and tserver processes to allow db to validate inter-node RPCs.
+    extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
     if (taskParam.isMaster) {
-      extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
       extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 

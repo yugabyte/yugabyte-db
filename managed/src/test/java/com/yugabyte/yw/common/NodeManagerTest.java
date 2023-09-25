@@ -583,6 +583,7 @@ public class NodeManagerTest extends FakeDBApplication {
       cqlProxyBindAddress = "0.0.0.0";
     }
 
+    gflags.put("cluster_uuid", String.valueOf(configureParams.universeUUID));
     if (configureParams.enableYSQL) {
       gflags.put("enable_ysql", "true");
       gflags.put("pgsql_proxy_webserver_port", "13000");
@@ -624,7 +625,6 @@ public class NodeManagerTest extends FakeDBApplication {
     }
 
     if (configureParams.isMaster) {
-      gflags.put("cluster_uuid", String.valueOf(configureParams.universeUUID));
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -843,7 +843,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--num_releases_to_keep");
           expectedCommand.add("3");
         }
-
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
