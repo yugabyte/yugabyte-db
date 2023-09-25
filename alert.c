@@ -1211,3 +1211,13 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
+
+/*
+ * removed by Orafce 9.6, header is necessary to allow upgrade
+ *
+ */
+Datum
+dbms_alert_defered_signal(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NULL();
+}

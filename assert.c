@@ -24,6 +24,7 @@ PG_FUNCTION_INFO_V1(dbms_assert_qualified_sql_name);
 PG_FUNCTION_INFO_V1(dbms_assert_schema_name);
 PG_FUNCTION_INFO_V1(dbms_assert_simple_sql_name);
 PG_FUNCTION_INFO_V1(dbms_assert_object_name);
+PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
 
 #define CUSTOM_EXCEPTION(code, msg) \
