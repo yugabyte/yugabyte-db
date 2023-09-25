@@ -5,8 +5,8 @@ import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
 import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
-import { sortVersionStrings } from './DBVersionHelper';
-import { DEFAULT_ADVANCED_CONFIG, UniverseFormData } from '../../../utils/dto';
+import { getActiveDBVersions, sortVersionStrings } from './DBVersionHelper';
+import { DEFAULT_ADVANCED_CONFIG, UniverseFormData, YBSoftwareMetadata } from '../../../utils/dto';
 import { SOFTWARE_VERSION_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -19,11 +19,17 @@ const getOptionLabel = (option: Record<string, string>): string => option.label 
 const renderOption = (option: Record<string, string>): string => option.label;
 
 //Minimal fields
-const transformData = (data: string[]) => {
-  return data.map((item) => ({
-    label: item,
-    value: item
-  }));
+const transformData = (data: (string[] | Record<string,YBSoftwareMetadata>)) => {
+    if(data && Array.isArray(data)) {
+        return data.map((item) => ({
+            label: item,
+            value: item
+        }));
+    } else if (typeof data === 'object' && data !== null) {
+        return getActiveDBVersions(data)
+    } else {
+        return [];
+    }
 };
 
 export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement => {
@@ -35,8 +41,8 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   const provider = useWatch({ name: PROVIDER_FIELD });
 
   const { data, isLoading } = useQuery(
-    [QUERY_KEY.getDBVersionsByProvider, provider?.uuid],
-    () => api.getDBVersionsByProvider(provider?.uuid),
+    [QUERY_KEY.getDBVersions],
+    () => api.getDBVersions(true),
     {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
