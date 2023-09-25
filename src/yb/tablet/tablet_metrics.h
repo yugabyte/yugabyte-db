@@ -76,6 +76,8 @@ YB_DEFINE_ENUM(TabletCounters,
   (kDocDBObsoleteKeysFound)
   (kDocDBObsoleteKeysFoundPastCutoff))
 
+YB_DEFINE_ENUM(TabletGauges, (kActiveWriteQueryObjects))
+
 // Container for all metrics specific to a single tablet.
 class TabletMetrics {
  public:
@@ -86,11 +88,23 @@ class TabletMetrics {
 
   virtual uint64_t Get(TabletCounters counter) const = 0;
 
+  virtual int64_t Get(TabletGauges gauge) const = 0;
+
   void Increment(TabletCounters counter) {
     IncrementBy(counter, 1);
   }
 
   virtual void IncrementBy(TabletCounters counter, uint64_t amount) = 0;
+
+  void Increment(TabletGauges gauge) {
+    IncrementBy(gauge, 1);
+  }
+
+  void Decrement(TabletGauges gauge) {
+    IncrementBy(gauge, -1);
+  }
+
+  virtual void IncrementBy(TabletGauges gauge, int64_t amount) = 0;
 
   void Increment(TabletEventStats event_stats, uint64_t value) {
     IncrementBy(event_stats, value, 1);
@@ -115,7 +129,11 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   uint64_t Get(TabletCounters counter) const override;
 
+  int64_t Get(TabletGauges gauge) const override;
+
   void IncrementBy(TabletCounters counter, uint64_t amount) override;
+
+  void IncrementBy(TabletGauges gauge, int64_t amount) override;
 
   void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
@@ -137,6 +155,7 @@ class ScopedTabletMetrics final : public TabletMetrics {
   bool in_use_ = false;
 #endif
   std::vector<uint64_t> counters_;
+  std::vector<int64_t> gauges_;
 
   TabletMetrics* histogram_context_ = nullptr;
 };

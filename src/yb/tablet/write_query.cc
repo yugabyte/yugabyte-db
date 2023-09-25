@@ -136,7 +136,8 @@ WriteQuery::WriteQuery(
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
     tserver::WriteResponsePB* response)
-    : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
+    : tablet_(tablet),
+      operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
@@ -144,6 +145,7 @@ WriteQuery::WriteQuery(
       response_(response),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
+  IncrementActiveWriteQueryObjectsBy(1);
 }
 
 LWWritePB& WriteQuery::request() {
@@ -194,6 +196,7 @@ void WriteQuery::Release() {
 }
 
 WriteQuery::~WriteQuery() {
+  IncrementActiveWriteQueryObjectsBy(-1);
 }
 
 void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
@@ -716,7 +719,13 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
 }
 
 Result<TabletPtr> WriteQuery::tablet_safe() const {
-  return operation_->tablet_safe();
+  // We cannot rely on using operation_->tablet_safe() as operation_ is moved to TabletPeer::Submit
+  // at some point in the lifecycle of the WriteQuery, and wouldn't be a valid dereference/access.
+  auto tablet = tablet_.lock();
+  if (!tablet) {
+    return STATUS_FORMAT(IllegalState, "Underlying tablet object might have been deallocated");
+  }
+  return tablet;
 }
 
 void WriteQuery::AdjustYsqlQueryTransactionality(size_t ysql_batch_size) {
@@ -1102,6 +1111,17 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
 
 void WriteQuery::SimpleExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), status);
+}
+
+void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
+  auto res = tablet_safe();
+  if (res.ok() && (*res)->metrics()) {
+    (*res)->metrics()->IncrementBy(tablet::TabletGauges::kActiveWriteQueryObjects, value);
+    did_update_active_write_queries_metric_ = true;
+  } else if (PREDICT_FALSE(did_update_active_write_queries_metric_)) {
+    LOG(DFATAL) << "Unable to update kActiveWriteQueryObjects metric but had "
+                << "previosuly contributed to it.";
+  }
 }
 
 }  // namespace tablet
