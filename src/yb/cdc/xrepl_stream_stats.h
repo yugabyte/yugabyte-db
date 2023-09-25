@@ -28,7 +28,7 @@ struct StreamTabletStats {
   TabletId producer_tablet_id;
   std::string producer_table_id;
   std::string state;
-  double avg_throughput_mbps = 0;
+  double avg_throughput_kbps = 0;
   // Amount of data sent. This can be higher than actual data size if receiver reties the
   // GetChanges call due to remote errors.
   double mbs_sent = 0;
@@ -54,7 +54,7 @@ struct StreamTabletStatsHistory {
     MonoTime start_time;
     MonoDelta poll_delay = MonoDelta::kZero;
     MonoDelta get_changes_latency = MonoDelta::kZero;
-    double mbs_sent = 0;
+    double kbs_sent = 0;
   };
   constexpr static int kCircularBufferSize = 100;
   boost::circular_buffer<StatsEntry> buffer GUARDED_BY(mutex_) =

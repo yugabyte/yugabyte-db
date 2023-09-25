@@ -37,7 +37,7 @@ struct XClusterPollerStats {
   TabletId consumer_tablet_id;
   std::string state;
   // Amount of data we received and processed per second, not accounting for delay between polls.
-  double avg_throughput_mbps = 0;
+  double avg_throughput_kbps = 0;
   // Size of data that we received and processed successfully.
   double mbs_received = 0;
   uint64_t records_received = 0;
@@ -84,7 +84,7 @@ class PollStatsHistory {
     MonoDelta poll_delay;
     MonoDelta get_changes_latency;
     MonoDelta apply_latency;
-    double mbs_received = 0;
+    double kbs_received = 0;
   };
 
   constexpr static int kCircularBufferSize = 100;
