@@ -22,6 +22,7 @@ CONNECTION_ATTEMPT_DELAY_SEC = 3
 CONNECT_RETRY_LIMIT = 60
 # Retry in seconds
 CONNECT_RETRY_DELAY = 10
+CONNECT_TIMEOUT_SEC = 10
 
 
 # Similar method exists for SSH.
@@ -48,7 +49,8 @@ def can_connect(connect_options):
 
     try:
         client = RemoteShell(connect_options)
-        stdout = client.exec_command("echo 'test'", output_only=True)
+        # The param timeout is used by node-agent.
+        stdout = client.exec_command("echo 'test'", output_only=True, timeout=CONNECT_TIMEOUT_SEC)
         stdout = stdout.splitlines()
         if len(stdout) == 1 and (stdout[0] == "test"):
             return True
