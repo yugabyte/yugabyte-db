@@ -1170,13 +1170,13 @@ void TabletServerPathHandlers::HandleXClusterPage(
 
     PRINT_TABLE_WITH_HEADER_ROW(
         xcluster_streams, "Stream Id", "Produce Table Id", "Producer Tablet Id", "State",
-        "Avg poll delay (ms)", "Throughput (MiBps)", "Data sent (MiB)", "Records sent",
+        "Avg poll delay (ms)", "Throughput (KiBps)", "Data sent (MiB)", "Records sent",
         "Avg GetChanges latency (ms)", "WAL index sent", "WAL end index", "Last poll at", "Status");
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
       PRINT_TABLE_ROW(
           stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
-          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_mbps),
+          stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
           StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
           stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
@@ -1190,7 +1190,7 @@ void TabletServerPathHandlers::HandleXClusterPage(
     PRINT_TABLE_WITH_HEADER_ROW(
         xcluster_pollers, "ReplicationGroup Id", "Stream Id", "Consumer Table Id",
         "Consumer Tablet Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
-        "Throughput (MiBps)", "Data received (MiB)", "Records received",
+        "Throughput (KiBps)", "Data received (MiB)", "Records received",
         "Avg GetChanges latency (ms)", "Avg apply latency (ms)", "WAL index received",
         "Last poll At", "Status");
 
@@ -1198,7 +1198,7 @@ void TabletServerPathHandlers::HandleXClusterPage(
       PRINT_TABLE_ROW(
           stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
           stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
-          StringPrintf("%.3f", stat.avg_throughput_mbps), StringPrintf("%.3f", stat.mbs_received),
+          StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
           stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
           stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
@@ -1240,8 +1240,8 @@ void TabletServerPathHandlers::HandleXClusterJSON(
       jw.String(stat.state);
       jw.String("avg_poll_delay_ms");
       jw.Uint64(stat.avg_poll_delay_ms);
-      jw.String("avg_throughput_MiBps");
-      jw.Double(stat.avg_throughput_mbps);
+      jw.String("avg_throughput_KiBps");
+      jw.Double(stat.avg_throughput_kbps);
       jw.String("MiBs_sent");
       jw.Double(stat.mbs_sent);
       jw.String("records_sent");
@@ -1280,8 +1280,8 @@ void TabletServerPathHandlers::HandleXClusterJSON(
       jw.String(stat.state);
       jw.String("avg_poll_delay_ms");
       jw.Uint64(stat.avg_poll_delay_ms);
-      jw.String("avg_throughput_MiBps");
-      jw.Double(stat.avg_throughput_mbps);
+      jw.String("avg_throughput_KiBps");
+      jw.Double(stat.avg_throughput_kbps);
       jw.String("MiBs_received");
       jw.Double(stat.mbs_received);
       jw.String("records_received");
