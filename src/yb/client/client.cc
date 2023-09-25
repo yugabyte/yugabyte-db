@@ -2295,7 +2295,7 @@ Result<bool> YBClient::CheckIfPitrActive() {
 Result<ListTablesResponsePB> YBClient::ListTableInfo() {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTableInfo);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
   return resp;
 }
 

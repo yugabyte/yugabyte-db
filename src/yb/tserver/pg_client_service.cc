@@ -776,7 +776,7 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
   
-  Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
+  Status TableIDMetadata(const master::ListTablesRequestPB& req, master::ListTablesResponsePB* resp, rpc::RpcContext* context) {
  
     auto list_of_tables = VERIFY_RESULT(client().ListTableInfo());
     resp->add_tables()->CopyFrom(list_of_tables);
@@ -788,10 +788,10 @@ class PgClientServiceImpl::Impl {
     //   // else {
 
     //     auto tables = resp->add_tables()->CopyFrom(list_of_tables);
-    //     // tables->set_id(table.table_id());
-    //     // tables->set_name(table.table_name()); 
-    //     // tables->set_relation_type(table.relation_type().get());
-    //     // tables->set_pgschema_name(table.pgschema_name());
+        // tables->set_id(table.table_id());
+        // tables->set_name(table.table_name()); 
+        // tables->set_relation_type(table.relation_type().get());
+        // tables->set_pgschema_name(table.pgschema_name());
     //     //tables->set_namespace_id(table.namespace_id());
     //     //tables->set_table_type(table.table_type());
     //     //tables->set_state(table.state());

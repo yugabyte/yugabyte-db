@@ -664,7 +664,6 @@ service MasterDdl {
 
   rpc CreateTable(CreateTableRequestPB) returns (CreateTableResponsePB);
   rpc IsCreateTableDone(IsCreateTableDoneRequestPB) returns (IsCreateTableDoneResponsePB);
-  rpc ListTableInfo(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc ListTables(ListTablesRequestPB) returns (ListTablesResponsePB);
   rpc GetTableSchema(GetTableSchemaRequestPB) returns (GetTableSchemaResponsePB);
   rpc GetTablegroupSchema(GetTablegroupSchemaRequestPB)
