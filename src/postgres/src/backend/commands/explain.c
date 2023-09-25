@@ -561,6 +561,8 @@ const char *yb_metric_label[] = {
 		BUILD_METRIC_LABEL("docdb_obsolete_keys_found"),
 	[YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF] =
 		BUILD_METRIC_LABEL("docdb_obsolete_keys_found_past_cutoff"),
+	[YB_ANALYZE_METRIC_ACTIVE_WRITE_QUERY_OBJECTS] =
+		BUILD_METRIC_LABEL("active_write_query_objects"),
 };
 
 #undef BUILD_METRIC_LABEL
