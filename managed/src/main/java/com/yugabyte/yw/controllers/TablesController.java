@@ -542,8 +542,7 @@ public class TablesController extends AuthenticatedController {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && tableUuids.isEmpty()) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -556,8 +555,7 @@ public class TablesController extends AuthenticatedController {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (tableInfoList.isEmpty()) {

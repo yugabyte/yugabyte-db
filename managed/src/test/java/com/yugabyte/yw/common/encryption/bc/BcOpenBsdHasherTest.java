@@ -9,13 +9,17 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
-/** @author msoundar */
+/**
+ * @author msoundar
+ */
 public class BcOpenBsdHasherTest {
 
   private final BcOpenBsdHasher hasher = new BcOpenBsdHasher();
   private final String password = "somePassword";
 
-  /** @throws java.lang.Exception */
+  /**
+   * @throws java.lang.Exception
+   */
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {}
 

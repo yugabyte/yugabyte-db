@@ -328,7 +328,8 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "yb.filepaths.remoteTmpDirectory",
           ScopeType.PROVIDER,
           "Remote tmp directory",
-          "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
+          "A remote temporary directory should be used for performing operations on nodes within"
+              + " the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =

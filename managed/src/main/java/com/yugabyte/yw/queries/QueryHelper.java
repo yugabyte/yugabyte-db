@@ -69,6 +69,7 @@ public class QueryHelper {
   /** YBDB 2.18 versions above this threshold support latency histogram. */
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
       "2.18.1.0-b67";
+
   /** YBDB versions above this threshold support latency histogram. */
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT = "2.19.1.0-b80";
 

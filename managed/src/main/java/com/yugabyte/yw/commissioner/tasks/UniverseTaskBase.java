@@ -1856,6 +1856,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createTServerTaskForNode(NodeDetails currentNode, String taskType) {
     return createTServerTaskForNode(currentNode, taskType, false /*isIgnoreError*/);
   }
+
   /**
    * Start T-Server process on the given node
    *
@@ -2046,6 +2047,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createStopTServerTasks(Collection<NodeDetails> nodes) {
     return createStopServerTasks(nodes, ServerType.TSERVER, false);
   }
+
   /**
    * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
    * queue.
@@ -2449,9 +2451,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
     preflightParams.setStorageConfigUUID(restoreParams.storageConfigUUID);
     Set<String> backupLocations =
-        restoreParams
-            .backupStorageInfoList
-            .parallelStream()
+        restoreParams.backupStorageInfoList.parallelStream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     preflightParams.setBackupLocations(backupLocations);
@@ -3232,6 +3232,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
   }
+
   /**
    * Create Load Balancer map to add/remove nodes from load balancer.
    *

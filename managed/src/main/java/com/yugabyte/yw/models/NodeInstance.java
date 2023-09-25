@@ -194,8 +194,8 @@ public class NodeInstance extends Model {
 
   public static int deleteByProvider(UUID providerUUID) {
     String deleteNodeQuery =
-        "delete from node_instance where zone_uuid in"
-            + " (select az.uuid from availability_zone az join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
+        "delete from node_instance where zone_uuid in (select az.uuid from availability_zone az"
+            + " join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
     SqlUpdate deleteStmt = DB.sqlUpdate(deleteNodeQuery);
     deleteStmt.setParameter("provider_uuid", providerUUID);
     return deleteStmt.execute();

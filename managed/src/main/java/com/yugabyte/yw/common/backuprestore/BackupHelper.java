@@ -303,9 +303,7 @@ public class BackupHelper {
         .getStorageUtil(customerConfig.getName())
         .validateStorageConfigOnLocationsList(
             configData,
-            taskParams
-                .backupStorageInfoList
-                .parallelStream()
+            taskParams.backupStorageInfoList.parallelStream()
                 .map(bSI -> bSI.storageLocation)
                 .collect(Collectors.toSet()));
 
@@ -456,8 +454,7 @@ public class BackupHelper {
         if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
             && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -472,8 +469,7 @@ public class BackupHelper {
           }
         } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
-              tableInfoList
-                  .parallelStream()
+              tableInfoList.parallelStream()
                   .filter(tableInfo -> backupInfo.backupType.equals(tableInfo.getTableType()))
                   .filter(
                       tableInfo -> backupInfo.keyspace.equals(tableInfo.getNamespace().getName()))
@@ -506,8 +502,7 @@ public class BackupHelper {
   public void validateMapToRestoreWithUniverseNonRedisYBC(
       UUID universeUUID, Map<TableType, Map<String, Set<String>>> restoreMap) {
     List<TableInfo> tableInfos = getTableInfosOrEmpty(Universe.getOrBadRequest(universeUUID));
-    tableInfos
-        .parallelStream()
+    tableInfos.parallelStream()
         .filter(t -> !t.getTableType().equals(TableType.REDIS_TABLE_TYPE))
         .forEach(
             t -> {
@@ -592,8 +587,7 @@ public class BackupHelper {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -606,8 +600,7 @@ public class BackupHelper {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (CollectionUtils.isEmpty(tableInfoList)) {
@@ -710,8 +703,7 @@ public class BackupHelper {
       return TablespaceResponse.builder().containsTablespaces(false).build();
     }
     Map<String, Tablespace> tablespacesInBackupMap =
-        tablespacesInBackup
-            .parallelStream()
+        tablespacesInBackup.parallelStream()
             .collect(Collectors.toMap(t -> t.tablespaceName, Function.identity()));
 
     // Conflicting tablespaces info.
@@ -851,9 +843,7 @@ public class BackupHelper {
     }
 
     boolean queryUniverseTablespaces =
-        backup
-            .getBackupParamsCollection()
-            .parallelStream()
+        backup.getBackupParamsCollection().parallelStream()
             .filter(bP -> CollectionUtils.isNotEmpty(bP.getTablespacesList()))
             .findAny()
             .isPresent();
@@ -968,9 +958,7 @@ public class BackupHelper {
             .getSelectiveTableRestore();
 
     boolean queryUniverseTablespaces =
-        ybcSuccessMarkerMap
-            .values()
-            .parallelStream()
+        ybcSuccessMarkerMap.values().parallelStream()
             .filter(yBP -> CollectionUtils.isNotEmpty(yBP.tablespaceInfos))
             .findAny()
             .isPresent();

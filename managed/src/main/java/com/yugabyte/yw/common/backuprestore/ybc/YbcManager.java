@@ -739,9 +739,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe
-              .getLiveTServersInPrimaryCluster()
-              .parallelStream()
+          universe.getLiveTServersInPrimaryCluster().parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }

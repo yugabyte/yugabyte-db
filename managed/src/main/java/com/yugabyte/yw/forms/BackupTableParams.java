@@ -204,8 +204,7 @@ public class BackupTableParams extends TableManagerParams {
 
   @JsonIgnore
   public void initializeBackupDBStates() {
-    this.backupList
-        .parallelStream()
+    this.backupList.parallelStream()
         .forEach(
             paramsEntry ->
                 this.backupDBStates.put(

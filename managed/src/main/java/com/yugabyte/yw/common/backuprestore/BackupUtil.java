@@ -224,9 +224,7 @@ public class BackupUtil {
       tables.addAll(tableNameList);
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         Set<String> indexes =
-            tablesWithIndexesMap
-                .values()
-                .parallelStream()
+            tablesWithIndexesMap.values().parallelStream()
                 .flatMap(tI -> tI.parallelStream())
                 .collect(Collectors.toSet());
         tables.addAll(indexes);
@@ -239,9 +237,7 @@ public class BackupUtil {
       Set<String> indexes = new HashSet<>();
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         indexes =
-            tablesWithIndexesMap
-                .entrySet()
-                .parallelStream()
+            tablesWithIndexesMap.entrySet().parallelStream()
                 .filter(tWE -> parentTables.contains(tWE.getKey()))
                 .flatMap(tWE -> tWE.getValue().parallelStream())
                 .collect(Collectors.toSet());
@@ -374,8 +370,7 @@ public class BackupUtil {
         .tableByTableBackup(backup.getBackupInfo().tableByTableBackup);
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
     Set<KeyspaceTablesList> kTLists =
-        backupParams
-            .parallelStream()
+        backupParams.parallelStream()
             .map(
                 b -> {
                   return KeyspaceTablesList.builder()
