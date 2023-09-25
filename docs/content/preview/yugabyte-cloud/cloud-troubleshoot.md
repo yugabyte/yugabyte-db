@@ -29,7 +29,7 @@ ysqlsh: could not connect to server: Operation timed out
 
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
-If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings** tab and connect to the cluster public IP address that is exposed.
+If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings > Network Access** tab and connect to the cluster public IP address that is exposed.
 
 If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
 
