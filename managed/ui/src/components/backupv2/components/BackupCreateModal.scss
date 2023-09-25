@@ -1,5 +1,10 @@
 @use '../../../_style/colors.scss';
 
+.row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 .backup-configuration-form {
   &>.row {
     margin-bottom: 24px;
