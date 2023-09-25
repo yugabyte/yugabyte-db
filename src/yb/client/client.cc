@@ -2292,15 +2292,12 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-// Status YBClient::ListTableInfo(master::ListTablesResponsePB* response) {
-//   ListTablesRequestPB req;
-//   ListTablesResponsePB resp;
-//   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTable);
-//   for (const auto& table : resp.tables()) {
-//     *resp.add_tables() = table;
-//   }
-//   return Status::OK();
-// }
+Result<ListTablesResponsePB> YBClient::ListTableInfo() {
+  ListTablesRequestPB req;
+  ListTablesResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTableInfo);
+  return resp;
+}
 
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                                                       bool exclude_ysql) {

@@ -7256,6 +7256,130 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
 
   return Status::OK();
 }
+Status CatalogManager::ListTableInfo(const ListTablesRequestPB* req,
+                                  ListTablesResponsePB* resp) {
+  NamespaceId namespace_id;
+
+  // Validate namespace.
+  if (req->has_namespace_()) {
+    // Lookup the namespace and verify if it exists.
+    auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+
+    auto ns_lock = ns->LockForRead();
+    namespace_id = ns->id();
+
+    // Don't list tables with a namespace that isn't running.
+    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
+      LOG(INFO) << "ListTables request for a Namespace not running (State="
+                << SysNamespaceEntryPB::State_Name(ns->state()) << ")";
+      return Status::OK();
+    }
+  }
+
+  bool has_rel_filter = req->relation_type_filter_size() > 0;
+  bool include_user_table = has_rel_filter ? false : true;
+  bool include_user_index = has_rel_filter ? false : true;
+  bool include_user_matview = has_rel_filter ? false : true;
+  bool include_colocated_parent_table = has_rel_filter ? false : true;
+  bool include_system_table = req->exclude_system_tables() ? false
+      : (has_rel_filter ? false : true);
+
+  for (const auto &relation : req->relation_type_filter()) {
+    if (relation == SYSTEM_TABLE_RELATION) {
+      include_system_table = true;
+    } else if (relation == USER_TABLE_RELATION) {
+      include_user_table = true;
+    } else if (relation == INDEX_TABLE_RELATION) {
+      include_user_index = true;
+    } else if (relation == MATVIEW_TABLE_RELATION) {
+      include_user_matview = true;
+    } else if (relation == COLOCATED_PARENT_TABLE_RELATION) {
+      include_colocated_parent_table = true;
+    }
+  }
+
+  SharedLock lock(mutex_);
+  RelationType relation_type;
+
+  for (const auto& table_info : tables_->GetAllTables()) {
+    auto ltm = table_info->LockForRead();
+
+    if (!ltm->visible_to_client() && !req->include_not_running()) {
+      continue;
+    }
+
+    if (!namespace_id.empty() && namespace_id != table_info->namespace_id()) {
+      continue; // Skip tables from other namespaces.
+    }
+
+    if (req->has_name_filter()) {
+      size_t found = ltm->name().find(req->name_filter());
+      if (found == string::npos) {
+        continue;
+      }
+    }
+
+    if (IsUserIndexUnlocked(*table_info)) {
+      if (!include_user_index) {
+        continue;
+      }
+      relation_type = INDEX_TABLE_RELATION;
+    } else if (IsMatviewTable(*table_info)) {
+      if (!include_user_matview) {
+        continue;
+      }
+      relation_type = MATVIEW_TABLE_RELATION;
+    } else if (IsUserTableUnlocked(*table_info)) {
+      if (!include_user_table) {
+        continue;
+      }
+      relation_type = USER_TABLE_RELATION;
+    } else if (table_info->IsColocationParentTable()) {
+      if (!include_colocated_parent_table || !include_system_table) {
+        continue;
+      }
+      relation_type = COLOCATED_PARENT_TABLE_RELATION;
+    } else {
+      if (!include_system_table) {
+        continue;
+      }
+      relation_type = SYSTEM_TABLE_RELATION;
+    }
+
+    NamespaceIdentifierPB ns_identifier;
+    ns_identifier.set_id(ltm->namespace_id());
+    auto ns = FindNamespaceUnlocked(ns_identifier);
+    if (!ns.ok() || (**ns).state() != SysNamespaceEntryPB::RUNNING) {
+      if (PREDICT_FALSE(FLAGS_TEST_return_error_if_namespace_not_found)) {
+        VERIFY_NAMESPACE_FOUND(std::move(ns), resp);
+      }
+      LOG(ERROR) << "Unable to find namespace with id " << ltm->namespace_id()
+                 << " for table " << ltm->name();
+      continue;
+    }
+
+    ListTablesResponsePB::TableInfo *table = resp->add_tables();
+    {
+      auto namespace_lock = (**ns).LockForRead();
+      table->mutable_namespace_()->set_id((**ns).id());
+      table->mutable_namespace_()->set_name(namespace_lock->name());
+      table->mutable_namespace_()->set_database_type(namespace_lock->pb.database_type());
+    }
+    table->set_id(table_info->id());
+    table->set_name(ltm->name());
+    table->set_table_type(ltm->table_type());
+    table->set_relation_type(relation_type);
+    table->set_state(ltm->pb.state());
+    table->set_pgschema_name(ltm->schema().pgschema_name());
+    if (table_info->colocated()) {
+      table->mutable_colocated_info()->set_colocated(true);
+      if (!table_info->IsColocationParentTable() && ltm->pb.has_parent_table_id()) {
+        table->mutable_colocated_info()->set_parent_table_id(ltm->pb.parent_table_id());
+      }
+    }
+  }
+  return Status::OK();
+}
 
 Status CatalogManager::ListTables(const ListTablesRequestPB* req,
                                   ListTablesResponsePB* resp) {

@@ -777,27 +777,27 @@ class PgClientServiceImpl::Impl {
   }
   
   Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
+ 
+    auto list_of_tables = VERIFY_RESULT(client().ListTableInfo());
+    resp->add_tables()->CopyFrom(list_of_tables);
+    // for (int i = 0; i < resp.tables_size(); i++) {
+    // //for (const auto& table : list_of_tables) {
+    //   // if(!table.has_table_id()) {
+    //   //   resp->add_tables()->set_id("");
+    //   // }
+    //   // else {
 
-    std::vector<client::YBTableName> list_of_tables = VERIFY_RESULT(client().ListTables());
-    for (const auto& table : list_of_tables) {
-      if(!table.has_table_id()) {
-        resp->add_tables()->set_id("");
-      }
-      else {
-
-        auto tables = resp->add_tables();
-        tables->set_id(table.table_id());
-        tables->set_name(table.table_name()); 
-        tables->set_namespace_id(table.namespace_id());
-        // if(!table.has_relation_type()) {
-        //   tables->set_relation_type(table.relation_type());
-        // }
-        tables->set_pgschema_name(table.pgschema_name());
-        //tables->set_table_type(table.table_type());
-        //tables->set_state(table.state());
-        //tables->set_colocated_info(table.colocated_info());  
-      }
-    }
+    //     auto tables = resp->add_tables()->CopyFrom(list_of_tables);
+    //     // tables->set_id(table.table_id());
+    //     // tables->set_name(table.table_name()); 
+    //     // tables->set_relation_type(table.relation_type().get());
+    //     // tables->set_pgschema_name(table.pgschema_name());
+    //     //tables->set_namespace_id(table.namespace_id());
+    //     //tables->set_table_type(table.table_type());
+    //     //tables->set_state(table.state());
+    //     //tables->set_colocated_info(table.colocated_info());  
+    //   //}
+    // }
     return Status::OK();
   } 
   

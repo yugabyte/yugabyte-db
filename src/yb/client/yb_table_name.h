@@ -73,8 +73,26 @@ class YBTableName {
     set_table_id(table_id);
     set_table_name(table_name);
     set_pgschema_name(pgschema_name);
-    set_relation_type(relation_type);
-  }
+    set_relation_type(relation_type);  
+  } 
+
+  // YBTableName(YQLDatabase db_type,
+  //             const std::string& namespace_id,
+  //             const std::string& namespace_name,
+  //             const std::string& table_id,
+  //             const std::string& table_name,
+  //             const std::string& pgschema_name = "",
+  //             //yb::TableType table_type = yb::TableType(),
+  //             boost::optional<master::RelationType> relation_type = boost::none)
+  //           : namespace_type_(db_type) {
+  //   set_namespace_id(namespace_id);
+  //   set_namespace_name(namespace_name);
+  //   set_table_id(table_id);
+  //   set_table_name(table_name);
+  //   set_pgschema_name(pgschema_name);
+  //   //set_table_type(table_type);
+  //   set_relation_type(relation_type);  
+  // }
 
   // Simple table name (no namespace provided at the moment of construction).
   // In this case the namespace has not been set yet and it MUST be set later.
@@ -111,6 +129,10 @@ class YBTableName {
   const std::string& table_name() const {
     return table_name_;
   }
+
+  // const yb::TableType table_type() const {
+  //   return table_type_; 
+  // }
 
   bool has_table_id() const {
     return !table_id_.empty();
@@ -153,6 +175,7 @@ class YBTableName {
   void set_table_name(const std::string& table_name);
   void set_table_id(const std::string& table_id);
   void set_pgschema_name(const std::string& pgschema_name);
+  //void set_table_type(const yb::TableType table_type);
 
   void set_relation_type(boost::optional<master::RelationType> relation_type) {
     relation_type_ = relation_type;
@@ -168,7 +191,7 @@ class YBTableName {
   size_t DynamicMemoryUsage() const {
     return sizeof(*this) +
            DynamicMemoryUsageOf(
-               namespace_id_, namespace_name_, table_id_, table_name_ + pgschema_name_);
+               namespace_id_, namespace_name_, table_id_, table_name_ + pgschema_name_ );
   }
 
  private:
@@ -180,6 +203,7 @@ class YBTableName {
   std::string table_id_; // Optional. Can be set when client knows the table id also.
   std::string table_name_;
   std::string pgschema_name_; // Can be empty
+  //yb::TableType table_type_;
   // Optional. Can be set when the client knows the table type.
   boost::optional<master::RelationType> relation_type_;
 };

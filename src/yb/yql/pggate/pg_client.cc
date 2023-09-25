@@ -755,6 +755,17 @@ class PgClient::Impl {
     //RETURN_NOT_OK(ResponseStatus(resp));
     //std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
     std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
+    // for (const auto& tableInfo : result) {
+    //     LOG(INFO) << "Table ID: " << tableInfo.id();
+    //     LOG(INFO) << "Name: " << tableInfo.name();
+    //     //LOG(ERROR) << "Table Type: " << tableInfo.has_table_type() ? std::to_string(tableInfo.table_type()) : "Not set";
+    //     //LOG(ERROR) << "Namespace Identifier: " << tableInfo.has_namespace() ? tableInfo.namespace().ToString() : "Not set";
+    //     LOG(INFO) << "Relation Type: " << (tableInfo.has_relation_type() ? std::to_string(tableInfo.relation_type()) : "Not set");
+    //    // LOG(ERROR) << "State: " << tableInfo.has_state() ? std::to_string(tableInfo.state()) : "Not set";
+    //     LOG(INFO) << "PgSchema Name: " << (tableInfo.has_pgschema_name() ? tableInfo.pgschema_name() : "Not set");
+    //     //LOG(ERROR) << "Colocated Info: " << tableInfo.has_colocated_info() ? "Set" : "Not set";
+    // }
+
     return result;
   }
 

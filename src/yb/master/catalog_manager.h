@@ -456,7 +456,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Get the information about the specified colocated databsae.
   Status GetColocatedTabletSchema(const GetColocatedTabletSchemaRequestPB* req,
                                   GetColocatedTabletSchemaResponsePB* resp);
-
+   Status ListTableInfo(const ListTablesRequestPB* req,
+                                  ListTablesResponsePB* resp);                               
   // List all the running tables.
   Status ListTables(const ListTablesRequestPB* req,
                     ListTablesResponsePB* resp) override;
