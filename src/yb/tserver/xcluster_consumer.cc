@@ -277,6 +277,17 @@ std::vector<std::shared_ptr<XClusterPoller>> XClusterConsumer::TEST_ListPollers(
   return ret;
 }
 
+std::vector<XClusterPollerStats> XClusterConsumer::GetPollerStats() const {
+  std::vector<XClusterPollerStats> ret;
+  {
+    SharedLock read_lock(producer_pollers_map_mutex_);
+    for (const auto& [_, poller] : producer_pollers_map_) {
+      ret.push_back(poller->GetStats());
+    }
+  }
+  return ret;
+}
+
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
 void XClusterConsumer::UpdateInMemoryState(
     const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {

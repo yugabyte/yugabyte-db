@@ -19,6 +19,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
@@ -87,6 +88,10 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
 
   cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
 
+  std::string State() const;
+
+  XClusterPollerStats GetStats() const;
+
  private:
   bool CheckOffline();
 
@@ -127,8 +132,6 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
   std::function<int64_t(const TabletId&)> get_leader_term_;
 
-  Status status_ GUARDED_BY(data_mutex_);
-
   std::shared_ptr<XClusterOutputClientIf> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
 
@@ -146,6 +149,8 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   int idle_polls_ GUARDED_BY(data_mutex_){0};
 
   int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
+
+  PollStatsHistory poll_stats_history_;
 };
 
 } // namespace tserver

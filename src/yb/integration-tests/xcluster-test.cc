@@ -17,6 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
+#include "yb/cdc/xrepl_stream_metadata.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/util/flags.h"
@@ -3792,4 +3793,75 @@ TEST_P(XClusterTest, FetchBootstrapCheckpointsFromLeaders) {
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 97));
 }
 
+TEST_P(XClusterTest, TestStats) {
+  const uint32_t kReplicationFactor = 1, kTabletCount = 1, kNumMasters = 1, kNumTservers = 1;
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  const auto& producer_table = tables[0];
+  ASSERT_OK(SetupUniverseReplication({producer_table}));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+
+  auto source_cdc_service = producer_cluster()->mini_tablet_server(0)->server()->GetCDCService();
+  auto* target_xc_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+
+  ASSERT_OK(LoggedWaitFor(
+      [&source_cdc_service]() {
+        auto stats = source_cdc_service->GetAllStreamTabletStats();
+        return !stats.empty() && stats[0].avg_poll_delay_ms > 0;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial source Stats to populate"));
+  ASSERT_OK(LoggedWaitFor(
+      [&target_xc_consumer]() {
+        auto stats = target_xc_consumer->GetPollerStats();
+        return !stats.empty() && stats[0].avg_poll_delay_ms > 0;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial target Stats to populate"));
+
+  // Make sure stats on source and target match.
+  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
+  ASSERT_EQ(source_stats.size(), 1);
+  auto initial_index = source_stats[0].sent_index;
+  auto initial_records_sent = source_stats[0].records_sent;
+  auto initial_time = source_stats[0].last_poll_time;
+  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(source_stats[0].last_poll_time);
+  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
+  ASSERT_TRUE(source_stats[0].status.ok());
+
+  auto target_stats = target_xc_consumer->GetPollerStats();
+  ASSERT_EQ(target_stats.size(), 1);
+  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(target_stats[0].status.ok());
+
+  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
+  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
+  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
+
+  WriteWorkload(0, 2, producer_client(), producer_table->name());
+  ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
+
+  // Make sure stats show data was sent and received.
+  source_stats = source_cdc_service->GetAllStreamTabletStats();
+  ASSERT_EQ(source_stats.size(), 1);
+  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_GT(source_stats[0].records_sent, 0);
+  ASSERT_GT(source_stats[0].mbs_sent, 0);
+  ASSERT_GT(source_stats[0].sent_index, initial_index);
+  ASSERT_GT(source_stats[0].records_sent, initial_records_sent);
+  ASSERT_GT(source_stats[0].last_poll_time, initial_time);
+  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
+  ASSERT_TRUE(source_stats[0].status.ok());
+
+  target_stats = target_xc_consumer->GetPollerStats();
+  ASSERT_EQ(target_stats.size(), 1);
+  ASSERT_GT(target_stats[0].records_received, 0);
+  ASSERT_GT(target_stats[0].mbs_received, 0);
+  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(target_stats[0].status.ok());
+
+  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
+  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
+  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
+}
 } // namespace yb

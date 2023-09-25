@@ -208,6 +208,7 @@ class MonoTime {
   void SubtractDelta(const MonoDelta &delta);
   bool ComesBefore(const MonoTime &rhs) const;
   std::string ToString() const;
+  std::string ToFormattedString(const std::string& format = "%Y-%m-%d %H:%M:%S %Z") const;
   bool Equals(const MonoTime& other) const;
   bool IsMax() const;
   bool IsMin() const;

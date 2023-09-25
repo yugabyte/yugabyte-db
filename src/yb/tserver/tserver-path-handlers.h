@@ -73,6 +73,8 @@ class TabletServerPathHandlers {
                            Webserver::WebResponse* resp);
   void HandleMaintenanceManagerPage(const Webserver::WebRequest& req,
                                     Webserver::WebResponse* resp);
+  void HandleXClusterPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleXClusterJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req,
                          Webserver::WebResponse* resp);
   void HandleVersionInfoDump(const Webserver::WebRequest& req,

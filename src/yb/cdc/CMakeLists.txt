@@ -104,7 +104,8 @@ set(CDC_SRCS
   xcluster_producer_bootstrap.cc
   cdcsdk_producer.cc
   cdc_rpc.cc
-  xrepl_stream_metadata.cc)
+  xrepl_stream_metadata.cc
+  xrepl_stream_stats.cc)
 
 ADD_YB_LIBRARY(
     cdc

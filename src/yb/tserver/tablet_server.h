@@ -292,6 +292,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
  protected:
   virtual Status RegisterServices();
 

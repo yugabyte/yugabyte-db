@@ -13,6 +13,7 @@
 
 #include "yb/tserver/xcluster_poller.h"
 #include "yb/client/client_fwd.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/xcluster_output_client.h"
@@ -63,6 +64,7 @@ DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
     "If true, the poller will not check the leader term.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_bool(enable_xcluster_stat_collection);
 
 using namespace std::placeholders;
 
@@ -305,6 +307,10 @@ void XClusterPoller::DoPoll() {
     }
   }
 
+  if (FLAGS_enable_xcluster_stat_collection) {
+    poll_stats_history_.RecordBeginPoll();
+  }
+
   cdc::GetChangesRequestPB req;
   req.set_stream_id(producer_tablet_info_.stream_id);
   req.set_tablet_id(producer_tablet_info_.tablet_id);
@@ -346,6 +352,10 @@ void XClusterPoller::UpdateSchemaVersionsForApply() {
 }
 
 void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
+  if (FLAGS_enable_xcluster_stat_collection) {
+    poll_stats_history_.RecordEndGetChanges();
+  }
+
   rpc::RpcCommandPtr retained;
   {
     std::lock_guard<std::mutex> l(data_mutex_);
@@ -366,29 +376,34 @@ void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChanges
     return;
   }
 
-  status_ = status;
+  if (status.ok()) {
+    if (resp->has_error()) {
+      LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure response: code="
+                               << resp->error().code()
+                               << ", status=" << resp->error().status().DebugString();
+      status = StatusFromPB(resp->error().status());
 
-  bool failed = false;
-  if (!status_.ok()) {
-    LOG_WITH_PREFIX(INFO) << "XClusterPoller failure: " << status_.ToString();
-    failed = true;
-  } else if (resp->has_error()) {
-    LOG_WITH_PREFIX(WARNING) << "XClusterPoller failure response: code=" << resp->error().code()
-                             << ", status=" << resp->error().status().DebugString();
-    failed = true;
-
-    if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
-      xcluster_consumer_->StoreReplicationError(
-          consumer_tablet_info_.tablet_id,
-          producer_tablet_info_.stream_id,
-          ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
-          "Unable to find expected op id on the producer");
+      if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
+        xcluster_consumer_->StoreReplicationError(
+            consumer_tablet_info_.tablet_id, producer_tablet_info_.stream_id,
+            ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
+            "Unable to find expected op id on the producer");
+      }
+    } else if (!resp->has_checkpoint()) {
+      static const auto no_checkpoint_status =
+          STATUS(NotFound, "XClusterPoller GetChanges failure: No checkpoint found");
+      LOG_WITH_PREFIX(ERROR) << "XClusterPoller GetChanges failure: no checkpoint";
+      status = no_checkpoint_status;
     }
-  } else if (!resp->has_checkpoint()) {
-    LOG_WITH_PREFIX(ERROR) << "XClusterPoller failure: no checkpoint";
-    failed = true;
   }
-  if (failed) {
+
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(INFO) << "XClusterPoller GetChanges failure: " << status.ToString();
+
+    if (FLAGS_enable_xcluster_stat_collection) {
+      poll_stats_history_.SetError(std::move(status));
+    }
+
     // In case of errors, try polling again with backoff
     poll_failures_ =
         std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
@@ -398,10 +413,19 @@ void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChanges
 
   // Success Case: ApplyChanges() from Poll
   UpdateSchemaVersionsForApply();
+
+  if (FLAGS_enable_xcluster_stat_collection) {
+    poll_stats_history_.RecordBeginApplyChanges();
+  }
+
   WARN_NOT_OK(output_client_->ApplyChanges(std::move(resp)), "Could not ApplyChanges");
 }
 
 void XClusterPoller::HandleApplyChanges(XClusterOutputClientResponse response) {
+  if (FLAGS_enable_xcluster_stat_collection) {
+    poll_stats_history_.RecordEndApplyChanges();
+  }
+
   RETURN_WHEN_OFFLINE();
   WARN_NOT_OK(
       thread_pool_->SubmitFunc(
@@ -419,6 +443,11 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
 
   if (!response.status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
+
+    if (FLAGS_enable_xcluster_stat_collection) {
+      poll_stats_history_.SetError(std::move(response.status));
+    }
+
     // Repeat the ApplyChanges step, with exponential backoff
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
@@ -431,6 +460,19 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
         "Could not ApplyChanges");
     return;
   }
+
+  DCHECK(response.get_changes_response);
+
+  if (FLAGS_enable_xcluster_stat_collection) {
+    size_t resp_size = 0;
+    auto received_index = response.last_applied_op_id.index();
+    const auto& num_records = response.get_changes_response->records_size();
+    if (num_records > 0) {
+      resp_size = response.get_changes_response->ByteSizeLong();
+    }
+    poll_stats_history_.RecordEndPoll(num_records, received_index, resp_size);
+  }
+
   apply_failures_ = std::max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
 
   op_id_ = response.last_applied_op_id;
@@ -475,6 +517,25 @@ bool XClusterPoller::IsLeaderTermValid() {
   }
 
   return true;
+}
+
+std::string XClusterPoller::State() const {
+  if (is_failed_) {
+    return "Failed";
+  }
+  if (!is_polling_) {
+    return "Paused";
+  }
+
+  return "Running";
+}
+
+XClusterPollerStats XClusterPoller::GetStats() const {
+  XClusterPollerStats stats(producer_tablet_info_, consumer_tablet_info_);
+  stats.state = State();
+  poll_stats_history_.PopulateStats(&stats);
+
+  return stats;
 }
 
 #undef ACQUIRE_MUTEX_IF_ONLINE

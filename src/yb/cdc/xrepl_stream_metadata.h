@@ -17,6 +17,7 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xrepl_stream_stats.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
@@ -37,6 +38,12 @@ class StreamMetadata {
     MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
     // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use them to make
     // UpdateCDCTabletMetrics run asynchronously.
+
+    xrepl::StreamTabletStatsHistory stats_history_;
+    void UpdateStats(
+        const MonoTime& start_time, const Status& status, int num_records, size_t bytes_received,
+        int64_t sent_index, int64_t latest_wal_index);
+    void PopulateStats(xrepl::StreamTabletStats* stats) const;
   };
 
   // Create an empty StreamMetadata object. InitOrReloadIfNeeded must be called before this can be
@@ -98,6 +105,9 @@ class StreamMetadata {
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
       EXCLUDES(tablet_metadata_map_mutex_);
 
+  std::vector<xrepl::StreamTabletStats> GetAllStreamTabletStats(const CDCStreamId& stream_id) const
+      EXCLUDES(tablet_metadata_map_mutex_);
+
   Status InitOrReloadIfNeeded(
       const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
       EXCLUDES(load_mutex_);
@@ -121,8 +131,8 @@ class StreamMetadata {
   mutable std::shared_mutex table_ids_mutex_;
   std::vector<TableId> table_ids_ GUARDED_BY(table_ids_mutex_);
 
-  std::shared_mutex tablet_metadata_map_mutex_;
-  std::unordered_map<TableId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_
+  mutable std::shared_mutex tablet_metadata_map_mutex_;
+  std::unordered_map<TabletId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_
       GUARDED_BY(tablet_metadata_map_mutex_);
 };
 
