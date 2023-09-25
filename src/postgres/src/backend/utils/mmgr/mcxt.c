@@ -43,7 +43,7 @@ YbPgMemTracker PgMemTracker = {0};
 static Size
 SnapshotMemory()
 {
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 	int64_t cur_tc_actual_sz = 0;
 	YBCGetPgggateCurrentAllocatedBytes(&cur_tc_actual_sz);
 	return cur_tc_actual_sz;

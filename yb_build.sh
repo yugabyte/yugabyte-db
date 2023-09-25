@@ -74,6 +74,10 @@ Build options:
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
+  --use-google-tcmalloc, --google-tcmalloc
+    Use Google's implementation of tcmalloc from https://github.com/google/tcmalloc
+  --no-google-tcmalloc, --use-gperftools-tcmalloc, --gperftools-tcmalloc
+    Use the gperftools implementation of tcmalloc
 
   --clean-postgres
     Do a clean build of the PostgreSQL subtree.
@@ -680,6 +684,7 @@ run_java_tests=false
 save_log=false
 make_targets=()
 no_tcmalloc=false
+must_use_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -817,6 +822,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+    ;;
+    --use-gperftools-tcmalloc|--gperftools-tcmalloc)
+      must_use_tcmalloc=true
     ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
@@ -1207,7 +1215,9 @@ decide_whether_to_use_ninja
 handle_predefined_build_root
 
 unset cmake_opts
+
 set_cmake_build_type_and_compiler_type
+
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
@@ -1453,7 +1463,12 @@ if "$no_ccache"; then
   export YB_NO_CCACHE=1
 fi
 
-if "$no_tcmalloc"; then
+if [[ ${no_tcmalloc} == "true" && ${must_use_tcmalloc} == "true" ]]; then
+  fatal "--no-tcmalloc was specified along with one of the options that implies we must use" \
+        "some version of tcmalloc (Google tcmalloc or gperftools tcmalloc)"
+fi
+
+if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 

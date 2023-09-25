@@ -66,6 +66,29 @@ using gflags::FlagSaver;
 
 namespace yb {
 
+namespace {
+
+class YBTestEnvironment : public ::testing::Environment {
+ public:
+  void SetUp() override {
+  }
+
+  void TearDown() override {
+  }
+};
+
+class YBTestEnvironmentRegisterer {
+ public:
+  YBTestEnvironmentRegisterer() {
+    ::testing::AddGlobalTestEnvironment(new YBTestEnvironment());
+  }
+
+};
+
+YBTestEnvironmentRegisterer yb_test_environment_registerer;
+
+}  // namespace
+
 static const char* const kSlowTestsEnvVariable = "YB_ALLOW_SLOW_TESTS";
 
 static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
@@ -75,8 +98,8 @@ static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
 ///////////////////////////////////////////////////
 
 YBTest::YBTest()
-  : env_(new EnvWrapper(Env::Default())),
-    test_dir_(GetTestDataDirectory()) {
+    : env_(new EnvWrapper(Env::Default())),
+      test_dir_(GetTestDataDirectory()) {
   InitThreading();
   debug::EnableTraceEvents();
 }

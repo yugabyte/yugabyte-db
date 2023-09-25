@@ -36,10 +36,6 @@
 #include <unordered_set>
 #include <vector>
 
-#ifdef TCMALLOC_ENABLED
-#include <gperftools/heap-profiler.h>
-#endif
-
 #include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -61,18 +57,6 @@ DEFINE_bool(dump_metrics_json, false,
             "Dump a JSON document describing all of the metrics which may be emitted "
             "by this binary.");
 TAG_FLAG(dump_metrics_json, hidden);
-
-DEFINE_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
-    "profiling for the lifetime of the process. Profile output will be stored in the "
-    "directory specified by -heap_profile_path. Enabling this option will disable the "
-    "on-demand/remote server profile handlers.");
-TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
-TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
-
-DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not set " \
-    "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
-TAG_FLAG(heap_profile_path, stable);
-TAG_FLAG(heap_profile_path, advanced);
 
 DEFINE_int32(svc_queue_length_default, 50, "Default RPC queue length for a service");
 TAG_FLAG(svc_queue_length_default, advanced);
@@ -345,17 +329,6 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     google::HandleCommandLineHelpFlags();
   }
 
-  if (FLAGS_heap_profile_path.empty()) {
-    FLAGS_heap_profile_path = strings::Substitute(
-        "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
-  }
-
-#ifdef TCMALLOC_ENABLED
-  if (FLAGS_enable_process_lifetime_heap_profiling) {
-    HeapProfilerStart(FLAGS_heap_profile_path.c_str());
-  }
-#endif
-
   return ret;
 }
 
@@ -365,6 +338,14 @@ bool RefreshFlagsFile(const std::string& filename) {
   // deprecated.
   const char* prog_name = "yb";
   return google::ReadFromFlagsFile(filename, prog_name, false);
+}
+
+bool ValidatePercentageFlag(const char* flag_name, int value) {
+  if (value >= 0 && value <= 100) {
+    return true;
+  }
+  LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
+  return false;
 }
 
 } // namespace yb

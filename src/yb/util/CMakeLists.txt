@@ -236,6 +236,7 @@ set(UTIL_SRCS
   striped64.cc
   subprocess.cc
   sync_point.cc
+  tcmalloc_util.cc
   test_graph.cc
   thread.cc
   thread_restrictions.cc

@@ -53,5 +53,9 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 // Reads the given file and updates the value of all flags specified in the file. Returns true on
 // success, false otherwise.
 bool RefreshFlagsFile(const std::string& filename);
+
+// Validate that the given flag is a valid percentage value (0-100).
+bool ValidatePercentageFlag(const char* flag_name, int value);
+
 } // namespace yb
 #endif /* YB_UTIL_FLAGS_H */
