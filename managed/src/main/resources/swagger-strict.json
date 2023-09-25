@@ -72,18 +72,10 @@
     },
     "AWSRegionCloudInfo" : {
       "properties" : {
-        "arch" : {
-          "enum" : [ "x86_64", "aarch64" ],
-          "type" : "string"
-        },
         "securityGroupId" : {
           "type" : "string"
         },
         "vnet" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
           "type" : "string"
         }
       },
@@ -1574,10 +1566,6 @@
           "type" : "string"
         },
         "vnet" : {
-          "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
           "type" : "string"
         }
       },
@@ -4619,10 +4607,6 @@
         "instanceTemplate" : {
           "description" : "The instance template to be used for nodes created in this region.",
           "type" : "string"
-        },
-        "ybImage" : {
-          "description" : "The AMI to be used in this region.",
-          "type" : "string"
         }
       },
       "type" : "object"
@@ -4952,6 +4936,10 @@
     },
     "ImageBundle" : {
       "properties" : {
+        "active" : {
+          "description" : "Is the ImageBundle Active",
+          "type" : "boolean"
+        },
         "details" : {
           "$ref" : "#/definitions/ImageBundleDetails",
           "description" : "Image Bundle Details"
