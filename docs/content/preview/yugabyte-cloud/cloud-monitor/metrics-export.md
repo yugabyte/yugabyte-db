@@ -29,7 +29,7 @@ Exporting metrics counts against your data transfer allowance, and may incur add
 
 ### Grafana
 
-- Grafana account and stack.
+- Grafana account and stack. For best performance and lower data transfer costs, deploy your stack in the region closest to your cluster. See the [Grafana documentation](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/otlp/send-data-otlp/#send-data-using-opentelemetry-protocol-otlp) for a list of regions supported by Grafana.
 - Access policy token. You need to create an Access policy with metrics:write scope, and then add a token. For more information, see [Grafana Cloud Access Policies](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/authorize-services/) in the Grafana documentation.
 
 ## Export configuration
