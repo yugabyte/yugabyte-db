@@ -63,7 +63,7 @@ Shortly, you should see the new node performing a comparable number of reads and
 
 The cluster automatically lets the client know to use the newly added node for serving queries. This scaling out of client queries is completely transparent to the application logic, allowing the application to scale linearly for both reads and writes.
 
-Navigate to the [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/) tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
+Navigate to the [Performance](../../../yugabyte-cloud/cloud-monitor/overview/) tab to notice a slight spike and drop in the latency and YSQL Operations/Sec charts when the node is added, and then both return to normal, as shown in the following illustration:
 
 ![Latency and throughput graph with 4 nodes](/images/ce/add-node-cloud-chart.png)
 
