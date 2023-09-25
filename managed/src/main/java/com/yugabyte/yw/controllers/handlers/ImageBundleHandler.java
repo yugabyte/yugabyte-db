@@ -76,8 +76,17 @@ public class ImageBundleHandler {
   }
 
   public ImageBundle doEdit(Provider provider, UUID iBUUID, ImageBundle bundle) {
+    return doEdit(provider, iBUUID, bundle, false);
+  }
+
+  public ImageBundle doEdit(
+      Provider provider, UUID iBUUID, ImageBundle bundle, boolean skipRegionValidation) {
     ImageBundleDetails details = bundle.getDetails();
-    CloudImageBundleSetup.verifyImageBundleDetails(details, provider);
+    if (!skipRegionValidation) {
+      // We will skip the validation as part of provider edit flow, as that is
+      // already handled in CloudProviderHandler.
+      CloudImageBundleSetup.verifyImageBundleDetails(details, provider);
+    }
     ImageBundle oBundle = ImageBundle.getOrBadRequest(iBUUID);
     Architecture arch = oBundle.getDetails().getArch();
     if (oBundle.getUseAsDefault() && !bundle.getUseAsDefault()) {
