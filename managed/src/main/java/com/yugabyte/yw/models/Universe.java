@@ -1002,9 +1002,7 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails()
-        .nodeDetailsSet
-        .parallelStream()
+    return getUniverseDetails().nodeDetailsSet.parallelStream()
         .anyMatch(
             n ->
                 n.cloudInfo.private_ip != null
@@ -1059,7 +1057,12 @@ public class Universe extends Model {
   }
 
   static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
-    return find.query().select("universeUUID").where().eq("customer_id", customerId).findList()
+    return find
+        .query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
         .stream()
         .map(Universe::getUniverseUUID)
         .collect(Collectors.toSet());

@@ -142,6 +142,7 @@ public class Util {
   public static void setYbaVersion(String version) {
     YBA_VERSION = version;
   }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -878,7 +879,8 @@ public class Util {
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
         new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
-      while (dis.read() != -1) ; // Empty loop to clear the data
+      while (dis.read() != -1)
+        ; // Empty loop to clear the data
       md = dis.getMessageDigest();
       // Convert the digest to String.
       StringBuilder result = new StringBuilder();

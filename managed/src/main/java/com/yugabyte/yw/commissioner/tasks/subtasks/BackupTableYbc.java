@@ -60,6 +60,7 @@ public class BackupTableYbc extends YbcTaskBase {
       super(tableParams);
       this.nodeRetriever = nodeRetriever;
     }
+
     // Node-ip to use as co-ordinator for the backup.
     @JsonIgnore public Backup previousBackup = null;
     public String nodeIp = null;

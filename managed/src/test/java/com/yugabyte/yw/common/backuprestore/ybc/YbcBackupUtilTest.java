@@ -892,9 +892,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     TableRestoreSpec tRSpec = YbcBackupUtil.getTableRestoreSpec(backupResponse, bSInfo);
     assertTrue(tRSpec.getKeyspace().equals(bSInfo.keyspace));
     assertTrue(
-        tRSpec
-            .getTableList()
-            .parallelStream()
+        tRSpec.getTableList().parallelStream()
             .collect(Collectors.toList())
             .containsAll(tablesInSuccessFile));
   }

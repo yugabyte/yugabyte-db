@@ -127,7 +127,8 @@ public class CdcStreamManager {
 
       CdcStreamCreateResponse result = new CdcStreamCreateResponse(response.getStreamId());
       LOG.info(
-          "Created CDC stream id='{}' for universeId='{}' dbName='{}' format='{}', checkpointType='{}'",
+          "Created CDC stream id='{}' for universeId='{}' dbName='{}' format='{}',"
+              + " checkpointType='{}'",
           result.getStreamId(),
           universe.getUniverseUUID(),
           databaseName,

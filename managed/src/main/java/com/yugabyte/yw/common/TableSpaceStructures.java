@@ -6,6 +6,8 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -63,6 +65,7 @@ public class TableSpaceStructures {
 
   @EqualsAndHashCode
   @NoArgsConstructor
+  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
   public static class PlacementBlock {
     @ApiModelProperty(value = "Cloud")
     @NotNull
@@ -80,14 +83,12 @@ public class TableSpaceStructures {
     public String zone;
 
     @ApiModelProperty(value = "Minimum replicas")
-    @JsonProperty("min_num_replicas")
     @JsonAlias("minNumReplicas")
     @Min(1)
     public int minNumReplicas;
 
     @ApiModelProperty(value = "Leader preference")
     @JsonInclude(value = JsonInclude.Include.NON_NULL)
-    @JsonProperty("leader_preference")
     @JsonAlias("leaderPreference")
     @Min(1)
     public Integer leaderPreference;

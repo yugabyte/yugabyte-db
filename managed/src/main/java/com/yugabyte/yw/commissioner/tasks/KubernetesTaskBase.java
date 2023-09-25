@@ -604,15 +604,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement placement, ServerType serverType) {
     Map<UUID, ServerType> serversToUpdate = new HashMap<>();
     if (serverType.equals(ServerType.EITHER)) {
-      placement
-          .masters
-          .keySet()
-          .parallelStream()
+      placement.masters.keySet().parallelStream()
           .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
-      placement
-          .tservers
-          .keySet()
-          .parallelStream()
+      placement.tservers.keySet().parallelStream()
           .forEach(
               azUUID -> {
                 if (serversToUpdate.containsKey(azUUID)) {
@@ -623,16 +617,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               });
     } else {
       if (serverType.equals(ServerType.MASTER)) {
-        placement
-            .masters
-            .keySet()
-            .parallelStream()
+        placement.masters.keySet().parallelStream()
             .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
       } else {
-        placement
-            .tservers
-            .keySet()
-            .parallelStream()
+        placement.tservers.keySet().parallelStream()
             .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.TSERVER));
       }
     }

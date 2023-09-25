@@ -162,10 +162,7 @@ public class AlertConfigurationWriter {
       Map<UUID, Set<UUID>> maintenanceWindowToAlertConfigs = new HashMap<>();
       for (MaintenanceWindow window : activeWindows) {
         AlertConfigurationFilter alertConfigurationFilter =
-            window
-                .getAlertConfigurationFilter()
-                .toFilter()
-                .toBuilder()
+            window.getAlertConfigurationFilter().toFilter().toBuilder()
                 .customerUuid(window.getCustomerUUID())
                 .build();
         List<AlertConfiguration> configurations =

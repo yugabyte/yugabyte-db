@@ -62,12 +62,15 @@ public class CreateTable extends AbstractTaskBase {
     // The name of the table to be created.
     @ApiModelProperty(value = "Table name")
     public String tableName;
+
     // The type of the table to be created (Redis, YSQL)
     @ApiModelProperty(value = "Table type")
     public TableType tableType;
+
     // The schema of the table to be created (required for YSQL)
     @ApiModelProperty(value = "Table details")
     public TableDetails tableDetails;
+
     // Flag, indicating that we need to create table only if not exists
     @ApiModelProperty(value = "Create only if table does not exist")
     public boolean ifNotExist;

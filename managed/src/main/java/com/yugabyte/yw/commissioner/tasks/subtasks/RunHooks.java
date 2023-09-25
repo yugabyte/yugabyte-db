@@ -38,7 +38,7 @@ public class RunHooks extends NodeTaskBase {
 
     // Parent class name
     public String parentTask;
-  };
+  }
 
   @Override
   protected Params taskParams() {
