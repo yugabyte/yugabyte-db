@@ -275,7 +275,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
     if (peer->tablet()->metadata()->table_name() == "t") {
       auto* participant = peer->tablet()->transaction_participant();
       if (participant) {
-        total_txns += participant->TEST_GetNumRunningTransactions();
+        total_txns += participant->GetNumRunningTransactions();
       }
     }
   }

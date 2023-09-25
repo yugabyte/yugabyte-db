@@ -1090,7 +1090,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  size_t TEST_GetNumRunningTransactions() {
+  size_t GetNumRunningTransactions() {
     std::lock_guard lock(mutex_);
     auto txn_to_id = [](const RunningTransactionPtr& txn) {
       return txn->id();
@@ -2034,8 +2034,8 @@ Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimeP
   return impl_->ResolveIntents(resolve_at, deadline);
 }
 
-size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
-  return impl_->TEST_GetNumRunningTransactions();
+size_t TransactionParticipant::GetNumRunningTransactions() const {
+  return impl_->GetNumRunningTransactions();
 }
 
 OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(
