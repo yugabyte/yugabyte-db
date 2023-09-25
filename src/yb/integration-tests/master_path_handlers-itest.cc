@@ -575,7 +575,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_NE(pos, string::npos);
   pos = cluster_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
-  ASSERT_EQ(cluster_str.substr(pos + 17, 4), "zone");
+  ASSERT_EQ(cluster_str.substr(pos + 22, 4), "zone");
 
   // Verify table level replication info.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
@@ -586,7 +586,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_NE(pos, string::npos);
   pos = table_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
-  ASSERT_EQ(table_str.substr(pos + 17, 11), "anotherzone");
+  ASSERT_EQ(table_str.substr(pos + 22, 11), "anotherzone");
 }
 
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {

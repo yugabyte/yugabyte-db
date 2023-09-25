@@ -77,6 +77,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
@@ -133,7 +134,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   string logfile;
   GetFullLogFilename(google::INFO, &logfile);
   (*output) << tags.header <<"INFO logs" << tags.end_header << endl;
-  (*output) << "Log path is: " << logfile << endl;
+  (*output) << "Log path is: " << EscapeForHtmlToString(logfile) << endl;
 
   struct stat file_stat;
   if (stat(logfile.c_str(), &file_stat) == 0) {
@@ -145,12 +146,15 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
     // file is likely to be small, this is unlikely to be an issue in
     // practice.
     log.seekg(seekpos);
-    (*output) << tags.line_break <<"Showing last " << FLAGS_web_log_bytes
+    (*output) << tags.line_break << "Showing last " << FLAGS_web_log_bytes
               << " bytes of log" << endl;
-    (*output) << tags.line_break << tags.pre_tag << log.rdbuf() << tags.end_pre_tag;
+    (*output) << tags.line_break << tags.pre_tag;
+    EscapeForHtml(&log, output);
+    (*output) << tags.end_pre_tag;
 
   } else {
-    (*output) << tags.line_break << "Couldn't open INFO log file: " << logfile;
+    (*output) << tags.line_break << "Couldn't open INFO log file: "
+              << EscapeForHtmlToString(logfile);
   }
 }
 
@@ -219,6 +223,9 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();
+  if (!as_text) {
+    tmp = EscapeForHtmlToString(tmp);
+  }
   // Replace new lines with <br> for html.
   replace_all(tmp, "\n", tags.line_break);
   (*output) << tmp << tags.end_pre_tag;
@@ -448,13 +455,14 @@ static void PathUsageHandler(FsManager* fsmanager,
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
       *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
-                        path, stats.status().message());
+                        EscapeForHtmlToString(path),
+                        EscapeForHtmlToString(stats.status().message().ToString()));
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
     const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
     *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
-                      path, used_space_str, total_space_str);
+                      EscapeForHtmlToString(path), used_space_str, total_space_str);
   }
   *output << "</table>\n";
 }
