@@ -2118,9 +2118,12 @@
         "universeUUID" : {
           "format" : "uuid",
           "type" : "string"
+        },
+        "useTablespaces" : {
+          "type" : "boolean"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
