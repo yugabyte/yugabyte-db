@@ -491,23 +491,132 @@ static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a)
 
 static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
 {
-    Oid func_in_oid;
-    FuncExpr *result;
-    List *args = NIL;
+    ParseState *pstate = (ParseState *)cpstate;
+    cypher_list *rexpr;
+    Node *result = NULL;
+    Node *lexpr;
+    List *rexprs;
+    List *rvars;
+    List *rnonvars;
+    bool useOr;
+    ListCell *l;
 
-    args = lappend(args, transform_cypher_expr_recurse(cpstate, a->rexpr));
-    args = lappend(args, transform_cypher_expr_recurse(cpstate, a->lexpr));
+    /* Check for null arguments in the list to return NULL*/
+    if (!is_ag_node(a->rexpr, cypher_list))
+    {
+        if (nodeTag(a->rexpr) == T_A_Const)
+        {
+            A_Const *r_a_const = (A_Const*)a->rexpr;
+            if (r_a_const->isnull == true)
+            {
+                return (Node *)makeConst(AGTYPEOID, -1, InvalidOid, -1, (Datum)NULL, true, false);
+            }
+        }
 
-    /* get the agtype_access_slice function */
-    func_in_oid = get_ag_func_oid("agtype_in_operator", 2, AGTYPEOID,
-                                  AGTYPEOID);
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("object of IN must be a list")));
+    }
 
-    result = makeFuncExpr(func_in_oid, AGTYPEOID, args, InvalidOid, InvalidOid,
-                          COERCE_EXPLICIT_CALL);
+    Assert(is_ag_node(a->rexpr, cypher_list));
 
-    result->location = exprLocation(a->lexpr);
+    // If the operator is <>, combine with AND not OR.
+    if (strcmp(strVal(linitial(a->name)), "<>") == 0)
+    {
+        useOr = false;
+    }
+    else
+    {
+        useOr = true;
+    }
 
-    return (Node *)result;
+    lexpr = transform_cypher_expr_recurse(cpstate, a->lexpr);
+
+    rexprs = rvars = rnonvars = NIL;
+
+    rexpr = (cypher_list *)a->rexpr;
+
+    foreach(l, (List *) rexpr->elems)
+    {
+        Node *rexpr = transform_cypher_expr_recurse(cpstate, lfirst(l));
+
+        rexprs = lappend(rexprs, rexpr);
+                if (contain_vars_of_level(rexpr, 0))
+                {
+                        rvars = lappend(rvars, rexpr);
+                }
+                else
+                {
+                        rnonvars = lappend(rnonvars, rexpr);
+                }
+    }
+
+
+    /*
+     * ScalarArrayOpExpr is only going to be useful if there's more than one
+     * non-Var righthand item.
+     */
+    if (list_length(rnonvars) > 1)
+    {
+        List *allexprs;
+        Oid scalar_type;
+        List *aexprs;
+        ArrayExpr *newa;
+
+        allexprs = list_concat(list_make1(lexpr), rnonvars);
+
+        scalar_type = AGTYPEOID;
+
+        Assert (verify_common_type(scalar_type, allexprs));
+        /*
+         * coerce all the right-hand non-Var inputs to the common type
+         * and build an ArrayExpr for them.
+         */
+
+        aexprs = NIL;
+        foreach(l, rnonvars)
+        {
+            Node *rexpr = (Node *) lfirst(l);
+
+            rexpr = coerce_to_common_type(pstate, rexpr, AGTYPEOID, "IN");
+            aexprs = lappend(aexprs, rexpr);
+        }
+        newa = makeNode(ArrayExpr);
+        newa->array_typeid = get_array_type(AGTYPEOID);
+        /* array_collid will be set by parse_collate.c */
+        newa->element_typeid = AGTYPEOID;
+        newa->elements = aexprs;
+        newa->multidims = false;
+        result = (Node *) make_scalar_array_op(pstate, a->name, useOr,
+                                               lexpr, (Node *) newa, a->location);
+
+        /* Consider only the Vars (if any) in the loop below */
+        rexprs = rvars;
+    }
+
+    // Must do it the hard way, with a boolean expression tree.
+    foreach(l, rexprs)
+    {
+        Node *rexpr = (Node *) lfirst(l);
+        Node *cmp;
+
+        // Ordinary scalar operator
+        cmp = (Node *) make_op(pstate, a->name, copyObject(lexpr), rexpr,
+                               pstate->p_last_srf, a->location);
+
+        cmp = coerce_to_boolean(pstate, cmp, "IN");
+        if (result == NULL)
+        {
+            result = cmp;
+        }
+        else
+        {
+            result = (Node *) makeBoolExpr(useOr ? OR_EXPR : AND_EXPR,
+                                           list_make2(result, cmp),
+                                           a->location);
+        }
+    }
+
+    return result;
 }
 
 static Node *transform_BoolExpr(cypher_parsestate *cpstate, BoolExpr *expr)

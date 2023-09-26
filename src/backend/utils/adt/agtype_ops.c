@@ -1160,7 +1160,7 @@ Datum agtype_exists_all_agtype(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(agtype_contains);
 /*
- * <@ operator for agtype. Returns true if the right agtype path/value entries
+ * @> operator for agtype. Returns true if the right agtype path/value entries
  * contained at the top level within the left agtype value
  */
 Datum agtype_contains(PG_FUNCTION_ARGS)
