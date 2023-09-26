@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
@@ -342,6 +343,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 5;
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
@@ -410,6 +413,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 2;
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 2;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
@@ -489,6 +494,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.instanceType = "c5.xlarge";
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.tserverK8SNodeResourceSpec.cpuCoreCount = 4.0;
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
     assertEquals(Success, taskInfo.getTaskState());
