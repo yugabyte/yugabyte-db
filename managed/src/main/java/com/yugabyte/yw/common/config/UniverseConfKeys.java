@@ -918,5 +918,5 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Always backup tablespaces when taking ysql backups. This is a UI flag"
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
