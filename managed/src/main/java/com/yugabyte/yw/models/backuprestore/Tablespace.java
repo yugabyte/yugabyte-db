@@ -5,10 +5,10 @@ package com.yugabyte.yw.models.backuprestore;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -21,10 +21,8 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Builder;
-import lombok.EqualsAndHashCode;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.collections4.CollectionUtils;
-import org.yb.CommonNet.CloudInfoPB;
 import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 import org.yb.master.CatalogEntityInfo.PlacementInfoPB;
 import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
@@ -94,45 +92,6 @@ public class Tablespace {
       Tablespace.ReplicaPlacement other = (Tablespace.ReplicaPlacement) obj;
       return numReplicas == other.numReplicas
           && CommonUtils.isEqualIgnoringOrder(placementBlocks, other.placementBlocks);
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    @Builder
-    @Jacksonized
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @EqualsAndHashCode
-    public static class PlacementBlock {
-      @NotNull
-      @Size(min = 1)
-      public String cloud;
-
-      @NotNull
-      @Size(min = 1)
-      public String region;
-
-      @NotNull
-      @Size(min = 1)
-      public String zone;
-
-      @NotNull
-      @JsonAlias("min_num_replicas")
-      public Integer minNumReplicas;
-
-      @JsonAlias("leader_preference")
-      public Integer leaderPreference;
-
-      @JsonIgnore
-      public PlacementBlockPB getPlacementBlockPB() {
-        return PlacementBlockPB.newBuilder()
-            .setCloudInfo(
-                CloudInfoPB.newBuilder()
-                    .setPlacementCloud(cloud)
-                    .setPlacementRegion(region)
-                    .setPlacementZone(zone)
-                    .build())
-            .setMinNumReplicas(minNumReplicas)
-            .build();
-      }
     }
   }
 
