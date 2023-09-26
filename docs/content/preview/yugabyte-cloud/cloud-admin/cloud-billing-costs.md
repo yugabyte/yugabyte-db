@@ -133,7 +133,7 @@ Total disk storage cost/month
 
 ## Backup storage costs
 
-Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
+Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS, blob on Azure, or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
 
 {{< tip title="Rate card" >}}
 

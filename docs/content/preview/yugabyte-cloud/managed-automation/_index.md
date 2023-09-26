@@ -39,7 +39,7 @@ For some REST API commands, you may need one or more of the following account de
 
 - Cluster ID.
 
-    Every cluster has a unique ID. The cluster ID is available via the cluster **Settings** tab.
+    Every cluster has a unique ID. The cluster ID is available via the cluster **Settings > Infrastructure** tab.
 
 These identifiers can also be found in the URL when you access a cluster using the YugabyteDB Managed user interface.
 
