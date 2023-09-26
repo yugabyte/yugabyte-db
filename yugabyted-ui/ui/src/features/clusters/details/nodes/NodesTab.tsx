@@ -295,7 +295,7 @@ export const NodesTab: FC = () => {
       }));
     }
     return [];
-  }, [nodesResponse, isLoadBalancerIdleResponse, filter]);
+  }, [nodesResponse, fetchingIsLoadBalancerIdle, isLoadBalancerIdleResponse, filter]);
 
   if (fetchingNodes) {
     return (
