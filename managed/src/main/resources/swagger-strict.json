@@ -7836,30 +7836,37 @@
     "PlacementBlock" : {
       "properties" : {
         "cloud" : {
+          "description" : "Cloud",
           "maxLength" : 2147483647,
           "minLength" : 1,
           "type" : "string"
         },
-        "leaderPreference" : {
+        "leader_preference" : {
+          "description" : "Leader preference",
           "format" : "int32",
+          "minimum" : 1,
           "type" : "integer"
         },
-        "minNumReplicas" : {
+        "min_num_replicas" : {
+          "description" : "Minimum replicas",
           "format" : "int32",
+          "minimum" : 1,
           "type" : "integer"
         },
         "region" : {
+          "description" : "Region",
           "maxLength" : 2147483647,
           "minLength" : 1,
           "type" : "string"
         },
         "zone" : {
+          "description" : "Zone",
           "maxLength" : 2147483647,
           "minLength" : 1,
           "type" : "string"
         }
       },
-      "required" : [ "cloud", "leaderPreference", "minNumReplicas", "region", "zone" ],
+      "required" : [ "cloud", "region", "zone" ],
       "type" : "object"
     },
     "PlacementCloud" : {

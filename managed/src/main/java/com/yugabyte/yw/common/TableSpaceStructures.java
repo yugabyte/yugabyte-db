@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -22,6 +23,8 @@ import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.extern.jackson.Jacksonized;
+import org.yb.CommonNet.CloudInfoPB;
+import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 
 public class TableSpaceStructures {
 
@@ -92,6 +95,19 @@ public class TableSpaceStructures {
     @JsonAlias("leaderPreference")
     @Min(1)
     public Integer leaderPreference;
+
+    @JsonIgnore
+    public PlacementBlockPB getPlacementBlockPB() {
+      return PlacementBlockPB.newBuilder()
+          .setCloudInfo(
+              CloudInfoPB.newBuilder()
+                  .setPlacementCloud(cloud)
+                  .setPlacementRegion(region)
+                  .setPlacementZone(zone)
+                  .build())
+          .setMinNumReplicas(minNumReplicas)
+          .build();
+    }
   }
 
   public static class TableSpaceQueryResponse {
