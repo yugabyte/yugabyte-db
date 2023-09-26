@@ -35,7 +35,7 @@ Create export configurations and assign them to clusters on the **Integrations >
 
 The tab lists any export configurations that you have created, along with the clusters in your account, and the status of any metrics export that has been assigned.
 
-You can also access metrics export on the cluster **Settings** tab under **Metrics Export**.
+You can also access metrics export on the cluster **Settings** tab under **Export Metrics**.
 
 ### Manage export configurations
 
