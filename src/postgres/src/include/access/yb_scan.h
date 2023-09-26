@@ -125,6 +125,21 @@ typedef struct YbScanDescData
 
 typedef struct YbScanDescData *YbScanDesc;
 
+struct YbSysScanBaseData;
+
+typedef struct YbSysScanBaseData *YbSysScanBase;
+
+typedef struct YbSysScanVirtualTable
+{
+	HeapTuple (*next)(YbSysScanBase);
+	void (*end)(YbSysScanBase);
+} YbSysScanVirtualTable;
+
+typedef struct YbSysScanBaseData
+{
+	YbSysScanVirtualTable *vtable;
+} YbSysScanBaseData;
+
 extern void ybc_free_ybscan(YbScanDesc ybscan);
 
 /*
@@ -138,8 +153,12 @@ extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Snapshot snapshot,
 										  int nkeys,
 										  ScanKey key);
-extern HeapTuple ybc_systable_getnext(SysScanDesc scanDesc);
-extern void ybc_systable_endscan(SysScanDesc scan_desc);
+extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
+												   Oid indexId,
+												   bool indexOK,
+												   Snapshot snapshot,
+												   int nkeys,
+												   ScanKey key);
 
 /*
  * Access to YB-stored system catalogs (mirroring API from heapam.c)

@@ -84,6 +84,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
+#include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -669,6 +670,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	RelationCacheInitialize();
 	InitCatalogCache();
 	InitPlanCache();
+
+	if (YBIsEnabledInPostgresEnvVar())
+		YbInitPgInheritsCache();
 
 	/* Initialize portal manager */
 	EnablePortalManager();
