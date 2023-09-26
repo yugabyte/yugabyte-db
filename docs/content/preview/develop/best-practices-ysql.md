@@ -130,3 +130,16 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 ## TRUNCATE tables instead of DELETE
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
+
+## Settings for ci/cd/integration-tests:
+Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags to increase performance:
+
+1. Point gflag `--fs_data_dirs` & `--fs_wal_dirs` to a ramdisk directory. 
+This will make DML,DDL and create,destroy a cluster faster because data will not be written to disk
+2. Set gflag `--yb_num_shards_per_tserver=1`.
+Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
+3. Use colocated databases in YSQL. 
+Colocation will lower overhead when creating/dropping YSQL tables and writing,reading small amounts of data 
+4. Set gflag `--replication_factor=1`.
+For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
+5. Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE` and `DROP TABLE` between test cases. 
