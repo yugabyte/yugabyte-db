@@ -31,12 +31,14 @@
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_pg_inherits_scan.h"
 #include "commands/dbcommands.h"
 #include "commands/tablegroup.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
@@ -78,6 +80,14 @@ typedef struct YbScanPlanData
 } YbScanPlanData;
 
 typedef YbScanPlanData *YbScanPlan;
+
+typedef struct YbDefaultSysScanData
+{
+	YbSysScanBaseData base;
+	YbScanDesc ybscan;
+} YbDefaultSysScanData;
+
+typedef struct YbDefaultSysScanData *YbDefaultSysScan;
 
 static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 {
@@ -2580,12 +2590,85 @@ void ybc_free_ybscan(YbScanDesc ybscan)
 	pfree(ybscan);
 }
 
+static SysScanDesc
+YbBuildSysScanDesc(
+	Relation relation, Snapshot snapshot, YbSysScanBase ybscan)
+{
+	SysScanDesc scan_desc = palloc0(sizeof(SysScanDescData));
+	scan_desc->heap_rel = relation;
+	scan_desc->snapshot = snapshot;
+	scan_desc->ybscan = ybscan;
+	return scan_desc;
+}
+
+static SysScanDesc
+YbBuildOptimizedSysTableScan(Relation relation,
+							 Oid indexId,
+							 bool indexOK,
+							 Snapshot snapshot,
+							 int nkeys,
+							 ScanKey key)
+{
+	if (relation->rd_id == InheritsRelationId)
+		return YbBuildSysScanDesc(
+			relation,
+			snapshot,
+			yb_pg_inherits_beginscan(relation, key, nkeys, indexId));
+	return NULL;
+}
+
 SysScanDesc ybc_systable_beginscan(Relation relation,
                                    Oid indexId,
                                    bool indexOK,
                                    Snapshot snapshot,
                                    int nkeys,
                                    ScanKey key)
+{
+	SysScanDesc scan = IsBootstrapProcessingMode()
+		? NULL
+		: YbBuildOptimizedSysTableScan(
+			relation, indexId, indexOK, snapshot, nkeys, key);
+	return scan
+		? scan
+		: ybc_systable_begin_default_scan(
+			relation, indexId, indexOK, snapshot, nkeys, key);
+}
+
+static HeapTuple
+ybc_systable_getnext(YbSysScanBase default_scan)
+{
+	YbDefaultSysScan scan = (void *)default_scan;
+
+	bool recheck = false;
+
+	Assert(PointerIsValid(scan->ybscan));
+
+	HeapTuple tuple = ybc_getnext_heaptuple(
+		scan->ybscan, true /* is_forward_scan */, &recheck);
+
+	Assert(!recheck);
+
+	return tuple;
+}
+
+static void
+ybc_systable_endscan(YbSysScanBaseData *default_scan)
+{
+	YbDefaultSysScan scan = (void *)default_scan;
+	ybc_free_ybscan(scan->ybscan);
+	pfree(scan);
+}
+
+static YbSysScanVirtualTable yb_default_scan = {
+	.next = &ybc_systable_getnext,
+	.end = &ybc_systable_endscan};
+
+SysScanDesc ybc_systable_begin_default_scan(Relation relation,
+											Oid indexId,
+											bool indexOK,
+											Snapshot snapshot,
+											int nkeys,
+											ScanKey key)
 {
 	Relation index = NULL;
 
@@ -2618,51 +2701,25 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 		}
 	}
 
-	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
-	YbScanDesc ybScan = ybcBeginScan(relation,
-									 index,
-									 false /* xs_want_itup */,
-									 nkeys,
-									 key,
-									 pg_scan_plan,
-									 NULL /* rel_pushdown */,
-									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */,
-									 0 /* distinct_prefixlen */,
-									 NULL /* exec_params */);
+	YbDefaultSysScan scan = palloc0(sizeof(YbDefaultSysScanData));
+	scan->ybscan = ybcBeginScan(relation,
+								index,
+								false /* xs_want_itup */,
+								nkeys,
+								key,
+								NULL /* pg_scan_plan */,
+								NULL /* rel_pushdown */,
+								NULL /* idx_pushdown */,
+								NULL /* aggrefs */,
+								0 /* distinct_prefixlen */,
+								NULL /* exec_params */);
 
-	/* Set up Postgres sys table scan description */
-	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
-	scan_desc->heap_rel   = relation;
-	scan_desc->snapshot   = snapshot;
-	scan_desc->ybscan     = ybScan;
+	scan->base.vtable = &yb_default_scan;
 
 	if (index)
-	{
 		RelationClose(index);
-	}
 
-	return scan_desc;
-}
-
-HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
-{
-	bool recheck = false;
-
-	Assert(PointerIsValid(scan_desc->ybscan));
-
-	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
-											&recheck);
-
-	Assert(!recheck);
-
-	return tuple;
-}
-
-void ybc_systable_endscan(SysScanDesc scan_desc)
-{
-	ybc_free_ybscan(scan_desc->ybscan);
-	pfree(scan_desc);
+	return YbBuildSysScanDesc(relation, snapshot, &scan->base);
 }
 
 HeapScanDesc ybc_heap_beginscan(Relation relation,

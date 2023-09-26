@@ -601,6 +601,66 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         stmt2.execute("END");
       }
 
+      // Test that dropping a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("DROP TABLE prt_p1");
+      waitForTServerHeartbeat();
+      final String error_msg = "no partition of relation \"prt\" found for row";
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test that attaching a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("CREATE TABLE prt_p1 (a int, b varchar)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt_p1 FOR VALUES FROM (0) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (1)");
+
+      // Test whether detaching a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("ALTER TABLE prt DETACH PARTITION prt_p1");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test that adding a default partition in one connection is reflected in the other.
+      stmt1.executeUpdate("CREATE TABLE prt_default (a int, b varchar)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt_default DEFAULT");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (1)");
+
+      // Test that dropping a default partition in one connection is reflected in the other.
+      stmt1.executeUpdate("DROP TABLE prt_default");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test adding a new partitioned table as a partition.
+      stmt1.executeUpdate("CREATE TABLE prt2 (a int, b varchar) PARTITION BY RANGE(a)");
+      stmt1.executeUpdate("CREATE TABLE prt2_p1 PARTITION OF prt2 FOR VALUES FROM (2) TO (8)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt2 FOR VALUES FROM (0) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (3)");
+
+      // Test adding a subpartition.
+      stmt1.executeUpdate("CREATE TABLE prt2_p2 PARTITION OF prt2 FOR VALUES FROM (8) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (9)");
+
+      // Test dropping a subpartition.
+      stmt1.executeUpdate("DROP TABLE prt2_p2");
+      waitForTServerHeartbeat();
+      final String error_msg2 = "no partition of relation \"prt2\" found for row";
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (9)", error_msg2);
+
+      // Test adding a default subpartition
+      stmt1.executeUpdate("CREATE TABLE prt2_default PARTITION OF prt2 DEFAULT");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (9)");
+
+      // Test dropping a default subpartition
+      stmt1.executeUpdate("ALTER TABLE prt2 DETACH PARTITION prt2_default");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (9)", error_msg2);
+
+      // Test dropping child partitioned table.
+      stmt1.executeUpdate("DROP TABLE prt2");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (3)", error_msg);
     }
   }
 
