@@ -163,6 +163,11 @@ METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
     yb::MetricUnit::kKeys,
     "Number of obsolete keys found in RocksDB searches that were past history cutoff");
 
+METRIC_DEFINE_gauge_int64(tablet, active_write_query_objects,
+    "Active WriteQuery Objects",
+    yb::MetricUnit::kOperations,
+    "Number of active WriteQuery objects associated with the current tablet");
+
 namespace yb {
 namespace tablet {
 
@@ -176,6 +181,12 @@ struct CounterEntry {
   uint32_t pggate_index;
   TabletCounters counter;
   CounterPrototype* prototype;
+};
+
+struct GaugeEntry {
+  uint32_t pggate_index;
+  TabletGauges gauge;
+  GaugePrototype<int64_t>* prototype;
 };
 
 struct EventStatsEntry {
@@ -231,6 +242,12 @@ const CounterEntry kCounters[] = {
       &METRIC_docdb_obsolete_keys_found_past_cutoff},
 };
 
+const GaugeEntry kGauges[] = {
+  {pggate::YB_ANALYZE_METRIC_ACTIVE_WRITE_QUERY_OBJECTS,
+      TabletGauges::kActiveWriteQueryObjects,
+      &METRIC_active_write_query_objects},
+};
+
 const EventStatsEntry kEventStats[] = {
   {TabletEventStats::kSnapshotReadInflightWaitDuration,
       &METRIC_snapshot_read_inflight_wait_duration},
@@ -254,19 +271,25 @@ class TabletMetricsImpl final : public TabletMetrics {
 
   uint64_t Get(TabletCounters counter) const override;
 
+  int64_t Get(TabletGauges gauge) const override;
+
   void IncrementBy(TabletCounters counter, uint64_t amount) override;
+
+  void IncrementBy(TabletGauges gauge, int64_t amount) override;
 
   void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
  private:
   std::vector<scoped_refptr<EventStats>> event_stats_;
   std::vector<scoped_refptr<Counter>> counters_;
+  std::vector<scoped_refptr<AtomicGauge<int64_t>>> gauges_;
 };
 
 TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_entity,
                                      const scoped_refptr<MetricEntity>& tablet_entity)
   : event_stats_(kElementsInTabletEventStats),
-    counters_(kElementsInTabletCounters) {
+    counters_(kElementsInTabletCounters),
+    gauges_(kElementsInTabletGauges) {
 
   for (const auto& stat : kEventStats) {
     event_stats_[to_underlying(stat.event_stat)] = stat.prototype->Instantiate(table_entity);
@@ -275,14 +298,26 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
   for (const auto& counter : kCounters) {
     counters_[to_underlying(counter.counter)] = counter.prototype->Instantiate(tablet_entity);
   }
+
+  for (const auto& gauge : kGauges) {
+    gauges_[to_underlying(gauge.gauge)] = gauge.prototype->Instantiate(tablet_entity, 0);
+  }
 }
 
 uint64_t TabletMetricsImpl::Get(TabletCounters counter) const {
   return counters_[to_underlying(counter)]->value();
 }
 
+int64_t TabletMetricsImpl::Get(TabletGauges gauge) const {
+  return gauges_[to_underlying(gauge)]->value();
+}
+
 void TabletMetricsImpl::IncrementBy(TabletCounters counter, uint64_t amount) {
   counters_[to_underlying(counter)]->IncrementBy(amount);
+}
+
+void TabletMetricsImpl::IncrementBy(TabletGauges gauge, int64_t amount) {
+  gauges_[to_underlying(gauge)]->IncrementBy(amount);
 }
 
 void TabletMetricsImpl::IncrementBy(
@@ -293,9 +328,11 @@ void TabletMetricsImpl::IncrementBy(
 } // namespace
 
 TabletMetrics::TabletMetrics()
-  : instance_id_(tablet_metrics_instance_counter.fetch_add(1, std::memory_order_relaxed)) {}
+    : instance_id_(tablet_metrics_instance_counter.fetch_add(1, std::memory_order_relaxed)) {}
 
-ScopedTabletMetrics::ScopedTabletMetrics(): counters_(kElementsInTabletCounters, 0) { }
+ScopedTabletMetrics::ScopedTabletMetrics()
+    : counters_(kElementsInTabletCounters, 0),
+      gauges_(kElementsInTabletGauges, 0) {}
 
 ScopedTabletMetrics::~ScopedTabletMetrics() { }
 
@@ -310,9 +347,19 @@ uint64_t ScopedTabletMetrics::Get(TabletCounters counter) const {
   return counters_[to_underlying(counter)];
 }
 
+int64_t ScopedTabletMetrics::Get(TabletGauges gauge) const {
+  DCHECK_IN_USE();
+  return gauges_[to_underlying(gauge)];
+}
+
 void ScopedTabletMetrics::IncrementBy(TabletCounters counter, uint64_t amount) {
   DCHECK_IN_USE();
   counters_[to_underlying(counter)] += amount;
+}
+
+void ScopedTabletMetrics::IncrementBy(TabletGauges gauge, int64_t amount) {
+  DCHECK_IN_USE();
+  gauges_[to_underlying(gauge)] += amount;
 }
 
 void ScopedTabletMetrics::IncrementBy(
@@ -345,6 +392,14 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
     metric->set_metric(counter.pggate_index);
     metric->set_value(value);
   }
+  for (const auto& gauge : kGauges) {
+    auto value = gauges_[to_underlying(gauge.gauge)];
+    if (value != 0) {
+      auto* metric = metrics->add_gauge_metrics();
+      metric->set_metric(gauge.pggate_index);
+      metric->set_value(value);
+    }
+  }
 }
 
 size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
@@ -360,6 +415,14 @@ size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
     (*out) << name << ": " << value << '\n';
     ++dumped;
   }
+  for (const auto& gauge : kGauges) {
+    auto value = gauges_[to_underlying(gauge.gauge)];
+    if (value != 0) {
+      const auto* name = gauge.prototype->name();
+      (*out) << name << ": " << value << '\n';
+      ++dumped;
+    }
+  }
   return dumped;
 }
 
@@ -370,6 +433,12 @@ void ScopedTabletMetrics::MergeAndClear(TabletMetrics* target) {
     if (counters_[i] > 0) {
       target->IncrementBy(static_cast<TabletCounters>(i), counters_[i]);
       counters_[i] = 0;
+    }
+  }
+  for (size_t i = 0; i < gauges_.size(); ++i) {
+    if (gauges_[i] != 0) {
+      target->IncrementBy(static_cast<TabletGauges>(i), gauges_[i]);
+      gauges_[i] = 0;
     }
   }
 
