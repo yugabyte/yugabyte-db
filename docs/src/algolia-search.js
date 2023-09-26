@@ -60,7 +60,7 @@ import algoliasearch from 'algoliasearch';
     let content = '';
     hitIs.forEach(hit => {
       let pageTitle = '';
-      let pageBreadcrumb;
+      let pageBreadcrumb = '';
 
       if (hit.headers[0]) {
         pageTitle = hit.headers[0];
