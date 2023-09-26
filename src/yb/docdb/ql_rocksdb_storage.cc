@@ -237,5 +237,9 @@ Status QLRocksDBStorage::GetIterator(
   return Status::OK();
 }
 
+std::string QLRocksDBStorage::ToString() const {
+  return doc_db_.regular->GetName();
+}
+
 }  // namespace docdb
 }  // namespace yb

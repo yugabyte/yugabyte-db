@@ -103,6 +103,8 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       const QLValuePB& ybctid,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+
+  virtual std::string ToString() const = 0;
 };
 
 }  // namespace docdb
