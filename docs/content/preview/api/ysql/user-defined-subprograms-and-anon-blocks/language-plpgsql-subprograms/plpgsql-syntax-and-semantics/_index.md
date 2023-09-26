@@ -28,29 +28,12 @@ This section, and its subsections, specify:
 - its decomposition down to terminal rules
 - the associated semantics.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_block_stmt,plpgsql_declaration_section,plpgsql_executable_section,plpgsql_exception_section.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql_block_stmt,plpgsql_declaration_section,plpgsql_executable_section,plpgsql_exception_section.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  plpgsql_block_stmt,
+  plpgsql_declaration_section,
+  plpgsql_executable_section,
+  plpgsql_exception_section
+{{%/ebnf%}}
 
 ## The minimal PL/pgSQL source text
 
