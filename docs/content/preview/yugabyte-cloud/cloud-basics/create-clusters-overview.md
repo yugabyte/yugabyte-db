@@ -256,17 +256,18 @@ The following **Azure regions** are available:
 - Virginia (eastus)
 - Virginia (eastus2)*
 - Paris (francecentral)
-- Frankfurt (germanywestcentral)*
+<!-- Frankfurt (germanywestcentral)*-->
 - Tokyo, Saitama (japaneast)*
 - Seoul (koreacentral)*
 - Ireland (northeurope)
 - Norway (norwayeast)
 - Johannesburg (southafricanorth)*
 - Texas (southcentralus)*
-- Singapore (southeastasia)*
+<!-- Singapore (southeastasia)*-->
 - Zurich (switzerlandnorth)
 - Dubai (uaenorth)*
 - London (uksouth)
+- Netherlands (westeurope)
 - Washington (westus2)
 - Phoenix (westus3)
 
