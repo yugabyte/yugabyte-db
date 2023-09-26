@@ -474,6 +474,8 @@ Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versi
 // Being used by DevSpace tool to build an archive without building the UI
 Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
 
+Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
+
 runPlatformTask := {
   (Compile / run).toTask("").value
 }
