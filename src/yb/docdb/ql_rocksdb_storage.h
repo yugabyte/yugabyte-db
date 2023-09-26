@@ -88,6 +88,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       YQLRowwiseIteratorIf::UniPtr* iter,
       const docdb::DocDBStatistics* statistics = nullptr) const override;
 
+  std::string ToString() const override;
+
  private:
   const DocDB doc_db_;
 };

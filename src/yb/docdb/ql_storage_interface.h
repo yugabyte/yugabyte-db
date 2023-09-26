@@ -109,6 +109,8 @@ class YQLStorageIf {
       const QLValuePB& max_ybctid,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       const DocDBStatistics* statistics = nullptr) const = 0;
+
+  virtual std::string ToString() const = 0;
 };
 
 }  // namespace docdb

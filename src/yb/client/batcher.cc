@@ -428,8 +428,9 @@ void Batcher::AllLookupsDone() {
 
   state_ = BatcherState::kTransactionPrepare;
 
-  VLOG_WITH_PREFIX_AND_FUNC(4)
-      << "Errors: " << errors_by_partition_key.size() << ", ops queue: " << ops_queue_.size();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Number of partition keys with lookup errors: "
+                               << errors_by_partition_key.size()
+                               << ", ops queue: " << ops_queue_.size();
 
   if (!errors_by_partition_key.empty()) {
     // If some operation tablet lookup failed - set this error for all operations designated for

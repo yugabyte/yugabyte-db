@@ -1998,6 +1998,14 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback,
                                   FailOnPartitionListRefreshed fail_on_partition_list_refreshed) {
+  const auto now = CoarseMonoClock::Now();
+  if (deadline < now) {
+    callback(STATUS_FORMAT(
+        TimedOut, "LookupTabletByKey attempted after deadline expired, passed since deadline: $0",
+        now - deadline));
+    return;
+  }
+
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
         table,
