@@ -33,7 +33,7 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 
 Read replicas require the following:
 
-- Primary cluster that is deployed in a VPC, in AWS or GCP.
+- Primary cluster that is deployed in a VPC.
 - Read replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy a read replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Limitations
