@@ -59,7 +59,8 @@ import play.mvc.Result;
 
 @Api(
     value = "Disaster Recovery",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
+    hidden = true)
 @Slf4j
 public class DrConfigController extends AuthenticatedController {
 
