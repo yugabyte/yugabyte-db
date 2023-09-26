@@ -6,7 +6,7 @@ description: YugabyteDB Voyager import data status reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-import-data-status
-    parent: yb-voyager-cli
+    parent: voyager-import
     weight: 80
 type: docs
 ---

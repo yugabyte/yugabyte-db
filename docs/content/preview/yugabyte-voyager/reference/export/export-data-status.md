@@ -1,12 +1,12 @@
 ---
-title: export data reference
+title: export data status reference
 headcontent: yb-voyager export data status
-linkTitle: export-data
+linkTitle: export data status
 description: YugabyteDB Voyager export data status reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-export-data-status
-    parent: yb-voyager-cli
+    parent: export
     weight: 40
 type: docs
 ---
@@ -37,4 +37,3 @@ The valid *arguments* for export data status are described in the following tabl
 ```sh
 yb-voyager export data status --export-dir /path/to/yb/export/dir
 ```
-
