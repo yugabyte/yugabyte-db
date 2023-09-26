@@ -720,3 +720,16 @@ func Bool2Int(b bool) int {
 	}
 	return 0
 }
+
+// AbsoluteBundlePath returns the absolute path to the given file, assuming that file is a relative
+// path from the extracted yba_installer_full tgz file. This is used for installs, allowing us to
+// run yba-ctl as `./yba_installer_full-b123/yba-ctl install` and still find the binaries needed
+// for installation or upgrade - basically any execution of yba-ctl from the full bundle.
+func AbsoluteBundlePath(fp string) string {
+	executable, err := os.Executable()
+	if err != nil {
+		log.Fatal(fmt.Sprintf("failed to determine executable path: %s", err.Error()))
+	}
+	rootDir := filepath.Dir(executable)
+	return filepath.Join(rootDir, fp)
+}

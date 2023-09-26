@@ -112,8 +112,9 @@ func copyBits(vers string) {
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
-		if err := Copy(file, GetInstallerSoftwareDir(), false, true); err != nil {
-			log.Fatal("failed to copy " + file + ": " + err.Error())
+		fp := AbsoluteBundlePath(file)
+		if err := Copy(fp, GetInstallerSoftwareDir(), false, true); err != nil {
+			log.Fatal("failed to copy " + fp + ": " + err.Error())
 		}
 	}
 
