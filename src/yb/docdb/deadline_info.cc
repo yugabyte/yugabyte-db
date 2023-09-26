@@ -28,14 +28,16 @@ namespace docdb {
 
 DeadlineInfo::DeadlineInfo(CoarseTimePoint deadline) : deadline_(deadline) {}
 
-// Every 1024 iterations, check whether the deadline passed and returning failure if it was
-// already timed out.
+// Every kDeadlineCheckGranularity iterations, check whether the deadline passed and returning
+// failure if it was already timed out.
 Status DeadlineInfo::CheckDeadlinePassed() {
   if (PREDICT_FALSE(FLAGS_TEST_tserver_timeout)) {
     return STATUS(Expired, "TEST: Deadline for query passed");
   }
 
-  if (PREDICT_FALSE((++counter_ & 1023) == 0 && CoarseMonoClock::now() > deadline_)) {
+  if (PREDICT_FALSE(
+          (++counter_ & (kDeadlineCheckGranularity - 1)) == 0 &&
+          CoarseMonoClock::now() > deadline_)) {
     return STATUS_FORMAT(
         Expired, "Deadline for query passed $0 ago", CoarseMonoClock::now() - deadline_);
   }

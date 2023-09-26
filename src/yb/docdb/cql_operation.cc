@@ -1845,6 +1845,8 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     RETURN_NOT_OK(PopulateAggregate(selected_row, resultset));
   }
 
+  VLOG_WITH_FUNC(3) << "Fetched rows: " << resultset->rsrow_count() << " from "
+                    << AsString(ql_storage);
   VTRACE(1, "Fetched $0 rows.", resultset->rsrow_count());
 
   RETURN_NOT_OK(SetPagingStateIfNecessary(
@@ -1965,7 +1967,7 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<qlexpr::QLScanSpec>
                                        QLResultSet* resultset,
                                        int* match_count,
                                        size_t *num_rows_skipped) {
-  VLOG_WITH_FUNC(3) << AsString(row);
+  VLOG_WITH_FUNC(4) << AsString(row);
   if (resultset->rsrow_count() >= row_count_limit) {
     return Status::OK();
   }
