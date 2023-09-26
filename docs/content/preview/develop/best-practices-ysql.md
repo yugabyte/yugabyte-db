@@ -127,6 +127,10 @@ For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can
 For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</tip>}}
 
+## Single AZ deployments
+In single AZ deployments, you need to set `--durable_wal_write=true` [gflag](../../reference/configuration/yb-tserver) in 
+yb-tserver to not lose data if the whole datacenter goes down (power failure etc).
+
 ## TRUNCATE tables instead of DELETE
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
