@@ -114,6 +114,8 @@ build_cpp_code() {
   # We're explicitly disabling third-party rebuilding here as we've already built third-party
   # dependencies (or downloaded them, or picked an existing third-party directory) above.
 
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2206,SC2086
   local yb_build_args=(
     "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
     ${YB_BUILD_OPTS:-}
@@ -132,7 +134,7 @@ build_cpp_code() {
     )
   fi
 
-  log "Building cpp code with options: ${yb_build_args[@]}"
+  log "Building cpp code with options: ${yb_build_args[*]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
@@ -441,6 +443,8 @@ current_git_commit=$(git rev-parse HEAD)
 
 export YB_SKIP_FINAL_LTO_LINK=0
 if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2206,SC2086
   yb_build_cmd_line_for_lto=(
     "${YB_SRC_ROOT}/yb_build.sh"
     "${BUILD_TYPE}" --skip-java --force-run-cmake ${YB_BUILD_OPTS:-}
@@ -606,6 +610,8 @@ else
   # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
   # building package.
   log "Building yugabyted-ui"
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2086
   time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java \
     ${YB_BUILD_OPTS:-}
 fi
