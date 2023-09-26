@@ -99,7 +99,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
   }
   const encryption = getEncryptionText(encryptionAtRest, encryptionInTransit);
 
-  const authentication = encryptionAtRest || encryptionInTransit ?
+  const authentication = encryptionInTransit === true ?
     t('clusters.password') : t('clusters.none');
 
   return (
