@@ -349,7 +349,8 @@ public class BackupUtil {
             .hasIncrementalBackups(hasIncrements)
             .lastIncrementalBackupTime(lastIncrementDate)
             .lastBackupState(lastBackupState)
-            .scheduleName(backup.getScheduleName());
+            .scheduleName(backup.getScheduleName())
+            .useTablespaces(backup.getBackupInfo().useTablespaces);
     return builder.build();
   }
 
