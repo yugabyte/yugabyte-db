@@ -205,6 +205,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
+    "Enable logical replication commands for Publication and Replication Slots");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(

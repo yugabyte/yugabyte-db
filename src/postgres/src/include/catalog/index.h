@@ -190,4 +190,6 @@ typedef enum
 	YB_INDEX_PERM_INDEX_UNUSED = 12,
 } YBIndexPermissions;
 
+extern bool YBRelationHasPrimaryKey(Relation rel);
+
 #endif							/* INDEX_H */
