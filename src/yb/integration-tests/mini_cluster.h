@@ -405,8 +405,10 @@ Status WaitForPeersPostSplitCompacted(
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 Status WaitForTableIntentsApplied(
-    MiniCluster* cluster, const TableId& table_id,
-    MonoDelta timeout = MonoDelta::FromSeconds(30));
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+Status WaitForAllIntentsApplied(
+    MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.
