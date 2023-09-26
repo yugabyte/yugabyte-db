@@ -250,17 +250,30 @@ void ConfigureTCMalloc(int64_t mem_limit) {
   if (FLAGS_enable_process_lifetime_heap_sampling) {
     LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
         FLAGS_profiler_sample_freq_bytes);
-#if YB_GOOGLE_TCMALLOC
-    tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
-#elif YB_GPERFTOOLS_TCMALLOC
-    MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
-#endif
+    SetTCMallocSamplingFrequency(FLAGS_profiler_sample_freq_bytes);
   }
 
 #if YB_GPERFTOOLS_TCMALLOC
   if (FLAGS_enable_process_lifetime_heap_profiling) {
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   }
+#endif
+}
+
+int64_t GetTCMallocSamplingFrequency() {
+#if YB_GOOGLE_TCMALLOC
+  return tcmalloc::MallocExtension::GetProfileSamplingRate();
+#elif YB_GPERFTOOLS_TCMALLOC
+  return MallocExtension::instance()->GetProfileSamplingRate();
+#endif
+  return 0;
+}
+
+void SetTCMallocSamplingFrequency(int64_t sample_freq_bytes) {
+#if YB_GOOGLE_TCMALLOC
+  tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
+#elif YB_GPERFTOOLS_TCMALLOC
+  MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
 #endif
 }
 

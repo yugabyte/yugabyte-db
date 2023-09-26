@@ -107,10 +107,13 @@ static void PprofCmdLineHandler(const Webserver::WebRequest& req,
 }
 
 SampleOrder ParseSampleOrder(const Webserver::ArgumentMap& parsed_args) {
-  if (FindWithDefault(parsed_args, "order_by", "") == "bytes") {
-    return SampleOrder::kBytes;
+  auto order = FindWithDefault(parsed_args, "order_by", "");
+  if (order == "bytes") {
+    return SampleOrder::kSampledBytes;
+  } else if (order == "estimated_bytes") {
+    return SampleOrder::kEstimatedBytes;
   }
-  return SampleOrder::kCount;
+  return SampleOrder::kSampledCount;
 }
 
 // pprof asks for the url /pprof/heap to get heap information. This should be implemented
@@ -145,7 +148,7 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 
   auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
   auto samples = AggregateAndSortProfile(profile, only_growth, order);
-  GenerateTable(output, samples, title, 1000 /* max_call_stacks*/);
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
 #endif  // YB_GOOGLE_TCMALLOC
 
 #if YB_GPERFTOOLS_TCMALLOC
@@ -190,18 +193,22 @@ static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
 
   string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
 #ifdef YB_GOOGLE_TCMALLOC
-  auto profile = peak_heap ? GetHeapSnapshot(HeapSnapshotType::PEAK_HEAP) :
-                             GetHeapSnapshot(HeapSnapshotType::CURRENT_HEAP);
+  auto profile = GetHeapSnapshot(
+      peak_heap ? HeapSnapshotType::kPeakHeap : HeapSnapshotType::kCurrentHeap);
   vector<Sample> samples = AggregateAndSortProfile(profile, false /* only_growth */, order);
 #elif YB_GPERFTOOLS_TCMALLOC
   if (peak_heap) {
     (*output) << "peak_heap is not supported with gperftools tcmalloc";
     return;
   }
+  if (order != SampleOrder::kSampledBytes && order != SampleOrder::kSampledCount) {
+    (*output) << Format("Order \"$0\" is not supported with gperftools tcmalloc", order);
+    return;
+  }
   vector<Sample> samples = GetAggregateAndSortHeapSnapshot(order);
 #endif // YB_GPERFTOOLS_TCMALLOC
 
-  GenerateTable(output, samples, title, 1000 /* max_call_stacks */);
+  GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
 #endif // YB_TCMALLOC_ENABLED
 }
 
