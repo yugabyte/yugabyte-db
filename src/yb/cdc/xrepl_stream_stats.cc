@@ -25,7 +25,7 @@ bool StreamTabletStats::operator<(const StreamTabletStats& rhs) const {
 void StreamTabletStats::operator+=(const StreamTabletStats& rhs) {
   avg_poll_delay_ms += rhs.avg_poll_delay_ms;
   avg_get_changes_latency_ms += rhs.avg_get_changes_latency_ms;
-  avg_throughput_mbps += rhs.avg_throughput_mbps;
+  avg_throughput_kbps += rhs.avg_throughput_kbps;
   mbs_sent += rhs.mbs_sent;
   records_sent += rhs.records_sent;
   // Get the earliest poll time.
@@ -64,9 +64,8 @@ void StreamTabletStatsHistory::UpdateStats(
   }
 
   if (status.ok()) {
-    auto resp_size_mb = bytes_sent * 1.0 / 1_MB;
-    entry.mbs_sent = resp_size_mb;
-    mbs_sent += resp_size_mb;
+    entry.kbs_sent = bytes_sent * 1.0 / 1_KB;
+    mbs_sent += (bytes_sent * 1.0 / 1_MB);
   }
 
   buffer.push_back(std::move(entry));
@@ -87,21 +86,21 @@ void StreamTabletStatsHistory::PopulateStats(StreamTabletStats* stats) const {
 
   MonoDelta avg_poll_delay = MonoDelta::kZero;
   MonoDelta avg_get_changes_latency = MonoDelta::kZero;
-  double mbs_sent = 0;
+  double kbs_sent = 0;
   for (const auto& entry : buffer) {
     avg_poll_delay += entry.poll_delay;
     avg_get_changes_latency += entry.get_changes_latency;
-    mbs_sent += entry.mbs_sent;
+    kbs_sent += entry.kbs_sent;
   }
   avg_poll_delay /= buffer.size();
   avg_get_changes_latency /= buffer.size();
 
   const auto total_time = last_poll_time - buffer.front().start_time;
-  const auto avg_throughput_mbps = mbs_sent / total_time.ToSeconds();
+  const auto avg_throughput_kbps = kbs_sent / total_time.ToSeconds();
 
   stats->avg_poll_delay_ms = avg_poll_delay.ToMilliseconds();
   stats->avg_get_changes_latency_ms = avg_get_changes_latency.ToMilliseconds();
-  stats->avg_throughput_mbps = avg_throughput_mbps;
+  stats->avg_throughput_kbps = avg_throughput_kbps;
 }
 
 }  // namespace yb::xrepl

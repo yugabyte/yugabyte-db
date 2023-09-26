@@ -38,7 +38,7 @@ void XClusterPollerStats::operator+=(const XClusterPollerStats& rhs) {
   avg_poll_delay_ms += rhs.avg_poll_delay_ms;
   avg_get_changes_latency_ms += rhs.avg_get_changes_latency_ms;
   avg_apply_latency_ms += rhs.avg_apply_latency_ms;
-  avg_throughput_mbps += rhs.avg_throughput_mbps;
+  avg_throughput_kbps += rhs.avg_throughput_kbps;
   mbs_received += rhs.mbs_received;
   records_received += rhs.records_received;
   // Get the earliest poll time.
@@ -100,8 +100,7 @@ void PollStatsHistory::RecordEndPoll(
     records_received_ += num_records;
   }
 
-  const auto mbs_received = bytes_received * 1.0 / 1_MB;
-  mbs_received_ += mbs_received;
+  mbs_received_ += (bytes_received * 1.0 / 1_MB);
 
   if (!current_poll_info_.start_poll_time) {
     return;
@@ -109,7 +108,7 @@ void PollStatsHistory::RecordEndPoll(
 
   PollStatEntry entry;
   entry.start_time = current_poll_info_.start_poll_time;
-  entry.mbs_received = mbs_received;
+  entry.kbs_received = bytes_received * 1.0 / 1_KB;
   if (!buffer_.empty()) {
     entry.poll_delay = current_poll_info_.start_poll_time - buffer_.back().start_time;
   }
@@ -145,7 +144,7 @@ void PollStatsHistory::PopulateStats(XClusterPollerStats* stats) const {
   int32 avg_get_changes_latency_count = 0;
   MonoDelta avg_apply_latency = MonoDelta::kZero;
   int32 avg_apply_latency_count = 0;
-  double mbs_received = 0;
+  double kbs_received = 0;
   if (buffer_.empty()) {
     return;
   }
@@ -163,7 +162,7 @@ void PollStatsHistory::PopulateStats(XClusterPollerStats* stats) const {
       avg_apply_latency_count++;
       avg_apply_latency += entry.apply_latency;
     }
-    mbs_received += entry.mbs_received;
+    kbs_received += entry.kbs_received;
   }
   if (avg_poll_delay_count > 0) {
     avg_poll_delay /= avg_poll_delay_count;
@@ -176,11 +175,11 @@ void PollStatsHistory::PopulateStats(XClusterPollerStats* stats) const {
   }
 
   const auto total_time = last_end_poll_time_ - buffer_.front().start_time;
-  const auto avg_throughput_mbps = mbs_received / total_time.ToSeconds();
+  const auto avg_throughput_kbps = kbs_received / total_time.ToSeconds();
 
   stats->avg_poll_delay_ms = avg_poll_delay.ToMilliseconds();
   stats->avg_get_changes_latency_ms = avg_get_changes_latency.ToMilliseconds();
   stats->avg_apply_latency_ms = avg_apply_latency.ToMilliseconds();
-  stats->avg_throughput_mbps = avg_throughput_mbps;
+  stats->avg_throughput_kbps = avg_throughput_kbps;
 }
 }  // namespace yb
