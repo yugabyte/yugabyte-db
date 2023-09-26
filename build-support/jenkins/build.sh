@@ -35,7 +35,7 @@
 #
 # Environment variables may be used to customize operation:
 #   BUILD_TYPE: Default: debug
-#     Maybe be one of asan|tsan|debug|release|coverage|lint
+#     May be one of asan|tsan|debug|fastdebug|release|coverage|lint
 #
 #   YB_BUILD_CPP
 #   Default: 1
@@ -49,6 +49,10 @@
 #   YB_BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
+#
+#   YB_BUILD_OPTS
+#   Default:
+#     Flags to pass to yb_build.sh
 #
 #   DONT_DELETE_BUILD_ROOT
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
@@ -112,6 +116,7 @@ build_cpp_code() {
 
   local yb_build_args=(
     "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
+    ${YB_BUILD_OPTS:-}
     "${BUILD_TYPE}"
   )
 
@@ -126,6 +131,8 @@ build_cpp_code() {
         "${yb_build_args[@]}"
     )
   fi
+
+  log "Building cpp code with options: ${yb_build_args[@]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
@@ -158,15 +165,19 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
-# shellcheck source=build-support/jenkins/common-lto.sh
-. "${BASH_SOURCE%/*}/common-lto.sh"
-
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
-
+log "BUILD_TYPE: ${BUILD_TYPE}"
+log "YB_BUILD_OPTS: ${YB_BUILD_OPTS:-}"
+log "Setting Link Type"
+# shellcheck source=build-support/jenkins/common-lto.sh
+. "${BASH_SOURCE%/*}/common-lto.sh"
+log "Setting build_root"
 # shellcheck disable=SC2119
 set_build_root
+
+log "BUILD_ROOT: ${BUILD_ROOT}"
 
 set_common_test_paths
 
@@ -432,7 +443,7 @@ export YB_SKIP_FINAL_LTO_LINK=0
 if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
   yb_build_cmd_line_for_lto=(
     "${YB_SRC_ROOT}/yb_build.sh"
-    "${BUILD_TYPE}" --skip-java --force-run-cmake
+    "${BUILD_TYPE}" --skip-java --force-run-cmake ${YB_BUILD_OPTS:-}
   )
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
@@ -595,7 +606,8 @@ else
   # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
   # building package.
   log "Building yugabyted-ui"
-  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java
+  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java \
+    ${YB_BUILD_OPTS:-}
 fi
 
 exit ${EXIT_STATUS}
