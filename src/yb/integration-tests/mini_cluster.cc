@@ -1343,4 +1343,8 @@ Status WaitForTableIntentsApplied(
   }, timeout, "Did not apply write transactions from intents db in time.");
 }
 
+Status WaitForAllIntentsApplied(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitForTableIntentsApplied(cluster, /* table_id = */ "", timeout);
+}
+
 }  // namespace yb

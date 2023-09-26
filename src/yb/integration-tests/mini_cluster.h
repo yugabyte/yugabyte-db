@@ -386,8 +386,10 @@ Status WaitForPeersAreFullyCompacted(
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 Status WaitForTableIntentsApplied(
-    MiniCluster* cluster, const TableId& table_id,
-    MonoDelta timeout = MonoDelta::FromSeconds(30));
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+Status WaitForAllIntentsApplied(
+    MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 }  // namespace yb
 

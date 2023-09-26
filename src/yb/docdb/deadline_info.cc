@@ -30,14 +30,15 @@ namespace docdb {
 
 DeadlineInfo::DeadlineInfo(CoarseTimePoint deadline) : deadline_(deadline) {}
 
-// Every 1024 iterations, check whether the deadline passed and if so, change deadline_passed_
-// before returning.
+// Every kDeadlineCheckGranularity iterations, check whether the deadline passed and if so, change
+// deadline_passed_ before returning.
 bool DeadlineInfo::CheckAndSetDeadlinePassed() {
   if (deadline_passed_) {
     return true;
   }
-  if ((PREDICT_FALSE(FLAGS_TEST_tserver_timeout) || (++counter_ & 1023) == 0)
-      && CoarseMonoClock::now() > deadline_) {
+  if ((PREDICT_FALSE(FLAGS_TEST_tserver_timeout) ||
+       (++counter_ & (kDeadlineCheckGranularity - 1)) == 0) &&
+      CoarseMonoClock::now() > deadline_) {
     deadline_passed_ = true;
   }
   return deadline_passed_;
