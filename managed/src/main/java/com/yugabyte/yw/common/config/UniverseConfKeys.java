@@ -795,4 +795,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to configure YCQL DB API from UI",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
+      new ConfKeyInfo<>(
+          "yb.node_agent.reinstall_parallelism",
+          ScopeType.UNIVERSE,
+          "Parallelism for Node Agent Reinstallation",
+          "Number of parallel node agent reinstallations at a time",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

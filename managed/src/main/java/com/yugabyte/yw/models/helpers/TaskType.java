@@ -181,6 +181,8 @@ public enum TaskType {
 
   RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
 
+  ReinstallNodeAgent(com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class),
+
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
 
