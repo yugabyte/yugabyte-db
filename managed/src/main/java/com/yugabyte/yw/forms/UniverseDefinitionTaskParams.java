@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -237,11 +236,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
-
-  @ApiModelProperty(hidden = true)
-  @Getter
-  @Setter
-  private KubernetesResourceDetails kubernetesResourceDetails;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)

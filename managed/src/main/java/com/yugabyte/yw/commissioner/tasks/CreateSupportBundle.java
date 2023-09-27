@@ -62,12 +62,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
-      kubernetesStatusUpdater.markSupportBundleFinished(
-          supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
+      kubernetesStatusUpdater.markSupportBundleFinished(supportBundle, gzipPath);
     } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
-      kubernetesStatusUpdater.markSupportBundleFailed(
-          supportBundle, taskParams().getKubernetesResourceDetails());
+      kubernetesStatusUpdater.markSupportBundleFailed(supportBundle);
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
     } finally {

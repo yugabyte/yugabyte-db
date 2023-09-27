@@ -15,10 +15,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
-import com.yugabyte.yw.forms.KubernetesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -43,11 +43,11 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     this.kubernetesStatus = kubernetesStatus;
   }
 
-  public static class Params extends KubernetesUpgradeParams {}
+  public static class Params extends UpgradeParams {}
 
   @Override
-  protected KubernetesUpgradeParams taskParams() {
-    return (KubernetesUpgradeParams) taskParams;
+  protected UpgradeParams taskParams() {
+    return (UpgradeParams) taskParams;
   }
 
   @Override
@@ -59,8 +59,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
@@ -163,12 +162,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      kubernetesStatus.updateYBUniverseStatus(
-          getUniverse(),
-          taskParams().getKubernetesResourceDetails(),
-          getName(),
-          getUserTaskUUID(),
-          th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
