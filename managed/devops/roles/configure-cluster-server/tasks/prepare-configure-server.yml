@@ -18,7 +18,7 @@
 
 - set_fact:
     systemd_unit_dir: "/usr/lib/systemd/system"
-  when: ansible_distribution == "SLES"
+  when: ansible_os_family == "Suse"
   tags: always
 
 - name: Configure | Add yb server ctl script
