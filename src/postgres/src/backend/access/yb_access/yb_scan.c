@@ -1319,7 +1319,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (YbIsRowHeader(key))
 	{
 		is_row = true;
-		for(int row_ind = 0; row_ind < length_of_key; row_ind++)
+		for(int row_ind = 1; row_ind < length_of_key; row_ind++)
 		{
 			int bound_idx = YBAttnumToBmsIndex(
 				relation, scan_plan->bind_key_attnums[i + row_ind]);
