@@ -59,16 +59,24 @@ import algoliasearch from 'algoliasearch';
   function docsSection(hitIs) {
     let content = '';
     hitIs.forEach(hit => {
-      const hitLevel0 = hit.hierarchy.lvl0;
-      if (!hitLevel0) {
-        return;
+      let pageTitle = '';
+      let pageBreadcrumb = '';
+
+      if (hit.headers[0]) {
+        pageTitle = hit.headers[0];
+      } else if (hit.title) {
+        pageTitle = hit.title;
+      }
+
+      if (hit.breadcrumb) {
+        pageBreadcrumb = hit.breadcrumb;
       }
 
       content += `<li>
         <div class="search-title">
           <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
-            <span class="search-title-inner">${hitLevel0}</span>
-            <div class="breadcrumb-item">${hit.breadcrumb}</div>
+            <span class="search-title-inner">${pageTitle}</span>
+            <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
         </div>
       </li>`;
@@ -190,14 +198,13 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'e2f160cd7efe96b0ada15fd27f297d66');
-    const index = client.initIndex('yugabyte_docs');
+    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
+    const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
-      filters: 'version:"preview"',
     };
 
     if (pageItems && pageItems > 0) {
@@ -211,7 +218,7 @@ import algoliasearch from 'algoliasearch';
         let pagerDetails = {};
         let sectionHTML = '';
         sectionHTML += docsSection(hits);
-        if (hits.length > 0) {
+        if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
           document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
