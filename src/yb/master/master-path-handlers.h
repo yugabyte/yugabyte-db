@@ -41,7 +41,9 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/server/webserver.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/enums.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 
@@ -213,6 +215,8 @@ class MasterPathHandlers {
   void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTablePageJSON(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
@@ -286,5 +290,5 @@ class MasterPathHandlers {
 
 void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
-} // namespace master
-} // namespace yb
+}  //  namespace master
+}  //  namespace yb

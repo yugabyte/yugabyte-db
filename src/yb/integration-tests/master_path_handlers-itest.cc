@@ -305,6 +305,226 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   cluster_->Shutdown();
 }
 
+void verifyBasicTestTableAttributes(const rapidjson::Value* json_obj,
+                                    const std::shared_ptr<client::YBTable>& table,
+                                    uint64_t expected_version) {
+  EXPECT_TRUE(json_obj->HasMember("table_id"));
+  EXPECT_EQ(table->id(), (*json_obj)["table_id"].GetString());
+  EXPECT_TRUE(json_obj->HasMember("table_name"));
+  EXPECT_EQ(yb::server::TableLongName(kKeyspaceName, "test_table"),
+            (*json_obj)["table_name"].GetString());
+  EXPECT_TRUE(json_obj->HasMember("table_version"));
+  EXPECT_EQ((*json_obj)["table_version"].GetUint64(), expected_version);
+  EXPECT_TRUE(json_obj->HasMember("table_type"));
+  EXPECT_EQ(TableType_Name(YQL_TABLE_TYPE), (*json_obj)["table_type"].GetString());
+  EXPECT_TRUE(json_obj->HasMember("table_state"));
+  EXPECT_EQ(strcmp("Running", (*json_obj)["table_state"].GetString()), 0);
+}
+
+void verifyTestTableSchema(const rapidjson::Value* json_obj) {
+  EXPECT_TRUE(json_obj->HasMember("columns"));
+  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["columns"].GetType());
+  const rapidjson::Value::ConstArray columns_json =
+      (*json_obj)["columns"].GetArray();
+
+  for (const auto& column_json : columns_json) {
+    EXPECT_EQ(rapidjson::kObjectType, column_json.GetType());
+    EXPECT_TRUE(column_json.HasMember("id"));
+    EXPECT_GT(strlen(column_json["id"].GetString()), 0);
+    EXPECT_TRUE(column_json.HasMember("column"));
+    if (!strcmp(column_json["column"].GetString(), "key")) {
+      EXPECT_TRUE(column_json.HasMember("type"));
+      EXPECT_EQ(strcmp("int32 NOT NULL PARTITION KEY", column_json["type"].GetString()), 0);
+    } else if (!strcmp(column_json["column"].GetString(), "int_val")) {
+      EXPECT_TRUE(column_json.HasMember("type"));
+      EXPECT_EQ(strcmp("int32 NOT NULL NOT A PARTITION KEY", column_json["type"].GetString()), 0);
+    } else if (!strcmp(column_json["column"].GetString(), "string_val")) {
+      EXPECT_TRUE(column_json.HasMember("type"));
+      EXPECT_EQ(strcmp("string NULLABLE NOT A PARTITION KEY", column_json["type"].GetString()), 0);
+    } else {
+      FAIL() << "Unknown column: " << column_json["column"].GetString();
+    }
+  }
+}
+
+void verifyTestTableReplicationInfo(const JsonReader& r,
+                                    const rapidjson::Value* json_obj,
+                                    const char* expected_zone) {
+  EXPECT_TRUE(json_obj->HasMember("table_replication_info"));
+  const rapidjson::Value* repl_info = nullptr;
+  EXPECT_OK(r.ExtractObject(json_obj, "table_replication_info", &repl_info));
+  EXPECT_TRUE(repl_info->HasMember("live_replicas"));
+  const rapidjson::Value* live_replicas = nullptr;
+  EXPECT_OK(r.ExtractObject(repl_info, "live_replicas", &live_replicas));
+  EXPECT_TRUE(live_replicas->HasMember("num_replicas"));
+  EXPECT_EQ((*live_replicas)["num_replicas"].GetUint64(), 3);
+  EXPECT_TRUE(live_replicas->HasMember("placement_uuid"));
+  EXPECT_EQ(strcmp((*live_replicas)["placement_uuid"].GetString(), "table_uuid"), 0);
+  EXPECT_TRUE(live_replicas->HasMember("placement_blocks"));
+  EXPECT_EQ(rapidjson::kArrayType, (*live_replicas)["placement_blocks"].GetType());
+  const rapidjson::Value::ConstArray placement_blocks =
+      (*live_replicas)["placement_blocks"].GetArray();
+  const auto& placement_block = placement_blocks[0];
+  EXPECT_EQ(rapidjson::kObjectType, placement_block.GetType());
+  EXPECT_TRUE(placement_block.HasMember("cloud_info"));
+  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_cloud"));
+  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_cloud"].GetString(), "cloud"), 0);
+  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_region"));
+  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_region"].GetString(), "region"), 0);
+  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_zone"));
+  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_zone"].GetString(), expected_zone), 0);
+  EXPECT_TRUE(placement_block.HasMember("min_num_replicas"));
+  EXPECT_EQ(placement_block["min_num_replicas"].GetUint64(), 1);
+}
+
+void verifyTestTableTablets(const rapidjson::Value* json_obj) {
+  EXPECT_TRUE(json_obj->HasMember("tablets"));
+  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["tablets"].GetType());
+  const rapidjson::Value::ConstArray tablets_json =
+      (*json_obj)["tablets"].GetArray();
+
+  for (const auto& tablet_json : tablets_json) {
+    EXPECT_EQ(rapidjson::kObjectType, tablet_json.GetType());
+    EXPECT_TRUE(tablet_json.HasMember("tablet_id"));
+    EXPECT_GT(strlen(tablet_json["tablet_id"].GetString()), 0);
+    EXPECT_TRUE(tablet_json.HasMember("partition"));
+    EXPECT_EQ(strncmp("hash_split", tablet_json["partition"].GetString(), strlen("hash_split")), 0);
+    EXPECT_TRUE(tablet_json.HasMember("split_depth"));
+    EXPECT_EQ(tablet_json["split_depth"].GetUint64(), 0);
+    EXPECT_TRUE(tablet_json.HasMember("state"));
+    EXPECT_EQ(strcmp("Running", tablet_json["state"].GetString()), 0);
+    EXPECT_TRUE(tablet_json.HasMember("hidden"));
+    EXPECT_EQ(strcmp("false", tablet_json["hidden"].GetString()), 0);
+    EXPECT_TRUE(tablet_json.HasMember("message"));
+    EXPECT_EQ(strcmp("Tablet reported with an active leader",
+                     tablet_json["message"].GetString()), 0);
+    EXPECT_TRUE(tablet_json.HasMember("locations"));
+    EXPECT_EQ(rapidjson::kArrayType, tablet_json["locations"].GetType());
+    const rapidjson::Value::ConstArray locations_json = tablet_json["locations"].GetArray();
+
+    int num_leaders = 0;
+    int num_followers = 0;
+    for (const auto& location_json : locations_json) {
+      EXPECT_TRUE(location_json.HasMember("uuid"));
+      EXPECT_EQ(strlen(location_json["uuid"].GetString()), 32);
+      EXPECT_TRUE(location_json.HasMember("location"));
+      EXPECT_GT(strlen(location_json["uuid"].GetString()), 0);
+      EXPECT_TRUE(location_json.HasMember("role"));
+      if (!strcmp(location_json["role"].GetString(), "LEADER")) {
+        num_leaders++;
+      } else if (!strcmp(location_json["role"].GetString(), "FOLLOWER")) {
+        num_followers++;
+      } else {
+        FAIL() << "Unknown role: " << location_json["role"].GetString();
+      }
+    }
+    EXPECT_EQ(1, num_leaders);
+    EXPECT_EQ(2, num_followers);
+  }
+}
+
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+  auto table = CreateTestTable();
+
+  // Add cluster level placement info
+  auto yb_admin_client_ = std::make_unique<yb::tools::ClusterAdminClient>(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  ASSERT_OK(yb_admin_client_->Init());
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
+
+  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
+  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+
+  // Call endpoint and validate format of response.
+  faststring result;
+  TestUrl(Format("/api/v1/table?id=$0", table->id()), &result);
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  verifyBasicTestTableAttributes(json_obj, table, 0);
+  verifyTestTableReplicationInfo(r, json_obj, "zone");
+  verifyTestTableSchema(json_obj);
+  verifyTestTableTablets(json_obj);
+}
+
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+  // Create table.
+  auto table = CreateTestTable();
+
+  // Add table level placement info
+  auto yb_admin_client_ = std::make_unique<yb::tools::ClusterAdminClient>(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  ASSERT_OK(yb_admin_client_->Init());
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+    table->name(), "cloud.region.anotherzone", 3, "table_uuid"));
+
+  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
+  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+
+  // Call endpoint and validate format of response.
+  faststring result;
+  TestUrl(Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
+          &result);
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  verifyBasicTestTableAttributes(json_obj, table, 1);
+  verifyTestTableReplicationInfo(r, json_obj, "anotherzone");
+  verifyTestTableSchema(json_obj);
+  verifyTestTableTablets(json_obj);
+}
+
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
+  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+
+  // Call endpoint and validate format of response.
+  faststring result;
+  TestUrl("/api/v1/table?id=12345", &result);
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  EXPECT_TRUE(json_obj->HasMember("error"));
+  EXPECT_EQ(strcmp("Table not found!", (*json_obj)["error"].GetString()), 0);
+}
+
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
+  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+
+  // Call endpoint and validate format of response.
+  faststring result;
+  TestUrl("/api/v1/table", &result);
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  EXPECT_TRUE(json_obj->HasMember("error"));
+  EXPECT_EQ(strncmp("Missing", (*json_obj)["error"].GetString(), strlen("Missing")), 0);
+}
+
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
  public:
   int num_masters() const override {

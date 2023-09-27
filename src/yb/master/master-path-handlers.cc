@@ -133,7 +133,7 @@ std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& regi
   return public_http_hp;
 }
 
-} // namespace
+}  // namespace
 
 using consensus::RaftPeerPB;
 using std::vector;
@@ -335,7 +335,7 @@ int GetTserverCountForDisplay(const TSManager* ts_manager) {
   return count;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
     const ServerRegistrationPB& reg) const {
@@ -365,7 +365,7 @@ bool TabletServerComparator(
   return a_cloud_info.placement_cloud() < b_cloud_info.placement_cloud();
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
@@ -1305,7 +1305,7 @@ bool CompareByHost(const TabletReplica& a, const TabletReplica& b) {
     return a.ts_desc->permanent_uuid() < b.ts_desc->permanent_uuid();
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 
 void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
@@ -1492,6 +1492,286 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 
   HtmlOutputTasks(table->GetTasks(), output);
+}
+
+void JsonOutputTask(const std::shared_ptr<MonitoredTask>& task, JsonWriter *jw) {
+  double time_since_started = 0;
+  if (task->start_timestamp().Initialized()) {
+    time_since_started =
+        MonoTime::Now().GetDeltaSince(task->start_timestamp()).ToSeconds();
+  }
+  double running_secs = 0;
+  if (task->completion_timestamp().Initialized()) {
+    running_secs = task->completion_timestamp().GetDeltaSince(
+        task->start_timestamp()).ToSeconds();
+  } else if (task->start_timestamp().Initialized()) {
+    running_secs = MonoTime::Now().GetDeltaSince(
+        task->start_timestamp()).ToSeconds();
+  }
+
+  jw->String("task_type");
+  jw->String(task->type_name());
+  jw->String("task_state");
+  jw->String(ToString(task->state()));
+  jw->String("task_time_since_started");
+  jw->String(HumanReadableElapsedTime::ToShortString(time_since_started));
+  jw->String("task_running_secs");
+  jw->String(HumanReadableElapsedTime::ToShortString(running_secs));
+  jw->String("task_description");
+  jw->String(task->description());
+}
+
+void JsonOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& tasks,
+                     JsonWriter *jw) {
+  jw->String("Tasks");
+  jw->StartArray();
+  for (const auto& task : tasks) {
+    JsonOutputTask(task, jw);
+  }
+  jw->EndArray();
+}
+
+void JsonOutputSchemaTable(const Schema& schema, JsonWriter* jw) {
+  jw->String("columns");
+  jw->StartArray();
+  for (size_t i = 0; i < schema.num_columns(); i++) {
+    jw->StartObject();
+    const ColumnSchema& col = schema.column(i);
+    jw->String("column");
+    jw->String(EscapeForHtmlToString(col.name()));
+    jw->String("id");
+    jw->String(schema.column_id(i).ToString());
+    jw->String("type");
+    jw->String(col.TypeToString());
+    jw->EndObject();
+  }
+  jw->EndArray();
+}
+
+string TSDescriptorToJson(const TSDescriptor& desc,
+                          const std::string& tablet_id) {
+  TSRegistrationPB reg = desc.GetRegistration();
+
+  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  if (public_http_hp) {
+    return Format(
+        "$0://$1/tablet?id=$2",
+        GetProtocol(),
+        HostPortPBToString(*public_http_hp),
+        EscapeForHtmlToString(tablet_id));
+  } else {
+    return EscapeForHtmlToString(desc.permanent_uuid());
+  }
+}
+
+void RaftConfigToJson(const std::vector<TabletReplica>& locations,
+                      const std::string& tablet_id,
+                      JsonWriter *jw) {
+  jw->String("locations");
+  jw->StartArray();
+  for (const TabletReplica& location : locations) {
+    jw->StartObject();
+    jw->String("uuid");
+    jw->String(location.ts_desc->permanent_uuid());
+    jw->String("role");
+    jw->String(PeerRole_Name(location.role));
+    jw->String("location");
+    jw->String(TSDescriptorToJson(*location.ts_desc, tablet_id));
+    jw->EndObject();
+  }
+  jw->EndArray();
+}
+
+void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
+                                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+
+  // True if table_id, false if (keyspace, table).
+  const auto arg_end = req.parsed_args.end();
+  auto id_arg = req.parsed_args.find("id");
+  auto keyspace_arg = arg_end;
+  auto table_arg = arg_end;
+  if (id_arg == arg_end) {
+    keyspace_arg = req.parsed_args.find("keyspace_name");
+    table_arg = req.parsed_args.find("table_name");
+    if (keyspace_arg == arg_end || table_arg == arg_end) {
+      jw.String("error");
+      jw.String("Missing 'id' argument or 'keyspace_name, table_name' argument pair. "
+                "Arguments must either contain the table id or the "
+                "(keyspace_name, table_name) pair.");
+      jw.EndObject();
+      return;
+    }
+  }
+
+  scoped_refptr<TableInfo> table;
+
+  if (id_arg != arg_end) {
+    table = master_->catalog_manager()->GetTableInfo(id_arg->second);
+  } else {
+    const auto keyspace_type_arg = req.parsed_args.find("keyspace_type");
+    const auto keyspace_type = (keyspace_type_arg == arg_end
+        ? GetDefaultDatabaseType(keyspace_arg->second)
+        : DatabaseTypeByName(keyspace_type_arg->second));
+    if (keyspace_type == YQLDatabase::YQL_DATABASE_UNKNOWN) {
+      jw.String("error");
+      jw.String(
+          Format("Wrong keyspace_type found '$0'. Possible values are: $1, $2, $3",
+                 keyspace_type_arg->second, kDBTypeNameCql, kDBTypeNamePgsql, kDBTypeNameRedis));
+      jw.EndObject();
+      return;
+    }
+    table = master_->catalog_manager()->GetTableInfoFromNamespaceNameAndTableName(
+        keyspace_type, keyspace_arg->second, table_arg->second);
+  }
+
+  if (table == nullptr) {
+    jw.String("error");
+    jw.String("Table not found!");
+    jw.EndObject();
+    return;
+  }
+
+  Schema schema;
+  PartitionSchema partition_schema;
+  TabletInfos tablets;
+  {
+    NamespaceName keyspace_name;
+    TableName table_name;
+    auto l = table->LockForRead();
+    keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+    table_name = l->name();
+    jw.String("table_name");
+    jw.String(server::TableLongName(keyspace_name, table_name));
+    jw.String("table_id");
+    jw.String(table->id());
+    jw.String("table_version");
+    jw.Uint64(l->pb.version());
+    jw.String("table_type");
+    jw.String(TableType_Name(l->pb.table_type()));
+
+    string state = SysTablesEntryPB_State_Name(l->pb.state());
+    Capitalize(&state);
+    jw.String("table_state");
+    jw.String(state);
+    jw.String("table_state_message");
+    jw.String(l->pb.state_msg());
+
+    TablespaceId tablespace_id;
+    auto result = master_->catalog_manager()->GetTablespaceForTable(table);
+    if (result.ok()) {
+      // If the table is associated with a tablespace, display tablespace, otherwise
+      // just display replication info.
+      if (result.get()) {
+        tablespace_id = result.get().value();
+        jw.String("table_tablespace_oid");
+        jw.Uint64(GetPgsqlTablespaceOid(tablespace_id).get());
+      }
+      auto replication_info = master_->catalog_manager()->GetTableReplicationInfo(
+          l->pb.replication_info(), tablespace_id);
+      jw.String("table_replication_info");
+      if (replication_info.ok()) {
+        jw.Protobuf(replication_info.get());
+      } else {
+        LOG(WARNING) << replication_info.status().CloneAndPrepend(
+            "Unable to determine Tablespace information.");
+        jw.String("Unable to determine Tablespace information");
+      }
+    } else {
+      // The table was associated with a tablespace, but that tablespace was not found.
+      jw.String("table_replication_info");
+      if (FLAGS_ysql_tablespace_info_refresh_secs > 0) {
+        jw.String("Tablespace information not available now, please try again after " +
+                  std::to_string(FLAGS_ysql_tablespace_info_refresh_secs) + " seconds");
+      } else {
+        jw.String("Tablespace information is not available as the periodic task "
+                  "used to refresh it is disabled.");
+
+      }
+    }
+
+    if (l->has_ysql_ddl_txn_verifier_state()) {
+      auto result = FullyDecodeTransactionId(l->pb.transaction().transaction_id());
+      jw.String("table_transaction_verifier_state");
+      if (result)
+        jw.String(result.get().ToString());
+      else
+        jw.String("Failed to decode transaction with error:" + result.ToString());
+
+      jw.String("table_transaction_ddl");
+      const bool contains_alter = l->pb.ysql_ddl_txn_verifier_state(0).contains_alter_table_op();
+      std::stringstream ddls;
+      ddls << (l->is_being_created_by_ysql_ddl_txn() ? "Create " : "")
+           << (contains_alter ? " Alter " : "")
+           << (l->is_being_deleted_by_ysql_ddl_txn() ? "Delete" : "");
+      jw.String(ddls.str());
+      if (contains_alter && !l->is_being_created_by_ysql_ddl_txn()) {
+        jw.String("table_transaction_ddl_previous_table_name");
+        jw.String(l->pb.ysql_ddl_txn_verifier_state(0).previous_table_name());
+        Schema previous_schema;
+        Status s =
+            SchemaFromPB(l->pb.ysql_ddl_txn_verifier_state(0).previous_schema(), &previous_schema);
+        if (s.ok()) {
+          jw.String("table_transaction_ddl_previous_table_previous_schema");
+          jw.Protobuf(l->pb.ysql_ddl_txn_verifier_state(0).previous_schema());
+          jw.String("table_transaction_ddl_previous_table_current_schema");
+        }
+      }
+    }
+
+    Status s = SchemaFromPB(l->pb.schema(), &schema);
+    if (s.ok()) {
+      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+    }
+    if (!s.ok()) {
+      jw.String("Unable to decode partition schema: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+    tablets = table->GetTablets(IncludeInactive::kTrue);
+  }
+
+  JsonOutputSchemaTable(schema, &jw);
+
+  jw.String("tablets");
+  jw.StartArray();
+  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    auto locations = tablet->GetReplicaLocations();
+    vector<TabletReplica> sorted_locations;
+    AppendValuesFromMap(*locations, &sorted_locations);
+    std::sort(sorted_locations.begin(), sorted_locations.end(), &CompareByHost);
+
+    auto l = tablet->LockForRead();
+
+    Partition partition;
+    Partition::FromPB(l->pb.partition(), &partition);
+
+    string state = SysTabletsEntryPB_State_Name(l->pb.state());
+    Capitalize(&state);
+    jw.StartObject();
+    jw.String("tablet_id");
+    jw.String(tablet->tablet_id());
+    jw.String("partition");
+    jw.String(partition_schema.PartitionDebugString(partition, schema));
+    jw.String("split_depth");
+    jw.Uint64(l->pb.split_depth());
+    jw.String("state");
+    jw.String(state);
+    jw.String("hidden");
+    jw.String(l->is_hidden()?"true":"false");
+    jw.String("message");
+    jw.String(l->pb.state_msg());
+    RaftConfigToJson(sorted_locations, tablet->tablet_id(), &jw);
+    jw.EndObject();
+  }
+  jw.EndArray();
+
+  JsonOutputTasks(table->GetTasks(), &jw);
+  jw.EndObject();
 }
 
 void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
@@ -2277,7 +2557,7 @@ Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) 
   return s;
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
                                             Webserver::WebResponse* resp) {
@@ -2752,6 +3032,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/version", "YB Version Information",
       std::bind(&MasterPathHandlers::HandleVersionInfoDump, this, _1, _2), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleTablePageJSON, this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/table", "Table Info",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   return Status::OK();
 }
 
@@ -2998,5 +3282,5 @@ MasterPathHandlers::TableType MasterPathHandlers::GetTableType(const TableInfo& 
   }
   return table_cat;
 }
-} // namespace master
-} // namespace yb
+}  // namespace master
+}  // namespace yb
