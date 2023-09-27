@@ -1871,8 +1871,9 @@ void ByteStringToAscii(string const &binary_string, size_t bytes_to_read, string
   string::iterator out = ascii_string->begin();
 
   for (size_t i = 0; i < bytes_to_read; i++) {
-    *out++ = kHexTable[(*in)*2];
-    *out++ = kHexTable[(*in)*2 + 1];
+    const unsigned char c = *in; // '*in' is 'signed char'.
+    *out++ = kHexTable[c*2];
+    *out++ = kHexTable[c*2 + 1];
     ++in;
   }
 }

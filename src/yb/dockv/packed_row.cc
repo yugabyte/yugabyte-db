@@ -297,15 +297,22 @@ class ColumnPackerV2 {
 template <class Packer>
 Status CompleteColumns(size_t packed_columns, Packer* packer) {
   // In case of concurrent schema change YSQL does not send recently added columns.
-  // Fill them with NULLs to keep the same behaviour like we have w/o packed row.
+  // Fill them with missing default values (if any) or NULLs to keep the same behaviour
+  // like we have w/o packed row.
   const auto& packing = packer->packing();
   if (packed_columns < packing.columns()) {
     const auto& packing_data = packing.column_packing_data(packing.columns() - 1);
-    RSTATUS_DCHECK(
-        packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
-        packing_data);
-    RETURN_NOT_OK(packer->AddValue(
-        packing_data.id, Packer::PackedValue::Null(), /* tail_size= */ 0));
+    const auto& missing_value =
+        VERIFY_RESULT_REF(packer->schema().GetMissingValueByColumnId(packing_data.id));
+    if (!IsNull(missing_value)) {
+      RETURN_NOT_OK(packer->AddValue(packing_data.id, missing_value));
+    } else {
+      RSTATUS_DCHECK(
+          packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
+          packing_data);
+      RETURN_NOT_OK(packer->AddValue(
+          packing_data.id, Packer::PackedValue::Null(), /* tail_size= */ 0));
+    }
   }
   return Status::OK();
 }
@@ -314,17 +321,19 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields)
+    const ValueControlFields& control_fields, std::reference_wrapper<const Schema> schema)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      schema_(schema) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields)
+    Slice control_fields, std::reference_wrapper<const Schema> schema)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      schema_(schema) {
   result_.Append(control_fields);
 }
 
@@ -390,7 +399,7 @@ Result<bool> RowPackerBase::DoAddValueImpl(
 void RowPackerV1::Init(SchemaVersion version) {
   size_t prefix_len = packing_.prefix_len();
   auto* out = result_.GrowByAtLeast(1 + kMaxVarint32Length + prefix_len);
-  *out++ = ValueEntryTypeAsChar::kPackedRow;
+  *out++ = ValueEntryTypeAsChar::kPackedRowV1;
   out += FastEncodeUnsignedVarInt(version, out);
   var_header_start_ = out - pointer_cast<char*>(result_.mutable_data());
   prefix_end_ = var_header_start_ + prefix_len;

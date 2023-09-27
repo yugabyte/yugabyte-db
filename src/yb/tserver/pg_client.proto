@@ -179,6 +179,7 @@ message PgCreateColumnPB {
   bool is_range = 5;
   int32 sorting_type = 6;
   int32 attr_pgoid = 7;
+  QLValuePB attr_missing_val = 8;
 }
 
 message PgCreateSplitBoundaryPB {
@@ -416,8 +417,8 @@ message PgPerformOpPB {
 
 enum ReadTimeManipulation {
   NONE = 0;
-  RESET = 1;
-  RESTART = 2;
+  RESTART = 1;
+  ENSURE_READ_TIME_IS_SET = 2;
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -443,6 +444,7 @@ message PgPerformOptionsPB {
   uint32 isolation = 2;
   bool ddl_mode = 3;
   uint64 txn_serial_no = 4;
+  uint64 read_time_serial_no = 20;
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
@@ -460,7 +462,7 @@ message PgPerformOptionsPB {
   CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
   bool trace_requested = 19;
-  AUHMetadataPB auh_metadata = 20;
+  AUHMetadataPB auh_metadata = 21;
 }
 
 message PgPerformRequestPB {

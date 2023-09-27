@@ -3975,26 +3975,14 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			if (edata->detail == NULL && edata->hint == NULL)
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
-			else
-			{
-				ereport(edata->elevel,
-						(yb_txn_errcode(edata->yb_txn_errcode),
-						 errcode(error_code),
-						 errmsg("%s", edata->message),
-						 errdetail("%s", edata->detail),
-						 errhint("%s", edata->hint),
-						 errcontext("Catalog Version Mismatch: A DDL occurred "
-									"while processing this query. Try again.")));
-			}
+			ereport(edata->elevel,
+					(yb_txn_errcode(edata->yb_txn_errcode),
+					 errcode(error_code),
+					 errmsg("%s", edata->message),
+					 edata->detail ? errdetail("%s", edata->detail) : 0,
+					 edata->hint ? errhint("%s", edata->hint) : 0,
+					 errcontext("Catalog Version Mismatch: A DDL occurred "
+								"while processing this query. Try again.")));
 		}
 		else
 		{
@@ -4208,7 +4196,7 @@ yb_is_restart_possible(const ErrorData* edata,
 	 * ysql_max_write_restart_attempts, given that no data has been sent as part of the transaction.
 	 */
 	if (!IsYBReadCommitted() && is_deadlock_error &&
-		attempt >= *YBCGetGFlags()->ysql_max_write_restart_attempts)
+			attempt >= *YBCGetGFlags()->ysql_max_write_restart_attempts)
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read/write restart attempts (%d) on deadlock",
@@ -4218,23 +4206,31 @@ yb_is_restart_possible(const ErrorData* edata,
 	}
 
 	/*
-	 * In case of READ COMMITTED, retries involve restarting the current statement and not the whole
-	 * transaction.
+	 * TODO (#18616): Retry read committed transactions with best-effort in case of deadlock errors in
+	 * Wait on Conflict concurrency control mode.
 	 *
-	 * We can't differentiate if locks acquired by this transaction that are part of the deadlock
-	 * cycle were acquired in a previous statement or the current statement. If acquired in a previous
-	 * statement, restarting the current statement is of no use. If acquired in the current statement,
-	 * a restart could help in resolving the deadlock since the acquired locks would be released in an
-	 * attempt to reacquire.
+	 * Note that we can't rollback and retry just the current statement as we do in read committed for
+	 * kReadRestart and kConflict errors (see yb_attempt_to_restart_on_error()). There are 2 reasons
+	 * for this:
 	 *
-	 * Hence retries on deadlock in READ COMMITTED isolation are performed indefinitely until statement
-	 * timeout only when no data has been sent as part of the transaction (which also subsumes ensuring
-	 * that this was the first statement in the transaction).
+	 * 1) The txn has already been aborted for breaking the deadlock.
+	 * 2) Even if we were to somehow ensure in docdb that the transaction is not aborted but just
+	 *    removed from the wait queue to avoid (1), we can't differentiate if locks acquired by this
+	 *    transaction that are part of the deadlock cycle were acquired in a previous statement or the
+	 *    current statement. If acquired in a previous statement, restarting the current statement is
+	 *    of no use. If acquired in the current statement, a restart could help in resolving the
+	 *    deadlock since the acquired locks would be released in the retry.
+	 *
+	 * When addressing this TODO, we should restart the whole transaction only if YBIsDataSent() is
+	 * false. YBIsDataSent() == false is needed because we can't retry the transaction if some data
+	 * has already been sent to the external client as part of this transaction. Plus, we can't just
+	 * use YBIsDataSentForCurrQuery() == false because we also want to ensure that we retry only if no
+	 * previous statement had executed.
 	 */
-	if (IsYBReadCommitted() && is_deadlock_error && YBIsDataSent()) {
+	if (IsYBReadCommitted() && is_deadlock_error) {
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, encountered deadlock in READ COMMITTED isolation");
-		*retries_exhausted = true;
+			elog(LOG, "Restart isn't possible, encountered deadlock in READ COMMITTED isolation. "
+					"See #18616");
 		return false;
 	}
 

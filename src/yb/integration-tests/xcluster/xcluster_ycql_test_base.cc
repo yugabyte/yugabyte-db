@@ -79,7 +79,7 @@ Result<YBTableName> XClusterYcqlTestBase::CreateTable(
 Status XClusterYcqlTestBase::CreateTable(
     uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
   auto table =
-      VERIFY_RESULT(CreateTable(client, kNamespaceName, Format("test_table_$0", idx), num_tablets));
+      VERIFY_RESULT(CreateTable(client, namespace_name, Format("test_table_$0", idx), num_tablets));
   tables->push_back(table);
   return Status::OK();
 }
@@ -88,14 +88,14 @@ Status XClusterYcqlTestBase::CreateTable(
     uint32_t idx, uint32_t num_tablets, YBClient* client, client::YBSchema schema,
     std::vector<YBTableName>* tables) {
   auto table = VERIFY_RESULT(XClusterTestBase::CreateTable(
-      client, kNamespaceName, Format("test_table_$0", idx), num_tablets, &schema));
+      client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema));
   tables->push_back(table);
   return Status::OK();
 }
 
 void XClusterYcqlTestBase::WriteWorkload(
     uint32_t start, uint32_t end, YBClient* client, const YBTableName& table, bool delete_op) {
-  auto session = client->NewSession();
+  auto session = client->NewSession(kRpcTimeout * 1s);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(table, client));
   std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -170,7 +170,7 @@ Status XClusterYcqlTestBase::CreateAdditionalClusterTables(
     YBClient* client, YBTables* tables, uint32_t num_tablets_per_table, size_t num_tables) {
   for (uint32_t i = 0; i < num_tables; ++i) {
     auto table = VERIFY_RESULT(
-        CreateTable(client, kNamespaceName, Format("test_table_$0", i), num_tablets_per_table));
+        CreateTable(client, namespace_name, Format("test_table_$0", i), num_tablets_per_table));
     std::shared_ptr<client::YBTable> new_table;
     RETURN_NOT_OK(client->OpenTable(table, &new_table));
     tables->push_back(new_table);

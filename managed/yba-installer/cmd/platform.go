@@ -100,6 +100,11 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+// Version gets the version
+func (plat Platform) Version() string {
+	return plat.version
+}
+
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
@@ -187,9 +192,11 @@ func (plat Platform) createNecessaryDirectories() error {
 				log.Error("failed to make " + dir + ": " + err.Error())
 				return mkErr
 			}
-			if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
-				log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
-				return chErr
+			if common.HasSudoAccess() {
+				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
+					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
+					return chErr
+				}
 			}
 		}
 	}
@@ -576,9 +583,6 @@ func (plat Platform) MigrateFromReplicated() error {
 		}
 	}
 
-	if err := plat.Start(); err != nil {
-		return err
-	}
 	log.Info("Finishing Platform migration")
 	return nil
 }

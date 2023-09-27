@@ -199,6 +199,8 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual void DisplayGeneralInfoIcons(std::stringstream* output);
 
+  virtual void DisplayMemoryIcons(std::stringstream* output);
+
   virtual Status DisplayRpcIcons(std::stringstream* output);
 
   static void DisplayIconTile(std::stringstream* output, const std::string icon,

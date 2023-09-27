@@ -49,7 +49,7 @@ void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records) {
   auto peers = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
 
   for (const auto& peer : peers) {
-    if (!peer->tablet()->doc_db().regular) {
+    if (!peer->tablet()->regular_db()) {
       continue;
     }
     auto count = ASSERT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());

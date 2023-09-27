@@ -23,6 +23,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/column_id.h"
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/id_mapping.h"
 
 #include "yb/dockv/dockv_fwd.h"
@@ -126,6 +127,57 @@ class SchemaPacking {
   size_t varlen_columns_count_;
 };
 
+struct PackedColumnDecoderEntry;
+
+class PackedRowDecoderFactory {
+ public:
+  virtual ~PackedRowDecoderFactory() = default;
+
+  virtual PackedColumnDecoderEntry GetColumnDecoder(
+      PackedRowVersion version, size_t projection_index, ssize_t packed_index, bool last) = 0;
+};
+
+struct PackedColumnDecoderData {
+  PackedRowDecoderBase* decoder;
+  void* context;
+  const Schema* schema;
+};
+
+using PackedColumnDecoder = UnsafeStatus(*)(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain);
+
+struct PackedColumnDecoderEntry {
+  PackedColumnDecoder decoder;
+  size_t data;
+};
+
+class PackedRowDecoder {
+ public:
+  PackedRowDecoder();
+
+  bool Valid() const {
+    return schema_packing_ != nullptr;
+  }
+
+  void Reset() {
+    schema_packing_ = nullptr;
+  }
+
+  void Init(
+      PackedRowVersion version, const ReaderProjection& projection, const SchemaPacking& packing,
+      PackedRowDecoderFactory* callback, const Schema& schema);
+
+  Status Apply(Slice value, void* context);
+
+ private:
+  PackedRowVersion version_;
+  const SchemaPacking* schema_packing_ = nullptr;
+  const Schema* schema_ = nullptr;
+  size_t num_key_columns_ = 0;
+  boost::container::small_vector<PackedColumnDecoderEntry, 0x10> decoders_;
+};
+
 class SchemaPackingStorage {
  public:
   explicit SchemaPackingStorage(TableType table_type);
@@ -203,7 +255,8 @@ class PackedRowDecoderBase {
 
 class PackedRowDecoderV1 : public PackedRowDecoderBase {
  public:
-  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRow;
+  static constexpr PackedRowVersion kVersion = PackedRowVersion::kV1;
+  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRowV1;
 
   PackedRowDecoderV1() = default;
   PackedRowDecoderV1(
@@ -211,6 +264,8 @@ class PackedRowDecoderV1 : public PackedRowDecoderBase {
 
   PackedValueV1 FetchValue(size_t idx);
   PackedValueV1 FetchValue(ColumnId column_id);
+
+  int64_t GetPackedIndex(ColumnId column_id);
 
   // Returns the pointer to the first byte after the specified column in input data.
   const uint8_t* GetEnd(ColumnId column_id);
@@ -226,6 +281,7 @@ class PackedRowDecoderV1 : public PackedRowDecoderBase {
 
 class PackedRowDecoderV2 : public PackedRowDecoderBase {
  public:
+  static constexpr PackedRowVersion kVersion = PackedRowVersion::kV2;
   static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRowV2;
 
   PackedRowDecoderV2() = default;
@@ -233,6 +289,8 @@ class PackedRowDecoderV2 : public PackedRowDecoderBase {
 
   PackedValueV2 FetchValue(size_t idx);
   PackedValueV2 FetchValue(ColumnId column_id);
+
+  int64_t GetPackedIndex(ColumnId column_id);
 
   // Returns the pointer to the first byte after the specified column in input data.
   const uint8_t* GetEnd(ColumnId column_id);
@@ -250,5 +308,16 @@ class PackedRowDecoderV2 : public PackedRowDecoderBase {
 using PackedRowDecoderVariant = std::variant<PackedRowDecoderV1, PackedRowDecoderV2>;
 
 PackedRowDecoderBase& DecoderBase(PackedRowDecoderVariant* decoder);
+
+template <bool kLast>
+UnsafeStatus CallNextDecoder(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain) {
+  if (kLast) {
+    return UnsafeStatus();
+  }
+  ++chain;
+  return chain->decoder(data, ++projection_index, chain);
+}
 
 } // namespace yb::dockv

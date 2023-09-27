@@ -126,6 +126,9 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       bool use_transaction, CoarseTimePoint deadline);
   Status BeginTransactionIfNecessary(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+  Status DoBeginTransactionIfNecessary(
+      const PgPerformOptionsPB& options, CoarseTimePoint deadline);
+
   Result<client::YBTransactionPtr> RestartTransaction(
       client::YBSession* session, client::YBTransaction* transaction);
 
@@ -135,22 +138,34 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
   Result<PgClientSession::UsedReadTimePtr> ProcessReadTimeManipulation(
-      ReadTimeManipulation manipulation);
+      ReadTimeManipulation manipulation, uint64_t txn_serial_no);
 
   client::YBClient& client();
-  client::YBSessionPtr& EnsureSession(PgClientSessionKind kind);
-  client::YBSessionPtr& Session(PgClientSessionKind kind);
+  client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);
+
   template <class T>
-  static auto& DoTransaction(T* that, PgClientSessionKind kind) {
-    return that->sessions_[to_underlying(kind)].transaction;
+  static auto& DoSessionData(T* that, PgClientSessionKind kind) {
+    return that->sessions_[to_underlying(kind)];
+  }
+
+  SessionData& GetSessionData(PgClientSessionKind kind) {
+    return DoSessionData(this, kind);
+  }
+
+  const SessionData& GetSessionData(PgClientSessionKind kind) const {
+    return DoSessionData(this, kind);
+  }
+
+  client::YBSessionPtr& Session(PgClientSessionKind kind) {
+    return GetSessionData(kind).session;
   }
 
   client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
-    return DoTransaction(this, kind);
+    return GetSessionData(kind).transaction;
   }
 
   const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {
-    return DoTransaction(this, kind);
+    return GetSessionData(kind).transaction;
   }
 
   Status CheckPlainSessionReadTime();
@@ -192,7 +207,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   // For kPlain sessions, also reset the plain session used read time since the tserver will pick a
   // read time and send back as "used read time" in the response for use by future rpcs of the
   // session.
-  Result<PgClientSession::UsedReadTimePtr> ResetReadPoint(PgClientSessionKind kind);
+  PgClientSession::UsedReadTimePtr ResetReadPoint(PgClientSessionKind kind);
 
   const uint64_t id_;
   client::YBClient& client_;
@@ -206,6 +221,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
+  uint64_t read_time_serial_no_ = 0;
   std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
   UsedReadTime plain_session_used_read_time_;

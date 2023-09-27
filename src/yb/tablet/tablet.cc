@@ -32,6 +32,8 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <utility>
+
 #include <boost/container/static_vector.hpp>
 
 #include "yb/client/auto_flags_manager.h"
@@ -364,7 +366,7 @@ docdb::ConsensusFrontiers* InitFrontiers(
   return InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
 }
 
-rocksdb::UserFrontierPtr MemTableFrontierFromDb(
+rocksdb::UserFrontierPtr GetMutableMemTableFrontierFromDb(
     rocksdb::DB* db,
     rocksdb::UpdateUserValueType type) {
   if (FLAGS_TEST_disable_getting_user_frontier_from_mem_table) {
@@ -395,8 +397,8 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       if (PREDICT_TRUE(!FLAGS_TEST_disable_adding_last_compaction_to_tablet_metadata)) {
         metadata.set_last_full_compaction_time(tablet_.clock()->Now().ToUint64());
       }
-      if (!metadata.has_been_fully_compacted()) {
-        metadata.set_has_been_fully_compacted(true);
+      if (!metadata.parent_data_compacted()) {
+        metadata.set_parent_data_compacted(true);
       }
       ERROR_NOT_OK(metadata.Flush(), log_prefix_);
     }
@@ -454,7 +456,7 @@ Tablet::Tablet(const TabletInitData& data)
       metadata_(data.metadata),
       table_type_(data.metadata->table_type()),
       log_anchor_registry_(data.log_anchor_registry),
-      mem_tracker_(MemTracker::CreateTracker(
+      mem_tracker_(MemTracker::FindOrCreateTracker(
           Format("tablet-$0", tablet_id()), data.parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
       block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
@@ -864,7 +866,8 @@ Status Tablet::OpenKeyValueTablet() {
   auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
   if (regular_flushed_frontier) {
     retention_policy_->UpdateCommittedHistoryCutoff(
-        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).history_cutoff());
+        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).
+            history_cutoff());
   }
 
   LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir
@@ -1469,7 +1472,7 @@ Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_opera
   RETURN_NOT_OK(scoped_read_operation);
 
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics_.get(), TabletHistograms::kQlReadLatency);
+      metrics_.get(), TabletEventStats::kQlReadLatency);
 
   docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), read_operation_data);
   RETURN_NOT_OK(doc_op.Execute());
@@ -1505,7 +1508,7 @@ Status Tablet::HandleQLReadRequest(
       read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics_.get(), TabletHistograms::kQlReadLatency);
+      metrics_.get(), TabletEventStats::kQlReadLatency);
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1641,7 +1644,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
     const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics, TabletHistograms::kQlReadLatency);
+      metrics, TabletEventStats::kQlReadLatency);
 
   docdb::QLRocksDBStorage storage{doc_db(metrics)};
 
@@ -1688,10 +1691,17 @@ Status Tablet::DoHandlePgsqlReadRequest(
 // request.
 Result<bool> Tablet::IsQueryOnlyForTablet(
     const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
+  // For cases when neither partition_column_values nor range_column_values are set,
+  // https://github.com/yugabyte/yugabyte-db/commit/57bee5a77d0df959c7fe0f000b65be97de9f90a0 removed
+  // routing to exact tablet containing requested key and ybctid is simply set to lower/upper bound
+  // key in order to have unified approach on setting partition_key.
+
+  // If ybctid is specified without batch_arguments we don't treat it as a single tablet request
+  // automatically, it can be continued until we hit upper bound (scan tablet with upper bound
+  // matching request upper bound).
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) == row_count ||
-        pgsql_read_request.batch_arguments_size() == 0)) ||
-       !pgsql_read_request.partition_column_values().empty() ) {
+       std::cmp_equal(std::max(pgsql_read_request.batch_arguments_size(), 1), row_count)) ||
+      !pgsql_read_request.partition_column_values().empty()) {
     return true;
   }
 
@@ -2627,9 +2637,7 @@ Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
   }
 
   auto client = client_future_.get();
-  auto session = std::make_shared<YBSession>(client);
-  session->SetDeadline(deadline);
-  return session;
+  return client->NewSession(deadline);
 }
 
 Status Tablet::FlushWriteIndexBatchIfRequired(
@@ -3211,7 +3219,9 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
   }
 
   auto intents_frontier = intents_db_
-      ? MemTableFrontierFromDb(intents_db_.get(), rocksdb::UpdateUserValueType::kLargest) : nullptr;
+                              ? GetMutableMemTableFrontierFromDb(
+                                    intents_db_.get(), rocksdb::UpdateUserValueType::kLargest)
+                              : nullptr;
   if (intents_frontier) {
     auto index_delta =
         lastest_log_entry_op_id.index -
@@ -3267,7 +3277,8 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier = MemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
+      auto mem_frontier =
+          GetMutableMemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
@@ -3368,7 +3379,7 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
 }
 
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
-  return doc_db().key_bounds->IsInitialized() && !metadata()->has_been_fully_compacted();
+  return key_bounds().IsInitialized() && !metadata()->parent_data_compacted();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {

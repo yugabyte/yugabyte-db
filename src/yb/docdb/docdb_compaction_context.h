@@ -46,7 +46,45 @@ YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
 
-bool PackedRowEnabled(TableType table_type, bool is_colocated);
+std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bool is_colocated);
+
+// A more detailed history cutoff for allowing a different policy for cotables
+// on the master. In case of master both the below fields are set.
+// cotables_cutoff_ht is used for cotables (aka the ysql system tables) and
+// primary_cutoff_ht is used for the sys catalog table (aka the docdb metadata table).
+// On tservers, only the primary_cutoff_ht is valid and used for all
+// tables both colocated and non-colocated. The cotables_cutoff_ht is invalid.
+struct HistoryCutoff {
+  // Set only on the master and applies to cotables.
+  HybridTime cotables_cutoff_ht;
+  // Used everywhere else i.e. for the sys catalog table on the master,
+  // colocated tables on tservers and non-colocated tables on tservers.
+  HybridTime primary_cutoff_ht;
+
+  std::string ToString() const {
+    return Format("{ cotables cutoff: $0, primary cutoff: $1 }",
+                  cotables_cutoff_ht, primary_cutoff_ht);
+  }
+};
+
+bool operator==(HistoryCutoff a, HistoryCutoff b);
+
+HistoryCutoff ConstructMinCutoff(HistoryCutoff a, HistoryCutoff b);
+
+std::ostream& operator<<(std::ostream& out, HistoryCutoff cutoff);
+
+struct EncodedHistoryCutoff {
+  explicit EncodedHistoryCutoff(HistoryCutoff value)
+      : cotables_cutoff_encoded(value.cotables_cutoff_ht, kMaxWriteId),
+        primary_cutoff_encoded(value.primary_cutoff_ht, kMaxWriteId) {}
+
+  std::string ToString() {
+    return YB_STRUCT_TO_STRING(primary_cutoff_encoded, cotables_cutoff_encoded);
+  }
+
+  EncodedDocHybridTime cotables_cutoff_encoded;
+  EncodedDocHybridTime primary_cutoff_encoded;
+};
 
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {
@@ -55,7 +93,7 @@ struct HistoryRetentionDirective {
   // consistent scans at DocDB hybrid times lower than this. Those scans will result in missing
   // data. Therefore, it is really important to always set this to a value lower than or equal to
   // the lowest "read point" of any pending read operations.
-  HybridTime history_cutoff;
+  HistoryCutoff history_cutoff;
 
   MonoDelta table_ttl;
 
@@ -68,7 +106,8 @@ struct CompactionSchemaInfo {
   std::shared_ptr<const dockv::SchemaPacking> schema_packing;
   Uuid cotable_id;
   ColumnIds deleted_cols;
-  bool enabled;
+  std::optional<dockv::PackedRowVersion> packed_row_version;
+  std::shared_ptr<const Schema> schema;
 
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
 
@@ -116,18 +155,24 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
 // useful for testing and is thread-safe.
 class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
  public:
-  HistoryRetentionDirective GetRetentionDirective() override;
+  HistoryRetentionDirective GetRetentionDirective() EXCLUDES(history_cutoff_mutex_) override;
 
-  HybridTime ProposedHistoryCutoff() override;
+  HybridTime ProposedHistoryCutoff() EXCLUDES(history_cutoff_mutex_) override;
 
-  void SetHistoryCutoff(HybridTime history_cutoff);
+  void SetHistoryCutoff(HistoryCutoff history_cutoff) EXCLUDES(history_cutoff_mutex_);
+
+  void SetHistoryCutoff(HybridTime history_cutoff) EXCLUDES(history_cutoff_mutex_);
 
   void SetTableTTLForTests(MonoDelta ttl);
 
  private:
-  std::atomic<HybridTime> history_cutoff_{HybridTime::kMin};
+  std::mutex history_cutoff_mutex_;
+  HistoryCutoff history_cutoff_ GUARDED_BY(history_cutoff_mutex_)
+      = { HybridTime::kInvalid, HybridTime::kMin };
   std::atomic<MonoDelta> table_ttl_{MonoDelta::kMax};
 };
+
+HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info);
 
 }  // namespace docdb
 }  // namespace yb

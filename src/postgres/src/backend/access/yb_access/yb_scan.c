@@ -1302,8 +1302,6 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	bool	   *elem_nulls;
 	int			num_valid;
 	int			j;
-	AttrNumber *attnos;
-	Oid 	   *colids;
 	bool is_row = false;
 	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
 	Relation relation = ybScan->relation;
@@ -1321,34 +1319,25 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (YbIsRowHeader(key))
 	{
 		is_row = true;
-		int subkey_count = length_of_key - 1;
-
 		for(int row_ind = 0; row_ind < length_of_key; row_ind++)
 		{
-			int bound_idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i + row_ind]);
+			int bound_idx = YBAttnumToBmsIndex(
+				relation, scan_plan->bind_key_attnums[i + row_ind]);
 			if (is_column_bound[bound_idx])
-			{
 				return false;
-			}
-		}
-
-		attnos = palloc(sizeof(AttrNumber) * subkey_count);
-		colids = palloc(sizeof(Oid) * subkey_count);
-		arrayval =
-			DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
-
-		for(size_t j = 0; j < subkey_count; j++)
-		{
-			attnos[j] = ybScan->keys[i + j + 1]->sk_attno;
-			colids[j] = ybScan->keys[i + j + 1]->sk_attno;
+			else
+				is_column_bound[bound_idx] = true;
 		}
 	}
+
+	if (is_for_precheck)
+		return true;
+
+	if (is_row)
+		arrayval = DatumGetArrayTypeP((ybScan->keys[i+1])->sk_argument);
 	else
-	{
 		arrayval = DatumGetArrayTypeP(key->sk_argument);
-		attnos = palloc(sizeof(AttrNumber));
-		*attnos = key->sk_attno;
-	}
+
 	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
 	/* We could cache this data, but not clear it's worth it */
 	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
@@ -1367,7 +1356,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * eg. WHERE element = INT_MAX + k, where k is positive and element
 	 * is of integer type.
 	 */
-	Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+	Oid atttype = ybc_get_atttypid(scan_plan->bind_desc,
+								   scan_plan->bind_key_attnums[i]);
 
 	num_valid = 0;
 	for (j = 0; j < num_elems; j++)
@@ -1432,28 +1422,18 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	if (is_row)
 	{
-		if (!is_for_precheck)
+		AttrNumber attnums[length_of_key];
+		/* Subkeys for this rowkey start at i+1. */
+		for (int j = 1; j <= length_of_key; j++)
 		{
-			AttrNumber attnums[length_of_key];
-			/* Subkeys for this rowkey start at i+1. */
-			for (int j = 1; j <= length_of_key; j++)
-			{
-				attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
-			}
-
-			ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
-									length_of_key - 1, attnums,
-									num_elems, elem_values);
+			attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
 		}
 
-		for (int j = i + 1; j < i + length_of_key; j++)
-		{
-			int bound_idx =
-				YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[j]);
-			is_column_bound[bound_idx] = true;
-		}
+		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
+								length_of_key - 1, attnums,
+								num_elems, elem_values);
 	}
-	else if (!is_for_precheck)
+	else
 	{
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scan_plan->bind_key_attnums[i],
@@ -2106,8 +2086,8 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
  * attribute numbers from table-based numbers to index-based ones.
  */
 void
-YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-							Relation index, YBCPgStatement handle)
+YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc, Relation index,
+							bool xs_want_itup, YBCPgStatement handle)
 {
 	ListCell   *lc;
 
@@ -2171,10 +2151,10 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 					 */
 					int attno = castNode(Var, tle->expr)->varoattno;
 					/*
-					 * For index (only) scans, translate the table-based
+					 * For index only scans, translate the table-based
 					 * attribute number to an index-based one.
 					 */
-					if (index)
+					if (index && xs_want_itup)
 						attno = YbGetIndexAttnum(attno, index);
 					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
 					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
@@ -2199,6 +2179,11 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 		/* Add aggregate operator as scan target. */
 		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
 	}
+
+	/* Set ybbasectid in case of non-primary secondary index scan. */
+	if (index && !xs_want_itup && !index->rd_index->indisprimary)
+		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
+								handle);
 }
 
 /*
@@ -2318,6 +2303,7 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
+			 int distinct_prefixlen,
 			 YBCPgExecParameters *exec_params)
 {
 	/* Set up Yugabyte scan description */
@@ -2368,7 +2354,7 @@ ybcBeginScan(Relation relation,
 	 */
 	if (aggrefs != NIL)
 		YbDmlAppendTargetsAggregate(aggrefs, ybScan->target_desc, index,
-									ybScan->handle);
+									xs_want_itup, ybScan->handle);
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
@@ -2400,6 +2386,10 @@ ybcBeginScan(Relation relation,
 	if (!IsSystemRelation(relation))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
+
+	/* Set distinct prefix length. */
+	if (distinct_prefixlen > 0)
+		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
@@ -2480,12 +2470,19 @@ YbNeedsRecheck(YbScanDesc ybScan)
 	if (ybScan->hash_code_keys != NIL)
 		return true;
 
+	/*
+	 * In case ordinary keys are bound (and no yb_hash_code pushdown),
+	 * everything is pushed down.
+	 */
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
+
 	if (ybScan->prepare_params.index_only_scan)
 	{
 		/*
 		 * For IndexOnlyScan, always recheck if any ordinary key was not bound.
 		 */
-		return !ybScan->all_ordinary_keys_bound;
+		return true;
 	}
 	else
 	{
@@ -2539,6 +2536,27 @@ ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 		return NULL;
 	*recheck = YbNeedsRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
+}
+
+bool
+ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+					bool index_only_scan)
+{
+	/*
+	 * As of 2023-08-10, the relid passed into ybFetchNext is not going to
+	 * be used as it is only used when there are system targets, not
+	 * counting the internal ybbasectid lookup to the index.
+	 * YbDmlAppendTargetsAggregate only adds that ybbasectid plus operator
+	 * targets.
+	 * TODO(jason): this may need to be revisited when supporting GROUP BY
+	 * aggregate pushdown where system columns are directly targeted.
+	 */
+	scan->yb_agg_slot = ybFetchNext(handle, scan->yb_agg_slot,
+									InvalidOid /* relid */);
+	/* For IndexScan, hack to make index_getnext think there are tuples. */
+	if (!index_only_scan)
+		scan->xs_hitup = (HeapTuple) 1;
+	return !scan->yb_agg_slot->tts_isempty;
 }
 
 void ybc_free_ybscan(YbScanDesc ybscan)
@@ -2596,6 +2614,7 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2649,6 +2668,7 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2712,6 +2732,7 @@ ybc_remote_beginscan(Relation relation,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 aggrefs,
+									 0 /* distinct_prefixlen */,
 									 exec_params);
 
 	/* Set up Postgres sys table scan description */
@@ -2910,8 +2931,8 @@ Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 }
 
 void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-						  Selectivity *selectivity, Cost *startup_cost,
-						  Cost *total_cost)
+							Selectivity *selectivity, Cost *startup_cost,
+							Cost *total_cost)
 {
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;

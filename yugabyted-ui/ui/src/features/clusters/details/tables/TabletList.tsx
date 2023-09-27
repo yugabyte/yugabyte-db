@@ -122,9 +122,10 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
             leaderNode: leader,
             followerNodes: followers.join(", "),
             readReplicaNodes: read_replicas.join(", "),
-            status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID)
+            status:
+                healthCheckData?.data?.under_replicated_tablets?.includes(tablet.tablet_id ?? "")
               ? "Under-replicated"
-              : healthCheckData?.data?.leaderless_tablets?.includes(tabletID)
+              : healthCheckData?.data?.leaderless_tablets?.includes(tablet.tablet_id ?? "")
               ? "Unavailable"
               : "",
           };

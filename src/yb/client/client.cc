@@ -690,7 +690,8 @@ Status YBClient::DeleteTable(const string& table_id,
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name,
-                                  bool wait) {
+                                  bool wait,
+                                  const TransactionMetadata *txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
@@ -698,12 +699,14 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                             true /* is_index_table */,
                             deadline,
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
                                   bool wait,
+                                  const TransactionMetadata *txn,
                                   CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
@@ -711,7 +714,8 @@ Status YBClient::DeleteIndexTable(const string& table_id,
                             true /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             indexed_table_name,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::FlushTables(const std::vector<TableId>& table_ids,
@@ -1159,11 +1163,13 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                  txn);
 }
 
-Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
+Status YBClient::DeleteTablegroup(const std::string& tablegroup_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTablegroup(this,
                                  deadline,
-                                 tablegroup_id);
+                                 tablegroup_id,
+                                 txn);
 }
 
 Result<vector<master::TablegroupIdentifierPB>>
@@ -2491,8 +2497,12 @@ void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
       });
 }
 
-shared_ptr<YBSession> YBClient::NewSession() {
-  return std::make_shared<YBSession>(this);
+shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {
+  return std::make_shared<YBSession>(this, delta);
+}
+
+shared_ptr<YBSession> YBClient::NewSession(CoarseTimePoint deadline) {
+  return std::make_shared<YBSession>(this, deadline);
 }
 
 bool YBClient::IsMultiMaster() const {

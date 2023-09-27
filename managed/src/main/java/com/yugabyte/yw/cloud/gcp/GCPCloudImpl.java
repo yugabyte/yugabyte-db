@@ -312,6 +312,9 @@ public class GCPCloudImpl implements CloudAPI {
     // This list will always either be empty or a singleton list as GCP doesn't allow multiple
     // health checks
     // However, we are not making that assumption here, to support future changes in the GCP API
+    if (healthCheckUrls == null) {
+      healthCheckUrls = new ArrayList();
+    }
     for (String healthCheckUrl : healthCheckUrls) {
       String healthCheckName = CloudAPI.getResourceNameFromResourceUrl(healthCheckUrl);
       healthChecks.add(apiClient.getRegionalHelathCheckByName(region, healthCheckName));
@@ -334,7 +337,9 @@ public class GCPCloudImpl implements CloudAPI {
           case HTTP:
             newHealthCheckUrl =
                 apiClient.createNewHTTPHealthCheckForPort(
-                    region, healthCheckPort, healthCheckConfiguration.getHealthCheckPath());
+                    region,
+                    healthCheckPort,
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
             break;
         }
         newHealthCheckUrls.add(newHealthCheckUrl);
@@ -356,10 +361,12 @@ public class GCPCloudImpl implements CloudAPI {
         HTTPHealthCheck httpHealthCheck = existingHealthCheckToCheck.getHttpHealthCheck();
         if (!httpHealthCheck
             .getRequestPath()
-            .equals(healthCheckConfiguration.getHealthCheckPath())) {
+            .equals(
+                healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort))) {
           try {
             httpHealthCheck =
-                httpHealthCheck.setRequestPath(healthCheckConfiguration.getHealthCheckPath());
+                httpHealthCheck.setRequestPath(
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
             existingHealthCheckToCheck =
                 existingHealthCheckToCheck.setHttpHealthCheck(httpHealthCheck);
             String updatedHealthCheck =

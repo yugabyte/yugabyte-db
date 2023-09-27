@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -104,6 +105,23 @@ public class BackupHelper {
     return VALID_OWNER_REGEX;
   }
 
+  public boolean abortBackupTask(UUID taskUUID) {
+    boolean status = commissioner.abortTask(taskUUID);
+    return status;
+  }
+
+  public List<UUID> getBackupUUIDList(UUID taskUUID) {
+    List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
+    List<UUID> uuidList = new ArrayList<UUID>();
+
+    for (Backup b : backups) {
+      uuidList.add(b.getBackupUUID());
+    }
+    return uuidList;
+  }
+
+  public void scheduleBackupDeletionTasks(List<UUID> backupUUIDList) {}
+
   public void validateIncrementalScheduleFrequency(
       long frequency, long fullBackupFrequency, Universe universe) {
     long minimumIncrementalBackupScheduleFrequency =
@@ -129,6 +147,8 @@ public class BackupHelper {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     taskParams.customerUUID = customerUUID;
 
     if (universe
@@ -157,6 +177,18 @@ public class BackupHelper {
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");
+    }
+
+    if (taskParams.backupType != null) {
+      if (taskParams.backupType.equals(TableType.PGSQL_TABLE_TYPE)
+          && !primaryClusterUserIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot take backups on YSQL tables if API is disabled");
+      } else if (taskParams.backupType.equals(TableType.YQL_TABLE_TYPE)
+          && !primaryClusterUserIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot take backups on YCQL tables if API is disabled");
+      }
     }
 
     if (taskParams.storageConfigUUID == null) {
@@ -199,6 +231,10 @@ public class BackupHelper {
 
   public UUID createRestoreTask(UUID customerUUID, RestoreBackupParams taskParams) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UUID universeUUID = taskParams.getUniverseUUID();
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     taskParams.backupStorageInfoList.forEach(
         bSI -> {
           if (StringUtils.isNotBlank(bSI.newOwner)
@@ -206,12 +242,22 @@ public class BackupHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Invalid owner rename during restore operation");
           }
+          if (bSI.backupType != null) {
+            if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)
+                && !primaryClusterUserIntent.enableYSQL) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot take backups on YSQL tables if API is disabled");
+            } else if (bSI.backupType.equals(TableType.YQL_TABLE_TYPE)
+                && !primaryClusterUserIntent.enableYCQL) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot take backups on YCQL tables if API is disabled");
+            }
+          }
         });
 
     taskParams.customerUUID = customerUUID;
     taskParams.prefixUUID = UUID.randomUUID();
-    UUID universeUUID = taskParams.getUniverseUUID();
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
@@ -338,7 +384,7 @@ public class BackupHelper {
     return true;
   }
 
-  private static void waitForTask(UUID taskUUID) throws InterruptedException {
+  public static void waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);

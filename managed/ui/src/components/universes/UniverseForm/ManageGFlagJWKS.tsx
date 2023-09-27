@@ -1,9 +1,10 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { makeStyles, Theme } from '@material-ui/core';
+import { Box, makeStyles, Theme } from '@material-ui/core';
 import { Field } from 'formik';
 import { YBModalForm } from '../../common/forms';
 import { YBFormInput } from '../../common/forms/fields';
+import { YBLabel } from '../../../redesign/components';
 
 interface ManageGFlagJWKSProps {
   open: boolean;
@@ -15,8 +16,10 @@ interface ManageGFlagJWKSProps {
 
 const useStyles = makeStyles((theme: Theme) => ({
   JWKSTextArea: {
-    width: '830px',
-    height: '320px !important'
+    minWidth: '560px',
+    maxWidth: '870px',
+    minHeight: '320px',
+    padding: theme.spacing(2)
   }
 }));
 
@@ -60,11 +63,15 @@ export const ManageGFlagJWKS: FC<ManageGFlagJWKSProps> = ({
       render={() => {
         return (
           <>
+            <Box mb={1}>
+              <YBLabel width="fit-content">{t('universeForm.gFlags.JWKSModalNote')}</YBLabel>
+            </Box>
             <Field
               name="JWKSToken"
               component={YBFormInput}
               componentClass="textarea"
               className={classes.JWKSTextArea}
+              placeholder={t('universeForm.gFlags.JWKSModalPlaceholder')}
             />
           </>
         );

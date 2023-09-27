@@ -89,7 +89,8 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 int32_t pg_type_oid = kPgInvalidOid);
+                 int32_t pg_type_oid = kPgInvalidOid,
+                 const QLValuePB& missing_value = QLValuePB());
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -185,6 +186,8 @@ class YBColumnSpec {
 
   // Rename this column.
   YBColumnSpec* RenameTo(const std::string& new_name);
+
+  YBColumnSpec* SetMissing(const QLValuePB& missing_value);
 
  private:
   class Data;

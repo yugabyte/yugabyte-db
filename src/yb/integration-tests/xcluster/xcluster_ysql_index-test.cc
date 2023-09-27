@@ -57,17 +57,15 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
-    ASSERT_OK(RunOnBothClusters(
-        [&](Cluster* cluster) { return CreateDatabase(cluster, kNamespaceName); }));
     ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
-      auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
       return conn.ExecuteFormat("CREATE TABLE $0(id1 INT PRIMARY KEY, id2 INT);", kTableName);
     }));
 
     producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
 
     auto yb_table_name = ASSERT_RESULT(
-        GetYsqlTable(&producer_cluster_, kNamespaceName, "" /* schema_name */, kTableName));
+        GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kTableName));
 
     client::YBTablePtr producer_table;
     ASSERT_OK(producer_client()->OpenTable(yb_table_name, &producer_table));
@@ -82,7 +80,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(WaitForValidSafeTimeOnAllTServers(namespace_id_));
 
     producer_conn_ = std::make_unique<pgwrapper::PGConn>(
-        ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName)));
+        ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
     for (; row_count_ < 10; row_count_++) {
       ASSERT_OK(producer_conn_->ExecuteFormat(kInsertStmtFormat, row_count_));
     }
@@ -90,7 +88,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
     consumer_conn_ = std::make_unique<pgwrapper::PGConn>(
-        ASSERT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName)));
+        ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
     ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId1CountStmt)));
     ASSERT_FALSE(ASSERT_RESULT(consumer_conn_->HasIndexScan(kId2CountStmt)));
 
@@ -152,7 +150,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
   // Row count should never move backwards.
   void ValidateRowsDuringCreateIndex(int initial_count, std::atomic_bool* stop) {
     int64_t min_count = initial_count;
-    auto consumer_conn = CHECK_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+    auto consumer_conn = CHECK_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
     while (!*stop) {
       int64_t id1_count, id2_count;
       auto get_row_counts = [&]() -> Status {

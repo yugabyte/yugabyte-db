@@ -147,7 +147,7 @@ Result<PgTableRow> AddLock(
     const std::vector<std::string>& blocking_txn_ids = {}) {
   DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
   PgTableRow row(projection);
-  row.SetNull();
+  RETURN_NOT_OK(row.SetNullOrMissingResult(schema));
 
   std::string locktype;
   if (lock.hash_cols_size() == 0 && lock.range_cols_size() == 0 && !lock.has_column_id()) {

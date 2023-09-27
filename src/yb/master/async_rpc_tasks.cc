@@ -1301,7 +1301,8 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
   }
 
   TransitionToCompleteState();
-  const bool stepdown_failed = stepdown_resp_.error().status().code() != AppStatusPB::OK;
+  const bool stepdown_failed = stepdown_resp_.has_error() &&
+                               stepdown_resp_.error().status().code() != AppStatusPB::OK;
   LOG_WITH_PREFIX(INFO) << Format(
       "Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
       "error=$3, failed=$4, should_remove=$5 for tablet $6.",

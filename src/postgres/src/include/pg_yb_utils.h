@@ -460,6 +460,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_distinct_pushdown;
 
 /*
+ * Enables index aggregate pushdown (IndexScan only, not IndexOnlyScan).
+ * If true, request aggregated results from DocDB when possible.
+ */
+extern bool yb_enable_index_aggregate_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'
@@ -506,9 +512,20 @@ extern bool yb_enable_sequence_pushdown;
 extern bool yb_disable_wait_for_backends_catalog_version;
 
 /*
+ * Enables YB cost model for Sequential and Index scans
+ */
+extern bool yb_enable_base_scans_cost_model;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;
+
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern bool yb_prefer_bnl;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -555,6 +572,18 @@ extern bool yb_test_fail_next_ddl;
  * - "postbackfill": post-backfill operations like validation and event triggers
  */
 extern char *yb_test_block_index_phase;
+
+/*
+ * Same as above, but fails the operation at the given stage instead of
+ * blocking.
+ */
+extern char *yb_test_fail_index_state_change;
+
+/*
+ * Denotes whether DDL operations touching DocDB system catalog will be rolled
+ * back upon failure.
+*/
+extern bool ddl_rollback_enabled;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -634,6 +663,8 @@ bool YBIsSupportedLibcLocale(const char *localebuf);
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
+
+extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
 char *YBDetailSorted(char *input);
 
@@ -931,14 +962,14 @@ uint32 remote_host_port_to_uint(const char *remote_host);
 void client_node_ip_to_string(uint32 client_node_host, uint16 client_node_port, char *client_node_ip);
 
 /*
- * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
- * maintained for every transaction. 
+ * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
  */
 extern void increment_sticky_object_count();
 
 /*
- * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
- * maintained for every transaction. 
+ * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
  */
 extern void decrement_sticky_object_count();
 
@@ -948,5 +979,19 @@ extern void decrement_sticky_object_count();
 extern bool YbIsStickyConnection(int *change);
 
 extern bool yb_is_client_ysqlconnmgr;
+
+/*
+ * Creates a shallow copy of the pointer list.
+ */
+extern void** YbPtrListToArray(const List* str_list, size_t* length);
+
+/*
+ * Reads the contents of the given file assuming that the filename is an
+ * absolute path.
+ *
+ * The file contents are returned as a single palloc'd chunk with an extra \0
+ * byte added to the end.
+ */
+extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
 #endif /* PG_YB_UTILS_H */

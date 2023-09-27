@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import com.google.common.util.concurrent.ForwardingBlockingQueue;
 import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
+import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -25,6 +26,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
+
+  private final Duration QUEUE_OFFER_TIMEOUT = Duration.ofSeconds(3);
 
   PlatformThreadPoolExecutor(
       int corePoolSize,
@@ -58,17 +61,21 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
     super.setRejectedExecutionHandler(
         (runnable, executor) -> {
           // Add to the original queue
-          if (queue.offer(runnable)) {
-            if (log.isDebugEnabled()) {
-              log.debug(
-                  "Queueing task - pool size: {}, active size: {}, "
-                      + "max size: {}, queue size: {}",
-                  super.getPoolSize(),
-                  executor.getActiveCount(),
-                  executor.getMaximumPoolSize(),
-                  queue.size());
+          try {
+            if (queue.offer(runnable, QUEUE_OFFER_TIMEOUT.getSeconds(), TimeUnit.SECONDS)) {
+              if (log.isDebugEnabled()) {
+                log.debug(
+                    "Queueing task - pool size: {}, active size: {}, "
+                        + "max size: {}, queue size: {}",
+                    super.getPoolSize(),
+                    executor.getActiveCount(),
+                    executor.getMaximumPoolSize(),
+                    queue.size());
+              }
+              return;
             }
-            return;
+          } catch (InterruptedException e) {
+            log.warn("Queuing interrupted - {}", e.getMessage());
           }
           log.warn(
               "Queue overflow - task: {}, pool size: {}, active size: {}, "

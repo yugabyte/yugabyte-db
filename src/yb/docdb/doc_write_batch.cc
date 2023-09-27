@@ -159,7 +159,10 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
     current_entry_.user_timestamp = control_fields.timestamp;
     current_entry_.value_type = dockv::DecodeValueEntryType(value_copy);
-    if (doc_read_context_ && value_copy.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
+    if (doc_read_context_ && IsPackedRow(current_entry_.value_type)) {
+      RSTATUS_DCHECK_NE(current_entry_.value_type, ValueEntryType::kPackedRowV2,
+                        Corruption, "Packed row V2 should be used for YCQL");
+      value_copy.consume_byte();
       packed_row_key_.Assign(key_data.key);
       packed_row_packing_ = &VERIFY_RESULT_REF(
           doc_read_context_->schema_packing_storage.GetPacking(&value_copy));

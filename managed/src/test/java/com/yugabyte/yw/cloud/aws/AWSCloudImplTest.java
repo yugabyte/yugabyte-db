@@ -105,7 +105,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
     providerDetails.setCloudInfo(cloudInfo);
     defaultProvider.setDetails(providerDetails);
     defaultNlbHealthCheckConfiguration =
-        new NLBHealthCheckConfiguration(Arrays.asList(5433), Protocol.TCP, "");
+        new NLBHealthCheckConfiguration(Arrays.asList(5433), Protocol.TCP, Arrays.asList());
   }
 
   @Test

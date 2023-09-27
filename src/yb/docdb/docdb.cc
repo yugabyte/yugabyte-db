@@ -132,19 +132,24 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
-      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(
-          doc_path.as_slice(), &key_prefix_lengths));
+      auto doc_path_slice = doc_path.as_slice();
+      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path.as_slice().ToDebugHexString());
+                             doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
-      // Acquire weak lock on empty key for transactional tables,
-      // unless specified key is already empty.
-      if (doc_path.size() > 0 && transactional_table) {
+      // Acquire weak lock on empty key for transactional tables, unless specified key is already
+      // empty.
+      // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
+      // acquired as part of acquiring weak locks on the prefixes. We should not acquire weak lock
+      // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
+      auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
+      auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
         RETURN_NOT_OK(ApplyIntent(
             partial_key, MakeWeak(intent_types), &result.lock_batch));
@@ -263,7 +268,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     tablet_metrics->Increment(
-        tablet::TabletHistograms::kWriteLockLatency,
+        tablet::TabletEventStats::kWriteLockLatency,
         make_unsigned(elapsed_time.ToMicroseconds()));
   }
 

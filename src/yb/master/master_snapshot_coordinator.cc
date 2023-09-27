@@ -64,6 +64,7 @@ using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_int32(sys_catalog_write_timeout_ms);
+DECLARE_bool(enable_fast_pitr);
 
 DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
@@ -460,6 +461,31 @@ class MasterSnapshotCoordinator::Impl {
     return synchronizer->WaitUntil(ToSteady(deadline));
   }
 
+  // Abort tasks on each tablet and mark them as FAILED to ensure that we dont create
+  // AsyncSnapshotOps for them later on.
+  Status AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+      int64_t leader_term, CoarseTimePoint deadline) {
+    VLOG_WITH_FUNC(4) << restoration_id.ToString() << ", " << leader_term;
+    {
+      std::lock_guard lock(mutex_);
+      auto restoration_ptr = &VERIFY_RESULT(FindRestoration(restoration_id)).get();
+      RETURN_NOT_OK_PREPEND(restoration_ptr->Abort(), "Failed to abort tasks");
+
+      // Update restoration entry to sys catalog.
+      LOG(INFO) << Format(
+          "Marking restoration $0 as FAILED in sys catalog", restoration_id.ToString());
+      docdb::KeyValueWriteBatchPB write_batch;
+      RETURN_NOT_OK_PREPEND(
+          restoration_ptr->StoreToWriteBatch(&write_batch),
+          "Failed to prepare write batch for snapshot");
+      RETURN_NOT_OK_PREPEND(
+          SubmitWrite(std::move(write_batch), leader_term, &context_),
+          "Failed to submit snapshot abort operation");
+    }
+
+    return Status::OK();
+  }
+
   Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) {
     auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id()));
     VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
@@ -781,21 +807,30 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata) {
     HybridTime min_last_snapshot_ht = HybridTime::kMax;
+    HybridTime min_retention = HybridTime::kMax;
     std::lock_guard lock(mutex_);
     for (const auto& schedule : schedules_) {
       if (schedule->deleted()) {
         continue;
       }
+      int64_t retention = schedule->options().retention_duration_sec();
+      HybridTime retention_ht = context_.Clock()->Now().AddSeconds(-retention);
+      min_retention.MakeAtMost(retention_ht);
       auto complete_time = LastSnapshotTime(schedule->id());
       // No snapshot yet for the schedule so retain everything.
       if (!complete_time) {
-        return HybridTime::kMin;
+        min_last_snapshot_ht = HybridTime::kMin;
+        continue;
       }
       min_last_snapshot_ht.MakeAtMost(complete_time);
     }
-    return min_last_snapshot_ht;
+    if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      return { min_retention, min_last_snapshot_ht };
+    }
+    return { min_last_snapshot_ht, min_last_snapshot_ht };
   }
 
   Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
@@ -2063,6 +2098,11 @@ Status MasterSnapshotCoordinator::Delete(
   return impl_->Delete(snapshot_id, leader_term, deadline);
 }
 
+Status MasterSnapshotCoordinator::AbortRestore(const TxnSnapshotRestorationId& restoration_id,
+    int64_t leader_term, CoarseTimePoint deadline) {
+  return impl_->AbortRestore(restoration_id, leader_term, deadline);
+}
+
 Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
     const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term) {
   return impl_->Restore(snapshot_id, restore_at, leader_term);
@@ -2123,7 +2163,7 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
   return impl_->FillHeartbeatResponse(resp);
 }
 
-HybridTime MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
+docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   return impl_->AllowedHistoryCutoffProvider(metadata);
 }

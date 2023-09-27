@@ -45,6 +45,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
 #include "yb/util/string_case.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -52,15 +54,18 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_wait_queues);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_enable_packed_row);
 
 DECLARE_int32(TEST_fetch_next_delay_ms);
-DECLARE_bool(TEST_skip_partitioning_version_validation);
-DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(TEST_partitioning_version);
-DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_skip_partitioning_version_validation);
+DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -160,15 +165,6 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     return InvokeSplitsAndWaitForCompletion(
         table_id, [&selector](const auto& tablets) { return selector(tablets); });
   }
-
-  Status WaitForSplitCompletion(const TableId& table_id, const size_t expected_active_leaders = 2) {
-    return WaitFor(
-        [&]() -> Result<bool> {
-          return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() ==
-                 expected_active_leaders;
-        },
-        15s * kTimeMultiplier, "Wait for split completion.");
-  }
 };
 
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
@@ -260,6 +256,51 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
 
   ASSERT_OK(WaitForSplitCompletion(table_id));
 }
+
+#ifndef NDEBUG
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/18387.
+// The test checks that we are getting the expected error if an operation is failing several
+// times in a row: in this case it is expected to get the latest error status.
+// The test reproduces two failure. The first failure is happening after a tablet has been split
+// and the request should be forwarded to the one of its children. The second failure is generated
+// synthetically in AsyncRpcBase::CommonResponseCheck(). Before the fix, the test fails with
+// DCHECK_EQ(response.error_status().size(), 1) in pg_client_session.cc:HandleResponse() due to
+// PgsqlResponsePB::error_status contains two entries because this collection was not cleaned
+// before the retry in the original change (where error_status has been introduced).
+TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
+  constexpr auto kNumRows = 100;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS;"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+
+  // Flush tablets and make sure SST files have appeared to be able to split.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(peers.front()));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("BatcherFlushDone:Retry:1", [&](void* arg) {
+    LOG(INFO) << "Batcher retry detected: setting flag to fail retry.";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_common_response_check_fail_once) = true;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Select and stop on retry
+  auto result = conn.Fetch("SELECT * FROM t");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "CommonResponseCheck test runtime error");
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+#endif // NDEBUG
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
@@ -1079,6 +1120,82 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
   }
 }
 
+class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
+  void SetUp() override {
+    // Disable wait queues to fail faster in case of transactions conflict instead of waiting until
+    // request times out.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    // Fail txn early in case of conflict to reduce test runtime.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    PgPartitioningTest::SetUp();
+  }
+};
+
+TEST_P(PgPartitioningWaitQueuesOffTest, RowLockWithSplit) {
+  constexpr auto* kTableName = "test_table";
+
+  // At least one key should go into second child tablet after split to test the routing behavior.
+  constexpr auto kUpdateKeyMin = 1;
+  constexpr auto kUpdateKeyMax = 10;
+  const auto keys = RangeObject<int>(kUpdateKeyMin, kUpdateKeyMax + 1, /* step = */ 1);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  const auto* create_table_template = [partitioning = GetParam()] {
+    switch (partitioning) {
+      case Partitioning::kHash:
+        return "CREATE TABLE $0(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS";
+      case Partitioning::kRange:
+        return "CREATE TABLE $0(k INT, v INT, PRIMARY KEY (k ASC))";
+    }
+    FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
+  }();
+
+  ASSERT_OK(conn.ExecuteFormat(create_table_template, kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(-100, 100), 0", kTableName));
+  ASSERT_OK(cluster_->FlushTablets());
+
+#ifndef NDEBUG
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.LoadDependency({
+      {"TabletServiceImpl::Read::RowMarkExclusive:1", "RowLockWithSplitTest::BeforeSplit"},
+      {"RowLockWithSplitTest::AfterSplit", "TabletServiceImpl::Read::RowMarkExclusive:2"},
+  });
+  sync_point.EnableProcessing();
+  auto sync_point_guard = ScopeExit([&sync_point] { sync_point.DisableProcessing(); });
+#endif // NDEBUG
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_wait_row_mark_exclusive_count) = keys.size();
+
+  std::vector<PGConn> select_connections;
+  select_connections.reserve(keys.size());
+  {
+    TestThreadHolder select_threads;
+    for (const auto& key : keys) {
+      select_connections.push_back(ASSERT_RESULT(Connect()));
+      select_threads.AddThreadFunctor([&conn = select_connections.back(), kTableName, key] {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", kTableName, key));
+      });
+    }
+
+    const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    TEST_SYNC_POINT("RowLockWithSplitTest::BeforeSplit");
+    ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+    TEST_SYNC_POINT("RowLockWithSplitTest::AfterSplit");
+  }
+
+  LOG(INFO) << "Running updates";
+  for (const auto& key : keys) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    const auto update_status = conn.ExecuteFormat("UPDATE $0 SET v=10 WHERE k=$1", kTableName, key);
+    ASSERT_NOK(update_status);
+    ASSERT_STR_CONTAINS(
+        update_status.ToString(), "could not serialize access due to concurrent update");
+    ASSERT_OK(conn.RollbackTransaction());
+  }
+}
+
 namespace {
 
 template <typename T>
@@ -1091,6 +1208,12 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,
     PgPartitioningTest,
+    ::testing::ValuesIn(test::kPartitioningArray),
+    TestParamToString<test::Partitioning>);
+
+INSTANTIATE_TEST_CASE_P(
+    PgTabletSplitTest,
+    PgPartitioningWaitQueuesOffTest,
     ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<test::Partitioning>);
 

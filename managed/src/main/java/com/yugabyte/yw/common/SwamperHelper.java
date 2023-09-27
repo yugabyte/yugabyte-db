@@ -26,12 +26,7 @@ import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDesc
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -39,13 +34,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -426,6 +416,7 @@ public class SwamperHelper {
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
                       new AlertRuleTemplateSubstitutor(
+                          confGetter,
                           alertTemplateDescription,
                           configuration,
                           definition,

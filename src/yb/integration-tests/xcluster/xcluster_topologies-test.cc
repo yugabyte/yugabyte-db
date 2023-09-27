@@ -292,11 +292,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   Status WaitForLoadBalancersToStabilizeOnAllClusters() {
     for (const auto& producer_cluster : producer_clusters_) {
       auto cluster = producer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     for (const auto& consumer_cluster : consumer_clusters_) {
       auto cluster = consumer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     return Status::OK();
   }

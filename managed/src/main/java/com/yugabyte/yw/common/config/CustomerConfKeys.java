@@ -110,14 +110,7 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useK8CustomResources =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.k8s_custom_resources",
-          ScopeType.CUSTOMER,
-          "Use K8 custom resources",
-          "Allows user to select custom K8 memory(GB) and cpu cores",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",
@@ -137,14 +130,5 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + " Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\","
               + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
           ConfDataType.KeyValuesSetMultimapType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Boolean> enforceSecureUniversePassword =
-      new ConfKeyInfo<>(
-          "yb.security.enforce_secure_universe_passwords",
-          ScopeType.CUSTOMER,
-          "Enforce Secure Universe Passwords",
-          "Prevents universe creation when the Ysql/Ycql password isn't secure.",
-          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

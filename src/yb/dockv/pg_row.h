@@ -22,7 +22,7 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
-#include "yb/dockv/value_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
@@ -110,10 +110,11 @@ class PgTableRow {
 
   void Reset();
 
-  void SetNull();
+  Status SetNullOrMissingResult(const Schema& schema);
   void SetNull(size_t column_idx);
 
-  Status DecodeValue(size_t column_idx, Slice value);
+  Status DecodeValue(size_t column_idx, PackedValueV1 value);
+  Status DecodeValue(size_t column_idx, PackedValueV2 value);
 
   bool IsNull(size_t index) const {
     return is_null_[index];
@@ -130,6 +131,8 @@ class PgTableRow {
   }
 
   Status SetValue(ColumnId column_id, const QLValuePB& value);
+
+  Status SetValueByColumnIdx(size_t idx, const QLValuePB& value);
 
   const ReaderProjection& projection() const {
     return *projection_;
@@ -148,6 +151,9 @@ class PgTableRow {
       size_t column_idx, const char* input, const char* end, bool append_zero,
       SortOrder sort_order);
   void SetBinary(size_t column_idx, Slice value, bool append_zero);
+
+  static PackedColumnDecoder GetPackedColumnDecoder(
+      PackedRowVersion version, bool last, DataType data_type);
 
  private:
   PgValueDatum GetDatum(size_t idx) const;

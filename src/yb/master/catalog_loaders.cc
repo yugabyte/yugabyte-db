@@ -77,6 +77,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   CHECK(catalog_manager_->tables_->FindTableOrNull(table_id) == nullptr)
       << "Table already exists: " << table_id;
 
+  bool needs_async_write_to_sys_catalog = false;
   // Setup the table info.
   scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id, metadata.colocated());
   auto l = table->LockForWrite();
@@ -115,6 +116,20 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     }
   }
 
+  // Backfill the SysTablesEntryPB namespace_name field.
+  if (pb.namespace_name().empty()) {
+    auto namespace_name = catalog_manager_->GetNamespaceNameUnlocked(pb.namespace_id());
+    if (!namespace_name.empty()) {
+      pb.set_namespace_name(namespace_name);
+      needs_async_write_to_sys_catalog = true;
+      LOG(INFO) << "Backfilling namespace_name " << namespace_name << " for table " << table_id;
+    } else {
+      LOG(WARNING) << Format(
+          "Could not find namespace name for table $0 with namespace id $1",
+          table_id, pb.namespace_id());
+    }
+  }
+
   l.Commit();
   catalog_manager_->HandleNewTableId(table->id());
 
@@ -123,9 +138,10 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   if (metadata.has_transaction()) {
     TransactionMetadata txn = VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
     if (metadata.ysql_ddl_txn_verifier_state_size() > 0) {
-      if (FLAGS_ysql_ddl_rollback_enabled) {
-        catalog_manager_->ScheduleYsqlTxnVerification(table, txn, state_->epoch);
-      }
+      state_->AddPostLoadTask(
+        std::bind(&CatalogManager::ScheduleYsqlTxnVerification,
+                  catalog_manager_, table, txn, state_->epoch),
+        "Verify DDL transaction for table " + table->ToString());
     } else {
       // This is a table/index for which YSQL transaction verification is not supported yet.
       // For these, we only support rolling back creating the table. If the transaction has
@@ -139,6 +155,13 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
                     txn, table, false /* has_ysql_ddl_txn_state */, when_done),
           "VerifyTransaction");
     }
+  }
+
+  if (needs_async_write_to_sys_catalog) {
+    // Update the sys catalog asynchronously, so as to not block leader start up.
+    state_->AddPostLoadTask(
+        std::bind(&CatalogManager::WriteTableToSysCatalog, catalog_manager_, table_id),
+        "WriteTableToSysCatalog");
   }
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString() << ", state: "

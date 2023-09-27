@@ -25,7 +25,6 @@ using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 using YBClusters = std::vector<XClusterTestBase::Cluster*>;
 
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
-const std::string kDatabaseName = "yugabyte";
 
 class XClusterYcqlTestBase : public XClusterTestBase {
  public:

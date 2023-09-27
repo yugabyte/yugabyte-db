@@ -21,6 +21,8 @@
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/reader_projection.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_packing_v2.h"
 
 #include "yb/gutil/casts.h"
@@ -80,6 +82,20 @@ struct DoGetValueVisitor {
     return Slice(data, sizeof(T));
   }
 };
+
+UnsafeStatus ExecuteDecoders(
+    PackedRowDecoderBase* row_decoder, PackedColumnDecoderEntry* chain, size_t num_key_columns,
+    void* context, const Schema* schema) {
+  return chain->decoder(
+      PackedColumnDecoderData { .decoder = row_decoder, .context = context, .schema = schema},
+      num_key_columns, chain);
+}
+
+UnsafeStatus NopDecoder(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain) {
+  return UnsafeStatus();
+}
 
 } // namespace
 
@@ -241,6 +257,55 @@ bool SchemaPacking::CouldPack(
     }
   }
   return true;
+}
+
+PackedRowDecoder::PackedRowDecoder() = default;
+
+void PackedRowDecoder::Init(
+    PackedRowVersion version, const ReaderProjection& projection,
+    const SchemaPacking& schema_packing, PackedRowDecoderFactory* factory,
+    const Schema& schema) {
+  version_ = version;
+  schema_packing_ = &schema_packing;
+  num_key_columns_ = projection.num_key_columns;
+  schema_ = &schema;
+
+  decoders_.clear();
+  auto index = projection.num_key_columns, num_columns = projection.columns.size();
+  if (index == num_columns) {
+    decoders_.push_back(PackedColumnDecoderEntry {
+      .decoder = &NopDecoder,
+      .data = 0,
+    });
+    return;
+  }
+  decoders_.reserve(num_columns - index);
+  --num_columns;
+  for (;;) {
+    auto packed_index = schema_packing.GetIndex(projection.columns[index].id);
+    bool last = index == num_columns;
+    decoders_.push_back(factory->GetColumnDecoder(version, index, packed_index, last));
+    ++index;
+    if (last) {
+      break;
+    }
+  }
+}
+
+Status PackedRowDecoder::Apply(Slice value, void* context) {
+  switch (version_) {
+    case PackedRowVersion::kV1: {
+      PackedRowDecoderV1 decoder(*schema_packing_, value.data());
+      return Status(ExecuteDecoders(&decoder, decoders_.data(), num_key_columns_, context,
+          schema_));
+    }
+    case PackedRowVersion::kV2: {
+      PackedRowDecoderV2 decoder(*schema_packing_, value.data());
+      return Status(ExecuteDecoders(&decoder, decoders_.data(), num_key_columns_, context,
+          schema_));
+    }
+  }
+  FATAL_INVALID_ENUM_VALUE(PackedRowVersion, version_);
 }
 
 SchemaPackingStorage::SchemaPackingStorage(TableType table_type) : table_type_(table_type) {}
@@ -432,6 +497,10 @@ PackedValueV1 PackedRowDecoderV1::FetchValue(ColumnId column_id) {
   return index != SchemaPacking::kSkippedColumnIdx ? FetchValue(index) : PackedValueV1::Null();
 }
 
+int64_t PackedRowDecoderV1::GetPackedIndex(ColumnId column_id) {
+  return packing_->GetIndex(column_id);
+}
+
 const uint8_t* PackedRowDecoderV1::GetEnd(ColumnId column_id) {
   auto index = packing_->GetIndex(column_id);
   if (index == SchemaPacking::kSkippedColumnIdx) {
@@ -460,7 +529,7 @@ bool PackedRowDecoderV2::IsNull(size_t idx) const {
 }
 
 Slice PackedRowDecoderV2::DoGetValue(size_t idx) {
-  return VisitPackValueV2(
+  return VisitDataType(
       packing_->column_packing_data(idx).data_type, DoGetValueVisitor { .data = data_ });
 }
 
@@ -486,6 +555,10 @@ PackedValueV2 PackedRowDecoderV2::FetchValue(size_t idx) {
 PackedValueV2 PackedRowDecoderV2::FetchValue(ColumnId column_id) {
   auto index = packing_->GetIndex(column_id);
   return index != SchemaPacking::kSkippedColumnIdx ? FetchValue(index) : PackedValueV2::Null();
+}
+
+int64_t PackedRowDecoderV2::GetPackedIndex(ColumnId column_id) {
+  return packing_->GetIndex(column_id);
 }
 
 const uint8_t* PackedRowDecoderV2::GetEnd(ColumnId column_id) {

@@ -871,7 +871,19 @@ class EmptyScanChoices : public ScanChoices {
 ScanChoicesPtr ScanChoices::Create(
     const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
-  if (doc_spec.options() || doc_spec.range_bounds()) {
+  auto prefixlen = doc_spec.prefix_length();
+  auto num_hash_cols = schema.num_hash_key_columns();
+  auto num_key_cols = schema.num_key_columns();
+  auto valid_prefixlen =
+    prefixlen > 0 && prefixlen >= num_hash_cols && prefixlen <= num_key_cols;
+  // Prefix must span at least all the hash columns since the first column is a hash code of all
+  // hash columns in a hash partitioned table. And the hash code column cannot be skip'ed without
+  // skip'ing all hash columns as well.
+  if (prefixlen > 0 && !valid_prefixlen) {
+    LOG(WARNING) << "Prefix length: " << prefixlen << " is invalid for schema: "
+                  << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
+  }
+  if (doc_spec.options() || doc_spec.range_bounds() || valid_prefixlen) {
     return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
   }
 

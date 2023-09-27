@@ -23,7 +23,7 @@ This section covers deployment for a single region or data center in a multi-zon
 ## Example scenario
 
 - Create a 6-node cluster with replication factor of 3.
-  - YB-TServer server should on all the six nodes, and the YB-Master server should run on only three of these nodes.
+  - YB-TServer server should run on all six nodes, and the YB-Master server should run on only three nodes.
   - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
   - Cloud is AWS, region us-west, and the three availability zones us-west-2a, us-west-2b, and us-west-2c. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.

@@ -1516,6 +1516,16 @@ Status delete_snapshot_action(
   return Status::OK();
 }
 
+const auto abort_snapshot_restore_args = "[<restoration_id>]";
+Status abort_snapshot_restore_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  auto restoration_id = VERIFY_RESULT(GetOptionalArg<TxnSnapshotRestorationId>(args, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->AbortSnapshotRestore(restoration_id),
+      Format("Unable to abort snapshot restore $0", restoration_id.ToString()));
+  return Status::OK();
+}
+
 const auto list_replica_type_counts_args = "<table>";
 Status list_replica_type_counts_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -1973,19 +1983,53 @@ Status wait_for_replication_drain_action(
 }
 
 const auto setup_namespace_universe_replication_args =
-    "<producer_universe_uuid> <producer_master_addresses> <namespace>";
+    "<producer_universe_uuid> <producer_master_addresses> <namespace> [bootstrap] [transactional]";
 Status setup_namespace_universe_replication_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 5));
   const string replication_group_id = args[0];
   vector<string> producer_addresses;
   boost::split(producer_addresses, args[1], boost::is_any_of(","));
   TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
 
-  RETURN_NOT_OK_PREPEND(
-      client->SetupNSUniverseReplication(
-          replication_group_id, producer_addresses, producer_namespace),
-      Format("Unable to setup namespace replication from universe $0", replication_group_id));
+  bool bootstrap = false;
+  bool transactional = false;
+  if (args.size() > 3) {
+    switch (args.size()) {
+      case 4:
+        if (IsEqCaseInsensitive(args[3], "bootstrap")) {
+          bootstrap = true;
+        } else if (IsEqCaseInsensitive(args[3], "transactional")) {
+          transactional = true;
+        }
+        break;
+      case 5: {
+        if (IsEqCaseInsensitive(args[3], "bootstrap") &&
+            IsEqCaseInsensitive(args[4], "transactional")) {
+          transactional = true;
+          bootstrap = true;
+        } else {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        break;
+      }
+      default:
+        return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
+  if (bootstrap) {
+    RETURN_NOT_OK_PREPEND(
+        client->SetupNamespaceReplicationWithBootstrap(
+            replication_group_id, producer_addresses, producer_namespace, transactional),
+        Format("Unable to setup replication from universe $0", replication_group_id));
+  } else {
+    RETURN_NOT_OK_PREPEND(
+        client->SetupNSUniverseReplication(
+            replication_group_id, producer_addresses, producer_namespace),
+        Format("Unable to setup namespace replication from universe $0", replication_group_id));
+  }
+
   return Status::OK();
 }
 
@@ -2097,6 +2141,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(import_snapshot);
   REGISTER_COMMAND(import_snapshot_selective);
   REGISTER_COMMAND(delete_snapshot);
+  REGISTER_COMMAND(abort_snapshot_restore);
   REGISTER_COMMAND(list_replica_type_counts);
   REGISTER_COMMAND(set_preferred_zones);
   REGISTER_COMMAND(rotate_universe_key);

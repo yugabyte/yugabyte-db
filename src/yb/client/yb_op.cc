@@ -224,26 +224,16 @@ Status InitHashPartitionKey(
     }
 
   } else if (request->has_lower_bound() || request->has_upper_bound()) {
-    // Batched requests contain the combination of lower and upper bounds (except during single
-    // tablet scenario). For example, ybctids are always prepared as batched requests grouping them
-    // into their respective tablets that they belong to.
-    // Here there are two components that are of importance.
-    // 1. partition key -- We start scanning from the tablet containing partition key.
-    // 2. upper bound -- We end scanning when we reach the upper bound.
-    // During automatic tablet splitting, batched request could be prepared before the tablets
-    // are split. In that case, if docDB's scanning iterator that starts scanning from the
-    // partition key does not reach the end of the tablet (upper bound), it will throw a paging
-    // state and continue from there.
+    // If the read request provides a scan boundary, use that to derive the partition key.
+    SetPartitionKey(request->lower_bound().key(), request);
 
-    // If the read request does not provide a specific partition key, but it does provide scan
-    // boundary, use the given boundary to setup the scan lower and upper bound.
+    // Translate to hash-code bounds as well.
     if (request->has_lower_bound()) {
       auto hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(request->lower_bound().key());
       if (!request->lower_bound().is_inclusive()) {
         ++hash;
       }
       request->set_hash_code(hash);
-
     }
     if (request->has_upper_bound()) {
       auto hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
@@ -252,47 +242,11 @@ Status InitHashPartitionKey(
       }
       request->set_max_hash_code(hash);
     }
-    // Set partition key to lower bound. If lower bound is empty, then it is set to 0 which is the
-    // first potential hash_key from which table entries start. Lower bounds are empty for the
-    // first tablet or if it is a single tablet scenario.
-    SetPartitionKey(request->lower_bound().key(), request);
   } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();
   }
 
-  return Status::OK();
-}
-
-template <class Req>
-Status SetRangePartitionBounds(const Schema& schema,
-                               const std::string& last_partition,
-                               Req* request,
-                               std::string* key_upper_bound) {
-  vector<dockv::KeyEntryValue> range_components, range_components_end;
-  RETURN_NOT_OK(GetRangePartitionBounds(
-      schema, *request, &range_components, &range_components_end));
-  if (range_components.empty() && range_components_end.empty()) {
-    if (request->is_forward_scan()) {
-      request->clear_partition_key();
-    } else {
-      // In case of backward scan process must be start from the last partition.
-      SetPartitionKey(last_partition, request);
-    }
-    key_upper_bound->clear();
-    return Status::OK();
-  }
-  auto upper_bound_key = dockv::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
-  if (request->is_forward_scan()) {
-    SetPartitionKey(dockv::DocKey(std::move(range_components)).Encode().AsSlice(), request);
-    *key_upper_bound = std::move(upper_bound_key);
-  } else {
-    // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
-    // only it is not set here. Lower bound will be checked on client side in the
-    // ReviewResponsePagingState function.
-    SetPartitionKey(upper_bound_key, request);
-    key_upper_bound->clear();
-  }
   return Status::OK();
 }
 
@@ -314,33 +268,35 @@ Status InitRangePartitionKey(
     // A special case for backward scan: partition is selected on base of upper bound.
     const auto& key = VERIFY_RESULT_REF(FindPartitionKeyByUpperBound(partitions, *request));
     SetPartitionKey(key, request);
-  } else if (request->has_lower_bound()) {
-      // There are two cases here.
-      // Case 1: batching ybctids
-      // In this situation, requests belonging to the same tablets are batched. Here there are two
-      // components that are of importance.
-      // partition key --  We start scanning from the tablet containing partition key.
-      // upper bound -- We end scanning when we reach the upper bound.
-      // During automatic tablet splitting, batched request could be prepared before the tablets
-      // are split. In that case, if docDB's scanning iterator that starts scanning from the
-      // partition key does not reach the end of the tablet (upper bound), it will throw a paging
-      // state and continue from there.
-      //
-      // Case 2: Range expression optimization
-      //
-      // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
-      // In that case, we use them without recompute them here.
-      //
-      // NOTE: Currently, PgGate uses this optimization ONLY for COUNT operator and backfill
-      // requests. It has not done any optimization on RANGE values yet.
-      SetPartitionKey(request->lower_bound().key(), request);
+  } else if (request->has_lower_bound() || request->has_upper_bound()) {
+    // If the read request provides a scan boundary, use that to derive the partition key.
+    SetPartitionKey(request->lower_bound().key(), request);
   } else {
-    // Evaluate condition to return partition_key and set the upper bound.
-    string max_key;
-    RETURN_NOT_OK(SetRangePartitionBounds(schema, partitions.back(), request, &max_key));
-    if (!max_key.empty()) {
-      SetKey(max_key, request->mutable_upper_bound());
-      request->mutable_upper_bound()->set_is_inclusive(true);
+    // Inspect filters in the request to produce scan boundaries; fall back to full scan, otherwise.
+    vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
+    RETURN_NOT_OK(GetRangePartitionBounds(
+        schema, *request, &lower_range_components, &upper_range_components));
+    if (lower_range_components.empty() && upper_range_components.empty()) {
+      // Full scan: start from first or last partition depending on scan direction.
+      if (request->is_forward_scan()) {
+        request->clear_partition_key();
+      } else {
+        SetPartitionKey(partitions.back(), request);
+      }
+      return Status::OK();
+    }
+    auto upper_bound = dockv::DocKey(std::move(upper_range_components)).Encode().ToStringBuffer();
+    if (request->is_forward_scan()) {
+      SetPartitionKey(dockv::DocKey(std::move(lower_range_components)).Encode().AsSlice(), request);
+      if (!upper_bound.empty()) {
+        SetKey(upper_bound, request->mutable_upper_bound());
+        request->mutable_upper_bound()->set_is_inclusive(true);
+      }
+    } else {
+      // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
+      // only, lower bound is not set here. Lower bound will be checked on client side in the
+      // ReviewResponsePagingState function.
+      SetPartitionKey(upper_bound, request);
     }
   }
 

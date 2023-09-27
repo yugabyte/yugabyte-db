@@ -866,14 +866,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " concurrent provider tasks are completed ",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> useLegacyPayloadForRegionAndAZs =
-      new ConfKeyInfo<>(
-          "yb.provider.use_legacy_payload_region_zones",
-          ScopeType.GLOBAL,
-          "If required to use v1 api payload for region & az's",
-          "When enabled YBA will expect v1 API payload for region & az's",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.enabled",
@@ -976,5 +968,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           "Devops command timeout",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
+      new ConfKeyInfo<>(
+          "ybc.compatible_db_version",
+          ScopeType.GLOBAL,
+          "YBC Compatible DB Version",
+          "Minimum YBDB version which supports YBC",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

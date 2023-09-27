@@ -47,7 +47,7 @@ const GoBinaryName = "yba-ctl"
 
 const VersionMetadataJSON = "version_metadata.json"
 
-const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jdk_x64_linux_*.tar.gz"
+const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jre_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
@@ -274,11 +274,7 @@ func InitViper() {
 
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-		viper.Set("installRoot", filepath.Join(homeDir, "yugabyte"))
+		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
 	}
 	viper.SetConfigFile(InputFile())
 	viper.ReadInConfig()
@@ -296,6 +292,14 @@ func InitViper() {
 // Checks if Postgres is enabled in config.
 func IsPostgresEnabled() bool {
 	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
+}
+
+func GetUserHomeDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	return homeDir
 }
 
 func GetBinaryDir() string {
@@ -444,40 +448,141 @@ func init() {
 // set in viper.
 func UpdateRootInstall(newRoot string) {
 	viper.Set("installRoot", newRoot)
-	setYamlValue(InputFile(), "installRoot", newRoot)
+	SetYamlValue(InputFile(), "installRoot", newRoot)
 }
 
-func setYamlValue(filePath string, yamlPath string, value string) {
+// assumes path is '.' separated list of keys where to place value
+// creates a mapping entry for every key in path except for the last key which maps to value
+// value can be of type string/int/bool
+func createYamlValue(root *yaml.Node, path string, value interface{}) error {
+	if (root.Kind == yaml.DocumentNode) {
+		return createYamlValue(root.Content[0], path, value)
+	}
+	var key, val yaml.Node
+	if i := strings.Index(path, "."); i > 0 {
+		// Need to create a map entry for all the parts up until the entry beyond last period (base)
+		val = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		key.SetString(path[:i])
+		root.Content = append(root.Content, &key, &val)
+		createYamlValue(&val, path[i+1:], value)
+	} else {
+		// only scalar part
+		key.SetString(path)
+		if err := setValue(&val, value); err != nil {
+			return err
+		}
+		root.Content = append(root.Content, &key, &val)
+	}
+	return nil
+}
+
+// Recursive helper function that does the work of looking for the path and determining how to
+// insert the new value into the tree (either via addition, replacement, or creation of new nodes)
+func setYamlValue(root *yaml.Node, findPath, setPath string, value interface{}) error {
+	yPath, err := yamlpath.NewPath(findPath)
+	if err != nil {
+		log.Error(fmt.Sprintf("malformed yaml path %s", findPath))
+		return err
+	}
+	matchNodes, err := yPath.Find(root)
+	if strings.TrimSpace(setPath) == "" {
+		// base case where we actually need to set the value
+		if len(matchNodes) != 1 {
+			if root.Kind == yaml.DocumentNode {
+				// Sometimes we may be setting directly on the Document in which case we need to create
+				// a new entry if the path is not found
+				if err = createYamlValue(root, findPath, value); err != nil {
+					return err
+				}
+				return nil
+			}
+			// Only scalar part does not exist, create two nodes and append to Content
+			var key, val yaml.Node
+			key.SetString(findPath)
+			if err := setValue(&val, value); err != nil {
+				return err
+			}
+			root.Content = append(root.Content, &key, &val)
+		} else {
+			// Path already existed in yaml, need to override
+			if err := setValue(matchNodes[0], value); err != nil {
+				return err
+			}
+		}
+	} else {	// recursive case where there may be more levels to create/follow before setting value
+		if len(matchNodes) != 1 {
+			// Path does not exist in yaml, need to create all entries (including findPath)
+			if err = createYamlValue(root, fmt.Sprintf("%s.%s", findPath, setPath), value); err != nil {
+				return err
+			}
+			return nil
+		}
+		// Path exists in yaml, recursively follow remaining path to set value
+		before, after, _ := strings.Cut(setPath, ".")
+		return setYamlValue(matchNodes[0], before, after, value)
+	}
+	return nil
+}
+
+// Function to parse an arbitrary value and set the correct tag in a yaml Node
+func setValue(node *yaml.Node, value interface{}) error {
+	node.Kind = yaml.ScalarNode
+	switch t := value.(type) {
+	case int:
+		vint := value.(int)
+		node.Tag = "!!int"
+		node.Value = strconv.Itoa(vint)
+	case bool:
+		vbool := value.(bool)
+		node.Tag = "!!bool"
+		node.Value = strconv.FormatBool(vbool)
+	case string:
+		vstring := value.(string)
+		node.SetString(vstring)
+	default:
+		return fmt.Errorf("unexpected type %T", t)
+	}
+	return nil
+}
+
+// Helper function used during dev debugging.
+func logNode(node *yaml.Node) {
+	log.Info(fmt.Sprintf("top level node: %#v", node))
+	log.Info(fmt.Sprintf("printing children"))
+	for _, np := range node.Content {
+		logNode(np)
+	}
+	log.Info("end log node")
+}
+
+// SetYamlValue sets the entry yamlPath to value in filePath. yamlPath must already exist
+func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 	origYamlBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Fatal("unable to read config file " + filePath)
+		return fmt.Errorf("unable to read config file %s: %s", filePath, err.Error())
 	}
 
 	var root yaml.Node
 	err = yaml.Unmarshal(origYamlBytes, &root)
 	if err != nil {
-		log.Fatal("unable to parse config file " + filePath)
+		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
 	}
 
-	yPath, err := yamlpath.NewPath(yamlPath)
+	before, after, _ := strings.Cut(yamlPath, ".")
+	err = setYamlValue(&root, before, after, value)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("malformed yaml path %s", yamlPath))
+		return fmt.Errorf("error seting yaml value: %s", err.Error())
 	}
-
-	matchNodes, err := yPath.Find(&root)
-	if len(matchNodes) != 1 {
-		log.Fatal(fmt.Sprintf("yamlPath %s is not accurate", yamlPath))
-	}
-	matchNodes[0].SetString(value)
 
 	finalYaml, err := yaml.Marshal(&root)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("error serializing yaml"))
+		return fmt.Errorf("error serializing yaml: %s", err.Error())
 	}
 	err = os.WriteFile(filePath, finalYaml, 0600)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("error writing file %s", filePath))
+		return fmt.Errorf("error writing to file %s: %s", filePath, err.Error())
 	}
+	return nil
 }
 
 func generateRandomBytes(n int) ([]byte, error) {
@@ -589,4 +694,12 @@ func RunFromInstalled() bool {
 		log.Fatal("could not compile regex: " + err.Error())
 	}
 	return matcher.MatchString(path)
+}
+
+// Bool2Int converts a bool to int - 1 for true, 0 for false.
+func Bool2Int(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

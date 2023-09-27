@@ -175,6 +175,10 @@ class SysCatalogTable {
   static std::string schema_column_id();
   static std::string schema_column_metadata();
 
+  // Return the schema of the table.
+  // NOTE: This is the "server-side" schema, so it must have the column IDs.
+  static Schema BuildTableSchema();
+
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
@@ -317,10 +321,6 @@ class SysCatalogTable {
 
   const char *table_name() const { return kSysCatalogTableName; }
 
-  // Return the schema of the table.
-  // NOTE: This is the "server-side" schema, so it must have the column IDs.
-  Schema BuildTableSchema();
-
   // Returns 'Status::OK()' if the WriteTranasction completed
   Status SyncWrite(SysCatalogWriter* writer);
 
@@ -413,7 +413,7 @@ class SysCatalogTable {
   // in flight sys catalog writes are complete before PITR updates any state.
   mutable std::shared_mutex pitr_count_lock_;
 
-  scoped_refptr<Histogram> setup_config_dns_histogram_;
+  scoped_refptr<EventStats> setup_config_dns_stats_;
 
   scoped_refptr<Counter> peer_write_count;
 

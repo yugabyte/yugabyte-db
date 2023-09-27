@@ -468,6 +468,12 @@ class ControlScript(object):
         datapath = self.configs.saved_data.get("data_dir")
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
+        config_path = os.path.dirname(self.conf_file)
+        is_config_passed=False
+        for arg in sys.argv[1:]:
+            if (arg.startswith("--config")):
+                is_config_passed=True
+                break
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -490,9 +496,14 @@ class ControlScript(object):
             shutil.rmtree(certs_dir)
             Output.print_out("Deleted certs at {}.".format(certs_dir))
 
-        if os.path.exists(self.conf_file):
-            os.remove(self.conf_file)
-            Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        if is_config_passed:
+            if os.path.exists(self.conf_file):
+                os.remove(self.conf_file)
+                Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        else:
+            if os.path.isdir(config_path):
+                shutil.rmtree(config_path)
+                Output.print_out("Deleted conf at {}.".format(config_path))
 
         sys.exit(0)
 
@@ -652,16 +663,29 @@ class ControlScript(object):
         Output.print_and_log(msg)
 
     def collect_logs(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
         logpath = self.configs.saved_data.get("log_dir")
+        collect_at_dir=self.configs.temp_data.get("collect_at_dir")
         if not os.path.exists(logpath):
             Output.print_and_log("No logs directory at {}".format(logpath))
             return
-        tmpprefix = "yugabyted-{}.tar.gz".format(str(datetime.now()).replace(" ", "-"))
-        tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
+        tmpprefix = "yugabyted-{}s.tar.gz".format(datetime.now().strftime("%Y-%m-%d-%Hh%Mm%S.%f"))
+        tarpath = os.path.join(collect_at_dir, tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
-            archive.add(logpath)
-
+            for item in os.listdir(logpath):
+                item_path = os.path.join(logpath, item)
+                arcname = os.path.relpath(item_path, logpath)
+                archive.add(item_path, arcname=arcname)
+        status_details = [
+                (Output.make_yellow("Status"),"Logs collected successfully.")
+        ]
         if self.configs.temp_data.get("collect_logs_stdout"):
+            status_details = [
+                (Output.make_yellow("Status"), "Logs collected successfully." + \
+                    "Find the displayed logs below.")
+            ]
             Output.log("Logs are packaged into {}".format(tarpath))
             if tarfile.is_tarfile(tarpath):
                 with open(tarpath, 'rb') as tar_fd:
@@ -669,8 +693,11 @@ class ControlScript(object):
                         sys.stdout.buffer.write(tar_fd.read())
                     else:
                         sys.stdout.write(tar_fd.read())
-        else:
-            Output.print_and_log("Logs are packaged into {}".format(tarpath))
+        display_msg= "Collected logs can be found at: {}".format(tarpath)
+        status_details.extend([
+                (Output.make_yellow("Collected logs path"), display_msg)
+        ])
+        Output.print_and_log(self.get_status_string_common(status_details))
 
     # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
@@ -4070,6 +4097,16 @@ class ControlScript(object):
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
+            if args.collect_at_dir is not None:
+                args.collect_at_dir = \
+                os.path.realpath(
+                os.path.abspath(
+                os.path.expanduser(args.collect_at_dir)))
+                self.configs.temp_data["collect_at_dir"]=args.collect_at_dir
+
+            collect_at_dir=self.configs.temp_data.get("collect_at_dir")
+            if not os.path.isdir(collect_at_dir):
+                os.makedirs(collect_at_dir)
 
         if args.parser == "admin_operation":
             if not args.command:
@@ -4490,7 +4527,7 @@ class ControlScript(object):
         # Top Level command: cert
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
         cert_parser = subparsers.add_parser("cert", description=example,
-                                                help="Generate SSL cerificates")
+                                                help="Generate SSL certificates")
         all_parsers["cert"] = cert_parser
         cert_subparsers = cert_parser.add_subparsers(dest="parser", metavar="")
         cert_subparsers.required = True
@@ -4517,6 +4554,9 @@ class ControlScript(object):
                 "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: "+
                 "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
+            cur_parser.add_argument(
+                "--collect_at_dir", help="Directory under which {} will store logs.tar.gz file"
+                .format(SCRIPT_NAME),metavar="")
 
         # Top Level command: configure
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
@@ -4872,6 +4912,7 @@ class Configs(object):
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
         }
         self.config_file = config_file
 
@@ -4895,8 +4936,10 @@ class Configs(object):
         paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
         for k, v in configs.saved_data.items():
             if v is not None and k in paths:
-                configs.saved_data[k] = os.path.expanduser(v)
-
+                if "$" in v:
+                    configs.saved_data[k] = os.path.expanduser(os.path.expandvars(v))
+                else:
+                    configs.saved_data[k] = os.path.expanduser(v)
         return configs
 
     @staticmethod

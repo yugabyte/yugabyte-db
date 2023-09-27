@@ -20,7 +20,7 @@ This command fetches the values for the given `low_ts`, `high_ts` range in the t
 specified by the given `key` ordered from newest to oldest. If `LIMIT` is specified, then at most
 `limit` pairs will be fetched.
 
-- If the given `key` is associated with non-timeseries data, an error is raised.
+- If the given `key` is associated with non-time series data, an error is raised.
 - If the given `low_ts` or `high_ts` are not a valid signed 64 bit integers, an error is raised.
 - If `limit` is not a valid positive 32 bit integer, an error is raised.
 - `low_ts` and `high_ts` are inclusive unless they are prefixed with `(`, in that case they are

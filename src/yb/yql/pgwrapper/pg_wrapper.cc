@@ -13,6 +13,8 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include <signal.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #include <fstream>
 #include <random>
@@ -39,6 +41,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
@@ -86,7 +89,7 @@ DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
 DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_PREVIEW_string(ysql_ident_conf_csv, "",
+DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_UNKNOWN_string(ysql_pg_conf, "",
@@ -102,37 +105,6 @@ DEFINE_NON_RUNTIME_bool(ysql_auh_enabled, true,
 TAG_FLAG(ysql_auh_enabled, experimental);
 
 DECLARE_string(tmp_dir);
-
-// gFlag wrappers over Postgres GUC parameter.
-// The value type should match the GUC parameter, or it should be a string, in which case Postgres
-// will convert it to the correct type.
-// The default values of gFlag are visible to customers via flags metadata xml, documentation, and
-// platform UI. So, it's important to keep these values as accurate as possible. The default_value
-// or target_value (for AutoFlags) should match the default specified in guc.c.
-// Use an empty string or 0 for parameters like timezone and max_connections whose default is
-// computed at runtime so that they show up as an undefined value instead of an incorrect value. If
-// 0 is a valid value for the parameter, then use an empty string. These are enforced by the
-// PgWrapperFlagsTest.VerifyGFlagDefaults test.
-#define DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
-
-#define DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_RUNTIME_, type)(BOOST_PP_CAT(ysql_, name), default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
-
-#define DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
-  DEFINE_NON_RUNTIME_PG_FLAG(type, name, default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
-
-#define DEFINE_RUNTIME_PG_PREVIEW_FLAG(type, name, default_value, description) \
-  DEFINE_RUNTIME_PG_FLAG(type, name, default_value, description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPreview, preview)
-
-#define DEFINE_RUNTIME_AUTO_PG_FLAG(type, name, flag_class, initial_val, target_val, description) \
-  BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
-                                           description); \
-  _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -165,6 +137,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_memory_tracking, true,
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_expression_pushdown, kLocalVolatile, false, true,
     "Push supported expressions from ysql down to DocDB for evaluation.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVolatile, false, true,
+    "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
     "Push down strict inequality filters");
@@ -218,11 +193,22 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_wait_for_backends_catalog_version, false
     " Although it is runtime-settable, the effects won't take place for any in-progress"
     " queries.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExternal, false, true,
+                            "Enable using the default value for existing rows after an ADD COLUMN"
+                            " ... DEFAULT operation");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
+    "Enable cost model enhancements");
+
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
     "Maximum size of a fetch response.");
+
+DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
+  "Enable stats collection from Ysql Connection Manager. These stats will be "
+  "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -385,7 +371,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to read default postgres configuration '%s': errno=$0: $1",
+        "Failed to read default postgres configuration '$0': errno=$1: $2",
         default_conf_path,
         errno,
         ErrnoToString(errno));
@@ -648,6 +634,11 @@ Status PgWrapper::Start() {
     GetPostgresThirdPartyLibPath()
   };
   proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
+  std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
+
+  if (FLAGS_enable_ysql_conn_mgr_stats)
+    proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
+
   proc_->ShareParentStderr();
   proc_->ShareParentStdout();
   proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
@@ -676,6 +667,17 @@ Status PgWrapper::Start() {
     proc_->AddPIDToCGroup(path, proc_->pid());
   }
   LOG(INFO) << "PostgreSQL server running as pid " << proc_->pid();
+  return Status::OK();
+}
+
+Status PgWrapper::SetYsqlConnManagerStatsShmKey(key_t key) {
+  ysql_conn_mgr_stats_shmem_key_ = key;
+  if (key == -1)
+    return STATUS(
+        InternalError,
+        "Unable to create shared memory segment for sharing the stats for Ysql Connection "
+        "Manager.");
+
   return Status::OK();
 }
 
@@ -965,7 +967,12 @@ void PgSupervisor::DeregisterPgFlagChangeNotifications() {
 }
 
 std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
-  return std::make_shared<PgWrapper>(conf_);
+  auto pgwrapper = std::make_shared<PgWrapper>(conf_);
+
+  if (FLAGS_enable_ysql_conn_mgr_stats)
+    CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+
+  return pgwrapper;
 }
 
 void PgSupervisor::PrepareForStop() {
@@ -976,6 +983,51 @@ Status PgSupervisor::PrepareForStart() {
   RETURN_NOT_OK(CleanupOldServerUnlocked());
   RETURN_NOT_OK(RegisterPgFlagChangeNotifications());
   return Status::OK();
+}
+
+key_t PgSupervisor::GetYsqlConnManagerStatsShmkey() {
+  // Create the shared memory if not yet created.
+  if (ysql_conn_mgr_stats_shmem_key_ > 0) {
+    return ysql_conn_mgr_stats_shmem_key_;
+  }
+
+  // This will be called only when ysql connection manager is enabled and that
+  // too just by the PgAdvisor and ysql_conn_manager_advisor so that they can send the
+  // shared memory key to ysql_conn_manager for publishing stats and to
+  // postmaster to pass it on to yb_pg_metrics to pull ysql_conn_manager stats
+  // from memory.
+  // Let's use a key start at 13000 + 997 (largest 3 digit prime number). Just decreasing
+  // the chances of collision with the pg shared memory key space logic.
+  key_t shmem_key = 13000 + 997;
+  size_t size_of_shmem = 2 * sizeof(struct ConnectionStats);
+  key_t shmid = -1;
+
+  while (true) {
+    shmid = shmget(shmem_key, size_of_shmem, IPC_CREAT | IPC_EXCL | 0666);
+
+    if (shmid < 0) {
+      switch (errno) {
+        case EACCES:
+          LOG(ERROR) << "Unable to create shared memory segment, not authorised to create shared "
+                        "memory segment";
+          return -1;
+        case ENOSPC:
+          LOG(ERROR)
+              << "Unable to create shared memory segment, no space left.";
+          return -1;
+        case ENOMEM:
+          LOG(ERROR)
+              << "Unable to create shared memory segment, no memory left";
+          return -1;
+        default:
+          shmem_key++;
+          continue;
+      }
+    }
+
+    ysql_conn_mgr_stats_shmem_key_ = shmem_key;
+    return ysql_conn_mgr_stats_shmem_key_;
+  }
 }
 
 }  // namespace pgwrapper

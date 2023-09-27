@@ -22,6 +22,8 @@ DEFINE_test_flag(bool, disable_ysql_ddl_txn_verification, false,
 DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
                  "Number of seconds to sleep before rolling back a failed ddl transaction");
 
+DEFINE_test_flag(int32, ysql_max_random_delay_before_ddl_verification_usecs, 0,
+                  "Maximum #usecs to randomly sleep before verifying a YSQL DDL transaction");
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -50,7 +52,8 @@ void CatalogManager::ScheduleYsqlTxnVerification(
   // Schedule transaction verification.
   auto l = table->LockForRead();
   LOG(INFO) << "Enqueuing table for DDL transaction Verification: " << table->name()
-            << " id: " << table->id() << " schema version: " << l->pb.version();
+            << " id: " << table->id() << " schema version: " << l->pb.version()
+            << " for transaction " << txn;
   std::function<Status(bool)> when_done =
     std::bind(&CatalogManager::YsqlTableSchemaChecker, this, table,
               l->pb_transaction_id(), _1, epoch);
@@ -104,8 +107,8 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
     }
     for (const auto& table : iter->second) {
       // Submit this table for transaction verification.
-      LOG(INFO) << "Enqueuing table " << table->ToString()
-                << " for verification of DDL transaction: " << txn;
+      LOG(INFO) << "Enqueuing table " << table->ToString() << " for handling "
+                << (is_committed ? "successful " : "aborted ")  << txn;
       WARN_NOT_OK(
           background_tasks_thread_pool_->SubmitFunc([this, table, req_txn, is_committed, epoch]() {
             WARN_NOT_OK(
@@ -122,6 +125,9 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
                                                   const string& txn_id_pb,
                                                   bool success,
                                                   const LeaderEpoch& epoch) {
+  SleepFor(MonoDelta::FromMicroseconds(RandomUniformInt<int>(0,
+    FLAGS_TEST_ysql_max_random_delay_before_ddl_verification_usecs)));
+
   DCHECK(!txn_id_pb.empty());
   DCHECK(table);
   const auto& table_id = table->id();
@@ -154,6 +160,19 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
               << " is already verified, ignoring";
     return Status::OK();
   }
+  if (table->is_index()) {
+    // This is an index. If the indexed table is being deleted or marked for deletion, then skip
+    // doing anything as the deletion of the table will delete this index.
+    const auto& indexed_table_id = table->indexed_table_id();
+    auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
+    if (table->IsBeingDroppedDueToDdlTxn(txn_id_pb, success) &&
+        indexed_table->IsBeingDroppedDueToDdlTxn(txn_id_pb, success)) {
+      VLOG(1) << "Skipping DDL transaction verification for index " << table->ToString()
+              << " as the indexed table " << indexed_table->ToString()
+              << " is also being dropped";
+      return Status::OK();
+    }
+  }
   return YsqlDdlTxnCompleteCallbackInternal(table.get(), txn_id, success, epoch);
 }
 
@@ -178,6 +197,13 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
             << ": Success: " << (success ? "true" : "false")
             << " ysql_ddl_txn_verifier_state: "
             << l->ysql_ddl_txn_verifier_state().DebugString();
+
+  auto& metadata = l.mutable_data()->pb;
+
+  SCHECK(metadata.state() == SysTablesEntryPB::RUNNING ||
+         metadata.state() == SysTablesEntryPB::ALTERING, Aborted,
+         "Unexpected table state ($0), abandoning DDL rollback for $1",
+         SysTablesEntryPB_State_Name(metadata.state()), table->ToString());
 
   if (success) {
     RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(table, &l, epoch));
@@ -299,7 +325,7 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
 
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
-  dtreq.set_is_index_table(false);
+  dtreq.set_is_index_table(table->is_index());
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, epoch);
 }
 

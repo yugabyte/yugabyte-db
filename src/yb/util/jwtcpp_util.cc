@@ -40,48 +40,57 @@ namespace {
 
 }  // namespace
 
-Result<jwks<kazuho_picojson>> ParseJwks(const std::string& key_set) {
+Result<jwks<kazuho_picojson>> ParseJwks(const std::string& key_set) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwt::parse_jwks(key_set));
 }
 
 Result<jwk<kazuho_picojson>> GetJwkFromJwks(
-    const jwks<kazuho_picojson>& jwks, const std::string& key_id) {
+    const jwks<kazuho_picojson>& jwks, const std::string& key_id) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwks.get_jwk(key_id));
 }
 
-Result<std::string> GetX5cKeyValueFromJwk(const jwk<kazuho_picojson>& jwk) {
+Result<std::string> GetX5cKeyValueFromJwk(const jwk<kazuho_picojson>& jwk) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwk.get_x5c_key_value());
 }
 
-Result<std::string> GetJwkKeyType(const jwk<kazuho_picojson>& jwk) {
+Result<std::string> GetJwkKeyType(const jwk<kazuho_picojson>& jwk) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwk.get_key_type());
 }
 
-Result<std::string> GetJwkKeyId(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) {
+Result<std::string> GetJwkKeyId(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwk.get_key_id());
 }
 
-Result<std::string> GetJwkClaimAsString(const jwk<kazuho_picojson>& jwk, const std::string& name) {
+// The has_x5c function does not throw exception but we add a wrapper due to the future goal of not
+// including the JWT-CPP header outside of this wrapper.
+bool GetJwkHasX5c(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept {
+  return jwk.has_x5c();
+}
+
+Result<std::string> GetJwkClaimAsString(
+    const jwk<kazuho_picojson>& jwk, const std::string& name) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwk.get_jwk_claim(name).as_string());
 }
 
-Result<std::string> ConvertX5cDerToPem(const std::string& x5c) {
+Result<std::string> ConvertX5cDerToPem(const std::string& x5c) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwt::helper::convert_base64_der_to_pem(x5c));
 }
 
-Result<decoded_jwt<kazuho_picojson>> DecodeJwt(const std::string& token) {
+Result<decoded_jwt<kazuho_picojson>> DecodeJwt(const std::string& token) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(jwt::decode(token));
 }
 
-Result<std::string> GetJwtKeyId(const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) {
+Result<std::string> GetJwtKeyId(
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(decoded_jwt.get_key_id());
 }
 
-Result<std::string> GetJwtIssuer(const decoded_jwt<kazuho_picojson>& decoded_jwt) {
+Result<std::string> GetJwtIssuer(const decoded_jwt<kazuho_picojson>& decoded_jwt) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(decoded_jwt.get_issuer());
 }
 
-Result<std::set<std::string>> GetJwtAudiences(const decoded_jwt<kazuho_picojson>& decoded_jwt) {
+Result<std::set<std::string>> GetJwtAudiences(
+    const decoded_jwt<kazuho_picojson>& decoded_jwt) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(decoded_jwt.get_audience());
 }
 
@@ -90,7 +99,7 @@ Result<std::set<std::string>> GetJwtAudiences(const decoded_jwt<kazuho_picojson>
 // return a vector<string> to the caller.
 // In case the claim value isn't a string/array of string, an error is returned.
 Result<std::vector<std::string>> GetJwtClaimAsStringsList(
-    const decoded_jwt<kazuho_picojson>& decoded_jwt, const std::string& name) {
+    const decoded_jwt<kazuho_picojson>& decoded_jwt, const std::string& name) noexcept {
   try {
     std::vector<std::string> result;
     auto claim_value = decoded_jwt.get_payload_claim(name);
@@ -139,12 +148,12 @@ Result<std::vector<std::string>> GetJwtClaimAsStringsList(
 }
 
 Result<std::string> GetJwtAlgorithm(
-    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) {
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept {
   JWTCPP_CATCH_AND_CONVERT_EXCEPTION_TO_RESULT(decoded_jwt.get_algorithm());
 }
 
 Result<verifier<jwt::default_clock, kazuho_picojson>> GetJwtVerifier(
-    const std::string& key_pem, const std::string& algo) {
+    const std::string& key_pem, const std::string& algo) noexcept {
   try {
     auto verifier = jwt::verify();
 
@@ -199,7 +208,7 @@ Result<verifier<jwt::default_clock, kazuho_picojson>> GetJwtVerifier(
 
 Status VerifyJwtUsingVerifier(
     const verifier<jwt::default_clock, kazuho_picojson>& verifier,
-    const decoded_jwt<kazuho_picojson>& decoded_jwt) {
+    const decoded_jwt<kazuho_picojson>& decoded_jwt) noexcept {
   try {
     verifier.verify(decoded_jwt);
     return Status::OK();

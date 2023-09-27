@@ -304,7 +304,7 @@ struct QLWriteOperation::ApplyContext {
   const DocOperationApplyData* data;
   ValueControlFields control_fields;
   ValueBuffer column_control_fields;
-  dockv::RowPacker* row_packer = nullptr;
+  dockv::RowPackerV1* row_packer = nullptr;
 };
 
 QLWriteOperation::QLWriteOperation(
@@ -1047,7 +1047,7 @@ Status QLWriteOperation::ApplyUpsert(
   // ensure our write path is fast while complicating the read path a bit.
   IsInsert is_insert(request_.type() == QLWriteRequestPB::QL_STMT_INSERT);
 
-  std::optional<dockv::RowPacker> row_packer;
+  std::optional<dockv::RowPackerV1> row_packer;
   std::optional<IntraTxnWriteId> packed_row_write_id;
 
   auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
@@ -1069,7 +1069,7 @@ Status QLWriteOperation::ApplyUpsert(
       if (pack_row) {
         row_packer.emplace(
             schema_version_, schema_packing, FLAGS_ycql_packed_row_size_limit,
-            context.control_fields);
+            context.control_fields, doc_read_context_->schema());
         packed_row_write_id = data.doc_write_batch->ReserveWriteId();
         context.row_packer = &row_packer.value();
         ValueControlFields column_control_fields;

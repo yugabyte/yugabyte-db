@@ -155,9 +155,18 @@ std::size_t DynamicMemoryUsageOfCollection(const Collection& collection) {
   return result;
 }
 
-template <typename T, typename... Types>
+template <typename T, typename... Types> requires (sizeof...(Types) > 0)
 std::size_t DynamicMemoryUsageOf(const T& entity, const Types&... rest_entities) {
   return DynamicMemoryUsageOf(entity) + DynamicMemoryUsageOf(rest_entities...);
+}
+
+template <typename T>
+std::size_t DynamicMemoryUsageOrSizeOf(const T& value) {
+  if constexpr (HasFreeFunction_DynamicMemoryUsageOf<T>::value) {
+    return DynamicMemoryUsageOf(value);
+  } else {
+    return sizeof(value);
+  }
 }
 
 }  // namespace yb

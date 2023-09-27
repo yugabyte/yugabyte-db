@@ -89,6 +89,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -277,43 +278,43 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 namespace yb {
 namespace tserver {
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
+METRIC_DEFINE_event_stats(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
+METRIC_DEFINE_event_stats(server, op_apply_queue_time, "Operation Apply Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the apply queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_run_time, "Operation Apply Run Time",
+METRIC_DEFINE_event_stats(server, op_apply_run_time, "Operation Apply Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations consist of very large batches.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
+METRIC_DEFINE_event_stats(server, op_read_queue_length, "Operation Read op Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                             "High queue lengths indicate that the server is unable to process "
                             "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
+METRIC_DEFINE_event_stats(server, op_read_queue_time, "Operation Read op Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the read queue before being "
                             "processed. High queue times indicate that the server is unable to "
                             "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_run_time, "Operation Read op Run Time",
+METRIC_DEFINE_event_stats(server, op_read_run_time, "Operation Read op Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                             "High values may indicate that the server is under-provisioned or "
                             "that operations consist of very large batches.");
 
-METRIC_DEFINE_coarse_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+METRIC_DEFINE_event_stats(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
                         "Time that the tablet server takes to bootstrap all of its tablets.");
 
@@ -375,6 +376,16 @@ using yb::MonoTime;
 constexpr int32_t kDefaultTserverBlockCacheSizePercentage = 50;
 const std::string kDebugBootstrapString = "RemoteBootstrap";
 const std::string kDebugSnapshotTransferString = "RemoteSnapshotTransfer";
+
+// Jenkins builds complain if we use tools::SnapshotIdToString with `undefined reference`.
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+} // namespace
 
 void TSTabletManager::VerifyTabletData() {
   LOG_WITH_PREFIX(INFO) << "Beginning tablet data verification checks";
@@ -855,15 +866,15 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_encoded_key = request.split_encoded_key();
 
   auto source_partition = tablet.metadata()->partition();
-  const auto source_key_bounds = *tablet.doc_db().key_bounds;
+  const auto& source_key_bounds = tablet.key_bounds();
 
   {
     TabletCreationMetaData meta;
     meta.tablet_id = request.new_tablet1_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_end(split_partition_key);
     meta.key_bounds.upper.Reset(split_encoded_key);
+    meta.partition.set_partition_key_end(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -872,8 +883,8 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
     meta.tablet_id = request.new_tablet2_id();
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
-    meta.partition.set_partition_key_start(split_partition_key);
     meta.key_bounds.lower.Reset(split_encoded_key);
+    meta.partition.set_partition_key_start(split_partition_key);
     metas.push_back(meta);
   }
 
@@ -1353,8 +1364,11 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
       &server_->proxy_cache(), source_uuid, source_addr, rocksdb_dir));
 
   // Download the remote file specified in the request.
+  auto snapshot_id = SnapshotIdToString(req.snapshot_id());
+  auto new_snapshot_id =
+      req.has_new_snapshot_id() ? SnapshotIdToString(req.new_snapshot_id()) : snapshot_id;
   RETURN_NOT_OK_PREPEND(
-      remote_snapshot_client->FetchSnapshot(req.snapshot_id()),
+      remote_snapshot_client->FetchSnapshot(snapshot_id, new_snapshot_id),
       "remote snapshot transfer: Unable to fetch data from remote tablet " + source_uuid + " (" +
           source_addr.ToString() + ")");
 
@@ -1570,8 +1584,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   bool bootstrap_retryable_requests = true;
 
+  MemTrackerPtr parent_mem_tracker =
+      MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker());
+
   consensus::RetryableRequestsManager retryable_requests_manager(
-      tablet_id, fs_manager_, meta->wal_dir());
+      tablet_id, fs_manager_, meta->wal_dir(),
+      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()), parent_mem_tracker,
+                                      AddToParent::kTrue, CreateMetrics::kFalse), kLogPrefix);
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1583,7 +1602,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
-      retryable_requests_manager.retryable_requests() = std::move(*parent_tablet_requests);
+      retryable_requests_manager.retryable_requests().CopyFrom(*parent_tablet_requests);
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
@@ -1623,7 +1642,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata = meta,
         .client_future = server_->client_future(),
         .clock = scoped_refptr<server::Clock>(server_->clock()),
-        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .parent_mem_tracker = parent_mem_tracker,
         .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),
@@ -2758,7 +2777,8 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
+    tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
@@ -2775,7 +2795,7 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
     // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
     // when we have new replication setup and safe time is not yet computed. In this case, we return
     // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
-    return HybridTime::kMin;
+    return { HybridTime::kInvalid, HybridTime::kMin };
   }
   auto opt_xcluster_safe_time = *xcluster_safe_time_result;
   if (opt_xcluster_safe_time) {
@@ -2816,18 +2836,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
           schedules_to_remove.push_back(schedule_id);
           continue;
         }
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       if (!it->second) {
         // Schedules does not have snapshots yet.
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       result.MakeAtMost(it->second);
     }
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
-  return result;
+  return { HybridTime::kInvalid, result };
 }
 
 void TSTabletManager::FlushDirtySuperblocks() {

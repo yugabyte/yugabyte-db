@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.models.rbac;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
@@ -6,7 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
+import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.models.helpers.PermissionDetails;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -69,6 +71,11 @@ public class Role extends Model {
   @WhenModified
   private Date updatedOn;
 
+  /**
+   * This shows whether the role is a built-in role or user created role. System roles are the
+   * SuperAdmin, Admin, BackupAdmin, ReadOnly, ConnectOnly. Custom roles are the user created roles
+   * with custom permissions.
+   */
   public enum RoleType {
     @EnumValue("System")
     System,
@@ -95,7 +102,7 @@ public class Role extends Model {
       String name,
       String description,
       RoleType roleType,
-      Set<PermissionInfoIdentifier> permissionList) {
+      Set<Permission> permissionList) {
     Role role =
         new Role(
             UUID.randomUUID(),
@@ -110,7 +117,7 @@ public class Role extends Model {
     return role;
   }
 
-  public void updateRole(String description, Set<PermissionInfoIdentifier> permissionList) {
+  public void updateRole(String description, Set<Permission> permissionList) {
     if (description != null) {
       this.description = description;
     }

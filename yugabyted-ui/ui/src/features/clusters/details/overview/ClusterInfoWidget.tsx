@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, Link, makeStyles, Paper, Typography } from '@material-ui/core';
-import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
+import type { ClusterData } from '@app/api/src';
 import { Link as RouterLink } from 'react-router-dom';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
@@ -49,15 +49,12 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
-  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
-    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
-
   const clusterSpec = cluster?.spec;
   const replicationFactor = clusterSpec?.cluster_info?.replication_factor ?? 0;
   const databaseVersion = cluster.info.software_version ?? '';
   const totalDiskSize = clusterSpec.cluster_info.node_info.disk_size_gb ?? 0;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
+  const totalRamProvisionedGb = clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0;
 
   // Convert ram from MB to GB
   // const getTotalRamText = (value: number, numberOfNodes: number) => {
@@ -144,7 +141,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                   {t('clusterDetail.overview.totalMemory')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {getRamUsageText(totalRamUsageGb)}
+                  {getRamUsageText(totalRamProvisionedGb)}
                 </Typography>
               </Grid>
               <Grid item xs={4}>

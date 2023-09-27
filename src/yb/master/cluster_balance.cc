@@ -78,16 +78,18 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 1,
     "Maximum number of over-replicated tablet peer removals to do in any one run of the "
     "load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 10,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
     "any one run of the load balancer.");
 
-DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, 1,
+DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, -1,
     "Maximum number of tablet leaders per table to move in any one run of the load "
     "balancer. The maximum number of tablet leader moves across the cluster is still "
     "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
     "prevent a single table from using all of the leader moves quota and starving "
-    "other tables.");
+    "other tables."
+    "If set to -1, the number of leader moves per table is set to the global number of leader "
+    "moves (load_balancer_max_concurrent_moves).");
 
 DEFINE_RUNTIME_int32(load_balancer_num_idle_runs, 5,
     "Number of idle runs of load balancer to deem it idle.");

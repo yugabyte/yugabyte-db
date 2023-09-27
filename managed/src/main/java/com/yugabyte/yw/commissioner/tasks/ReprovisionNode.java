@@ -77,6 +77,10 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Stopped)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
+      // Mark universe update success to true
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);

@@ -37,21 +37,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -109,7 +96,8 @@ public class CommonUtils {
           "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
-          "KEYSPACE");
+          "KEYSPACE",
+          "APITOKENVERSION");
 
   public static final Map<Character, Character> CHAR_MAP =
       Map.ofEntries(

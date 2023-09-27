@@ -134,15 +134,15 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 You can customize your network, including the virtual network, as follows:
 
-- **AMI Type**. Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration.
-  - Default x86;
-  - Default AArch64; or
+- **AMI Type**. Choose the type of Amazon Machine Image (AMI) to use for deployments that use this configuration, as follows:
+  - Default x86
+  - Default AArch64
   - Custom
 
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
-  - **Create a new VPC**. Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered beta and is not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will result in a silent failure:
-    - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+  - **Create a new VPC** ([Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
+    - Configuring more than one AWS cloud provider with different CIDR block prefixes.
     - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
 
     To use this option, contact {{% support-platform %}}.
@@ -217,11 +217,11 @@ You have an option to provide the following:
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems.
 
 To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
--->
 
 #### Limitations
 
 If you create more than one AWS cloud provider with different CIDR block prefixes, your attempt to create a new VPC as part of your [VPC setup](#vpc-setup) will result in a silent failure.
+-->
 
 ## Marketplace acceptance
 

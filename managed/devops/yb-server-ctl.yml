@@ -35,6 +35,7 @@
               when: command == 'start'
             - name: Perform {{ command }} on the {{ process }}
               shell: "sudo systemctl {{ command }} yb-{{ process }}"
+              when: command == 'start' or command == 'stop'
             - name: Disable the {{ process }}
               shell: "sudo systemctl disable yb-{{ process }}"
               when: command == 'stop'

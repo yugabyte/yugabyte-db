@@ -8,7 +8,6 @@ import { MultilineGFlags } from '../../../utils/UniverseUtils';
 
 interface GFlagConfProps {
   formProps: any;
-  mode: string;
   serverType: string;
   flagName: string;
   updateJWKSDialogStatus: (status: boolean) => void;
@@ -55,7 +54,6 @@ const GFlagAdditionalDescription = {
 
 export const GFlagsConf: FC<GFlagConfProps> = ({
   formProps,
-  mode,
   serverType,
   flagName,
   updateJWKSDialogStatus
@@ -135,9 +133,7 @@ export const GFlagsConf: FC<GFlagConfProps> = ({
         {currentView === GFlagMultilineMode.EDIT && (
           <EditGFlagsConf
             formProps={formProps}
-            mode={mode}
             serverType={serverType}
-            flagName={flagName}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
           />
         )}
