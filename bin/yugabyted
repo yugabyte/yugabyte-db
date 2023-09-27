@@ -3561,7 +3561,7 @@ class ControlScript(object):
         # Add cert generation options
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
         cert_parser = subparsers.add_parser("cert", description=example,
-                                                help="Generate SSL cerificates")
+                                                help="Generate SSL certificates")
         all_parsers["cert"] = cert_parser
         cert_subparsers = cert_parser.add_subparsers(dest="parser", metavar="")
         cert_subparsers.required = True
