@@ -17,6 +17,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -39,9 +40,11 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -49,10 +52,16 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -81,6 +90,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -108,6 +118,10 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private static Commissioner mockCommissioner;
   private Config mockConfig;
   private CertificateHelper certificateHelper;
+
+  private Universe defaultUniverse;
+  private Universe k8sUniverse;
+  private Users user;
 
   private final String TMP_CHART_PATH =
       "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
@@ -194,20 +208,72 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         .build();
   }
 
+  private <T extends UpgradeTaskParams> Result runUpgrade(
+      Universe universe, Consumer<T> paramsConsumer, Class<T> paramsClass, String upgradePath) {
+    String url =
+        String.format(
+            "/api/customers/%s/universes/%s/upgrade/%s",
+            customer.getUuid(), universe.getUniverseUUID(), upgradePath);
+    T params = Json.fromJson(Json.toJson(universe.getUniverseDetails()), paramsClass);
+    params.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    paramsConsumer.accept(params);
+    JsonNode body = Json.toJson(params);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app, "POST", url, user.createAuthToken(), body);
+  }
+
+  private void verifyNoActions() {
+    verify(mockCommissioner, times(0)).submit(any(TaskType.class), any(ITaskParams.class));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    Users user = ModelFactory.testUser(customer);
+    user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
     certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     new File(TMP_CHART_PATH).mkdirs();
     createTempFile(TMP_CHART_PATH, "uuct_yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
+    defaultUniverse = ModelFactory.createUniverse("Test Universe2", customer.getId());
+    defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 3);
+    k8sUniverse = ModelFactory.createUniverse("k8s", customer.getId(), Common.CloudType.kubernetes);
   }
 
   @After
   public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(TMP_CERTS_PATH));
     FileUtils.deleteDirectory(new File(TMP_CHART_PATH));
+  }
+
+  @Test
+  public void testRestartNonRollingK8sError() {
+    k8sUniverse.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+    k8sUniverse.save();
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    k8sUniverse,
+                    p -> p.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE,
+                    RestartTaskParams.class,
+                    "restart"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("Can perform only a rolling upgrade on a Kubernetes universe"));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testRestartK8sHelm3Error() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(k8sUniverse, p -> {}, RestartTaskParams.class, "restart"));
+    assertTrue(exception.getUserVisibleMessage().contains("as it is not helm 3 compatible"));
+    verifyNoActions();
   }
 
   @Test
@@ -270,25 +336,74 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertAuditEntry(1, customer.getUuid());
   }
 
+  // Software upgrade
+
   @Test
-  public void testSoftwareUpgradeWithInvalidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
+  public void testSoftwareUpgradesNonRestartError() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> p.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE,
+                    SoftwareUpgradeParams.class,
+                    "software"));
+    assertTrue(
+        exception.getUserVisibleMessage().contains("Software upgrade cannot be non restart"));
+    verifyNoActions();
+  }
 
-    String url =
-        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/software";
-    Result result =
-        assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
-    assertBadRequest(result, "Invalid Yugabyte software version: null");
+  @Test
+  public void testSoftwareUpgradesNoVersionError() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(defaultUniverse, p -> {}, SoftwareUpgradeParams.class, "software"));
+    assertTrue(exception.getUserVisibleMessage().contains("Invalid Yugabyte software version"));
+    verifyNoActions();
+  }
 
-    ArgumentCaptor<SoftwareUpgradeParams> argCaptor =
-        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
-    verify(mockCommissioner, times(0)).submit(eq(TaskType.SoftwareUpgrade), argCaptor.capture());
+  @Test
+  public void testSoftwareUpgradesSameVersionError() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+                      p.ybSoftwareVersion =
+                          defaultUniverse
+                              .getUniverseDetails()
+                              .getPrimaryCluster()
+                              .userIntent
+                              .ybSoftwareVersion;
+                    },
+                    SoftwareUpgradeParams.class,
+                    "software"));
+    assertTrue(exception.getUserVisibleMessage().contains("Software version is already"));
+    verifyNoActions();
+  }
 
-    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
-    assertAuditEntry(0, customer.getUuid());
+  @Test
+  public void testSoftwareUpgradesLowerVersionError() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+                      p.ybSoftwareVersion = "2.16.7.5-b99";
+                    },
+                    SoftwareUpgradeParams.class,
+                    "software"));
+    assertTrue(
+        exception.getUserVisibleMessage().contains("DB version downgrades are not recommended"));
+    verifyNoActions();
   }
 
   @Test
@@ -398,6 +513,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
   }
+
+  // GFlags upgrade
 
   @Test
   public void testGFlagsUpgradeWithInvalidParams() {
@@ -682,6 +799,60 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testGflagsUpgradeSameParamsSpecificGFlags() {
+    SpecificGFlags gFlags =
+        SpecificGFlags.construct(Map.of("master-flag", "1"), Map.of("tserver-flag", "2"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = gFlags;
+            });
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(defaultUniverse, p -> {}, GFlagsUpgradeParams.class, "gflags"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("No changes in gflags (modify specificGflags in cluster)"));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testGflagsUpgradeDeleteNonRestartSpecificGFlags() {
+    SpecificGFlags gFlags =
+        SpecificGFlags.construct(Map.of("master-flag", "1"), Map.of("tserver-flag", "2"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = gFlags;
+            });
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+                      p.getPrimaryCluster().userIntent.specificGFlags =
+                          SpecificGFlags.construct(
+                              Map.of("master-flag2", "2"), Map.of("tserver-flag", "2"));
+                    },
+                    GFlagsUpgradeParams.class,
+                    "gflags"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("Cannot delete gFlags through non-restart upgrade option"));
+    verifyNoActions();
+  }
+
+  // Certs rotate
+
+  @Test
   public void testCertsRotateWithNoChange() throws IOException, NoSuchAlgorithmException {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -815,6 +986,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
     assertAuditEntry(1, customer.getUuid());
   }
+
+  // Tls toggle
 
   @Test
   public void testTlsToggleWithEmptyParams() {
@@ -1000,6 +1173,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertAuditEntry(0, customer.getUuid());
   }
 
+  // VMImage Upgrade
+
   @Test
   public void testVMImageUpgradeWithUnsupportedProvider() {
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -1117,6 +1292,129 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.VMImageUpgrade)));
     assertAuditEntry(1, customer.getUuid());
   }
+
+  // Thirdparty upgrade
+
+  @Test
+  public void testThirdpartyUpgradeNonRolling() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+                    },
+                    ThirdpartySoftwareUpgradeParams.class,
+                    "thirdparty_software"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("Only ROLLING_UPGRADE option is supported for upgrade thirdparty software."));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testThirdpartyUpgradeOnpremWithManual() {
+    Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.getDetails().skipProvisioning = true;
+    provider.save();
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    onprem, p -> {}, ThirdpartySoftwareUpgradeParams.class, "thirdparty_software"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains(
+                "Cannot run thirdparty software upgrade for onprem with manual provisioning"));
+    verifyNoActions();
+  }
+
+  // Resize node
+
+  @Test
+  public void testResizeNodeNoChages() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(defaultUniverse, p -> {}, ResizeNodeParams.class, "resize_node"));
+    assertTrue(exception.getMessage().contains("No changes!"));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testResizeNodeDecreaseVolumeSize() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
+                  ApiUtils.getDummyDeviceInfo(1, 100);
+            });
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
+                    },
+                    ResizeNodeParams.class,
+                    "resize_node"));
+    assertTrue(exception.getMessage().contains("Disk size cannot be decreased. It was"));
+    verifyNoActions();
+  }
+
+  // Systemd upgrade
+
+  @Test
+  public void testSystemdUpgradeNonRolling() {
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+                    },
+                    SystemdUpgradeParams.class,
+                    "systemd"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("Only ROLLING_UPGRADE option is supported for systemd upgrades."));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testSystemdUpgradeOnpremWithManual() {
+    Universe onprem = ModelFactory.createUniverse("onprem", customer.getId(), CloudType.onprem);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(onprem.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.getDetails().skipProvisioning = true;
+    provider.save();
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(onprem, p -> {}, SystemdUpgradeParams.class, "systemd"));
+    assertTrue(
+        exception
+            .getUserVisibleMessage()
+            .contains("Cannot upgrade systemd for manually provisioned universes"));
+    verifyNoActions();
+  }
+
+  // Reboot
 
   @Test
   public void testRebootUniverse() {
