@@ -5,7 +5,7 @@ import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
 import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { getInterval, RelativeInterval } from '@app/helpers';
+import { getInterval, RelativeInterval, roundDecimal } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
@@ -51,11 +51,11 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   const [{ nodeName }] = useQueryParams({
     nodeName: withDefault(StringParam, 'all'),
   });
-  const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName; 
+  const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName;
 
-  const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
+  const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1));
 
-  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
+  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>();
   React.useEffect(() => {
     if (!nodesResponse) {
       return;
@@ -66,7 +66,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         try {
           const interval = getInterval(RelativeInterval.LastHour);
           // Get the system and user cpu usage of the node from the metrics endpoint
-          const cpu = await AXIOS_INSTANCE.get(`/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=${nodeName}` + 
+          const cpu = await AXIOS_INSTANCE.get(`/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=${nodeName}` +
             `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(interval.end)}`)
             // Add the system and user cpu usage to get the total cpu usage
             .then(({ data }) => {
@@ -101,6 +101,10 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   }, [nodesResponse])
 
   const data = useMemo(() => {
+    if (nodeCpuUsage === undefined) {
+      return undefined;
+    }
+
     const data =  {
       nodes: [
         // Usage node
@@ -110,9 +114,9 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         // Nodes
         ...(nodesResponse?.data.map(({ name, cloud_info: { zone } }) => ({ name, zone })) ?? []),
         // Dummy node for available cores
-        { "name": "" }, 
+        { "name": "" },
       ],
-      links: [ ...(nodesResponse?.data.map((_, index) => ({ 
+      links: [ ...(nodesResponse?.data.map((_, index) => ({
         // Start all links from the usage node
         "source": 0,
         // Target the corresponding node
@@ -134,11 +138,11 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     data["links"][data["links"].length - 1].value = Math.round(cpuAcc / cpuUsage * cpuAvailable);
     data["nodes"][0].name = t('clusterDetail.overview.usedCores', { usage: cpuUsage });
     data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
-  
+
     return data;
   }, [nodeCpuUsage, nodesResponse])
 
-  if (nodeCpuUsage.length === 0 || isFetching) {
+  if (isFetching || data === undefined) {
     return (
       <Box textAlign="center" pt={9} pb={9} width="100%">
         <LinearProgress />
@@ -186,14 +190,14 @@ function CpuSankeyNode(props: any) {
   }
 
   return (
-    <Layer key={`CustomNode${index}`} opacity={!filteredNode ? 1 : 
+    <Layer key={`CustomNode${index}`} opacity={!filteredNode ? 1 :
       (((isLeftNode && index === 0) || (!isLeftNode && payload.name === filteredNode)) ? 1 : 0.4 )}>
-      <Rectangle 
+      <Rectangle
         x={x} y={y} opacity={isLeftNode ? (!filteredNode ? 1 : 0.4) : undefined}
-        width={width} height={height} 
-        fill={isLeftNode ? "#2B59C3" : "#8047F5"} 
+        width={width} height={height}
+        fill={isLeftNode ? "#2B59C3" : "#8047F5"}
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
-      {!isLeftNode ? 
+      {!isLeftNode ?
         // Right node
         <Link className={classes.link} component={RouterLink} to={`/performance/metrics?nodeName=${payload.name}`}>
           <text
@@ -218,7 +222,7 @@ function CpuSankeyNode(props: any) {
           fontWeight={500}
         >
           <tspan fill="#97A5B0">{cpuTextPrefix}</tspan>
-          <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)} 
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)}
             fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
           <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
         </text>
@@ -231,7 +235,7 @@ class CpuSankeyLink extends Component<any, any> {
   static displayName = 'CpuSankeyLink';
 
   render() {
-    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, 
+    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth,
       filteredNode, index, nodeWidth, payload } = this.props;
 
     if (!payload.target.name) {
@@ -242,7 +246,7 @@ class CpuSankeyLink extends Component<any, any> {
     const fill = this.state?.fill ?? `url(#${gradientID})`;
 
     return (
-      <Layer key={`CustomLink${index}`} opacity={!filteredNode ? 1 : 
+      <Layer key={`CustomLink${index}`} opacity={!filteredNode ? 1 :
         (payload.target.name === filteredNode ? 1 : 0.4 )}>
         <defs>
           <linearGradient id={gradientID}>
@@ -250,7 +254,7 @@ class CpuSankeyLink extends Component<any, any> {
             <stop offset="80%" stopColor={"#8047F5"} stopOpacity={"0.18"} />
           </linearGradient>
         </defs>
-        
+
         <Link component={RouterLink} to={`/performance/metrics?nodeName=${payload.target.name}`}>
           <path
             d={`
@@ -275,10 +279,10 @@ class CpuSankeyLink extends Component<any, any> {
         </Link>
 
         {filteredNode && payload.target.name === filteredNode &&
-          <Rectangle 
-            x={sourceX - nodeWidth} y={sourceY - linkWidth / 2} 
-            width={nodeWidth} height={linkWidth} 
-            fill={"#2B59C3"} 
+          <Rectangle
+            x={sourceX - nodeWidth} y={sourceY - linkWidth / 2}
+            width={nodeWidth} height={linkWidth}
+            fill={"#2B59C3"}
             fillOpacity={0.6} />
         }
       </Layer>

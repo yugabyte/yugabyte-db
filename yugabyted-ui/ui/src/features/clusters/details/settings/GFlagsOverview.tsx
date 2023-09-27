@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
+import { Box, LinearProgress, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
 import { YBSelect, YBTable } from '@app/components';
 import { useGetClusterNodesQuery } from '@app/api/src';
 import axios from 'axios';
@@ -53,8 +53,10 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery();
   const nodesNamesList = nodesResponse?.data.map((node) => ({ label: node.name, value: node.host })) ?? [];
+
+  const [isFetchingGFlags, setIsFetchingGFlags] = React.useState<boolean>(false);
 
   const [currentNode, setCurrentNode] = useState<string | undefined>('');
   React.useEffect(() => {
@@ -70,6 +72,7 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
     }
 
     const populateMasterNodes = async () => {
+      setIsFetchingGFlags(true);
 
       const getMasterNodes = async (nodeName: string) => {
         try {
@@ -87,6 +90,8 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
       if (masterNodes) {
         setMasterNodes(masterNodes);
       }
+
+      setIsFetchingGFlags(false);
     }
 
     populateMasterNodes();
@@ -181,43 +186,56 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
         <Typography variant="h4" >
           {t('clusterDetail.settings.gflags.title')}
         </Typography>
-        <YBSelect
-          className={classes.selectBox}
-          value={currentNode}
-          onChange={(e) => setCurrentNode(e.target.value)}
-        >
-          {nodesNamesList?.map((el) => {
-            return (
-              <MenuItem key={el.label} value={el.value}>
-                {el.label}
-              </MenuItem>
-            );
-          })}
-        </YBSelect>
+        {!isFetchingNodes && (
+          <YBSelect
+            className={classes.selectBox}
+            value={currentNode}
+            onChange={(e) => setCurrentNode(e.target.value)}
+          >
+            {nodesNamesList?.map((el) => {
+              return (
+                <MenuItem key={el.label} value={el.value}>
+                  {el.label}
+                </MenuItem>
+              );
+            })}
+          </YBSelect>
+        )}
         {/* <YBButton onClick={toggleDrift}>
           {!showDrift ? t('clusterDetail.settings.gflags.showDrift') : t('clusterDetail.settings.gflags.hideDrift')}
         </YBButton> */}
       </Box>
 
-      <Typography variant="h5" className={classes.subHeading}>
-        {t('clusterDetail.settings.gflags.nodeInfoFlags')}
-      </Typography>
-      <YBTable
-        data={gflagData?.nodeInfoFlags ?? []}
-        columns={gflagColumns}
-        options={{ pagination: false }}
-        withBorder={false}
-      />
+      {isFetchingGFlags ||
+        (isFetchingNodes && (
+          <Box textAlign="center" pt={9} pb={9} width="100%">
+            <LinearProgress />
+          </Box>
+        ))}
 
-      <Typography variant="h5" className={classes.subHeading}>
-        {t('clusterDetail.settings.gflags.customFlags')}
-      </Typography>
-      <YBTable
-        data={gflagData?.customFlags ?? []}
-        columns={gflagColumns}
-        options={{ pagination: false }}
-        withBorder={false}
-      />
+      {!isFetchingGFlags && !isFetchingNodes && (
+        <>
+          <Typography variant="h5" className={classes.subHeading}>
+            {t('clusterDetail.settings.gflags.nodeInfoFlags')}
+          </Typography>
+          <YBTable
+            data={gflagData?.nodeInfoFlags ?? []}
+            columns={gflagColumns}
+            options={{ pagination: false }}
+            withBorder={false}
+          />
+
+          <Typography variant="h5" className={classes.subHeading}>
+            {t('clusterDetail.settings.gflags.customFlags')}
+          </Typography>
+          <YBTable
+            data={gflagData?.customFlags ?? []}
+            columns={gflagColumns}
+            options={{ pagination: false }}
+            withBorder={false}
+          />
+        </>
+      )}
     </Paper>
   );
 };

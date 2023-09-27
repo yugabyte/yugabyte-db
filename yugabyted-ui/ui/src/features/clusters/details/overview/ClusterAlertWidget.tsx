@@ -17,8 +17,8 @@ const useStyles = makeStyles((theme) => ({
   container: {
     flexWrap: "nowrap",
     marginTop: theme.spacing(1.5),
-    justifyContent: 'center',
-    width: theme.spacing(40),
+    justifyContent: "center",
+    minWidth: theme.spacing(40),
   },
   title: {
     /* color: theme.palette.grey[900], */
@@ -86,7 +86,7 @@ export const ClusterAlertWidget: FC<ClusterAlertWidgetProps> = () => {
         <Box display="flex" alignItems="center">
           <Box display="flex" alignItems="center" flex={1} gridGap={8}>
             <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.alerts')}</Typography>
-            {alerts.length > 0 && 
+            {alerts.length > 0 &&
               <YBBadge variant={BadgeVariant.Warning} text={alerts.length} icon={false} />
             }
           </Box>

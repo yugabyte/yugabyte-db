@@ -39,8 +39,8 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(3),
     marginBottom: theme.spacing(4),
   },
-  dropdown: {
-    width: 200,
+  selectBox: {
+    minWidth: "200px",
     marginRight: theme.spacing(1),
     flexGrow: 0
   },
@@ -78,28 +78,11 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
   const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
-  const [nodes, setNodes] = React.useState<string[]>(nodeNames ?? []);
+  const [selectedNode, setSelectedNode] = React.useState<string>("");
   const [tabletID, setTabletID] = React.useState<string>('');
 
-  React.useEffect(() => {
-    if (nodeNames) {
-      setNodes(nodeNames);
-    }
-  }, [nodeNames])
-
-  const handleNodeChange = (newNode: string) => {
-    const nodeIndex = nodes.findIndex(n => n === newNode);
-    const newNodes = [ ...nodes ];
-    if (nodeIndex !== -1) {
-      newNodes.splice(nodeIndex, 1);
-    } else {
-      newNodes.push(newNode);
-    }
-    setNodes(newNodes);
-  }
-
   const { data: healthCheckData, isFetching: isFetchingHealth } = useGetClusterHealthCheckQuery({ query: { refetchOnMount: 'always' }});
-  
+
   const [tabletList, setTabletList] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
@@ -177,7 +160,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
       }
 
       setIsLoading(true);
-      
+
       const tabletList: any[] = [];
       for (let i = 0; i < nodeHosts.length; i++) {
         const node = nodeHosts[i];
@@ -194,9 +177,9 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
     }
 
     populateTablets();
-  }, [nodesResponse, nodes, tableID, healthCheckData]);
+  }, [nodesResponse, tableID, healthCheckData, selectedNode]);
 
-  const data = useMemo(() => {
+  const filteredTabletList = useMemo(() => {
     let data = tabletList;
     if (tabletID) {
       const searchName = tabletID.toLowerCase();
@@ -247,9 +230,9 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
         hideHeader: true,
         setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
         setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        customBodyRender: (status: string) => status && 
-          <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
-            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
+        customBodyRender: (status: string) => status &&
+          <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error}
+            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') :
               t('clusterDetail.databases.unavailable')} />,
       }
     },
@@ -276,34 +259,20 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
         </Box>
       </Box>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-        {/* <YBSelect
-          value={node}
-          onChange={(ev) => setNode(ev.target.value)}
-          className={classes.dropdown}
+        <YBSelect
+          className={classes.selectBox}
+          value={selectedNode}
+          onChange={(e) => {
+            setSelectedNode(e.target.value);
+          }}
         >
-          <MenuItem value={''}>{t('clusterDetail.databases.allNodes')}</MenuItem>
-          {nodeNames?.map(nodeName => 
-            <MenuItem key={nodeName} value={nodeName}>{nodeName}</MenuItem>
-          )}
-        </YBSelect> */}
-        <YBDropdown origin={
-          <YBSelect inputProps={{ tabIndex: -1 }} style={{ pointerEvents: "none" }} className={classes.dropdown} 
-            value={nodes.join(', ')} >
-            <MenuItem value={nodes.join(', ')}>
-              {nodes.length === 0 ? t('clusterDetail.databases.none') : 
-                (nodes.length <= 2 ? nodes.join(', ') : 
-                (nodes.length === nodeNames?.length ? t('clusterDetail.databases.allNodes') : `${nodes.length} nodes`))}
+          <MenuItem value={""}>{t("clusterDetail.databases.allNodes")}</MenuItem>
+          {nodeNames?.map((nodeName) => (
+            <MenuItem key={nodeName} value={nodeName}>
+              {nodeName}
             </MenuItem>
-          </YBSelect>}
-          position={'bottom'} growDirection={'right'} keepOpenOnSelect>
-          <Box className={classes.nodeContainer}>
-            {nodeNames?.map(nodeName => 
-              <YBCheckbox key={nodeName} label={nodeName} className={classes.checkbox}
-                checked={!!nodes.find(n => n === nodeName)}
-                onClick={() => handleNodeChange(nodeName)} />
-            )}
-          </Box>
-        </YBDropdown>
+          ))}
+        </YBSelect>
         <YBInput
           placeholder={t('clusterDetail.databases.searchTabletID')}
           InputProps={{
@@ -317,11 +286,11 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
           {t('clusterDetail.performance.actions.refresh')}
         </YBButton>
       </Box>
-      {!data.length ?
+      {!filteredTabletList.length ?
         <YBLoadingBox>{t('clusterDetail.tables.noTabletsCopy')}</YBLoadingBox>
         :
         <YBTable
-          data={data}
+          data={filteredTabletList}
           columns={columns}
           touchBorder={false}
         />
