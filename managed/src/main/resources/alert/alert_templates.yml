@@ -391,7 +391,7 @@ templates:
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
     defaultThresholdMap:
-      SEVERE:
+      WARNING:
         threshold: 0.0
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
