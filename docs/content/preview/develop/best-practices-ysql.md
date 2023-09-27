@@ -112,7 +112,7 @@ As the manager is bundled with the product, it is convenient to manage, monitor,
 For more details, see:
 
 - [YSQL Connection Manager](../../explore/connection-manager/connection-mgr-ysql/)
-2. [Built-in Connection Manager Turns Key  PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
+- [Built-in Connection Manager Turns Key  PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
 
 {{</tip>}}
 
