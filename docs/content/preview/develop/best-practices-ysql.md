@@ -127,7 +127,7 @@ For large or batch `SELECT`s or `DELETE`s that have to scan all tablets, you can
 For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries).
 {{</tip>}}
 
-## Single AZ deployments
+## Single availability zone (AZ) deployments
 In single AZ deployments, you need to set `--durable_wal_write=true` [gflag](../../reference/configuration/yb-tserver) in 
 yb-tserver to not lose data if the whole datacenter goes down (power failure etc).
 
