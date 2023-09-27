@@ -564,7 +564,7 @@ public enum AlertTemplate {
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
-          .defaultThreshold(SEVERE, 0D)
+          .defaultThreshold(WARNING, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("occurrence(s)")
           .thresholdConditionReadOnly(true)
