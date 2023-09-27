@@ -42,7 +42,7 @@ For more details, see [Avoid trips to the table with covering indexes](https://w
 ## Faster writes with partial indexes
 
 A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition 
-specified in the `WHERE` clause. This will speed up any writes to the table and reduce the size of the index, thereby improving the speed for read queries that use the index.
+specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
 
 {{<tip>}}
 For more details, see [Partial indexes](../../explore/indexes-constraints/partial-index-ysql/).
