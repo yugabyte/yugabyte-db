@@ -11,7 +11,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
-import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -43,8 +43,8 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
-  protected KubernetesGFlagsUpgradeParams taskParams() {
-    return (KubernetesGFlagsUpgradeParams) taskParams;
+  protected GFlagsUpgradeParams taskParams() {
+    return (GFlagsUpgradeParams) taskParams;
   }
 
   @Override
@@ -93,8 +93,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
           Universe universe = getUniverse();
-          kubernetesStatus.createYBUniverseEventStatus(
-              universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+          kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
           // Verify the request params and fail if invalid
           taskParams().verifyParams(universe);
           if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
@@ -141,12 +140,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             th = t;
             throw t;
           } finally {
-            kubernetesStatus.updateYBUniverseStatus(
-                universe,
-                taskParams().getKubernetesResourceDetails(),
-                getName(),
-                getUserTaskUUID(),
-                th);
+            kubernetesStatus.updateYBUniverseStatus(universe, getName(), getUserTaskUUID(), th);
           }
         });
   }

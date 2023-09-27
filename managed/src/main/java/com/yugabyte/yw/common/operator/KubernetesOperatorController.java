@@ -358,7 +358,7 @@ public class KubernetesOperatorController {
           String startingTask =
               String.format("Starting task on universe %s", currentUserIntent.universeName);
           kubernetesStatusUpdater.doKubernetesEventUpdate(
-              KubernetesResourceDetails.fromResource(ybUniverse), startingTask);
+              currentUserIntent.universeName, startingTask);
           if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
             LOG.info("Updating Kubernetes Overrides");
             updateOverridesYbUniverse(
@@ -530,7 +530,26 @@ public class KubernetesOperatorController {
     taskParams.creatingUser = users.get(0);
     // CommonUtils.getUserFromContext(ctx);
     taskParams.expectedUniverseVersion = -1; // -1 skips the version check
-    taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(ybUniverse));
+    return taskParams;
+  }
+
+  private UniverseConfigureTaskParams createTaskParams(UserIntent userIntent) throws Exception {
+    LOG.info("Creating task params from userIntent");
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    taskParams.clusters.add(cluster);
+    List<Customer> custList = Customer.getAll();
+    Customer cust = custList.get(0);
+    List<Users> users = Users.getAll(cust.getUuid());
+    if (users.isEmpty()) {
+      LOG.error("Users list is of size 0!");
+      throw new Exception("Need at least one user");
+    } else {
+      LOG.info("Taking first user for customer");
+    }
+    taskParams.creatingUser = users.get(0);
+    // CommonUtils.getUserFromContext(ctx);
+    taskParams.expectedUniverseVersion = -1; // -1 skips the version check
     return taskParams;
   }
 
