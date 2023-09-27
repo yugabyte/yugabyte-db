@@ -437,13 +437,13 @@ RI_FKey_check(TriggerData *trigdata)
 		 * referenced table tuple.
 		 */
 		YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo, new_row);
-		if (shouldFree)
-			pfree(new_row);
 		if (descr)
 		{
 			bool found = false;
 			HandleYBStatus(YBCForeignKeyReferenceExists(descr, &found));
 			pfree(descr);
+			if (shouldFree)
+				pfree(new_row);
 			if (!found)
 			{
 				ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
@@ -453,6 +453,8 @@ RI_FKey_check(TriggerData *trigdata)
 			table_close(pk_rel, RowShareLock);
 			return PointerGetDatum(NULL);
 		}
+		if (shouldFree)
+			pfree(new_row);
 	}
 
 	if (SPI_connect() != SPI_OK_CONNECT)

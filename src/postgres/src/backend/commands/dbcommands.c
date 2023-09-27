@@ -1530,12 +1530,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 			else
 				CreateDatabaseUsingFileCopy(src_dboid, dboid, src_deftablespace,
 											dst_deftablespace);
-
-			/*
-			 * Close pg_database, but keep lock till commit.
-			 */
-			table_close(pg_database_rel, NoLock);
 		}
+
+		/*
+		 * Close pg_database, but keep lock till commit.
+		 */
+		table_close(pg_database_rel, NoLock);
 
 		/*
 		 * Force synchronous commit, thus minimizing the window between

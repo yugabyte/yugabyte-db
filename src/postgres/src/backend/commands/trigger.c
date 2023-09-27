@@ -6550,7 +6550,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			bool shouldFree = true;
 			HeapTuple newtup = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
 			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
-			if(shouldFree)
+			if (shouldFree)
 				pfree(newtup);
 		}
 

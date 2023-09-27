@@ -114,3 +114,25 @@ insert into t2 values (4), (5), (6);
 delete from t2 where id > 2 returning id, name;
 
 -- YB_TODO: There's some issue with drop table
+-- Adding PK
+create table test (id int);
+insert into test values (1);
+ALTER TABLE test ENABLE ROW LEVEL SECURITY;
+CREATE POLICY test_policy ON test FOR SELECT USING (true);
+alter table test add primary key (id);
+
+create table test2 (id int);
+insert into test2 values (1), (1);
+alter table test2 add primary key (id);
+
+-- Creating partitioned table
+create table emp_par1(id int primary key, name text) partition by range(id);
+CREATE TABLE emp_par1_1_100 PARTITION OF emp_par1 FOR VALUES FROM (1) TO (100);
+create table emp_par2(id int primary key, name text) partition by list(id);
+create table emp_par3(id int primary key, name text) partition by hash(id);
+
+-- create database
+CREATE DATABASE mytest;
+
+-- drop database
+DROP DATABASE mytest;

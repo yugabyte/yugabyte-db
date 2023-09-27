@@ -530,7 +530,7 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  *
  * Returns the object address of the created index.
  *
- * TODO(Upgrade 11 to 13): "safe_index" and calls to "pgstat_*()" are new in PG13.
+ * YB_TODO(later): "safe_index" and calls to "pgstat_*()" are new in PG13.
  * Need to check if these changes are also necessary for Yugabyte.
  */
 ObjectAddress
@@ -661,10 +661,36 @@ DefineIndex(Oid relationId,
 				 errmsg("cannot use more than %d columns in an index",
 						INDEX_MAX_KEYS)));
 
-#ifdef YB_TODO
-	/* YB_TODO(neil) Need to redo the work on index to reintro Postgres code.
-	 * Code is not mergeable at the current state.
+	/*
+	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
+	 * index build; but for concurrent builds we allow INSERT/UPDATE/DELETE
+	 * (but not VACUUM).
+	 *
+	 * NB: Caller is responsible for making sure that relationId refers to the
+	 * relation on which the index should be built; except in bootstrap mode,
+	 * this will typically require the caller to have already locked the
+	 * relation.  To avoid lock upgrade hazards, that lock should be at least
+	 * as strong as the one we take here.
+	 *
+	 * NB: If the lock strength here ever changes, code that is run by
+	 * parallel workers under the control of certain particular ambuild
+	 * functions will need to be updated, too.
+	 *
+	 * In YB, opening the relation under AccessShareLock first, just to get access to
+	 * its metadata. Stronger lock will be taken later.
 	 */
+	lockmode = IsYugaByteEnabled()? AccessShareLock : concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	rel = table_open(relationId, lockmode);
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations.  We
+	 * already arranged to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
+	SetUserIdAndSecContext(rel->rd_rel->relowner,
+							root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+
 	if (IsYugaByteEnabled())
 	{
 		const int	cols[] = {
@@ -689,64 +715,8 @@ DefineIndex(Oid relationId,
 			values[2] = -1;
 		}
 		pgstat_progress_update_multi_param(3, cols, values);
-	}
-#endif
-
-	/*
-	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
-	 * index build; but for concurrent builds we allow INSERT/UPDATE/DELETE
-	 * (but not VACUUM).
-	 *
-	 * NB: Caller is responsible for making sure that relationId refers to the
-	 * relation on which the index should be built; except in bootstrap mode,
-	 * this will typically require the caller to have already locked the
-	 * relation.  To avoid lock upgrade hazards, that lock should be at least
-	 * as strong as the one we take here.
-	 *
-	 * NB: If the lock strength here ever changes, code that is run by
-	 * parallel workers under the control of certain particular ambuild
-	 * functions will need to be updated, too.
-	 */
-	if (!IsYugaByteEnabled())
-	{
-		lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
-		rel = table_open(relationId, lockmode);
-
-		/*
-		 * Switch to the table owner's userid, so that any index functions are run
-		 * as that user.  Also lock down security-restricted operations.  We
-		 * already arranged to make GUC variable changes local to this command.
-		 */
-		GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
-		SetUserIdAndSecContext(rel->rd_rel->relowner,
-							   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
-	}
-	else
-	{
-		/* YB_TODO(neil@yugabyte)
-		 * - Need to verify if merge happens correctly.
-		 * - Must redo this work to reinsert Postgres's implementation. Postgres's code was
-		 *   reconstructed to the point of not recognizable. It's impossible to merge now & in 
-		 *   the future.
-		 */
-
-		/*
-		 * Opening the relation under AccessShareLock first, just to get access to
-		 * its metadata. Stronger lock will be taken later.
-		 */
-		rel = table_open(relationId, AccessShareLock);
-
-		/*
-		 * Switch to the table owner's userid, so that any index functions are run
-		 * as that user.  Also lock down security-restricted operations.  We
-		 * already arranged to make GUC variable changes local to this command.
-		 */
-		GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
-		SetUserIdAndSecContext(rel->rd_rel->relowner,
-							   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 		databaseId = YBCGetDatabaseOid(rel);
-		relIsShared = rel->rd_rel->relisshared;
 
 		/*
 		 * An index build should not be concurent when
@@ -762,32 +732,51 @@ DefineIndex(Oid relationId,
 		 *   issues.
 		 * Concurrent index build is currently also disabled for
 		 * - indexes in nested DDL
-		 * - indexes whose indexed table is colocated (issue #6215)
-		 * - unique indexes
 		 * - system table indexes
-		 * TODO(jason): check whether it's even possible to come here with
-		 * concurrent true and
-		 * - bootstrap mode
-		 * - nested DDL
-		 * - primary index
+		 * The following behavior applies when CONCURRENTLY keyword is specified:
+		 * - For system tables, one throws an error when CONCURRENTLY is specified
+		 *   when creating index.
+		 * - For temporary tables, one can specify CONCURRENTLY when creating
+		 *   index, but it will be internally converted to nonconcurrent.
+		 *   This is consistent with Postgres' expected behavior.
+		 * - For other cases, it's grammatically impossible to specify
+		 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
+		 *   is safe to be disabled.
 		 */
-		if (stmt->primary ||
-			!IsYBRelation(rel) ||
-			IsBootstrapProcessingMode() ||
-			IsCatalogRelation(rel))
-			stmt->concurrent = false;
+		if (IsCatalogRelation(rel))
+		{
+			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("CREATE INDEX CONCURRENTLY is currently not "
+								"supported for system catalog")));
+			else
+				stmt->concurrent = YB_CONCURRENCY_DISABLED;
+		}
+		if (!IsYBRelation(rel))
+			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+
+		if (stmt->primary || IsBootstrapProcessingMode())
+		{
+			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
+			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+		}
 
 		/*
-		 * Use fast path create index when in nested DDL.  This is desired
-		 * when there would be no concurrency issues (e.g. `CREATE TABLE
-		 * ... (... UNIQUE (...))`).  However, there may be cases where it
-		 * is unsafe to use the fast path.  For now, just use the fast path
-		 * in all cases.
-		 * TODO(jason): support backfill for nested DDL, and use the online
-		 * path for the appropriate statements (issue #4786).
-		 */
-		if (stmt->concurrent && YBGetDdlNestingLevel() > 1)
-			stmt->concurrent = false;
+		* Use fast path create index when in nested DDL. This is desired
+		* when there would be no concurrency issues (e.g. `CREATE TABLE
+		* ... (... UNIQUE (...))`).
+		* TODO(jason): support concurrent build for nested DDL (issue #4786).
+		* In a nested DDL, it's grammatically impossible to specify
+		* CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
+		* is safe to be disabled.
+		*/
+		if (stmt->concurrent != YB_CONCURRENCY_DISABLED &&
+			YBGetDdlNestingLevel() > 1)
+		{
+			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);
+			stmt->concurrent = YB_CONCURRENCY_DISABLED;
+		}
 
 		concurrent = stmt->concurrent != YB_CONCURRENCY_DISABLED;
 		lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
@@ -802,6 +791,7 @@ DefineIndex(Oid relationId,
 		Assert(!(stmt->concurrent && IsSystemRelation(rel)));
 	}
 
+	relIsShared = rel->rd_rel->relisshared;
 	namespaceId = RelationGetNamespace(rel);
 
 	/* Ensure that it makes sense to index this kind of relation */
@@ -832,6 +822,12 @@ DefineIndex(Oid relationId,
 	partitioned = rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE;
 	if (partitioned)
 	{
+		/*
+		 * Note: we check 'stmt->concurrent' rather than 'concurrent', so that
+		 * the error is thrown also for temporary tables.  Seems better to be
+		 * consistent, even though we could do it on temporary table because
+		 * we're not actually doing it concurrently.
+		 */
 		if (concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -952,24 +948,31 @@ DefineIndex(Oid relationId,
 	/*
 	 * Get whether the indexed table is colocated
 	 * (either via database or a tablegroup).
+	 * If the indexed table is colocated, then this index is colocated as well.
 	 */
-	is_colocated = (IsYBRelation(rel) &&
-					!IsBootstrapProcessingMode() &&
-					!YbIsConnectedToTemplateDb() &&
-					YbGetTableProperties(rel)->is_colocated);
+	is_colocated =
+		IsYBRelation(rel) &&
+		!IsBootstrapProcessingMode() &&
+		!YbIsConnectedToTemplateDb() &&
+		YbGetTableProperties(rel)->is_colocated;
 
-	if (IsYBRelation(rel))
+	if (IsYugaByteEnabled())
 	{
 		/* Use tablegroup of the indexed table, if any. */
-		Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+		tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
 			YbGetTableProperties(rel)->tablegroup_oid :
 			InvalidOid;
 
-		if (OidIsValid(tablegroupId) && stmt->split_options)
+		if (stmt->split_options)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("Cannot use TABLEGROUP with SPLIT.")));
+			if (MyDatabaseColocated && is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						errmsg("cannot create colocated index with split option")));
+			else if (OidIsValid(tablegroupId))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						errmsg("cannot use TABLEGROUP with SPLIT")));
 		}
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -989,10 +992,13 @@ DefineIndex(Oid relationId,
 					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
 
 		/*
+		 * Skip the check in a colocated database because any user can create tables
+		 * in an implicit tablegroup.
 		 * Check permissions for tablegroup. To create an index within a tablegroup, a user must
 		 * either be a superuser, the owner of the tablegroup, or have create perms on it.
 		 */
-		if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+		if (!MyDatabaseColocated &&
+			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
 		{
 			AclResult  aclresult;
 
@@ -1251,7 +1257,7 @@ DefineIndex(Oid relationId,
 			 * btree opclasses; if there are ever any other index types that
 			 * support unique indexes, this logic will need extension.
 			 */
-			if (accessMethodId == BTREE_AM_OID)
+			if (accessMethodId == BTREE_AM_OID || accessMethodId == LSM_AM_OID)
 				eq_strategy = BTEqualStrategyNumber;
 			else
 				ereport(ERROR,
@@ -1428,17 +1434,12 @@ DefineIndex(Oid relationId,
 	if (stmt->initdeferred)
 		constr_flags |= INDEX_CONSTR_CREATE_INIT_DEFERRED;
 
-#ifdef YBPG13_WITH_OPTION_NOT_AVAILABLE
-	/* YB_TODO(mihnea@yugabyte)
-	 * - Assign developer to look into this.
-	 */
 	/* Check for WITH (table_oid = x). */
 	if (!OidIsValid(indexRelationId) && stmt->relation)
 	{
 		indexRelationId = GetTableOidFromRelOptions(
 			stmt->options, tablespaceId, stmt->relation->relpersistence);
 	}
-#endif
 
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
@@ -1810,7 +1811,7 @@ DefineIndex(Oid relationId,
 
 	PopActiveSnapshot();
 
-	if (!IsYBRelation(rel))
+	if (!IsYugaByteEnabled())
 	{
 		CommitTransactionCommand();
 		StartTransactionCommand();
@@ -1976,12 +1977,31 @@ DefineIndex(Oid relationId,
 		YBDecrementDdlNestingLevel();
 		CommitTransactionCommand();
 
+		/*
+		 * The index is now visible, so we can report the OID.
+		 */
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+									indexRelationId);
+
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
+		if (yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"indisready",
+										"index state change indisready=true");
 
 		StartTransactionCommand();
+
 		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
 								   false /* is_breaking_catalog_change */);
+
+		/* Wait for all backends to have up-to-date version. */
+		YbWaitForBackendsCatalogVersion();
+
+		#ifdef YB_TODO
+		/* YB_TODO(later): The below line should be added after latest master rebase */
+		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
+		#endif
 
 		/*
 		 * Update the pg_index row to mark the index as ready for inserts.
@@ -2000,15 +2020,36 @@ DefineIndex(Oid relationId,
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
+		if (yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"backfill",
+										"concurrent index backfill");
 
 		StartTransactionCommand();
 		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
 								   false /* is_breaking_catalog_change */);
 
+		/* Wait for all backends to have up-to-date version. */
+		YbWaitForBackendsCatalogVersion();
+
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+											YB_PROGRESS_CREATEIDX_BACKFILLING);
+
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 
 		/* Do backfill. */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+		#ifdef YB_TODO
+		/* The below line should be added after latest master rebase */
+		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
+		#endif
+
+		if (yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"postbackfill",
+										"operations after concurrent "
+										"index backfill");
 	}
 
 	/*
@@ -4841,8 +4882,6 @@ set_indexsafe_procflags(void)
 	LWLockRelease(ProcArrayLock);
 }
 
-#ifdef YB_TODO
-/* YB_TODO(neil) Do we still needs this function */
 static void
 YbWaitForBackendsCatalogVersion()
 {
@@ -4904,4 +4943,3 @@ YbWaitForBackendsCatalogVersion()
 		HandleYBStatus(s);
 	}
 }
-#endif
