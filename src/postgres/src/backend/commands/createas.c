@@ -605,7 +605,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 		if (IsYBRelation(myState->rel))
 		{
-			/* YB_TODO(API for Slot) Wait for slot API */
+			/* YB_TODO(later) Wait for slot API */
 			bool shouldFree = true;
 			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 

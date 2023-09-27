@@ -159,10 +159,6 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
 	MemSet(nulls, false, sizeof(nulls));
 
-	/* YB_TODO(aagrawal@yugabyte)
-	 * - Need to verify if following assignments to "values[]" are correct.
-	 */
-
 	tablegroupoid = GetNewOidWithIndex(rel, YbTablegroupOidIndexId,
 									   Anum_pg_yb_tablegroup_oid);
 

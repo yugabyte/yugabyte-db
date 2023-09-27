@@ -2182,6 +2182,19 @@ build_local_reloptions(local_relopts *relopts, Datum options, bool validate)
 bytea *
 partitioned_table_reloptions(Datum reloptions, bool validate)
 {
+	if (IsYugaByteEnabled())
+	{
+		/* YB supports colocation_id option for partioned tables. */
+		static const relopt_parse_elt tab[] = {
+			{"colocation_id", RELOPT_TYPE_OID,
+			 offsetof(YbParitionedTableOptions, colocation_id)},
+		};
+
+		return (bytea *) build_reloptions(reloptions, validate,
+										  RELOPT_KIND_PARTITIONED,
+										  sizeof(YbParitionedTableOptions),
+										  tab, lengthof(tab));
+	}
 	/*
 	 * There are no options for partitioned tables yet, but this is able to do
 	 * some validation.

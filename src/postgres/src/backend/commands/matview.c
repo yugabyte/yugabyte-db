@@ -515,7 +515,7 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 	 */
 	if (IsYBRelation(myState->transientrel))
 	{
-		/* YB_TODO(API for Slot) Wait for slot API */
+		/* YB_TODO(later) Wait for slot API */
 		bool shouldFree = true;
 		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 
@@ -523,6 +523,8 @@ transientrel_receive(TupleTableSlot *slot, DestReceiver *self)
 						 RelationGetDescr(myState->transientrel),
 						 tuple,
 						 ONCONFLICT_NONE);
+		if (shouldFree)
+			pfree(tuple);
 	}
 	else
 	{
