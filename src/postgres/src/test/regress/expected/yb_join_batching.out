@@ -125,13 +125,13 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a
 (17 rows)
 
 -- Batching on compound clauses
-/*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+/*+ Leading((p2 p1)) */ EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
                                         QUERY PLAN
 ------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
+ YB Batched Nested Loop Join (actual rows=5 loops=1)
    Join Filter: ((p1.a = p2.b) AND (p1.b = p2.a))
-   ->  Seq Scan on p2
-   ->  Index Scan using p1_pkey on p1
+   ->  Seq Scan on p2 (actual rows=200 loops=1)
+   ->  Index Scan using p1_pkey on p1 (actual rows=0 loops=67)
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.a), ROW($1, $4), ROW($2, $5)]))
 (5 rows)
 
