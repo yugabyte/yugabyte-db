@@ -10,7 +10,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
@@ -63,37 +63,18 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           }
 
           boolean isUniverseOnPremManualProvisioned = Util.isOnPremManualProvisioning(universe);
-
-          // Re-provisioning the nodes if ybc needs to be installed and systemd is already enabled
-          // to register newly introduced ybc service if it is missing in case old universes.
-          // We would skip ybc installation in case of manually provisioned systemd enabled
-          // on-prem
-          // universes as we may not have sudo permissions.
-          if (taskParams().installYbc
-              && !isUniverseOnPremManualProvisioned
-              && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
-            createSetupServerTasks(nodes.getRight(), param -> param.isSystemdUpgrade = true);
-          }
+          boolean reProvisionRequired =
+              taskParams().installYbc
+                  && !isUniverseOnPremManualProvisioned
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
-          createUpgradeTaskFlow(
-              (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(
-                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
-              nodes,
-              getUpgradeContext(),
-              false);
+          createUpgradeTaskFlowTasks(nodes, newVersion, reProvisionRequired);
 
           if (taskParams().installYbc) {
-            createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
-            // Start yb-controller process and wait for it to get responsive.
-            createStartYbcProcessTasks(
-                new HashSet<>(nodes.getRight()),
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
-            createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
-                .setSubTaskGroupType(getTaskSubGroupType());
+            createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);
           }
 
           createCheckSoftwareVersionTask(allNodes, newVersion);
