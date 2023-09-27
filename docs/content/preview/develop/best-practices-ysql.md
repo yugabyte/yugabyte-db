@@ -131,7 +131,7 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
-## Settings for ci/cd/integration-tests:
+## Settings for CI and CD integration tests
 Using YugabyteDB in (ci,cd,automated tests) scenarios we can set certain gflags to increase performance:
 
 1. Point gflag `--fs_data_dirs` & `--fs_wal_dirs` to a ramdisk directory. 
