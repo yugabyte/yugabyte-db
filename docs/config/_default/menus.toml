@@ -680,6 +680,33 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-voyager]]
+  name = "Export options"
+  parent = "yb-voyager-cli"
+  weight = 3
+  identifier = "export-cli"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Import options"
+  parent = "yb-voyager-cli"
+  weight = 4
+  identifier = "import-cli"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Live migration options"
+  parent = "yb-voyager-cli"
+  weight = 5
+  identifier = "live-migrate-cli"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus for stable
 
 [[stable]]

@@ -6,7 +6,7 @@ description: YugabyteDB Voyager export schema reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-export-schema
-    parent: export
+    parent: export-cli
     weight: 10
 type: docs
 ---

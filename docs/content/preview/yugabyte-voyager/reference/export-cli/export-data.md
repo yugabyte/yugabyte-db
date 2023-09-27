@@ -6,10 +6,18 @@ description: YugabyteDB Voyager export data reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-export-data
-    parent: export
+    parent: export-cli
     weight: 20
 type: docs
 ---
+
+
+This page describes the usage of the following export commands:
+
+- [export data](#export-data)
+- [export data status](#export-data-status)
+
+### export data
 
 For offline migration, export data [dumps](../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
@@ -64,4 +72,31 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --source-db-name dbname \
         --source-db-schema schemaName # Not applicable for MySQL
+```
+
+### export data status
+
+For offline migration, get the status report of an ongoing or completed data export operation.
+
+For live migration (and fall-forward), get the report of the ongoing export phase which includes metrics such as the number of rows exported in the snapshot phase, the total number of change events exported from the source, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count exported.
+
+#### Syntax
+
+```text
+Usage: yb-voyager export data status [ <arguments> ... ]
+```
+
+#### Arguments
+
+The valid *arguments* for export data status are described in the following table:
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
+| [-h, --help](#command-line-help) | Command line help. |
+
+#### Example
+
+```sh
+yb-voyager export data status --export-dir /path/to/yb/export/dir
 ```

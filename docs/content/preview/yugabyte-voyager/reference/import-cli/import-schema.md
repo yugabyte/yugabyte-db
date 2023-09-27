@@ -1,41 +1,43 @@
 ---
-title: import data reference
-headcontent: yb-voyager import data
-linkTitle: import data
-description: YugabyteDB Voyager import data reference
+title: import schema reference
+headcontent: yb-voyager import schema
+linkTitle: import schema
+description: YugabyteDB Voyager import schema reference
 menu:
   preview_yugabyte-voyager:
-    identifier: voyager-import-data
-    parent: voyager-import
-    weight: 60
+    identifier: voyager-import-schema
+    parent: import-cli
+    weight: 50
 type: docs
 ---
 
-For offline migration, [Import the data](../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
+[Import the schema](../../migrate/migrate-steps/#import-schema) to the YugabyteDB database.
 
-For live migration (and fall-forward), the command [imports the data](../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
+During migration, run the import schema command twice, first without the [--post-import-data](#post-import-data) argument and then with the argument. The second invocation creates indexes and triggers in the target schema, and must be done after [import data](../../migrate/migrate-steps/#import-data) is complete.
+
+{{< note title="For Oracle migrations" >}}
+
+For Oracle migrations using YugabyteDB Voyager v1.1 or later, the Orafce extension is installed on the target database by default. This enables you to use a subset of predefined functions, operators, and packages from Oracle. The extension is installed in the public schema, and when listing functions or views, extra objects will be visible on the target database which may confuse you. You can remove the extension using the [DROP EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_drop_extension) command.
+
+{{< /note >}}
 
 #### Syntax
 
 ```text
-yb-voyager import data [ <arguments> ... ]
+Usage: yb-voyager import schema [ <arguments> ... ]
 ```
 
 #### Arguments
 
-The valid *arguments* for import data are described in the following table:
+The valid *arguments* for import schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--disable-pb](#disable-pb) | Hide progress bars. |
-| [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
-| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
 | [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | [-h, --help](#command-line-help) | Command line help. |
-| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+|  [--post-import-data](#post-import-data) | Imports indexes and triggers in the YugabyteDB database after data import is complete. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory. If any table on the YugabyteDB database is not empty, you are prompted to continue the import without truncating those tables. If you continue, yb-voyager starts ingesting the data present in the data files with upsert mode, and for cases where a table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
+| [--start-clean](#start-clean) | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -51,19 +53,19 @@ The valid *arguments* for import data are described in the following table:
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 <!-- To do : document the following arguments with description
-| --continue-on-error |
-| --enable-upsert |
-| --target-endpoints |
-| --use-public-ip | -->
+--continue-on-error
+--exclude-object-list
+--ignore-exist
+--object-list string
+--refresh-mviews
+--straight-order -->
 #### Example
 
 ```sh
-yb-voyager import data --export-dir /path/to/yb/export/dir \
+yb-voyager import schema --export-dir /path/to/yb/export/dir \
         --target-db-host hostname \
         --target-db-user username \
         --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name dbname \
-        --target-db-schema schemaName \ # MySQL and Oracle only
-        --parallel-jobs connectionCount
+        --target-db-schema schemaName # MySQL and Oracle only
 ```
-

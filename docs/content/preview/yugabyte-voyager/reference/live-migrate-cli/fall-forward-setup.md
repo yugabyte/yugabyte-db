@@ -6,7 +6,7 @@ description: YugabyteDB Voyager fall-forward setup reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-fall-forward-setup
-    parent: yb-voyager-cli
+    parent: live-migrate-cli
     weight: 90
 type: docs
 ---
