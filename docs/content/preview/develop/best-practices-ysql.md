@@ -105,7 +105,7 @@ For more details, see [Connection pooling](../../drivers-orms/smart-drivers/#con
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions but without many of their limitations. 
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. 
 As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 {{<tip>}}
