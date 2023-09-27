@@ -156,3 +156,16 @@ In single AZ deployments, you need to set the [yb-tserver](../../reference/confi
 ## TRUNCATE tables instead of DELETE
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
+
+## Settings for CI and CD integration tests
+You can set certain gflags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
+
+- Point the gflags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation and deletion faster, ensuring that data is not written to disk.
+This will make DML,DDL and create,destroy a cluster faster because data will not be written to disk
+- Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YCQL tables, and writing or reading small amounts of data.
+Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
+- Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
+Colocation will lower overhead when creating/dropping YSQL tables and writing,reading small amounts of data 
+- Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance. 
+For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
+- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases. 
