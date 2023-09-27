@@ -298,6 +298,32 @@ delete from t2 where id > 2 returning id, name;
 (3 rows)
 
 -- YB_TODO: There's some issue with drop table
+-- COPY FROM
+CREATE TABLE myemp (id int primary key, name text);
+COPY myemp FROM stdin;
+SELECT * from myemp;
+ id | name 
+----+------
+  1 | a
+  2 | b
+(2 rows)
+
+CREATE TABLE myemp2(id int primary key, name text) PARTITION BY range(id);
+CREATE TABLE myemp2_1_100 PARTITION OF myemp2 FOR VALUES FROM (1) TO (100);
+CREATE TABLE myemp2_101_200 PARTITION OF myemp2 FOR VALUES FROM (101) TO (200);
+COPY myemp2 FROM stdin;
+SELECT * from myemp2_1_100;
+ id | name 
+----+------
+  1 | a
+(1 row)
+
+SELECT * from myemp2_101_200;
+ id  | name 
+-----+------
+ 102 | b
+(1 row)
+
 -- Adding PK
 create table test (id int);
 insert into test values (1);

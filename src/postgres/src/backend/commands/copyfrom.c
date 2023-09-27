@@ -55,6 +55,7 @@
 
 /* Yugabyte includes */
 #include "executor/ybcModifyTable.h"
+#include "utils/builtins.h"
 
 /*
  * No more than this many tuples per CopyMultiInsertBuffer
@@ -329,7 +330,7 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 	 * table_multi_insert may leak memory, so switch to short-lived memory
 	 * context before calling it.
 	 */
-	/* YB_REVIEW(neil) Revisit later. */
+	/* YB_TODO(review) Revisit later. */
 	oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 	if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 		YBCTupleTableMultiInsert(resultRelInfo, slots, nused, estate);
@@ -559,8 +560,7 @@ CopyFrom(CopyFromState cstate)
 	bool		leafpart_use_multi_insert = false;
 
 	/* Yb variables */
-	bool		useYBMultiInsert;
-	bool		useNonTxnInsert;
+	bool useNonTxnInsert = false;
 	bool		has_more_tuples;
 
 	Assert(cstate->rel);
@@ -841,29 +841,26 @@ CopyFrom(CopyFromState cstate)
 		 * flag that we must later determine if we can use bulk-inserts for
 		 * the partition being inserted into.
 		 */
-		useYBMultiInsert = IsYBRelation(resultRelInfo->ri_RelationDesc);
 		if (proute)
 			insertMethod = CIM_MULTI_CONDITIONAL;
 		else
 			insertMethod = CIM_MULTI;
-
-		CopyMultiInsertInfoInit(&multiInsertInfo, resultRelInfo, cstate,
-								estate, mycid, ti_options);
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+			CopyMultiInsertInfoInit(&multiInsertInfo, resultRelInfo, cstate,
+									estate, mycid, ti_options);
 	}
 
-	/*
-	 * Only use non-txn insert if it's explicitly enabled, the relation meets criteria for
-	 * multi insert (e.g. no triggers), and the relation does not have secondary indices.
-	 */
-	if (YBIsNonTxnCopyEnabled() &&
-		useYBMultiInsert &&
-		!YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 	{
-		useNonTxnInsert = true;
-	}
-	else
-	{
-		useNonTxnInsert = false;
+		/*
+		 * Only use non-txn insert if it's explicitly enabled, the relation
+		 * meets criteria for multi insert (e.g. no triggers), and the relation
+		 * does not have secondary indices.
+		 */
+		if (YBIsNonTxnCopyEnabled() && insertMethod != CIM_SINGLE &&
+			!YBCRelInfoHasSecondaryIndices(resultRelInfo))
+			useNonTxnInsert = true;
+		insertMethod = CIM_YB;
 	}
 
 	/*
@@ -872,7 +869,8 @@ CopyFrom(CopyFromState cstate)
 	 * one, even if we might batch insert, to read the tuple in the root
 	 * partition's form.
 	 */
-	if (insertMethod == CIM_SINGLE || insertMethod == CIM_MULTI_CONDITIONAL)
+	if (insertMethod == CIM_SINGLE || insertMethod == CIM_MULTI_CONDITIONAL ||
+		insertMethod == CIM_YB)
 	{
 		singleslot = table_slot_create(resultRelInfo->ri_RelationDesc,
 									   &estate->es_tupleTable);
@@ -920,24 +918,26 @@ CopyFrom(CopyFromState cstate)
 			break;
 	}
 
+	if (!has_more_tuples)
+		goto yb_no_more_tuples;
+
+yb_process_more_batches:
 	/*
 	 * When batch size is not provided from the query option,
 	 * default behavior is to read each line from the file
 	 * until no more lines are left. If batch size is provided,
 	 * lines will be read in batch sizes at a time.
 	 */
-yb_process_more_batches:
 	for (int i = 0; cstate->opts.batch_size == 0 || i < cstate->opts.batch_size; i++)
 	{
-		TupleTableSlot *myslot;
-		bool		skip_tuple;
-
 		if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 			MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
+		TupleTableSlot *myslot;
+		bool		skip_tuple;
+
 		CHECK_FOR_INTERRUPTS();
 
-		/* YB_REVIEW(neil) Find equivalent code for (nBufferedTuples == 0) */
 		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
 		{
 			/*
@@ -948,7 +948,7 @@ yb_process_more_batches:
 		}
 
 		/* select slot to (initially) load row into */
-		if (insertMethod == CIM_SINGLE || proute)
+		if (insertMethod == CIM_SINGLE || proute || insertMethod == CIM_YB)
 		{
 			myslot = singleslot;
 			Assert(myslot != NULL);
@@ -972,8 +972,9 @@ yb_process_more_batches:
 		ExecClearTuple(myslot);
 
 		/* Directly store the values/nulls array in the slot */
-		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values, myslot->tts_isnull,
-									   true /* skip_row */);
+		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values,
+									   myslot->tts_isnull,
+									   false /* skip_row */);
 		if (!has_more_tuples)
 			break;
 
@@ -1074,7 +1075,8 @@ yb_process_more_batches:
 			 * rowtype.
 			 */
 			map = resultRelInfo->ri_RootToPartitionMap;
-			if (insertMethod == CIM_SINGLE || !leafpart_use_multi_insert)
+			if (insertMethod == CIM_SINGLE || !leafpart_use_multi_insert ||
+				insertMethod == CIM_YB)
 			{
 				/* non batch insert */
 				if (map != NULL)
@@ -1201,11 +1203,18 @@ yb_process_more_batches:
 					List	   *recheckIndexes = NIL;
 
 					/* OK, store the tuple */
-					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+					if (insertMethod == CIM_YB)
 					{
-						/* YB_REVIEW(neil) Change executor to work with slot */
+						/*YB_TODO(later): Remove the conversion to heap tuple.*/
 						TupleDesc tupDesc = RelationGetDescr(cstate->rel);
-						HeapTuple tuple = ExecCopySlotHeapTuple(myslot);
+						bool shouldFree = true;
+						HeapTuple tuple =
+							ExecFetchSlotHeapTuple(myslot, true, &shouldFree);
+
+						/* Update the tuple with table oid */
+						myslot->tts_tableOid =
+							RelationGetRelid(resultRelInfo->ri_RelationDesc);
+						tuple->t_tableOid = myslot->tts_tableOid;
 						if (useNonTxnInsert)
 						{
 							YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
@@ -1220,6 +1229,10 @@ yb_process_more_batches:
 											 tuple,
 											 cstate->opts.on_conflict_action);
 						}
+						ItemPointerCopy(&tuple->t_self, &myslot->tts_tid);
+
+						if (shouldFree)
+							pfree(tuple);
 					}
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
 					{
@@ -1246,17 +1259,18 @@ yb_process_more_batches:
 						/* OK, store the tuple and create index entries for it */
 						table_tuple_insert(resultRelInfo->ri_RelationDesc,
 										   myslot, mycid, ti_options, bistate);
-
-						if (resultRelInfo->ri_NumIndices > 0)
-							recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
-																   myslot,
-																   estate,
-																   false,
-																   false,
-																   NULL,
-																   NIL,
-																   NIL /* no_update_index_list */);
 					}
+
+					/*YB_TODO(review): Moved it out of above else block so that is it executed for YB relations too. */
+					if (resultRelInfo->ri_NumIndices > 0)
+						recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
+															   myslot,
+															   estate,
+															   false,
+															   false,
+															   NULL,
+															   NIL,
+															   NIL);
 
 					/* AFTER ROW INSERT Triggers */
 					ExecARInsertTriggers(estate, resultRelInfo, myslot,
@@ -1267,21 +1281,19 @@ yb_process_more_batches:
 			}
 
 			/*
-			 * Free context per row.
-			 */
-			if (IsYBRelation(cstate->rel))
-				ResetPerTupleExprContext(estate);
-
-			/*
 			 * We count only tuples not suppressed by a BEFORE INSERT trigger
 			 * or FDW; this is the same definition used by nodeModifyTable.c
 			 * for counting tuples inserted by an INSERT command.  Update
 			 * progress of the COPY command as well.
 			 */
-			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
-										 ++processed);
-			pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
+			++processed;
 		}
+
+		/*
+		 * Free context per row.
+		 */
+		if (IsYBRelation(cstate->rel))
+			ResetPerTupleExprContext(estate);
 	}
 
 	if (cstate->opts.batch_size > 0)
@@ -1301,6 +1313,8 @@ yb_process_more_batches:
 
 		/* Update progress of the COPY command as well.
 		 */
+		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 		YBInitializeTransaction();
 
 		/* Start a new AFTER trigger */
@@ -1310,13 +1324,18 @@ yb_process_more_batches:
 	{
 		/* We need to flush buffered operations so that error callback is executed */
 		YBFlushBufferedOperations();
+
+		/* Update progress of the COPY command as well */
+		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 	}
 
 	if (has_more_tuples)
 		goto yb_process_more_batches;
 
+yb_no_more_tuples:
 	/* Flush any remaining buffered tuples */
-	if (insertMethod != CIM_SINGLE)
+	if (insertMethod != CIM_SINGLE && insertMethod != CIM_YB)
 	{
 		if (!CopyMultiInsertInfoIsEmpty(&multiInsertInfo))
 			CopyMultiInsertInfoFlush(&multiInsertInfo, NULL);
@@ -1345,7 +1364,7 @@ yb_process_more_batches:
 															  target_resultRelInfo);
 
 	/* Tear down the multi-insert buffer data */
-	if (insertMethod != CIM_SINGLE)
+	if (insertMethod != CIM_SINGLE && insertMethod != CIM_YB)
 		CopyMultiInsertInfoCleanup(&multiInsertInfo);
 
 	/* Close all the partitioned tables, leaf partitions, and their indices */
