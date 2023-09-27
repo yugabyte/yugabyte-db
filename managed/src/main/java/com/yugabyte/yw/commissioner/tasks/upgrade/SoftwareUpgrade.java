@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -95,34 +96,38 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           }
 
           boolean isUniverseOnPremManualProvisioned = Util.isOnPremManualProvisioning(universe);
-
-          // Re-provisioning the nodes if ybc needs to be installed and systemd is already enabled
-          // to register newly introduced ybc service if it is missing in case old universes.
-          // We would skip ybc installation in case of manually provisioned systemd enabled on-prem
-          // universes as we may not have sudo permissions.
-          if (taskParams().installYbc
-              && !isUniverseOnPremManualProvisioned
-              && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
-            createSetupServerTasks(nodes.getRight(), param -> param.isSystemdUpgrade = true);
-          }
+          boolean reProvisionRequired =
+              taskParams().installYbc
+                  && !isUniverseOnPremManualProvisioned
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
           createUpgradeTaskFlow(
-              (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(
-                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
+              (nodes1, processTypes) -> {
+                // Re-provisioning the nodes if ybc needs to be installed and systemd is already
+                // enabled
+                // to register newly introduced ybc service if it is missing in case old universes.
+                // We would skip ybc installation in case of manually provisioned systemd enabled
+                // on-prem
+                // universes as we may not have sudo permissions.
+                if (reProvisionRequired) {
+                  createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+                }
+                createSoftwareInstallTasks(
+                    nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+              },
               nodes,
               SOFTWARE_UPGRADE_CONTEXT,
               false);
 
           if (taskParams().installYbc) {
-            createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
+            createYbcSoftwareInstallTasks(
+                new ArrayList<>(allNodes), newVersion, getTaskSubGroupType());
             // Start yb-controller process and wait for it to get responsive.
             createStartYbcProcessTasks(
-                new HashSet<>(nodes.getRight()),
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+                allNodes, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
             createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
