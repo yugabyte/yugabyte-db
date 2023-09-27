@@ -57,6 +57,7 @@ import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -530,7 +531,9 @@ public class Universe extends Model {
   public NodeDetails getNodeByPrivateIP(String nodeIP) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
-      if (node.cloudInfo.private_ip.equals(nodeIP)) {
+      if (node.cloudInfo != null
+          && StringUtils.isNotBlank(node.cloudInfo.private_ip)
+          && node.cloudInfo.private_ip.equals(nodeIP)) {
         return node;
       }
     }
