@@ -138,7 +138,7 @@ You can set certain gflags to increase performance using YugabyteDB in CI and CD
 This will make DML,DDL and create,destroy a cluster faster because data will not be written to disk
 - Set the flag `--yb_num_shards_per_tserver=1`. Reducing the number of shards lowers overhead when creating or dropping YCQL tables, and writing or reading small amounts of data.
 Reducing the number of shards lowers overhead when creating,dropping YCQL tables and writing,reading small amounts of data
-3. Use colocated databases in YSQL. 
+- Use colocated databases in YSQL. Colocation lowers overhead when creating or dropping YSQL tables, and writing or reading small amounts of data.
 Colocation will lower overhead when creating/dropping YSQL tables and writing,reading small amounts of data 
 4. Set gflag `--replication_factor=1`.
 For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
