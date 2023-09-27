@@ -114,6 +114,23 @@ insert into t2 values (4), (5), (6);
 delete from t2 where id > 2 returning id, name;
 
 -- YB_TODO: There's some issue with drop table
+-- COPY FROM
+CREATE TABLE myemp (id int primary key, name text);
+COPY myemp FROM stdin;
+1	a
+2	b
+\.
+SELECT * from myemp;
+
+CREATE TABLE myemp2(id int primary key, name text) PARTITION BY range(id);
+CREATE TABLE myemp2_1_100 PARTITION OF myemp2 FOR VALUES FROM (1) TO (100);
+CREATE TABLE myemp2_101_200 PARTITION OF myemp2 FOR VALUES FROM (101) TO (200);
+COPY myemp2 FROM stdin;
+1	a
+102	b
+\.
+SELECT * from myemp2_1_100;
+SELECT * from myemp2_101_200;
 -- Adding PK
 create table test (id int);
 insert into test values (1);

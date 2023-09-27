@@ -887,12 +887,12 @@ DoCopyTo(CopyToState cstate)
 
 		scandesc = table_beginscan(cstate->rel, GetActiveSnapshot(), 0, NULL);
 		slot = table_slot_create(cstate->rel, NULL);
+		is_yb_relation = IsYBRelation(cstate->rel);
 
 		/*
 		 * Create and switch to a temporary memory context that we can reset
 		 * once per row to recover Yugabyte palloc'd memory.
 		 */
-		is_yb_relation = IsYBRelation(cstate->rel);
 		if (is_yb_relation)
 		{
 			yb_context = AllocSetContextCreate(GetCurrentMemoryContext(),
@@ -921,6 +921,16 @@ DoCopyTo(CopyToState cstate)
 			/* Free Yugabyte memory for this row */
 			if (is_yb_relation)
 				MemoryContextReset(yb_context);
+		}
+
+		/*
+		 * Switch out of and delete the temporary memory context for Yugabyte
+		 * palloc'd memory.
+		 */
+		if (is_yb_relation)
+		{
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextDelete(yb_context);
 		}
 
 		ExecDropSingleTupleTableSlot(slot);
