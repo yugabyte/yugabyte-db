@@ -9651,6 +9651,29 @@
       "required" : [ "roleResourceDefinitions" ],
       "type" : "object"
     },
+    "RoleFormData" : {
+      "description" : "Role form metadata",
+      "properties" : {
+        "description" : {
+          "description" : "Description of the role to be created",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name of the role to be created",
+          "type" : "string"
+        },
+        "permissionList" : {
+          "description" : "List of permissions given to the role",
+          "items" : {
+            "$ref" : "#/definitions/Permission"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "description", "name", "permissionList" ],
+      "type" : "object"
+    },
     "RoleResourceDefinition" : {
       "description" : "Role and resource group definition.",
       "properties" : {
@@ -19479,6 +19502,14 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "create role form data",
+          "in" : "body",
+          "name" : "RoleFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleFormData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -19579,6 +19610,14 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "edit role form data",
+          "in" : "body",
+          "name" : "RoleFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleFormData"
+          }
         } ],
         "responses" : {
           "200" : {
