@@ -137,12 +137,6 @@ std::vector<const PgColumn*> OrderColumns(const std::vector<PgColumn>& cols) {
       case to_underlying(PgSystemAttrNum::kYBTupleId):
         ybctidCol = &c;
         break;
-      #ifdef YB_TODO
-      // OID is a regular column PG15 onwards.
-      case to_underlying(PgSystemAttrNum::kObjectId):
-        objCol = &c;
-        break;
-      #endif
       default:
         if (attr > 0) {
           result.push_back(&c);
