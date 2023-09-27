@@ -142,4 +142,4 @@ Reducing the number of shards lowers overhead when creating,dropping YCQL tables
 Colocation will lower overhead when creating/dropping YSQL tables and writing,reading small amounts of data 
 - Set the flag `--replication_factor=1` for test scenarios, as keeping the data three way replicated (default) is not necessary. Reducing that to 1 reduces space usage and increases performance. 
 For these testing scenarios, perhaps the default of keeping the data 3-way replicated is not necessary. Reducing that down to 1 cuts space usage and increases perf.
-5. Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE` and `DROP TABLE` between test cases. 
+- Use `TRUNCATE table1,table2,table3..tablen;` instead of `CREATE TABLE`, and `DROP TABLE` between test cases. 
