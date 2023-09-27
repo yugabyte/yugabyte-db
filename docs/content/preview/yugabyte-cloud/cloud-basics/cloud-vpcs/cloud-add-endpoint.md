@@ -41,7 +41,6 @@ Setting up a private link to connect your cluster to your application VPC involv
 ## Limitations
 
 - Currently, PSEs are supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
-- Currently, PSEs must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
 - You can't use smart driver load balancing features when connecting to clusters over a private link. See [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/).
 
 ## Prerequisites
@@ -51,7 +50,7 @@ Before you can create a PSE, you need to do the following:
 1. Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc). Make sure your VPC is in the same region as the application VPC to which you will connect your endpoint.
 1. Deploy a YugabyteDB cluster in the VPC. Refer to [Create a cluster](../../create-clusters/).
 
-To use ybm CLI, you need to do the following:
+In addition, if you want to use [ybm CLI](../../../managed-automation/managed-cli/) to create PSEs, you need to do the following:
 
 - Create an API key. Refer to [API keys](../../../managed-automation/managed-apikeys/).
 - Install and configure ybm CLI. Refer to [Install and configure](../../../managed-automation/managed-cli/managed-cli-overview/).
