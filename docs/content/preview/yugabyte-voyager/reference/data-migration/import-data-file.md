@@ -6,7 +6,7 @@ description: YugabyteDB Voyager import data file reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-import-data-file
-    parent: import-cli
+    parent: data-migration
     weight: 70
 type: docs
 ---

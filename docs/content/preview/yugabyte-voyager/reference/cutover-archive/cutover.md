@@ -1,15 +1,20 @@
 ---
-title: cutover initiate reference
-headcontent: yb-voyager cutover initiate
-linkTitle: cutover initiate
-description: YugabyteDB Voyager cutover initiate reference
+title: cutover reference
+headcontent: yb-voyager cutover
+linkTitle: cutover
+description: YugabyteDB Voyager cutover reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-cutover-initiate
-    parent: live-migrate-cli
+    parent: cutover-archive
     weight: 110
 type: docs
 ---
+
+This page describes the usage of the following cutover commands:
+
+- [cutover initiate](#cutover-initiate)
+- [cutover status](#cutover-status)
 
 ### cutover initiate
 

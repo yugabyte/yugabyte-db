@@ -681,28 +681,37 @@
     hideLink = true
 
 [[preview_yugabyte-voyager]]
-  name = "Export options"
+  name = "Schema migration"
   parent = "yb-voyager-cli"
   weight = 3
-  identifier = "export-cli"
+  identifier = "schema-migration"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true
 
 [[preview_yugabyte-voyager]]
-  name = "Import options"
+  name = "Data migration"
   parent = "yb-voyager-cli"
   weight = 4
-  identifier = "import-cli"
+  identifier = "data-migration"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true
 
 [[preview_yugabyte-voyager]]
-  name = "Live migration options"
+  name = "Fall-forward"
   parent = "yb-voyager-cli"
   weight = 5
-  identifier = "live-migrate-cli"
+  identifier = "fall-forward"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true

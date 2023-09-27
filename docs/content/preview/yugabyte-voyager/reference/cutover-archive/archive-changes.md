@@ -6,7 +6,7 @@ description: YugabyteDB Voyager archive changes reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-archive-changes
-    parent: live-migrate-cli
+    parent: cutover-archive
     weight: 150
 type: docs
 ---

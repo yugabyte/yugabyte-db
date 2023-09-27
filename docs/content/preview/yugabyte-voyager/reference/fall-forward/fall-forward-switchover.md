@@ -6,10 +6,15 @@ description: YugabyteDB Voyager fall-forward switchover reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-fall-forward-switchover
-    parent: live-migrate-cli
+    parent: fall-forward
     weight: 130
 type: docs
 ---
+
+This page describes the usage of the following switchover commands:
+
+- [fall-forward switchover](#fall-forward-switchover)
+- [fall-forward status](#fall-forward-status)
 
 ### fall-forward switchover
 

@@ -6,10 +6,17 @@ description: YugabyteDB Voyager import data reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-import-data
-    parent: import-cli
+    parent: data-migration
     weight: 60
 type: docs
 ---
+
+This page describes the usage of the following import commands:
+
+- [import data](#import-data)
+- [import data status](#import-data-status)
+
+### import data
 
 For offline migration, [Import the data](../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 

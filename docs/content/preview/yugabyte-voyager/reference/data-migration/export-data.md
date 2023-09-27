@@ -6,7 +6,7 @@ description: YugabyteDB Voyager export data reference
 menu:
   preview_yugabyte-voyager:
     identifier: voyager-export-data
-    parent: export-cli
+    parent: data-migration
     weight: 20
 type: docs
 ---
