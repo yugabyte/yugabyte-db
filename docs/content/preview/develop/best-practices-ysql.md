@@ -39,6 +39,15 @@ Use [covering indexes](../../explore/indexes-constraints/covering-index-ysql/) t
 For more details, see [Avoid trips to the table with covering indexes](https://www.yugabyte.com/blog/multi-region-database-deployment-best-practices/#avoid-trips-to-the-table-with-covering-indexes).
 {{</tip>}}
 
+## Faster writes with partial indexes
+
+A partial index is an index that is built on a subset of a table and includes only rows that satisfy the condition 
+specified in the `WHERE` clause. This speeds up any writes to the table and reduces the size of the index, thereby improving speed for read queries that use the index.
+
+{{<tip>}}
+For more details, see [Partial indexes](../../explore/indexes-constraints/partial-index-ysql/).
+{{</tip>}}
+
 ## Distinct keys with unique indexes
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
