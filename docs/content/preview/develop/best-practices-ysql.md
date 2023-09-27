@@ -112,6 +112,20 @@ Set up different pools with different load balancing policies as needed for your
 For more details, see [Connection pooling](../../drivers-orms/smart-drivers/#connection-pooling).
 {{</tip>}}
 
+## Use YSQL Connection Manager
+
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. 
+As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+
+{{<tip>}}
+For more details, see:
+
+- [YSQL Connection Manager](../../explore/connection-manager/connection-mgr-ysql/)
+- [Built-in Connection Manager Turns Key  PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
+
+{{</tip>}}
+
+
 ## Re-use query plans with prepared statements
 
 Whenever possible, use [prepared statements](../../api/ysql/the-sql-language/statements/perf_prepare/) to ensure that YugabyteDB can re-use the same query plan and eliminate the need for a server to parse the query on each operation.
