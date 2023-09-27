@@ -132,11 +132,11 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
 
-## Number of tables
-Each table is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
+## Number of tables and indexes
+Each table and index is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
 
 ## Tablets per server
-Each table consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver#ysql_num_shards_per_tserver)
+Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver#ysql_num_shards_per_tserver)
 gflag. In a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL.
 You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
 We're actively working on [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
