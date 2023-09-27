@@ -40,7 +40,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
 
 -- Batching on compound clauses
-/*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+/*+ Leading((p2 p1)) */ EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 /*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
 explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
