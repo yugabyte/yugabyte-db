@@ -30,6 +30,8 @@ PLATFORM_DUMP_FNAME="platform_dump.sql"
 PLATFORM_DB_NAME="yugaware"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
 MIGRATION_BACKUP_DIR="migration_backup"
+VERSION_METADATA="version_metadata.json"
+VERSION_METADATA_BACKUP="version_metadata_backup.json"
 PYTHON_EXECUTABLE=""
 find_python_executable
 # This is the UID for nobody user which is used by the prometheus container as the default user.
@@ -348,16 +350,16 @@ create_backup() {
     # /opt/yugabyte/yugaware/version_metadata_backup.json in the container. We extract this file
     # from the container to our local machine for version checking.
 
-    version_path="/opt/yugabyte/yugaware/version_metadata_backup.json"
+    version_path="/opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
 
-    fl="version_metadata_backup.json"
 
     # Copy version_metadata_backup.json from container to local machine.
-    kubectl cp "${k8s_pod}:${version_path}" "${output_path}/${fl}" -n "${k8s_namespace}" -c yugaware
+    kubectl cp "${k8s_pod}:${version_path}" "${output_path}/${VERSION_METADATA_BACKUP}" \
+      -n "${k8s_namespace}" -c yugaware
 
     # Delete version_metadata_backup.json from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata_backup.json"
+      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
 
     echo "Copying backup from container"
     # Copy backup archive from container to local machine.
@@ -371,18 +373,24 @@ create_backup() {
     return
   fi
 
-  version_path=$(find ${data_dir} -wholename **/yugaware/conf/version_metadata.json)
 
-  if [ "$disable_version_check" != true ]
-  then
 
-  # At least keep some default as a worst case.
-  if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
-    version_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
-  fi
+  if [ "$disable_version_check" != true ]; then
 
-  command="cat ${version_path}"
-  docker_aware_cmd "yugaware" "${command}" > "${output_path}/version_metadata_backup.json"
+    metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
+    if [[ "${yba_installer}" = true ]]; then
+      version=$(basename $(realpath /opt/yugabyte/software/active))
+      metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
+    fi
+    version_path=$(find ${data_dir} -wholename ${metadata_regex})
+
+    # At least keep some default as a worst case.
+    if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
+      version_path="/opt/yugabyte/yugaware/conf/${VERSION_METADATA}"
+    fi
+
+    command="cp ${version_path} ${data_dir}/${VERSION_METADATA_BACKUP}"
+    docker_aware_cmd "yugaware" "${command}"
   fi
 
   if [[ "$exclude_releases" = true ]]; then
@@ -412,7 +420,8 @@ create_backup() {
   FIND_OPTIONS+=( $(printf " -o -path '%s'"  "**/data/keys/**" "**/data/provision/**" \
               "**/data/licenses/**"  "**/data/yb-platform/keys/**" "**/data/yb-platform/certs/**" \
               "**/swamper_rules/**" "**/swamper_targets/**" "**/prometheus/rules/**"  \
-              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" "${include_releases_flag}") )
+              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" \
+              "**/${VERSION_METADATA_BACKUP}" "${include_releases_flag}") )
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -463,23 +472,28 @@ restore_backup() {
     prometheus_dir_regex="${PROMETHEUS_SNAPSHOT_DIR}"
   fi
 
-  m_path=""
+  current_metadata_path=""
 
-  if [ -f ../../src/main/resources/version_metadata.json ]; then
+  if [ -f "../../src/main/resources/${VERSION_METADATA}" ]; then
 
-      m_path="../../src/main/resources/version_metadata.json"
+      current_metadata_path="../../src/main/resources/${VERSION_METADATA}"
 
   else
 
-      # The version_metadata.json file is always present in the container, so
-      # we don't need to check if the file exists before copying it to the output path.
-      m_path="/opt/yugabyte/yugaware/conf/version_metadata.json"
+      metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
+      if [[ "${yba_installer}" = true ]]; then
+        version=$(basename $(realpath /opt/yugabyte/software/active))
+        metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
+      fi
+      current_metadata_path=$(find ${destination} -wholename ${metadata_regex})
+
+      # At least keep some default as a worst case.
+      if [ ! -f ${current_metadata_path} ] || [ -z ${current_metadata_path} ]; then
+        current_metadata_path="/opt/yugabyte/yugaware/conf/${VERSION_METADATA}"
+      fi
 
   fi
 
-  input_path_rel=$(dirname ${input_path})
-  r_pth="${input_path_rel}/version_metadata_backup.json"
-  r_path_current="${input_path_rel}/version_metadata.json"
 
   # Perform K8s restore.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
@@ -521,11 +535,11 @@ restore_backup() {
 
     # Delete version_metadata_backup.json from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata_backup.json"
+      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA_BACKUP}"
 
     # Delete version_metadata.json from container (it already exists at conf folder)
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
-      /bin/bash -c "rm /opt/yugabyte/yugaware/version_metadata.json"
+      /bin/bash -c "rm /opt/yugabyte/yugaware/${VERSION_METADATA}"
 
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
@@ -533,38 +547,36 @@ restore_backup() {
     return
   fi
 
-  if [ "$disable_version_check" != true ]
-  then
-  command="cat ${m_path}"
+  if [ "$disable_version_check" != true ]; then
+    command="cat ${current_metadata_path}"
 
-  docker_aware_cmd "yugaware" "${command}" > "${input_path_rel}/version_metadata.json"
+    version_cmd="import json, sys; print(json.load(sys.stdin)[\"version_number\"])"
 
-  version_command="'import json, sys; print(json.load(sys.stdin)[\"version_number\"])'"
+    build_cmd="import json, sys; print(json.load(sys.stdin)[\"build_number\"])"
 
-  build_command="'import json, sys; print(json.load(sys.stdin)[\"build_number\"])'"
+    version=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
+    build=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
 
-  version="eval cat ${r_path_current} | ${PYTHON_EXECUTABLE} -c ${version_command}"
+    curr_platform_version=${version}-${build}
 
-  build="eval cat ${r_path_current} | ${PYTHON_EXECUTABLE} -c ${build_command}"
+    backup_metadata_path=$(tar -tzf ${input_path} | grep ${VERSION_METADATA_BACKUP})
+    tar -xzf ${input_path} ${backup_metadata_path}
+    # The version_metadata.json file is always present in a release package, and it would have
+    # been stored during create_backup(), so we don't need to check if the file exists before
+    # restoring it from the restore path.
+    backup_yba_version="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${version_cmd}"
+    backup_yba_build="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${build_cmd}"
+    back_plat_version=${backup_yba_version}-${backup_yba_build}
 
-  curr_platform_version=$(${version})-$(${build})
-
-  # The version_metadata.json file is always present in a release package, and it would have
-  # been stored during create_backup(), so we don't need to check if the file exists before
-  # restoring it from the restore path.
-  backup_yba_version="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command}"
-  backup_yba_build="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command}"
-  back_plat_version=${backup_yba_version}-${backup_yba_build}
-
-  if [ ${curr_platform_version} != ${back_plat_version} ]
-  then
-    echo "Your backups were created on a platform of version ${back_plat_version}, and you are
-    attempting to restore these backups on a platform of version ${curr_platform_version},
-    which is a mismatch. Please restore your platform instance exactly back to
-    ${back_plat_version} to proceed, or override this check by running the script with the
-    command line argument --disable_version_check true"
-    exit 1
-  fi
+    if [ ${curr_platform_version} != ${back_plat_version} ]
+    then
+      echo "Your backups were created on a platform of version ${back_plat_version}, and you are
+      attempting to restore these backups on a platform of version ${curr_platform_version},
+      which is a mismatch. Please restore your platform instance exactly back to
+      ${back_plat_version} to proceed, or override this check by running the script with the
+      command line argument --disable_version_check true"
+      exit 1
+    fi
   fi
 
   modify_service yb-platform stop
