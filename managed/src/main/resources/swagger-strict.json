@@ -51,27 +51,6 @@
       },
       "type" : "object"
     },
-    "AZOverrides" : {
-      "properties" : {
-        "cgroupSize" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
-        },
-        "instanceType" : {
-          "type" : "string"
-        },
-        "perProcess" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/OverridenDetails"
-          },
-          "type" : "object"
-        }
-      },
-      "type" : "object"
-    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -6122,6 +6101,80 @@
       "required" : [ "nodeAction" ],
       "type" : "object"
     },
+    "NodeAgent" : {
+      "description" : "Node agent details",
+      "properties" : {
+        "archType" : {
+          "description" : "Node agent host machine arch",
+          "enum" : [ "ARM64", "AMD64" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "config" : {
+          "$ref" : "#/definitions/Config",
+          "description" : "Node agent configuration",
+          "readOnly" : true
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "home" : {
+          "description" : "Node agent installation directory",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ip" : {
+          "description" : "Node agent server IP",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Node agent name",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "osType" : {
+          "description" : "Node agent host OS",
+          "enum" : [ "DARWIN", "LINUX" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "port" : {
+          "description" : "Node agent server port",
+          "format" : "int32",
+          "readOnly" : true,
+          "type" : "integer"
+        },
+        "state" : {
+          "description" : "Node agent state",
+          "enum" : [ "REGISTERING", "UPGRADE", "UPGRADED", "READY" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "updatedAt" : {
+          "description" : "Updated time",
+          "example" : "2022-12-21T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Node agent UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "version" : {
+          "description" : "Node agent installed version",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "NodeAgentApiFilter" : {
       "properties" : {
         "cloudType" : {
@@ -6854,21 +6907,6 @@
     "OnPremCloudInfo" : {
       "properties" : {
         "ybHomeDir" : {
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
-    "OverridenDetails" : {
-      "properties" : {
-        "cgroupSize" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "deviceInfo" : {
-          "$ref" : "#/definitions/DeviceInfo"
-        },
-        "instanceType" : {
           "type" : "string"
         }
       },
@@ -12366,9 +12404,6 @@
         "useTimeSync" : {
           "type" : "boolean"
         },
-        "userIntentOverrides" : {
-          "$ref" : "#/definitions/UserIntentOverrides"
-        },
         "ybSoftwareVersion" : {
           "type" : "string"
         },
@@ -12383,23 +12418,6 @@
         },
         "ysqlPassword" : {
           "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
-    "UserIntentOverrides" : {
-      "properties" : {
-        "azOverrides" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/AZOverrides"
-          },
-          "type" : "object"
-        },
-        "perProcess" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/OverridenDetails"
-          },
-          "type" : "object"
         }
       },
       "type" : "object"
