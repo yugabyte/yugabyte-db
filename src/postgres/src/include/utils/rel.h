@@ -726,4 +726,14 @@ RelationGetSmgr(Relation rel)
 extern void RelationIncrementReferenceCount(Relation rel);
 extern void RelationDecrementReferenceCount(Relation rel);
 
+/*
+ * YbParitionedTableOptions
+ *		Contents of rd_options for partitioned tables.
+ */
+typedef struct YbParitionedTableOptions
+{
+	int32		vl_len_;		/* varlena header (do not touch directly!) */
+	Oid 		colocation_id;
+} YbParitionedTableOptions;
+
 #endif							/* REL_H */
