@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -113,6 +114,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected GFlagsValidation mockGFlagsValidation;
   protected BackupHelper mockBackupHelper;
   protected PrometheusConfigManager mockPrometheusConfigManager;
+  protected YbcManager mockYbcManager;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -201,6 +203,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockReleaseManager = mock(ReleaseManager.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
     mockBackupHelper = mock(BackupHelper.class);
+    mockYbcManager = mock(YbcManager.class);
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
 
     return configureApplication(
@@ -239,6 +242,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
+                .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
