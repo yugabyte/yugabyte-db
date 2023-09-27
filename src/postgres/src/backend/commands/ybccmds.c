@@ -232,7 +232,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	ListCell  *cell;
 	IndexElem *index_elem;
 
-#ifdef NEIL_OID
+#ifdef YB_TODO
 	/* OID is now a regular column */
 	/* For tables created WITH (oids = true), we expect oid column to be the only PK. */
 	if (desc->tdhasoid)
