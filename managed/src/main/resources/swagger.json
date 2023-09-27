@@ -73,6 +73,7 @@
     "AWSRegionCloudInfo" : {
       "properties" : {
         "arch" : {
+          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
           "enum" : [ "x86_64", "aarch64" ],
           "type" : "string"
         },
@@ -83,7 +84,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "The AMI to be used in this region.",
+          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -1577,7 +1578,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "The AMI to be used in this region.",
+          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -4764,7 +4765,7 @@
           "type" : "string"
         },
         "ybImage" : {
-          "description" : "The AMI to be used in this region.",
+          "description" : "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, Use provider.imageBundle instead",
           "type" : "string"
         }
       },
@@ -5095,6 +5096,10 @@
     },
     "ImageBundle" : {
       "properties" : {
+        "active" : {
+          "description" : "Is the ImageBundle Active",
+          "type" : "boolean"
+        },
         "details" : {
           "$ref" : "#/definitions/ImageBundleDetails",
           "description" : "Image Bundle Details"
