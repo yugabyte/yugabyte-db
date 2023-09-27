@@ -51,13 +51,13 @@ You create the PSEs (one for each region) for your cluster on the cluster **Sett
 
 ### Use YugabyteDB Managed
 
-To create a PSE, do the following:
+To create or edit a PSE, do the following:
 
 1. Select your cluster.
 
 1. Navigate to **Settings > Network Access > Private Service Endpoint**.
 
-1. Click **Create Private Service Endpoint** to display the **Edit Private Service Endpoint** sheet.
+1. Click **Create Private Service Endpoint** or, to edit an existing PSE, **Edit Private Service Endpoint** to display the **Edit Private Service Endpoint** sheet.
 
 1. For each region in your cluster, provide the ARN of an AWS principal you want to grant access. For example, `arn:aws:iam::<aws account number>:root`.
 
