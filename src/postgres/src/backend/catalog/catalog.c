@@ -791,7 +791,7 @@ IsTableOidUnused(Oid table_oid,
 	collides = DoesOidExistInRelation(table_oid,
 									  pg_class,
 									  oidIndex,
-									  ObjectIdAttributeNumber);
+									  Anum_pg_class_oid);
 
 	if (!collides)
 	{

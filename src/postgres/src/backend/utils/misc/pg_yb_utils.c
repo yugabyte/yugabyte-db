@@ -256,10 +256,6 @@ YbIsTempRelation(Relation relation)
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
 	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped);
-#ifdef NEIL_OID
-			/* OID is now a regular column */
-	       || (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);
-#endif
 }
 
 bool IsYBSystemColumn(int attrNum)
