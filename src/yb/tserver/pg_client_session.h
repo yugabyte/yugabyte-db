@@ -39,6 +39,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/txn_cache.h"
 #include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/coding_consts.h"
@@ -101,15 +102,13 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
       PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-      PgSequenceCache* sequence_cache);
+      PgSequenceCache* sequence_cache, TransactionCache* txn_cache_);
 
   uint64_t id() const;
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
-
-  const TransactionId* GetTransactionId() const;
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
@@ -218,6 +217,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   PgMutationCounter* pg_node_level_mutation_counter_;
   PgResponseCache& response_cache_;
   PgSequenceCache& sequence_cache_;
+  TransactionCache& txn_cache_;
 
   std::array<SessionData, kPgClientSessionKindMapSize> sessions_;
   uint64_t txn_serial_no_ = 0;
