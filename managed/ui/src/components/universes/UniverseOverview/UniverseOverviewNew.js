@@ -38,6 +38,7 @@ import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlex
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -615,6 +616,11 @@ export default class UniverseOverviewNew extends Component {
           }
         ]
       : null;
+    const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
+    );
+    const useK8CustomResources = useK8CustomResourcesObject?.value === 'true';
+
     return (
       <StandaloneMetricsPanelContainer
         metricKey={metricKey}
@@ -638,7 +644,9 @@ export default class UniverseOverviewNew extends Component {
                 <DiskUsagePanel
                   metric={props.metric}
                   masterMetric={props.masterMetric}
+                  isKubernetes={isKubernetes}
                   isDedicatedNodes={isDedicatedNodes && !isKubernetes}
+                  useK8CustomResources={useK8CustomResources}
                   className={'disk-usage-container'}
                 />
               }
@@ -654,6 +662,10 @@ export default class UniverseOverviewNew extends Component {
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
     const subTab = isItKubernetesUniverse ? 'container' : 'server';
+    const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
+    );
+    const useK8CustomResources = useK8CustomResourcesObject?.value === 'true';
 
     return (
       <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>
@@ -679,6 +691,7 @@ export default class UniverseOverviewNew extends Component {
                     className={'disk-usage-container'}
                     isKubernetes={isItKubernetesUniverse}
                     isDedicatedNodes={isDedicatedNodes && !isItKubernetesUniverse}
+                    useK8CustomResources={useK8CustomResources}
                   />
                 }
               />
