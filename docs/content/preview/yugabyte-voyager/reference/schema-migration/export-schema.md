@@ -12,7 +12,7 @@ type: docs
 ---
 
 
-[Export the schema](../../migrate/migrate-steps/#export-and-analyze-schema) from the source database.
+[Export the schema](../../../migrate/migrate-steps/#export-and-analyze-schema) from the source database.
 
 #### Syntax
 
@@ -30,7 +30,7 @@ The valid *arguments* for export schema are described in the following table:
 | -h, --help | Command line help. |
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --send-diagnostics | Sends diagnostics information to Yugabyte. (default: true)|
 | --source-db-type <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
@@ -39,11 +39,11 @@ The valid *arguments* for export schema are described in the following table:
 | --source-db-port <port> | Port number of the source database machine. |
 | --source-db-schema <schemaName> | Schema name of the source database. |
 | --source-db-user <username> | Name of the source database user (typically `ybvoyager`). |
-| [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --start-clean | Starts a fresh schema export after clearing the `schema` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
 | --use-orafce | Use the Orafce extension. Oracle migrations only. (default: true) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. |

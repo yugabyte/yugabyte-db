@@ -44,7 +44,7 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | [Archive changes](#archive-changes) | Continuously archive migration changes to limit disk utilization. |
 | [Initiate cutover](#cut-over-to-a-database) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
-| [Wait for cutover to complete](#cut-over-to-a-database) | Monitor the wait status using the [cutover status](../../reference/yb-voyager-cli/#cutover-status) command. |
+| [Wait for cutover to complete](#cut-over-to-a-database) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#verify-migration) | Check if the live migration is successful. |
 
@@ -89,9 +89,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- [`--source-db-schema`](../../reference/yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../../reference/yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../../reference/yb-voyager-cli/#ssl-connectivity)
+- `--source-db-schema` (Schema name of the source database.)
+- `--oracle-db-sid` (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- `--oracle-tns-alias` (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
 
 ## Prepare the target database
@@ -192,7 +192,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
-Refer to [export schema](../../reference/yb-voyager-cli/#export-schema) for details about the arguments.
+Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
 #### Analyze schema
 
@@ -207,7 +207,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The preceding command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
+Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
 
 #### Manually edit the schema
 
@@ -247,7 +247,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-schema <TARGET_DB_SCHEMA>
 ```
 
-Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
@@ -293,9 +293,9 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
-- [--parallel-jobs](../../reference/yb-voyager-cli/#parallel-jobs) argument has no effect on live migration.
+- --parallel-jobs argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -314,7 +314,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
+Refer to [import data](../../reference/data-migration/import-data/) for details about the arguments.
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
@@ -337,7 +337,7 @@ Some important metrics such as the number of events, ingestion rate, and so on, 
 The entire import process is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
-[table-list](../../reference/yb-voyager-cli/#table-list) and [exclude-table-list](../../reference/yb-voyager-cli/#exclude-table-list) flags are not supported in live migration.
+[table-list](../../reference/data-migration/import-data/#arguments) and [exclude-table-list](../../reference/data-migration/import-data/#arguments) flags are not supported in live migration.
 {{< /note >}}
 
 {{< tip title="Importing large datasets" >}}
@@ -360,7 +360,7 @@ As the migration continuously exports changes on the source database to the `EXP
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
-Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes) for details about the arguments.
+Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
 
 ### Cut over to the target
 
@@ -377,7 +377,7 @@ Perform the following steps as part of the cutover process:
     yb-voyager cutover initiate --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate) for details about the arguments.
+    Refer to [cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
 
     The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
@@ -387,7 +387,7 @@ Perform the following steps as part of the cutover process:
     yb-voyager cutover status --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [cutover status](../../reference/yb-voyager-cli/#cutover-status) for details about the arguments.
+    Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
 ### Import indexes and triggers
 
@@ -405,7 +405,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-import-data
 ```
 
-Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 ### Verify migration
 

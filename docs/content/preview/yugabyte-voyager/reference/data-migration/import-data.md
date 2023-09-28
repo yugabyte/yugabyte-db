@@ -18,9 +18,9 @@ This page describes the usage of the following import commands:
 
 ### import data
 
-For offline migration, [Import the data](../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
+For offline migration, [Import the data](../../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 
-For live migration (and fall-forward), the command [imports the data](../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
+For live migration (and fall-forward), the command [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
 #### Syntax
 
@@ -49,11 +49,11 @@ The valid *arguments* for import data are described in the following table:
 | --target-db-port <port> | Port number of the target database machine. (default: 5433) |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
-| [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. |
 
@@ -78,7 +78,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
-For live migration, get the status report of [import data](#import-data). For live migration with fall forward, the report also includes the status of [fall forward setup](#fall-forward-setup). The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
+For live migration, get the status report of import data. For live migration with fall forward, the report also includes the status of fall forward setup. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
 #### Syntax
 
@@ -92,10 +92,10 @@ The valid *arguments* for import data status are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help. |
-| [target-db-password](#target-db-password) | Password of the target database. Live migrations only. |
-| [ff-db-password](#ff-db-password) | Password of the fall-forward database. Live migration with fall-forward only.  |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
+| -h, --help | Command line help. |
+| target-db-password | Password of the target database. Live migrations only. |
+| ff-db-password | Password of the fall-forward database. Live migration with fall-forward only. |
 
 #### Example
 

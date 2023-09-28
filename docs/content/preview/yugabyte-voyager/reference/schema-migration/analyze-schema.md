@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[Analyse the PostgreSQL schema](../../migrate/migrate-steps/#analyze-schema) dumped in the export schema step.
+[Analyse the PostgreSQL schema](../../../migrate/migrate-steps/#analyze-schema) dumped in the export schema step.
 
 #### Syntax
 

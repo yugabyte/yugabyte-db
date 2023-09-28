@@ -18,7 +18,7 @@ This page describes the usage of the following switchover commands:
 
 ### fall-forward switchover
 
-Initiate a switchover to the fall-forward database.
+Initiate a [switchover](../../../migrate/live-fall-forward/#switch-over-to-the-fall-forward-optional) to the fall-forward database.
 
 #### Syntax
 

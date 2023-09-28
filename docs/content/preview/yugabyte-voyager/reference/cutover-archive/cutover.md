@@ -18,7 +18,7 @@ This page describes the usage of the following cutover commands:
 
 ### cutover initiate
 
-Initiate cutover to the YugabyteDB database.
+Initiate [cutover](../../../migrate/live-migrate/#cut-over-to-the-target) to the YugabyteDB database.
 
 #### Syntax
 

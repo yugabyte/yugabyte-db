@@ -45,7 +45,7 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | --ff-ssl-root-cert | Fall-forward database SSL Root Certificate path. |
 | -h, --help | Command line help for setup. |
 | --oracle-home <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. (default: 1) |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (Default: true) |
 | --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on fall- forward database is non-empty, it prompts whether you want to continue the import without the truncating those tables; if yes, then yb-voyager starts ingesting the data present in the data files without upsert mode and for the cases where a table doesn't have a primary key, it may duplicate the data. So, in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |

@@ -19,9 +19,9 @@ This page describes the usage of the following export commands:
 
 ### export data
 
-For offline migration, export data [dumps](../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
-For [live migration](../../migrate/live-migrate/#export-data) (and [fall-forward](../../migrate/live-fall-forward/#export-data)), export data [dumps](../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
+For [live migration](../../../migrate/live-migrate/#export-data) (and [fall-forward](../../../migrate/live-fall-forward/#export-data)), export data [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
 #### Syntax
 
@@ -43,7 +43,7 @@ The valid *arguments* for export data are described in the following table:
 | -h, --help | Command line help. |
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
-| [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs <connectionCount> | Number of parallel jobs to extract data from source database. (Default: 4; exports 4 tables at a time by default.) If you use [BETA_FAST_DATA_EXPORT](../../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (default: true)|
 | --source-db-type <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
@@ -53,11 +53,11 @@ The valid *arguments* for export data are described in the following table:
 | --source-db-port <port> | Port number of the source database machine. (default: 5432 (PostgreSQL), 3306 (MySQL), and 1521 (Oracle)) |
 | --source-db-schema <schemaName> | Schema name of the source database. Not applicable for MySQL. For Oracle, you can specify only one schema name using this option. For PostgreSQL, you can specify a list of comma-separated schema names. Case-sensitive schema names are not yet supported. Refer to [Importing with case-sensitive schema names](../../../known-issues/general-issues/#importing-with-case-sensitive-schema-names) for more details. |
 | --source-db-user <username> | Username of the source database. |
-| [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
-| [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
-| [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
-| [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
+| [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
+| [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --start-clean | Starts a fresh data export after clearing all data from the `data` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. |
 
