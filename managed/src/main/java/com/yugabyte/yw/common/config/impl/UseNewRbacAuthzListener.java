@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import java.util.List;
 import javax.inject.Inject;
@@ -41,6 +42,11 @@ public class UseNewRbacAuthzListener implements RuntimeConfigChangeListener {
   @Override
   @Transactional()
   public void processGlobal() {
+    // Ensure all the built-in roles are present for each customer.
+    // This sync is required for the following case:
+    // Start YBA, add new customers, then turn on "yb.rbac.use_new_authz" runtime flag.
+    R__Sync_System_Roles.syncSystemRoles();
+
     List<Customer> customerList = Customer.getAll();
     for (Customer customer : customerList) {
       // Go through each customer.
