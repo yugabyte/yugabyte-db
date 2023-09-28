@@ -81,6 +81,8 @@ class TabletServerPathHandlers {
                               Webserver::WebResponse* resp);
   void HandleListMasterServers(const Webserver::WebRequest& req,
                                Webserver::WebResponse* resp);
+  void HandleTabletsJSON(const Webserver::WebRequest& req,
+                         Webserver::WebResponse* resp);
 
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,

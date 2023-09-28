@@ -601,6 +601,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleListMasterServers, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
+      "/api/v1/tablets", "Tablets",
+      std::bind(&TabletServerPathHandlers::HandleTabletsJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
       "/api/v1/xcluster", "xcluster",
       std::bind(&TabletServerPathHandlers::HandleXClusterJSON, this, _1, _2), false /* styled */,
       false /* is_on_nav_bar */);
@@ -1273,6 +1277,104 @@ void TabletServerPathHandlers::HandleXClusterJSON(
       jw.EndObject();
     }
     jw.EndArray();
+  }
+  jw.EndObject();
+}
+
+void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& req,
+                                                 Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  auto peers = tserver_->tablet_manager()->GetTabletPeers();
+  std::sort(peers.begin(), peers.end(), &CompareByTabletId);
+  jw.StartObject();
+
+  for (const std::shared_ptr<TabletPeer>& peer : peers) {
+    TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+    string id = status.tablet_id();
+    const auto& tablet = peer->shared_tablet();
+    string tablets_disk_size_html = GetOnDiskSizeInHtml(
+        yb::tablet::TabletOnDiskSizeInfo::FromPB(status)
+    );
+
+    const auto& tablet_metadata = peer->tablet_metadata();
+    string partition = tablet_metadata->partition_schema()
+                            ->PartitionDebugString(*peer->status_listener()->partition(),
+                                                   *tablet_metadata->schema());
+
+    uint64_t num_sst_files = (tablet) ? tablet->GetCurrentVersionNumSSTFiles() : 0;
+
+    // TODO: Would be nice to include some other stuff like memory usage.
+    shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
+
+    jw.String(id);
+    jw.StartObject();
+    jw.String("namespace");
+    jw.String(status.namespace_name());
+    jw.String("table_name");
+    jw.String(status.table_name());
+    jw.String("table_id");
+    jw.String(status.table_id());
+    jw.String("partition");
+    jw.String(partition);
+    jw.String("state");
+    jw.String(peer->HumanReadableState());
+    jw.String("hidden");
+    jw.Bool(status.is_hidden());
+    jw.String("num_sst_files");
+    jw.Uint64(num_sst_files);
+    jw.String("on_disk_size");
+
+    jw.StartObject();
+    const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
+    jw.String("total_size");
+    jw.String(HumanReadableNumBytes::ToString(info.sum_on_disk_size));
+    jw.String("total_size_bytes");
+    jw.Uint64(info.sum_on_disk_size);
+    jw.String("consensus_metadata_size");
+    jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
+    jw.String("consensus_metadata_size_bytes");
+    jw.Uint64(info.consensus_metadata_disk_size);
+    jw.String("wal_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.wal_files_disk_size));
+    jw.String("wal_files_size_bytes");
+    jw.Uint64(info.wal_files_disk_size);
+    jw.String("sst_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.sst_files_disk_size));
+    jw.String("sst_files_size_bytes");
+    jw.Uint64(info.sst_files_disk_size);
+    jw.String("uncompressed_sst_files_size");
+    jw.String(HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size));
+    jw.String("uncompressed_sst_files_size_bytes");
+    jw.Uint64(info.uncompressed_sst_files_disk_size);
+    jw.EndObject();
+
+    jw.String("raft_config");
+    jw.StartArray();
+    if (consensus) {
+        const ConsensusStatePB& cstate =
+            consensus.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+        std::vector<RaftPeerPB> sorted_peers;
+        sorted_peers.assign(cstate.config().peers().begin(), cstate.config().peers().end());
+        std::sort(sorted_peers.begin(), sorted_peers.end(), &CompareByMemberType);
+        for (const RaftPeerPB& peer : sorted_peers) {
+          jw.StartObject();
+          std::string peer_addr_or_uuid = !peer.last_known_private_addr().empty()
+              ? peer.last_known_private_addr()[0].host()
+              : peer.permanent_uuid();
+          peer_addr_or_uuid = EscapeForHtmlToString(peer_addr_or_uuid);
+          string role_name = PeerRole_Name(GetConsensusRole(peer.permanent_uuid(), cstate));
+          jw.String(role_name);
+          jw.String(peer_addr_or_uuid);
+          jw.EndObject();
+        }
+    }
+    jw.EndArray();
+    jw.String("status");
+    jw.String(status.last_status());
+    jw.EndObject();
   }
   jw.EndObject();
 }
