@@ -385,7 +385,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         expected_deadlock_status);
     if (did_abort_txn) {
       context_.NotifyAbortedTransactionIncrement(id());
-      context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
+      context_.EnqueueRemoveUnlocked(
+          id(), RemoveReason::kStatusReceived, &min_running_notifier, expected_deadlock_status);
     }
 
     time_of_status = last_known_status_hybrid_time_;
@@ -506,7 +507,9 @@ void RunningTransaction::AbortReceived(const Status& status,
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set,
           result->expected_deadlock_status)) {
         context_.NotifyAbortedTransactionIncrement(id());
-        context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
+        context_.EnqueueRemoveUnlocked(
+            id(), RemoveReason::kAbortReceived, &min_running_notifier,
+            result->expected_deadlock_status);
       }
     }
   }
@@ -565,7 +568,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::lock_guard lock(context_.mutex_);
-    context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
+    context_.RemoveUnlocked(
+        id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }
 
