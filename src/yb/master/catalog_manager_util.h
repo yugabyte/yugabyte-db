@@ -22,6 +22,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/ts_descriptor.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
@@ -175,6 +177,11 @@ class CatalogManagerUtil {
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
+
+  static bool RetainTablet(
+      const google::protobuf::RepeatedPtrField<std::string>& retaininng_snapshot_schedules,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time,
+      HybridTime hide_hybrid_time, const TabletId& tablet_id);
 
  private:
   CatalogManagerUtil();

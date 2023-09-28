@@ -311,12 +311,14 @@ TEST_F(BackupTxnTest, ImportMeta) {
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
                                            table_.table()->GetPartitionCount()));
 
-  ASSERT_OK(client_->DeleteTable(kTableName));
-  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
-
   auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots(
       snapshot_id, ListDeleted::kFalse, PrepareForBackup::kTrue));
   ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
+  ASSERT_OK(client_->DeleteTable(kTableName));
+  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 
   auto import_data = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshots[0]));
 

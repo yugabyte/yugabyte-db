@@ -3240,14 +3240,13 @@ Status CatalogManager::DeleteNotServingTablet(
 
   auto schedules_to_tables_map = VERIFY_RESULT(
       MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
-  RepeatedBytes retained_by_snapshot_schedules;
+  RepeatedBytes retaining_snapshot_schedules;
   FillRetainedBySnapshotSchedules(
-      schedules_to_tables_map, table_info->id(), &retained_by_snapshot_schedules);
-
+      schedules_to_tables_map, table_info->id(), &retaining_snapshot_schedules);
   return DeleteTabletListAndSendRequests(
       {tablet_info}, "Not serving tablet deleted upon request at " + LocalTimeAsString(),
-      retained_by_snapshot_schedules, table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE,
-      epoch);
+      retaining_snapshot_schedules, table_info->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE,
+      epoch, snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_id));
 }
 
 Status CatalogManager::DdlLog(
@@ -6188,11 +6187,11 @@ Status CatalogManager::DeleteTableInternal(
 
   for (const auto& table : tables) {
     LOG(INFO) << "Deleting table: " << table.info->name() << ", retained by: "
-              << AsString(table.retained_by_snapshot_schedules, &Uuid::TryFullyDecode);
+              << AsString(table.retained_by_snapshot_schedules, &Uuid::TryFullyDecode)
+              << ", has active snapshots " << table.active_snapshot;
 
     // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(
-        DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules, epoch));
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, epoch));
     auto colocated_tablet = table.info->GetColocatedUserTablet();
     if (colocated_tablet) {
       // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
@@ -6200,7 +6199,7 @@ Status CatalogManager::DeleteTableInternal(
       RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
-      if (table.retained_by_snapshot_schedules.empty()) {
+      if (table.retained_by_snapshot_schedules.empty() && !table.active_snapshot) {
         LOG(INFO) << "Notifying tablet with id "
                   << colocated_tablet->tablet_id()
                   << " to remove this colocated table " << table.info->name()
@@ -6210,8 +6209,8 @@ Status CatalogManager::DeleteTableInternal(
         table.info->AddTask(call);
         WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
       } else {
-        // Hide this table if it is covered by some schedule.
-        {
+        // Set the snapshot schedules that prevented the table from getting deleted.
+        if (!table.retained_by_snapshot_schedules.empty()) {
           auto tablet_lock = colocated_tablet->LockForWrite();
 
           *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
@@ -6308,7 +6307,8 @@ Status CatalogManager::DeleteTableInMemory(
     .info = table,
     .write_lock = table->LockForWrite(),
     .retained_by_snapshot_schedules = RepeatedBytes(),
-    .remove_from_name_map = false
+    .remove_from_name_map = false,
+    .active_snapshot = false
   };
   auto& l = data.write_lock;
   // table_id for the requested table will be added to the end of the response.
@@ -6321,7 +6321,21 @@ Status CatalogManager::DeleteTableInMemory(
 
   FillRetainedBySnapshotSchedules(
       schedules_to_tables_map, table->id(), &data.retained_by_snapshot_schedules);
-  bool hide_only = !data.retained_by_snapshot_schedules.empty();
+  // If even one tablet has an active snapshot then hide the table.
+  // Potential optimization opportunity:
+  // For colocated tables, the following scenario could happen.
+  // 1. Snapshot has colocated tables t1, t2 and t3.
+  // 2. User created t4 after snaphsot is complete.
+  // 3. User dropped t4, ideally we can delete this table (instead of hiding)
+  // but the below logic will hide it instead. This is ok from a correctness
+  // standpoint but can be a potential optimization worth considering especially
+  // if the table occupies a lot of space on disk and/or snapshot is long lived.
+  auto tablets = table->GetTablets(IncludeInactive::kFalse);
+  data.active_snapshot = std::any_of(tablets.begin(), tablets.end(),
+    [this](const auto& tablet) {
+      return snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->tablet_id());
+  });
+  bool hide_only = !data.retained_by_snapshot_schedules.empty() || data.active_snapshot;
 
   if (l->started_deleting() || (hide_only && l->started_hiding())) {
     if (cascade_delete_index) {
@@ -7482,6 +7496,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
         table->mutable_colocated_info()->set_parent_table_id(ltm->pb.parent_table_id());
       }
     }
+    table->set_hidden(ltm->is_hidden());
   }
   return Status::OK();
 }
@@ -9384,7 +9399,16 @@ Status CatalogManager::DeleteYsqlDBTables(
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &[table, lock] : tables) {
     // TODO(pitr) undelete for YSQL tables
-    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, {}, epoch));
+    // We don't retain tables dropped due to a drop database even if there are
+    // active snapshots covering it.
+    DeletingTableData table_data = {
+      .info = table,
+      .write_lock = table->LockForWrite(),
+      .retained_by_snapshot_schedules = {},
+      .remove_from_name_map = false,
+      .active_snapshot = false
+    };
+    RETURN_NOT_OK(DeleteTabletsAndSendRequests(table_data, epoch));
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
@@ -10581,8 +10605,8 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<Tabl
 }
 
 Status CatalogManager::DeleteTabletsAndSendRequests(
-    const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules,
-    const LeaderEpoch& epoch) {
+    const DeletingTableData& table_data, const LeaderEpoch& epoch) {
+  TableInfoPtr table = table_data.info;
   // Silently fail if tablet deletion is forbidden so table deletion can continue executing.
   if (!CheckIfForbiddenToDeleteTabletOf(table).ok()) {
     return Status::OK();
@@ -10596,8 +10620,8 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
 
   string deletion_msg = "Table deleted at " + LocalTimeAsString();
   RETURN_NOT_OK(DeleteTabletListAndSendRequests(
-      tablets, deletion_msg, retained_by_snapshot_schedules,
-      table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE, epoch));
+      tablets, deletion_msg, table_data.retained_by_snapshot_schedules,
+      table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE, epoch, table_data.active_snapshot));
 
   if (table->IsColocatedDbParentTable()) {
     LockGuard lock(mutex_);
@@ -10613,8 +10637,8 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
 
 Status CatalogManager::DeleteTabletListAndSendRequests(
     const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-    const google::protobuf::RepeatedPtrField<std::string>& retained_by_snapshot_schedules,
-    bool transaction_status_tablets, const LeaderEpoch& epoch) {
+    const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
+    bool transaction_status_tablets, const LeaderEpoch& epoch, const bool active_snapshot) {
   struct TabletData {
     TabletInfoPtr tablet;
     TabletInfo::WriteLock lock;
@@ -10635,8 +10659,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
         tablets_data.push_back(TabletData {
           .tablet = tablet,
           .lock = tablet->LockForWrite(),
-          // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
-          .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
+          .hide_only = HideOnly(!retaining_snapshot_schedules.empty() || active_snapshot),
         });
 
         if (!tablets_data.back().hide_only &&
@@ -10682,8 +10705,10 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
       if (tablet_data.hide_only) {
         LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
         tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
-        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-            retained_by_snapshot_schedules;
+        if (!retaining_snapshot_schedules.empty()) {
+          *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+              retaining_snapshot_schedules;
+        }
       } else {
         LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
         if (!transaction_status_tablets) {
@@ -10728,7 +10753,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
         auto tablet_lock = tablet->LockForRead();
         const auto& children = tablet_lock->pb.split_tablet_ids();
         if (children.size() < 2) {
-          // We are hiding this tablet for PITR and not for xCluster.
+          // We are hiding this tablet for PITR/Snapshots and not for xCluster.
           continue;
         }
         HiddenReplicationParentTabletInfo info {

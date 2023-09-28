@@ -2393,7 +2393,8 @@ Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnap
 }
 
 Status ClusterAdminClient::CreateSnapshot(
-    const vector<YBTableName>& tables, const bool add_indexes, const int flush_timeout_secs) {
+    const vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
+    const bool add_indexes, const int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
         const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
         if (status.IsTimedOut()) {
@@ -2413,6 +2414,11 @@ Status ClusterAdminClient::CreateSnapshot(
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
     req.set_transaction_aware(true);
+    if (retention_duration_hours && *retention_duration_hours <= 0) {
+      req.set_retention_duration_hours(-1);
+    } else if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
 
@@ -2420,7 +2426,8 @@ Status ClusterAdminClient::CreateSnapshot(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateNamespaceSnapshot(
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours) {
   ListTablesResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListTablesRequestPB req;
@@ -2460,7 +2467,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
                 YQLDatabase_Name(table.namespace_().database_type())));
   }
 
-  return CreateSnapshot(tables, /* add_indexes */ false);
+  return CreateSnapshot(tables, retention_duration_hours, /* add_indexes */ false);
 }
 
 Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(

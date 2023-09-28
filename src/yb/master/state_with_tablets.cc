@@ -186,7 +186,7 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
   }
 }
 
-bool StateWithTablets::AllInState(SysSnapshotEntryPB::State state) {
+bool StateWithTablets::AllInState(SysSnapshotEntryPB::State state) const {
   for (const auto& tablet : tablets_) {
     if (tablet.state != state) {
       return false;

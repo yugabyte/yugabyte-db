@@ -1299,17 +1299,27 @@ Status list_snapshots_action(
 }
 
 const auto create_snapshot_args =
-    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)";
+    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)"
+    "[<retention_duration_hours>] (set a <= 0 value to retain the snapshot forever. If not "
+    "specified then takes the default value controlled by gflag default_snapshot_retention_hours)";
 Status create_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   int timeout_secs = 60;
+  std::optional<int32_t> retention_duration_hours;
+  bool timeout_set = false;
   const auto tables = VERIFY_RESULT(ResolveTableNames(
-      client, args.begin(), args.end(), [&timeout_secs](auto i, const auto& end) -> Status {
-        if (std::next(i) == end) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
-          return Status::OK();
+      client, args.begin(), args.end(), [&](auto i, const auto& end) -> Status {
+        for (auto curr_it = i; curr_it != end; ++curr_it) {
+          if (!timeout_set) {
+            timeout_secs = VERIFY_RESULT(CheckedStoi(*curr_it));
+            timeout_set = true;
+          } else if (!retention_duration_hours) {
+            retention_duration_hours = VERIFY_RESULT(CheckedStoi(*curr_it));
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
         }
-        return ClusterAdminCli::kInvalidArguments;
+        return Status::OK();
       }));
 
   for (auto table : tables) {
@@ -1320,7 +1330,8 @@ Status create_snapshot_action(
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateSnapshot(tables, true, timeout_secs),
+      client->CreateSnapshot(tables, retention_duration_hours,
+                             /* add_indexes */ true, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }
@@ -1418,11 +1429,17 @@ Status edit_snapshot_schedule_action(
   return PrintJsonResult(client->EditSnapshotSchedule(schedule_id, new_interval, new_retention));
 }
 
-const auto create_keyspace_snapshot_args = "[ycql.]<database_name>";
+const auto create_keyspace_snapshot_args = "[ycql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours)";
 Status create_keyspace_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 1) {
+  if (args.size() > 2) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+  std::optional<int32_t> retention_duration_hours;
+  if (args.size() == 2) {
+    retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[1]));
   }
 
   const TypedNamespaceName keyspace = VERIFY_RESULT(ParseNamespaceName(args[0]));
@@ -1431,16 +1448,23 @@ Status create_keyspace_snapshot_action(
       Format("Wrong keyspace type: $0", YQLDatabase_Name(keyspace.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(keyspace),
+      client->CreateNamespaceSnapshot(keyspace, retention_duration_hours),
       Format("Unable to create snapshot of keyspace: $0", keyspace.name));
   return Status::OK();
 }
 
-const auto create_database_snapshot_args = "[ysql.]<database_name>";
+const auto create_database_snapshot_args = "[ysql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+
+  std::optional<int32_t> retention_duration_hours;
+  if (args.size() == 2) {
+    retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[1]));
   }
 
   const TypedNamespaceName database =
@@ -1450,7 +1474,7 @@ Status create_database_snapshot_action(
       Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(database),
+      client->CreateNamespaceSnapshot(database, retention_duration_hours),
       Format("Unable to create snapshot of database: $0", database.name));
   return Status::OK();
 }

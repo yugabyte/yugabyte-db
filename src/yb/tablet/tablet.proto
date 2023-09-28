@@ -61,6 +61,8 @@ message TabletStatusPB {
   // Is the tablet hidden.
   optional bool is_hidden = 17;
   optional bool parent_data_compacted = 18; // See KvStoreInfoPB.
+  // A list of all tables that are colocated on this tablet.
+  repeated bytes colocated_table_ids = 19;
 }
 
 // Used to present the maintenance manager's internal state.

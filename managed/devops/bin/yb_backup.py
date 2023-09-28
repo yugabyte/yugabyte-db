@@ -1348,6 +1348,11 @@ class YBBackup:
         parser.add_argument(
             '--TEST_never_fsync', required=False, action='store_true',
             default=False, help=argparse.SUPPRESS)
+
+        parser.add_argument(
+            '--TEST_drop_table_before_upload', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
+
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1804,7 +1809,7 @@ class YBBackup:
         return self.run_dump_tool(self.args.local_ysql_dumpall_binary,
                                   self.args.remote_ysql_dumpall_binary, cmd_line_args)
 
-    def run_ysql_shell(self, cmd_line_args):
+    def run_ysql_shell(self, cmd_line_args, db_name="template1"):
         """
         Runs the ysql shell utility from the configured location.
         :param cmd_line_args: command-line arguments to ysql shell
@@ -1820,7 +1825,7 @@ class YBBackup:
             # Passing dbname template1 explicitly as ysqlsh fails to connect if
             # yugabyte database is deleted. We assume template1 will always be there
             # in ysqlsh.
-            self.get_ysql_dump_std_args() + ['--dbname=template1'],
+            self.get_ysql_dump_std_args() + ['--dbname={}'.format(db_name)],
             cmd_line_args,
             run_ip=run_at_ip)
 
@@ -2506,6 +2511,12 @@ class YBBackup:
                 logging.info("Sleeping to allow a tablet split to take place and delete snapshot "
                              "dirs.")
                 time.sleep(TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC)
+
+            if self.args.TEST_drop_table_before_upload:
+                logging.info("Dropping table mytbl before uploading snapshot")
+                db_name = keyspace_name(self.args.keyspace[0])
+                drop_table_cmd = ['--command=drop table mytbl']
+                self.run_ysql_shell(drop_table_cmd, db_name)
 
             parallel_uploads = SequencedParallelCmd(
                 self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)

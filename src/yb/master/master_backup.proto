@@ -50,6 +50,11 @@ message CreateSnapshotRequestPB {
   // This is for YCQL only. For YSQL it's no-op currently because
   // YSQL does not use SysUDTypeEntryPB records in the SysCatalog.
   optional bool add_ud_types = 6 [default = false];
+
+  // Number of hours the snapshot needs to be kept around
+  // before it is deleted. Set to -1 to retain indefinitely until
+  // an explicit delete_snapshot.
+  optional int32 retention_duration_hours = 7;
 }
 
 message CreateSnapshotResponsePB {
