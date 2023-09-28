@@ -174,16 +174,13 @@
           insertafter: 'EOF'
 
       - name: Reboot the system for new ulimits
-        reboot:
-          pre_reboot_delay: 60
-          post_reboot_delay: 60
-          reboot_timeout: 300
-        register: reboot
+        shell: "shutdown -r +2"
+        become: yes
+        become_method: sudo
 
-      - name: Log reboot time
-        debug:
-          msg: System took {{ reboot.elapsed }} seconds to reboot
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8'
+      - name: Wait 600 seconds for target connection to become reachable/usable
+        ansible.builtin.wait_for_connection:
+
     # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
     when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
   - block:
