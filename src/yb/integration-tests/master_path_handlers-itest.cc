@@ -118,6 +118,17 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     ASSERT_OK(curl.FetchURL(tables_url, result));
   }
 
+  // Attempts to fetch url until a response with status OK, or until timeout.
+  Status TestUrlWaitForOK(const string& query_path, faststring* result, MonoDelta timeout) {
+    const string tables_url = master_http_url_ + query_path;
+    EasyCurl curl;
+    return WaitFor(
+        [&]() -> bool {
+          return curl.FetchURL(tables_url, result).ok();
+        },
+        timeout, "Wait for curl response to return with status OK");
+  }
+
   virtual int num_tablet_servers() const {
     return kNumTservers;
   }
@@ -435,12 +446,10 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
   ASSERT_OK(yb_admin_client_->Init());
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
 
-  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
-  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
-
   // Call endpoint and validate format of response.
   faststring result;
-  TestUrl(Format("/api/v1/table?id=$0", table->id()), &result);
+  ASSERT_OK(
+      TestUrlWaitForOK(Format("/api/v1/table?id=$0", table->id()), &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -468,13 +477,13 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
     table->name(), "cloud.region.anotherzone", 3, "table_uuid"));
 
-  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
-  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
-
   // Call endpoint and validate format of response.
   faststring result;
-  TestUrl(Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
-          &result);
+  ASSERT_OK(
+      TestUrlWaitForOK(
+          Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
+          &result,
+          30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -490,12 +499,10 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
 TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
-  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
-
   // Call endpoint and validate format of response.
   faststring result;
-  TestUrl("/api/v1/table?id=12345", &result);
+  ASSERT_OK(
+      TestUrlWaitForOK("/api/v1/table?id=12345", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -509,12 +516,10 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
 TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // TODO: https://yugabyte.atlassian.net/browse/DB-6597
-  std::this_thread::sleep_for(std::chrono::milliseconds(30000));
-
   // Call endpoint and validate format of response.
   faststring result;
-  TestUrl("/api/v1/table", &result);
+  ASSERT_OK(
+      TestUrlWaitForOK("/api/v1/table", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -523,6 +528,46 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
   EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
   EXPECT_TRUE(json_obj->HasMember("error"));
   EXPECT_EQ(strncmp("Missing", (*json_obj)["error"].GetString(), strlen("Missing")), 0);
+}
+
+TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
+
+  auto table = CreateTestTable();
+
+  faststring result;
+  ASSERT_OK(TestUrlWaitForOK("/api/v1/tables", &result, 30s /* timeout */));
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+
+  // Should have one user table, index should be empty array, system should have many tables.
+  EXPECT_EQ((*json_obj)["user"].Size(), 1);
+  EXPECT_EQ((*json_obj)["index"].Size(), 0);
+  EXPECT_GE((*json_obj)["system"].Size(), 1);
+
+  // Check that the test table is there and fields are correct.
+  const rapidjson::Value& table_obj = (*json_obj)["user"][0];
+  EXPECT_EQ(kKeyspaceName, table_obj["keyspace"].GetString());
+  EXPECT_EQ(table_name.table_name(), table_obj["table_name"].GetString());
+  EXPECT_EQ(SysTablesEntryPB_State_Name(SysTablesEntryPB_State_RUNNING),
+      table_obj["state"].GetString());
+  EXPECT_EQ(table_obj["message"].GetString(), string());
+  EXPECT_EQ(table->id(), table_obj["uuid"].GetString());
+  EXPECT_EQ(table_obj["ysql_oid"].GetString(), string());
+  EXPECT_FALSE(table_obj["hidden"].GetBool());
+  // Check disk size info is there.
+  EXPECT_TRUE(table_obj["on_disk_size"].IsObject());
+  const rapidjson::Value& disk_size_obj = table_obj["on_disk_size"];
+  EXPECT_TRUE(disk_size_obj.HasMember("wal_files_size"));
+  EXPECT_TRUE(disk_size_obj.HasMember("wal_files_size_bytes"));
+  EXPECT_TRUE(disk_size_obj.HasMember("sst_files_size"));
+  EXPECT_TRUE(disk_size_obj.HasMember("sst_files_size_bytes"));
+  EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size"));
+  EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size_bytes"));
+  EXPECT_TRUE(disk_size_obj.HasMember("has_missing_size"));
 }
 
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {

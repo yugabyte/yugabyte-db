@@ -1006,12 +1006,12 @@ void MasterPathHandlers::HandleCatalogManager(
 
   // The first stores user tables, the second index tables, the third parent tables,
   // and the fourth system tables.
-  std::unique_ptr<StringMap> ordered_tables[kNumTypes];
+  StringMap ordered_tables[kNumTypes];
   bool has_tablegroups[kNumTypes];
   bool has_colocated_tables[kNumTypes];
   bool show_missing_size_footer[kNumTypes];
   for (int i = 0; i < kNumTypes; ++i) {
-    ordered_tables[i] = std::make_unique<StringMap>();
+    ordered_tables[i] = StringMap();
     show_missing_size_footer[i] = false;
     has_tablegroups[i] = false;
     has_colocated_tables[i] = false;
@@ -1028,11 +1028,11 @@ void MasterPathHandlers::HandleCatalogManager(
 
     TableType table_cat = GetTableType(*table);
     // Skip non-user tables if we should.
-    if (only_user_tables && (table_cat != kUserIndex && table_cat != kUserTable)) {
+    if (only_user_tables && table_cat != kUserIndex && table_cat != kUserTable) {
       continue;
     }
 
-    auto& table_row = (*ordered_tables[table_cat])[table_uuid];
+    auto& table_row = ordered_tables[table_cat][table_uuid];
     table_row[kKeyspace] = EscapeForHtmlToString(keyspace);
     string href_table_id = table_uuid;
     string table_name = table_locked->name();
@@ -1103,22 +1103,22 @@ void MasterPathHandlers::HandleCatalogManager(
     table_row[kUuid] = EscapeForHtmlToString(table_uuid);
   }
 
-  for (int tpeIdx = 0; tpeIdx < kNumTypes; ++tpeIdx) {
-    if (only_user_tables && (tpeIdx != kUserIndex && tpeIdx != kUserTable)) {
+  for (int type_index = 0; type_index < kNumTypes; ++type_index) {
+    if (only_user_tables && (type_index != kUserIndex && type_index != kUserTable)) {
       continue;
     }
-    if (ordered_tables[tpeIdx]->empty() && tpeIdx == kParentTable) {
+    if (ordered_tables[type_index].empty() && type_index == kParentTable) {
       continue;
     }
 
     (*output) << "<div class='panel panel-default'>\n"
-              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[tpeIdx]
+              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[type_index]
               << " tables</h2></div>\n";
     (*output) << "<div class='panel-body table-responsive'>";
 
-    if (ordered_tables[tpeIdx]->empty()) {
-      (*output) << "There are no " << static_cast<char>(tolower(table_type_[tpeIdx][0]))
-                << table_type_[tpeIdx].substr(1) << " tables.\n";
+    if (ordered_tables[type_index].empty()) {
+      (*output) << "There are no " << static_cast<char>(tolower(table_type_[type_index][0]))
+                << table_type_[type_index].substr(1) << " tables.\n";
     } else {
       (*output) << "<table class='table table-responsive'>\n";
       (*output) << "  <tr><th>Keyspace</th>\n"
@@ -1129,21 +1129,21 @@ void MasterPathHandlers::HandleCatalogManager(
                 << "  <th>YSQL OID</th>\n"
                 << "  <th>Hidden</th>\n";
 
-      if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
-        if (has_tablegroups[tpeIdx]) {
+      if (type_index == kUserTable || type_index == kUserIndex) {
+        if (has_tablegroups[type_index]) {
           (*output) << "  <th>Parent OID</th>\n";
         }
 
-        if (has_colocated_tables[tpeIdx]) {
+        if (has_colocated_tables[type_index]) {
           (*output) << "  <th>Colocation ID</th>\n";
         }
       }
 
-      if (tpeIdx != kSystemTable) {
+      if (type_index != kSystemTable) {
         (*output) << "  <th>On-disk size</th></tr>\n";
       }
 
-      for (const StringMap::value_type& table : *(ordered_tables[tpeIdx])) {
+      for (const StringMap::value_type& table : ordered_tables[type_index]) {
         (*output) << Format(
             "<tr>"
             "<td>$0</td>"
@@ -1161,17 +1161,17 @@ void MasterPathHandlers::HandleCatalogManager(
             table.second[kYsqlOid],
             table.second[kHidden]);
 
-        if (tpeIdx == kUserTable || tpeIdx == kUserIndex) {
-          if (has_tablegroups[tpeIdx]) {
+        if (type_index == kUserTable || type_index == kUserIndex) {
+          if (has_tablegroups[type_index]) {
             (*output) << Format("<td>$0</td>", table.second[kParentOid]);
           }
 
-          if (has_colocated_tables[tpeIdx]) {
+          if (has_colocated_tables[type_index]) {
             (*output) << Format("<td>$0</td>", table.second[kColocationId]);
           }
         }
 
-        if (tpeIdx != kSystemTable) {
+        if (type_index != kSystemTable) {
           (*output) << Format("<td>$0</td>", table.second[kOnDiskSize]);
         }
 
@@ -1180,7 +1180,7 @@ void MasterPathHandlers::HandleCatalogManager(
 
       (*output) << "</table>\n";
 
-      if (show_missing_size_footer[tpeIdx]) {
+      if (show_missing_size_footer[type_index]) {
         (*output) << "<p>* Some tablets did not provide disk size estimates,"
                   << " and were not added to the displayed totals.</p>";
       }
@@ -1188,6 +1188,181 @@ void MasterPathHandlers::HandleCatalogManager(
     (*output) << "</div> <!-- panel-body -->\n";
     (*output) << "</div> <!-- panel -->\n";
   }
+}
+
+void MasterPathHandlers::HandleCatalogManagerJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  bool only_user_tables = ParseLeadingBoolValue(
+      FindWithDefault(req.parsed_args, "only_user_tables", ""), false);
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+
+  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
+
+  // A struct that holds data for each JSON object to be returned.
+  // Each JSON object represents one table.
+  struct CatalogManagerJSONData {
+    string keyspace;
+    string table_name;
+    string state;
+    string message;
+    string uuid;
+    string ysql_oid;
+    string parent_oid;
+    string colocation_id;
+    TabletReplicaDriveInfo on_disk_size;
+    bool has_missing_size;
+    bool hidden;
+  };
+
+  typedef map<string, CatalogManagerJSONData> DataMap;
+
+  // The first stores user tables, the second index tables, the third parent tables,
+  // and the fourth system tables.
+  DataMap ordered_tables[kNumTypes];
+  for (int i = 0; i < kNumTypes; ++i) {
+    ordered_tables[i] = DataMap();
+  }
+
+  for (const auto& table : tables) {
+    auto table_locked = table->LockForRead();
+    if (!table_locked->is_running()) {
+      continue;
+    }
+
+    string table_uuid = table->id();
+    string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
+
+    TableType table_cat = GetTableType(*table);
+    if (only_user_tables && table_cat != kUserIndex && table_cat != kUserTable) {
+      continue;
+    }
+
+    auto& table_row = ordered_tables[table_cat][table_uuid];
+    table_row.keyspace = keyspace;
+    string href_table_id = table_uuid;
+    string table_name = table_locked->name();
+    table_row.state = SysTablesEntryPB_State_Name(table_locked->pb.state());
+    table_row.hidden = table_locked->is_hidden();
+    table_row.message = table_locked->pb.state_msg();
+
+    if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
+      const auto result = GetPgsqlTableOid(table_uuid);
+      if (result.ok()) {
+        table_row.ysql_oid = std::to_string(*result);
+      } else {
+        LOG(ERROR) << "Failed to get OID of '" << table_uuid << "' ysql table";
+      }
+
+      const auto& schema = table_locked->schema();
+      if (schema.has_colocated_table_id() && schema.colocated_table_id().has_colocation_id()) {
+        table_row.colocation_id = Format("$0", schema.colocated_table_id().colocation_id());
+      }
+
+      auto colocated_tablet = table->GetColocatedUserTablet();
+      if (colocated_tablet) {
+        const auto parent_table = colocated_tablet->table();
+        table_row.parent_oid = GetParentTableOid(parent_table);
+      }
+    } else if (table_cat == kParentTable) {
+      // Colocated parent table.
+      table_row.ysql_oid = GetParentTableOid(table);
+    }
+
+    // System tables and colocated user tables do not have size info.
+    if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
+      TabletReplicaDriveInfo aggregated_drive_info;
+      auto tablets = table->GetTablets();
+      bool table_has_missing_size = false;
+      for (const auto& tablet : tablets) {
+        auto drive_info = tablet->GetLeaderReplicaDriveInfo();
+        if (drive_info.ok()) {
+          aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
+          aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
+          aggregated_drive_info.uncompressed_sst_file_size +=
+              drive_info.get().uncompressed_sst_file_size;
+        } else {
+          table_has_missing_size = true;
+        }
+      }
+
+      table_row.on_disk_size = aggregated_drive_info;
+      table_row.has_missing_size = table_has_missing_size;
+    }
+
+    table_row.table_name = table_name;
+    table_row.uuid = table_uuid;
+  }
+
+  for (int type_index = 0; type_index < kNumTypes; ++type_index) {
+    if (only_user_tables && (type_index != kUserIndex && type_index != kUserTable)) {
+      continue;
+    }
+    if (ordered_tables[type_index].empty() && type_index == kParentTable) {
+      continue;
+    }
+
+    jw.String(ToLowerCase(table_type_[type_index]));
+    jw.StartArray();
+
+    for (const DataMap::value_type& table : ordered_tables[type_index]) {
+      jw.StartObject();
+      jw.String("keyspace");
+      jw.String(table.second.keyspace);
+      jw.String("table_name");
+      jw.String(table.second.table_name);
+      jw.String("state");
+      jw.String(table.second.state);
+      jw.String("message");
+      jw.String(table.second.message);
+      jw.String("uuid");
+      jw.String(table.second.uuid);
+      jw.String("ysql_oid");
+      jw.String(table.second.ysql_oid);
+      jw.String("hidden");
+      jw.Bool(table.second.hidden);
+
+      if (type_index == kUserTable || type_index == kUserIndex) {
+        if (!table.second.parent_oid.empty()) {
+          jw.String("parent_oid");
+          jw.String(table.second.parent_oid);
+        }
+
+        if (!table.second.colocation_id.empty()) {
+          jw.String("colocation_id");
+          jw.String(table.second.colocation_id);
+        }
+      }
+
+      if (type_index != kSystemTable) {
+        jw.String("on_disk_size");
+        jw.StartObject();
+        jw.String("wal_files_size");
+        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.wal_files_size));
+        jw.String("wal_files_size_bytes");
+        jw.Uint64(table.second.on_disk_size.wal_files_size);
+        jw.String("sst_files_size");
+        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.sst_files_size));
+        jw.String("sst_files_size_bytes");
+        jw.Uint64(table.second.on_disk_size.sst_files_size);
+        jw.String("uncompressed_sst_file_size");
+        jw.String(
+            HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
+        jw.String("uncompressed_sst_file_size_bytes");
+        jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
+        jw.String("has_missing_size");
+        jw.Bool(table.second.has_missing_size);
+        jw.EndObject();
+      }
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+  jw.EndObject();
 }
 
 void MasterPathHandlers::HandleNamespacesHTML(
@@ -3035,6 +3210,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleTablePageJSON, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/table", "Table Info",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleCatalogManagerJSON,
+      this, _1, _2);
+  server->RegisterPathHandler(
+      "/api/v1/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   return Status::OK();
 }
