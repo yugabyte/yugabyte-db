@@ -58,7 +58,6 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
@@ -86,7 +85,7 @@ public class KubernetesOperatorController {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
 
-  @Inject KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
   public enum OperatorAction {
     CREATED,
@@ -102,7 +101,8 @@ public class KubernetesOperatorController {
       String namespace,
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
-      CloudProviderHandler cloudProviderHandler) {
+      CloudProviderHandler cloudProviderHandler,
+      KubernetesOperatorStatusUpdater kubernetesStatusUpdater) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
@@ -112,6 +112,7 @@ public class KubernetesOperatorController {
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
+    this.kubernetesStatusUpdater = kubernetesStatusUpdater;
     addEventHandlersToSharedIndexInformers();
   }
 
