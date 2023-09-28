@@ -81,7 +81,7 @@ TEST(LoggingTest, TestThrottledLogging) {
 TEST(LoggingTest, VModule) {
   google::FlagSaver flag_saver;
 
-  ASSERT_OK(EnableVerboseLoggingForModule("logging-test", 1));
+  google::SetVLOGLevel("logging-test", 1);
 
   ASSERT_TRUE(VLOG_IS_ON(1));
 
