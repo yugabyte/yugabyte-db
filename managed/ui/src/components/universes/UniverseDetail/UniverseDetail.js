@@ -54,6 +54,9 @@ import { EnableYSQLModal } from '../../../redesign/features/universe/universe-ac
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
+import { DisasterRecovery } from '../../xcluster/disasterRecovery/DisasterRecoveryPanel';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -284,12 +287,20 @@ class UniverseDetail extends Component {
     }
 
     const isPerfAdvisorEnabled =
-      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
-        ?.value === 'true';
-
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.PERFOMANCE_ADVISOR_UI_FEATURE_FLAG
+      )?.value === 'true';
+    const isDrEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_UI_FEATURE_FLAG
+      )?.value === 'true' &&
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.DISASTER_RECOVERY_FEATURE_FLAG
+      )?.value === 'true';
     const isAuthEnforced =
-      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.universe.auth.is_enforced')
-        ?.value === 'true';
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
+      )?.value === 'true';
 
     const isConfigureYSQLEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
@@ -434,7 +445,17 @@ class UniverseDetail extends Component {
             )}
           </Tab.Pane>
         ),
-
+        isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
+          <Tab.Pane
+            eventKey={'recovery'}
+            tabtitle="Recovery"
+            key="recovery-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <DisasterRecovery currentUniverseUuid={currentUniverse.data.universeUUID} />
+          </Tab.Pane>
+        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
           <Tab.Pane
             eventKey={'tasks'}

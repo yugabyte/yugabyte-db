@@ -76,7 +76,7 @@ export const ConfigTableSelect = ({
       }).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 

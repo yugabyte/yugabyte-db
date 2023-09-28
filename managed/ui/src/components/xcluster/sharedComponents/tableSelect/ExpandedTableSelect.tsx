@@ -8,15 +8,15 @@ import {
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { XClusterTableEligibility } from '../../constants';
-import { formatBytes, tableSort } from '../../ReplicationUtils';
+import { XClusterConfigAction, XClusterTableEligibility } from '../../constants';
+import { formatBytes, isTableSelectable, tableSort } from '../../ReplicationUtils';
 import { TableEligibilityPill } from './TableEligibilityPill';
+import { SortOrder } from '../../../../redesign/helpers/constants';
 
 import { KeyspaceRow, XClusterTableCandidate, XClusterTableType } from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './ExpandedTableSelect.module.scss';
-import { SortOrder } from '../../../../redesign/helpers/constants';
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;
@@ -25,6 +25,7 @@ interface ExpandedTableSelectProps {
   row: KeyspaceRow;
   selectedTableUUIDs: string[];
   tableType: XClusterTableType;
+  xClusterConfigAction: XClusterConfigAction;
   handleTableSelect: (row: XClusterTableCandidate, isSelected: boolean) => void;
   handleAllTableSelect: (isSelected: boolean, rows: XClusterTableCandidate[]) => boolean;
 }
@@ -33,6 +34,7 @@ export const ExpandedTableSelect = ({
   row,
   selectedTableUUIDs,
   tableType,
+  xClusterConfigAction,
   handleTableSelect,
   handleAllTableSelect
 }: ExpandedTableSelectProps) => {
@@ -45,13 +47,13 @@ export const ExpandedTableSelect = ({
     sortName: sortField,
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
-      // Each row of the table is of type XClusterTable.
+      // Each row of the table is of type XClusterTableCandidate.
       setSortField(sortName as keyof XClusterTableCandidate);
       setSortOrder(sortOrder);
     }
   };
   const unselectableTableUUIDs = row.tables
-    .filter((table) => table.eligibilityDetails.status !== XClusterTableEligibility.ELIGIBLE_UNUSED)
+    .filter((table) => !isTableSelectable(table, xClusterConfigAction))
     .map((table) => table.tableUUID);
   return (
     <div className={styles.expandComponent}>
@@ -68,7 +70,9 @@ export const ExpandedTableSelect = ({
           onSelect: handleTableSelect,
           onSelectAll: handleAllTableSelect,
           selected: selectedTableUUIDs,
-          hideSelectColumn: tableType === TableType.PGSQL_TABLE_TYPE,
+          hideSelectColumn:
+            xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE &&
+            tableType === TableType.PGSQL_TABLE_TYPE,
           unselectable: unselectableTableUUIDs
         }}
         options={tableOptions}
@@ -81,6 +85,7 @@ export const ExpandedTableSelect = ({
           dataField="pgSchemaName"
           dataSort={true}
           hidden={tableType === TableType.YQL_TABLE_TYPE}
+          width="180px"
         >
           Schema Name
         </TableHeaderColumn>

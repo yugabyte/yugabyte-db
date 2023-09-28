@@ -179,7 +179,7 @@ export const HelmOverridesModal = ({
       onClose={onClose}
       titleSeparator
       onSubmit={handleSave}
-      actionsInfo={
+      footerAccessory={
         <YBCheckbox
           checked={forceConfirm}
           onChange={() => setForceConfirm(!forceConfirm)}

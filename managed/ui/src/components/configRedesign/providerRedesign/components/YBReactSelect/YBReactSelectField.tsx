@@ -4,23 +4,30 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
-import { Box, FormHelperText, useTheme } from '@material-ui/core';
 import Select, { Styles } from 'react-select';
+import { Box, FormHelperText, useTheme } from '@material-ui/core';
+import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
+import { SelectComponents } from 'react-select/src/components';
 
 export type ReactSelectOption = { value: any; label: string; isDisabled?: boolean };
-type YBReactSelectFieldProps<T extends FieldValues> = {
-  options: readonly ReactSelectOption[] | undefined;
+export type ReactSelectGroupedOption = { label: string; options: ReactSelectOption[] };
+export type YBReactSelectFieldProps<TFieldValues extends FieldValues> = {
+  options: readonly ReactSelectGroupedOption[] | readonly ReactSelectOption[] | undefined;
+
+  components?: Partial<SelectComponents<ReactSelectOption>>;
   isDisabled?: boolean;
   onChange?: (value: ReactSelectOption) => void;
   placeholder?: string;
-} & UseControllerProps<T>;
+  stylesOverride?: Partial<Styles>;
+} & UseControllerProps<TFieldValues>;
 
 export const YBReactSelectField = <T extends FieldValues>({
   options,
   onChange,
+  components,
   isDisabled = false,
   placeholder,
+  stylesOverride,
   ...useControllerProps
 }: YBReactSelectFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
@@ -43,7 +50,8 @@ export const YBReactSelectField = <T extends FieldValues>({
     placeholder: (baseStyles) => ({
       ...baseStyles,
       color: theme.palette.grey[300]
-    })
+    }),
+    ...stylesOverride
   };
 
   const handleChange = (value: any) => {
@@ -59,6 +67,7 @@ export const YBReactSelectField = <T extends FieldValues>({
           onChange={handleChange}
           onBlur={field.onBlur}
           value={field.value}
+          components={components}
           options={options}
           isDisabled={isDisabled}
           placeholder={placeholder}

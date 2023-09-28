@@ -247,6 +247,8 @@ export type UniverseConfigure = DeepPartial<UniverseDetails>;
 
 export interface Universe {
   creationDate: string;
+  drConfigUuidsAsSource: string[];
+  drConfigUuidsAsTarget: string[];
   name: string;
   resources: Resources;
   universeConfig: UniverseConfig;
@@ -255,12 +257,13 @@ export interface Universe {
   version: number;
 }
 
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE',
-  TRANSACTION_STATUS_TABLE_TYPE = 'TRANSACTION_STATUS_TABLE_TYPE'
-}
+export const TableType = {
+  YQL_TABLE_TYPE: 'YQL_TABLE_TYPE',
+  REDIS_TABLE_TYPE: 'REDIS_TABLE_TYPE',
+  PGSQL_TABLE_TYPE: 'PGSQL_TABLE_TYPE',
+  TRANSACTION_STATUS_TABLE_TYPE: 'TRANSACTION_STATUS_TABLE_TYPE'
+} as const;
+export type TableType = typeof TableType[keyof typeof TableType];
 
 export interface YBTable {
   isIndexTable: boolean;
@@ -271,6 +274,12 @@ export interface YBTable {
   tableName: string;
   tableType: TableType;
   tableUUID: string;
+}
+
+export interface UniverseNamespace {
+  namespaceUUID: string;
+  name: string;
+  tableType: TableType;
 }
 
 // Provider.java
@@ -373,6 +382,19 @@ export interface KmsConfig {
     name: string;
     provider: string;
   };
+}
+
+export interface PitrConfig {
+  createTime: string;
+  customerUUID: string;
+  dbName: string;
+  maxRecoverTimeInMillis: number;
+  minRecoverTimeInMillis: number;
+  retentionPeriod: number;
+  scheduleInterval: number;
+  tableType: TableType;
+  updateTime: string;
+  uuid: string;
 }
 
 export interface HAPlatformInstance {

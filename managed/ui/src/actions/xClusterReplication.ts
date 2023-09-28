@@ -19,6 +19,9 @@ export function getUniverseInfo(universeUUID: string) {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
 }
 
+/**
+ * @deprecated Pleaes use fetchUniverseList from helpers/api.ts instead.
+ */
 export function fetchUniversesList() {
   const cUUID = localStorage.getItem('customerId');
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
@@ -144,10 +147,12 @@ export function editXClusterConfigTables(
   }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables: tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables: tables,
+      ...(bootstrapParams !== undefined && { bootstrapParams })
+    })
+    .then((response) => response.data);
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
@@ -246,7 +251,7 @@ type callbackFunc = (err: boolean, data: any) => void;
 
 export function fetchTaskUntilItCompletes(
   taskUUID: string,
-  callback: callbackFunc,
+  onTaskCompletion: callbackFunc,
   onTaskStarted?: () => void,
   interval = DEFAULT_TASK_REFETCH_INTERVAL
 ) {
@@ -260,9 +265,9 @@ export function fetchTaskUntilItCompletes(
         taskRunning = true;
       }
       if (status === 'Failed' || status === 'Failure') {
-        callback(true, resp);
+        onTaskCompletion(true, resp);
       } else if (percent === 100) {
-        callback(false, resp.data);
+        onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);
       }
