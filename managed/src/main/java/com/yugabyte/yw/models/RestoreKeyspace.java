@@ -15,6 +15,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
+import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
@@ -95,6 +96,11 @@ public class RestoreKeyspace extends Model {
   @Column
   private String targetKeyspace;
 
+  @ApiModelProperty(value = "Restored Table name List", accessMode = READ_ONLY)
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private List<String> tableNameList;
+
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "State of the keyspace restore", accessMode = READ_ONLY)
   private State state;
@@ -151,6 +157,7 @@ public class RestoreKeyspace extends Model {
       restoreKeyspace.setTargetKeyspace(storageInfo.keyspace);
       restoreKeyspace.setSourceKeyspace(
           BackupUtil.getKeyspaceFromStorageLocation(restoreKeyspace.getStorageLocation()));
+      restoreKeyspace.setTableNameList(storageInfo.tableNameList);
     }
     restoreKeyspace.state = RestoreKeyspace.State.InProgress;
     restoreKeyspace.save();
