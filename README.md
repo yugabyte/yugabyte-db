@@ -49,7 +49,7 @@
     <img src="https://img.shields.io/github/stars/apache/age"/>
   </a>
   &nbsp;
-  <a href="https://discord.gg/NMsBs9X8Ss">
+  <a href="https://discord.gg/EuK6EEg3k7">
     <img src="https://img.shields.io/discord/1022177873127280680.svg?label=discord&style=flat&color=5a66f6"></a>
 </p>
 
@@ -332,7 +332,7 @@ Starting with Apache AGE is very simple. You can easily select your platform and
 Join the AGE community for help, questions, discussions, and contributions. 
 
 - Check our [website](https://age.apache.org/)
-- Join the Live Chat on [Discord](https://discord.com/invite/NMsBs9X8Ss/)
+- Join the Live Chat on [Discord](https://discord.gg/EuK6EEg3k7)
 - Follow us on [Twitter](https://twitter.com/apache_age?s=20&t=7Hu8Txk4vjvuEp-ryakacg)
 - Subscribe to our developer mailing list by sending an email to dev-subscribe@age.apache.org
 - Subscribe to our user mailing list by sending an email to users-subscribe@age.apache.org
