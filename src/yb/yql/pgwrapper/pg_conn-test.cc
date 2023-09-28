@@ -56,49 +56,30 @@ TEST_F(PgConnTest, UserNames) {
 
 // Test libpq connection using URI connection string.
 TEST_F(PgConnTest, Uri) {
-  const std::string& host = pg_ts->bind_host();
-  const uint16_t port = pg_ts->pgsql_rpc_port();
+  const auto& host = pg_ts->bind_host();
+  const auto port = pg_ts->pgsql_rpc_port();
   {
-    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    const auto conn_str = Format("postgres://yugabyte@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
-    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "yugabyte");
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_user"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "yugabyte");
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("show listen_addresses"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, host);
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("show port"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, std::to_string(port));
-    }
+    auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_user")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show listen_addresses")), host);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show port")), std::to_string(port));
   }
   // Supply database name.
   {
-    const std::string& conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
+    const auto conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
-    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "template1");
-    }
+    auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "template1");
   }
   // Supply an incorrect password.  Since HBA config gives the yugabyte user trust access, postgres
   // won't request a password, our client won't send this password, and the authentication should
   // succeed.
   {
-    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    const auto conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
     ASSERT_OK(ConnectUsingString(conn_str));
   }

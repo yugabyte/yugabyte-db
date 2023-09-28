@@ -1,13 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import { Component } from 'react';
-import { CustomerProfileContainer } from '../components/profile';
-
+import { Component, lazy, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
 import './Profile.scss';
+
+const CustomerProfileContainer = lazy(() =>
+  import('../components/profile/CustomerProfileContainer')
+);
 
 class Profile extends Component {
   render() {
-    return <CustomerProfileContainer {...this.props} />;
+    return (
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <CustomerProfileContainer {...this.props} />
+      </Suspense>
+    );
   }
 }
 

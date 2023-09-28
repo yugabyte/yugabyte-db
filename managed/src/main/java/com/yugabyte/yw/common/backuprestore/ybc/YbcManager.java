@@ -609,9 +609,10 @@ public class YbcManager {
   public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
+    Architecture arch = universe.getUniverseDetails().arch;
     String ybServerPackage =
         nodeManager.getYbServerPackageName(
-            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)));
+            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)), arch);
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -643,10 +644,16 @@ public class YbcManager {
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getYbcReleaseByVersion(
             ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
-    String ybcServerPackage =
-        releaseMetadata.getFilePath(
-            getFirstRegion(
-                universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
+    Architecture arch = universe.getUniverseDetails().arch;
+    String ybcServerPackage;
+    if (arch != null) {
+      ybcServerPackage = releaseMetadata.getFilePath(arch);
+    } else {
+      ybcServerPackage =
+          releaseMetadata.getFilePath(
+              getFirstRegion(
+                  universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
+    }
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
@@ -732,9 +739,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe
-              .getLiveTServersInPrimaryCluster()
-              .parallelStream()
+          universe.getLiveTServersInPrimaryCluster().parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }

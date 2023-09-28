@@ -138,7 +138,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
                 "Failed to set up replication for XClusterConfig(%s): %s",
                 xClusterConfig.getUuid(), resp.errorMessage()));
       }
-      waitForXClusterOperation(client::isSetupUniverseReplicationDone);
+      waitForXClusterOperation(xClusterConfig, client::isSetupUniverseReplicationDone);
 
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();

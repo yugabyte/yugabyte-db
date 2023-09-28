@@ -60,6 +60,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
@@ -128,6 +129,10 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
         timeout, "Wait for curl response to return with status OK");
   }
 
+  virtual int num_tablet_servers() const {
+    return kNumTservers;
+  }
+
   virtual int num_masters() const {
     return kNumMasters;
   }
@@ -180,7 +185,7 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
-    opts.num_tablet_servers = kNumTservers;
+    opts.num_tablet_servers = num_tablet_servers();
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
@@ -660,7 +665,7 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
   ExternalMiniClusterOptions opts_;
 
   void SetUp() override {
-    opts_.num_tablet_servers = kNumTservers;
+    opts_.num_tablet_servers = num_tablet_servers();
     opts_.num_masters = num_masters();
     opts_.extra_tserver_flags.push_back("--placement_cloud=c");
     opts_.extra_tserver_flags.push_back("--placement_region=r");
@@ -679,15 +684,17 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
         kLivePlacementUuid));
   }
 
-  Status AddTabletServer(const string& zone, const string& placement_uuid) {
-    vector<string> extra_flags;
-    extra_flags.push_back("--placement_cloud=c");
-    extra_flags.push_back("--placement_region=r");
-    extra_flags.push_back("--placement_zone=" + zone);
-    extra_flags.push_back("--placement_uuid=" + placement_uuid);
-    extra_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+  Status AddTabletServer(const string& zone, const string& placement_uuid,
+      const vector<string>& extra_flags = {}) {
+    vector<string> flags;
+    flags.push_back("--placement_cloud=c");
+    flags.push_back("--placement_region=r");
+    flags.push_back("--placement_zone=" + zone);
+    flags.push_back("--placement_uuid=" + placement_uuid);
+    flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    flags.insert(flags.end(), extra_flags.begin(), extra_flags.end());
     return cluster_->AddTabletServer(
-        ExternalMiniClusterOptions::kDefaultStartCqlProxy, extra_flags);
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy, flags);
   }
 
   const string kReadReplicaPlacementUuid = "read_replica";
@@ -807,22 +814,38 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointTableReplic
   cluster_->Shutdown();
 }
 
-TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrapping,
-    MasterPathHandlersUnderReplicationItest) {
-  // Shutdown ts2 so we start under-replicated.
-  auto* ts_to_restart = cluster_->tablet_server(2);
-  ts_to_restart->Shutdown();
+class MasterPathHandlersUnderReplicationTwoTsItest :
+    public MasterPathHandlersUnderReplicationItest {
+ protected:
+  int num_tablet_servers() const override {
+    return 2;
+  }
+};
+
+TEST_F_EX(
+    MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrapping,
+    MasterPathHandlersUnderReplicationTwoTsItest) {
+  // Set these to allow multiple tablets bootstrapping at the same time.
+  ASSERT_OK(cluster_->SetFlagOnMasters("load_balancer_max_over_replicated_tablets", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "load_balancer_max_concurrent_tablet_remote_bootstraps_per_table", "10"));
   auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
 
-  ASSERT_OK(ts_to_restart->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      {{"TEST_pause_rbs_before_download_wal", "true"},
-       {"TEST_pause_after_set_bootstrapping", "true"}}));
+  // Start a third tserver. The load balancer will bootstrap new replicas onto this tserver to fix
+  // the under-replication.
+  vector<string> extra_flags;
+  extra_flags.push_back("--TEST_pause_rbs_before_download_wal=true");
+  extra_flags.push_back("--TEST_pause_after_set_bootstrapping=true");
+  ASSERT_OK(AddTabletServer("z2", kLivePlacementUuid, extra_flags));
+  auto new_ts = cluster_->tablet_server(2);
 
   // Waits for all tablets to be in the specified state according to the master leader.
   auto WaitForTabletsInState = [&](tablet::RaftGroupStatePB state) {
     return WaitFor([&]() -> Result<bool> {
       auto tablet_replicas = VERIFY_RESULT(itest::GetTabletsOnTsAccordingToMaster(
-          cluster_.get(), ts_to_restart->uuid(), table_->name(), 10s /* timeout */,
+          cluster_.get(), new_ts->uuid(), table_->name(), 10s /* timeout */,
           RequireTabletsRunning::kFalse));
       if (tablet_replicas.size() != kNumTablets) {
         return false;
@@ -833,7 +856,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrappi
         }
       }
       return true;
-    }, 10s, "Wait for tablets to be in state " + RaftGroupStatePB_Name(state));
+    }, 10s * kTimeMultiplier, "Wait for tablets to be in state " + RaftGroupStatePB_Name(state));
   };
 
   // The tablet should be under-replicated while it is remote bootstrapping.
@@ -841,12 +864,12 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrappi
   ASSERT_OK(CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}));
 
   // The tablet should be under-replicated while it is opening (local bootstrapping).
-  ASSERT_OK(cluster_->SetFlag(ts_to_restart, "TEST_pause_rbs_before_download_wal", "false"));
+  ASSERT_OK(cluster_->SetFlag(new_ts, "TEST_pause_rbs_before_download_wal", "false"));
   ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::BOOTSTRAPPING));
   ASSERT_OK(CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}));
 
   // The tablet should not be under-replicated once bootstrapping ends.
-  ASSERT_OK(cluster_->SetFlag(ts_to_restart, "TEST_pause_after_set_bootstrapping", "false"));
+  ASSERT_OK(cluster_->SetFlag(new_ts, "TEST_pause_after_set_bootstrapping", "false"));
   ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::RUNNING));
   ASSERT_OK(CheckNotUnderReplicated(tablet_ids));
 }
@@ -899,7 +922,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_NE(pos, string::npos);
   pos = cluster_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
-  ASSERT_EQ(cluster_str.substr(pos + 17, 4), "zone");
+  ASSERT_EQ(cluster_str.substr(pos + 22, 4), "zone");
 
   // Verify table level replication info.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
@@ -910,7 +933,7 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_NE(pos, string::npos);
   pos = table_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
-  ASSERT_EQ(table_str.substr(pos + 17, 11), "anotherzone");
+  ASSERT_EQ(table_str.substr(pos + 22, 11), "anotherzone");
 }
 
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {

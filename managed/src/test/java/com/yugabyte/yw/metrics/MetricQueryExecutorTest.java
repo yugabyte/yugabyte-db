@@ -79,7 +79,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -135,6 +136,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -165,6 +167,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -195,6 +198,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -237,7 +241,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "invalid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
     JsonNode result = qe.call();
 
     assertThat(
@@ -256,7 +261,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -296,7 +302,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -336,12 +343,13 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
-            "{\"status\":\"error\",\"errorType\":\"bad_data\","
-                + "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+            "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error at char 44:"
+                + " unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
     JsonNode response = qe.call();

@@ -21,7 +21,7 @@
 namespace yb {
 namespace pgwrapper {
 
-using PartitionKeyTabletMap = std::map<std::string_view, master::TabletInfoPtr>;
+using PartitionKeyTabletMap = std::map<std::string, master::TabletInfoPtr>;
 using VerifyTabletsCallback = std::function<Status(const PartitionKeyTabletMap&)>;
 using SelectTabletCallback =
     std::function<Result<master::TabletInfoPtr>(const PartitionKeyTabletMap& tablets)>;
@@ -63,17 +63,17 @@ class PgTabletSplitTestBase : public PgMiniTestBase {
   Status SplitSingleTablet(const TableId& table_id);
   Status SplitSingleTabletAndWaitForActiveChildTablets(const TableId& table_id);
   Status InvokeSplitTabletRpc(const std::string& tablet_id);
-  Status InvokeSplitTabletRpcAndWaitForSplitCompleted(const std::string& tablet_id);
-  Status InvokeSplitsAndWaitForCompletion(
+  Status InvokeSplitTabletRpcAndWaitForDataCompacted(const std::string& tablet_id);
+  Status InvokeSplitsAndWaitForDataCompacted(
       const TableId& table_id, SelectTabletCallback select_tablet);
   Status DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers);
 
   Status WaitForSplitCompletion(const TableId& table_id, size_t expected_active_leaders = 2);
 
- private:
   virtual size_t NumTabletServers() override;
 
-  Status DoInvokeSplitTabletRpcAndWaitForCompletion(
+
+  Status DoInvokeSplitTabletRpcAndWaitForDataCompacted(
     const master::TableInfoPtr& table_info, const master::TabletInfoPtr& tablet_info);
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;

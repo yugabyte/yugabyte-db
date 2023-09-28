@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -151,11 +153,31 @@ public class UpgradeUniverseHandler {
     }
     requestParams.setYbcInstalled(universe.isYbcEnabled());
 
-    return submitUpgradeTask(
+    TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.SoftwareKubernetesUpgrade
-            : TaskType.SoftwareUpgrade,
-        CustomerTask.TaskType.SoftwareUpgrade,
+            : TaskType.SoftwareUpgrade;
+
+    String currentVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
+        && taskType.equals(TaskType.SoftwareUpgrade)
+        && CommonUtils.isReleaseEqualOrAfter(
+            Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
+        && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
+      taskType = TaskType.SoftwareUpgradeYB;
+    }
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
+  }
+
+  public UUID finalizeUpgrade(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+    // TODO(vbansal): Add validations for finalize based on universe state.
+    // Will add them in subsequent diffs.
+    return submitUpgradeTask(
+        TaskType.FinalizeUpgrade,
+        CustomerTask.TaskType.FinalizeUpgrade,
         requestParams,
         customer,
         universe);

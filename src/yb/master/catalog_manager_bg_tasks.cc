@@ -84,7 +84,7 @@ DECLARE_bool(TEST_echo_service_enabled);
 namespace yb {
 namespace master {
 
-typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
     : closing_(false),
@@ -305,6 +305,10 @@ void CatalogManagerBgTasks::Run() {
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
+                  "Failed SetUniverseUuidIfNeeded Task");
 
       was_leader_ = true;
     } else {

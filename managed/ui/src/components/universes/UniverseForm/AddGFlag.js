@@ -15,6 +15,8 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
+// Styles
+import './UniverseForm.scss';
 
 const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
@@ -191,6 +193,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
         if (MULTILINE_GFLAGS_ARRAY.includes(flag?.name) && isGFlagMultilineConfEnabled) {
           return (
             <GFlagsConf
+              dbVersion={dbVersion}
               formProps={formProps}
               serverType={server}
               flagName={flag?.name}

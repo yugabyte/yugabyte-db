@@ -23,8 +23,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -38,16 +40,17 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -55,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -929,7 +933,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testPerAZGflags() {
-    Map<String, UUID> nodeToAzUUID = new HashMap<>();
+    List<UUID> azList = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
+    AtomicInteger idx = new AtomicInteger();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -939,13 +944,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .nodeDetailsSet
               .forEach(
                   node -> {
-                    AvailabilityZone az =
-                        AvailabilityZone.createOrThrow(
-                            region, node.cloudInfo.az, node.cloudInfo.az, "subnet-1");
-                    node.azUuid = az.getUuid();
-                    nodeToAzUUID.put(node.nodeName, az.getUuid());
+                    node.azUuid = azList.get(idx.getAndIncrement());
                   });
         });
+    addReadReplica();
     expectedUniverseVersion++;
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
@@ -954,51 +956,78 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             ImmutableMap.of("master-flag", "m1"), ImmutableMap.of("tserver-flag", "t1"));
     Map<UUID, SpecificGFlags.PerProcessFlags> perAZ = new HashMap<>();
     specificGFlags.setPerAZ(perAZ);
-    List<String> nodeNames = new ArrayList<>(nodeToAzUUID.keySet());
+
     // First -> redefining existing
-    String first = nodeNames.get(0);
+    UUID firstAZ = azList.get(0);
     SpecificGFlags.PerProcessFlags firstPerProcessFlags = new SpecificGFlags.PerProcessFlags();
     firstPerProcessFlags.value =
         ImmutableMap.of(
             MASTER, ImmutableMap.of("master-flag", "m2"),
             TSERVER, ImmutableMap.of("tserver-flag", "t2"));
-    perAZ.put(nodeToAzUUID.get(first), firstPerProcessFlags);
+    perAZ.put(firstAZ, firstPerProcessFlags);
 
     // Second -> adding new
-    String second = nodeNames.get(1);
+    UUID secondAZ = azList.get(1);
     SpecificGFlags.PerProcessFlags secondPerProcessFlags = new SpecificGFlags.PerProcessFlags();
     secondPerProcessFlags.value =
         ImmutableMap.of(
             MASTER, ImmutableMap.of("master-flag2", "m2"),
             TSERVER, ImmutableMap.of("tserver-flag2", "t2"));
-    perAZ.put(nodeToAzUUID.get(second), secondPerProcessFlags);
+    perAZ.put(secondAZ, secondPerProcessFlags);
+
     // Third -> no changes
-    String third = nodeNames.get(2);
+    UUID thirdAZ = azList.get(2);
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.getReadOnlyClusters().get(0).userIntent.specificGFlags =
+        SpecificGFlags.constructInherited();
 
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(Success, taskInfo.getTaskState());
 
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("tserver-flag", "t2")),
-        getGflagsForNode(subTasks, first, TSERVER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("master-flag", "m2")),
-        getGflagsForNode(subTasks, first, MASTER));
-    assertEquals(
-        new HashMap<>(ImmutableMap.of("tserver-flag", "t1", "tserver-flag2", "t2")),
-        getGflagsForNode(subTasks, second, TSERVER));
-    assertEquals(
-        new HashMap<>(ImmutableMap.of("master-flag", "m1", "master-flag2", "m2")),
-        getGflagsForNode(subTasks, second, MASTER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("tserver-flag", "t1")),
-        getGflagsForNode(subTasks, third, TSERVER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("master-flag", "m1")),
-        getGflagsForNode(subTasks, third, MASTER));
+    Multimap<UUID, String> nodeNamesByUUID = ArrayListMultimap.create();
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      nodeNamesByUUID.put(nodeDetails.getAzUuid(), nodeDetails.nodeName);
+    }
+    assertEquals(6, nodeNamesByUUID.size());
+    assertEquals(3, nodeNamesByUUID.keySet().size());
+
+    for (String first : nodeNamesByUUID.get(firstAZ)) {
+      assertEquals(
+          new HashMap<>(Collections.singletonMap("tserver-flag", "t2")),
+          getGflagsForNode(subTasks, first, TSERVER));
+      if (defaultUniverse.getNode(first).isMaster) {
+        assertEquals(
+            new HashMap<>(Collections.singletonMap("master-flag", "m2")),
+            getGflagsForNode(subTasks, first, MASTER));
+      }
+    }
+    for (String second : nodeNamesByUUID.get(secondAZ)) {
+      assertEquals(
+          new HashMap<>(ImmutableMap.of("tserver-flag", "t1", "tserver-flag2", "t2")),
+          getGflagsForNode(subTasks, second, TSERVER));
+      if (defaultUniverse.getNode(second).isMaster) {
+        assertEquals(
+            new HashMap<>(ImmutableMap.of("master-flag", "m1", "master-flag2", "m2")),
+            getGflagsForNode(subTasks, second, MASTER));
+      }
+    }
+    for (String third : nodeNamesByUUID.get(thirdAZ)) {
+      assertEquals(
+          new HashMap<>(Collections.singletonMap("tserver-flag", "t1")),
+          getGflagsForNode(subTasks, third, TSERVER));
+      if (defaultUniverse.getNode(third).isMaster) {
+        assertEquals(
+            new HashMap<>(Collections.singletonMap("master-flag", "m1")),
+            getGflagsForNode(subTasks, third, MASTER));
+      }
+    }
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    SpecificGFlags readonlyGflags =
+        defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.specificGFlags;
+    assertEquals(specificGFlags.getPerProcessFlags(), readonlyGflags.getPerProcessFlags());
+    assertEquals(specificGFlags.getPerAZ(), readonlyGflags.getPerAZ());
   }
 
   @Test
@@ -1091,7 +1120,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer2 =
           new GFlagsValidation.AutoFlagsPerServer();
       autoFlagsPerServer2.autoFlagDetails = Collections.singletonList(flag2);
-      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), (ServerType) any()))
           .thenReturn(autoFlagsPerServer)
           .thenReturn(autoFlagsPerServer2);
     } catch (IOException e) {

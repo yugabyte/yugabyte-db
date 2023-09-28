@@ -11,12 +11,11 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
-import com.yugabyte.yw.models.Users;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import play.Environment;
@@ -26,7 +25,6 @@ import play.Environment;
 public class PermissionUtil {
 
   private final Environment environment;
-  public static final String SYSTEM_ROLES_PERMISSIONS_FILE = "rbac/system_roles_permissions.json";
 
   @Inject
   public PermissionUtil(Environment environment) {
@@ -67,36 +65,26 @@ public class PermissionUtil {
 
   public void validatePermissionList(Set<Permission> permissionList)
       throws PlatformServiceException {
+    Set<Permission> missingPermissions = new HashSet<>();
     for (Permission permission : permissionList) {
       Set<Permission> prerequisitePermissions =
           getPermissionInfo(permission).getPrerequisitePermissions();
       for (Permission prerequisitePermission : prerequisitePermissions) {
         if (!permissionList.contains(prerequisitePermission)) {
-          String errMsg =
-              String.format(
-                  "Permissions list given is not valid. "
-                      + "Ensure all prerequisite permissions are given. "
-                      + "Given permission list = %s missed prerequisite permission = %s.",
-                  permissionList, prerequisitePermission);
-          log.error(errMsg);
-          throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          // Keep track of the missing prerequisite permission.
+          missingPermissions.add(prerequisitePermission);
         }
       }
     }
-  }
-
-  public Set<Permission> getSystemRolePermissions(Users.Role userRole) {
-    try {
-      ObjectMapper mapper = new ObjectMapper();
-      Map<String, Set<Permission>> systemRolePermissionMap =
-          mapper.readValue(
-              environment.resourceAsStream(SYSTEM_ROLES_PERMISSIONS_FILE),
-              new TypeReference<Map<String, Set<Permission>>>() {});
-
-      return systemRolePermissionMap.get(userRole.name());
-    } catch (IOException e) {
-      e.printStackTrace();
-      return Collections.emptySet();
+    if (!missingPermissions.isEmpty()) {
+      String errMsg =
+          String.format(
+              "Permissions list given is not valid. "
+                  + "Ensure all prerequisite permissions are given. "
+                  + "Given permission list = %s, missed prerequisite permissions = %s.",
+              permissionList, missingPermissions);
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
   }
 }

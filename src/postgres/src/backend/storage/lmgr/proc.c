@@ -901,16 +901,16 @@ void
 RemoveLockGroupLeader(PGPROC *proc)
 {
 	PGPROC	   *volatile *procgloballist;
-	PGPROC	   *leader = MyProc->lockGroupLeader;
+	PGPROC	   *leader = proc->lockGroupLeader;
 	LWLock	   *leader_lwlock = LockHashPartitionLockByProc(leader);
 
 	LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);
 	Assert(!dlist_is_empty(&leader->lockGroupMembers));
-	dlist_delete(&MyProc->lockGroupLink);
+	dlist_delete(&proc->lockGroupLink);
 	if (dlist_is_empty(&leader->lockGroupMembers))
 	{
 		leader->lockGroupLeader = NULL;
-		if (leader != MyProc)
+		if (leader != proc)
 		{
 			procgloballist = leader->procgloballist;
 
@@ -921,8 +921,8 @@ RemoveLockGroupLeader(PGPROC *proc)
 			SpinLockRelease(ProcStructLock);
 		}
 	}
-	else if (leader != MyProc)
-		MyProc->lockGroupLeader = NULL;
+	else if (leader != proc)
+		proc->lockGroupLeader = NULL;
 	LWLockRelease(leader_lwlock);
 }
 

@@ -41,8 +41,6 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
 
-  private static boolean addMasters = false;
-
   @Override
   @Before
   public void setUp() {
@@ -94,7 +92,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
     // Create hooks
     hook1 =
         Hook.create(
@@ -145,6 +143,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     Universe result = createUniverse(universeName, defaultCustomer.getId(), providerType);
     result =
         Universe.saveDetails(

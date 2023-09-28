@@ -4,7 +4,7 @@ linkTitle: Performance Advisor
 description: Scan your universe to discover performance optimizations.
 headcontent: Scan your universe to discover performance optimizations
 image: /images/section_icons/deploy/enterprise.png
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:
     parent: alerts-monitoring
@@ -81,7 +81,7 @@ SELECT count(*) FROM order_details
 
 **Fix the problem**
 
-Connect to the database and use DROP INDEX to delete the indexes, and then recreate the indexes using range sharding. For more information on sharding strategies, refer to [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/).
+Connect to the database and use DROP INDEX to delete the indexes, and then recreate the indexes using range sharding. For more information on sharding strategies, refer to [Sharding data across nodes](../../../architecture/docdb-sharding/sharding/).
 
 ### Connection skew
 
@@ -160,7 +160,7 @@ If range sharding is used, analyze reads and writes and recreate the table with 
 
 ## Learn more
 
-- [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/)
+- [Sharding data across nodes](../../../architecture/docdb-sharding/sharding/)
 - [Distributed SQL Sharding: How Many Tablets, and at What Size?](https://www.yugabyte.com/blog/distributed-sql-sharding-how-many-tablets-size/)
 - [How Data Sharding Works in a Distributed SQL Database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
 - [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)

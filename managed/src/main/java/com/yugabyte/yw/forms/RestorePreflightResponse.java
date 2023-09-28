@@ -10,7 +10,7 @@ import lombok.Builder;
 import lombok.Data;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class RestorePreflightResponse {
 
   @ApiModelProperty(value = "Whether backup was KMS encrypted")
@@ -28,4 +28,8 @@ public class RestorePreflightResponse {
   @JsonIgnore
   @Builder.Default
   private Map<String, YbcBackupResponse> successMarkerMap = null;
+
+  @ApiModelProperty(hidden = true)
+  @Builder.Default
+  private String loggingID = null;
 }

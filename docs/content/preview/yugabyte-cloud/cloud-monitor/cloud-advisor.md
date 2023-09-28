@@ -76,7 +76,7 @@ SELECT count(*) FROM order_details
 
 **Fix the problem**
 
-Connect to the database and use DROP INDEX to delete the indexes, and then recreate the indexes using range sharding. For more information on sharding strategies, refer to [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/).
+Connect to the database and use DROP INDEX to delete the indexes, and then recreate the indexes using range sharding. For more information on sharding strategies, refer to [Sharding data across nodes](../../../architecture/docdb-sharding/sharding/).
 
 ### Connection skew
 
@@ -122,7 +122,7 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 ## Learn more
 
-- [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/)
+- [Sharding data across nodes](../../../architecture/docdb-sharding/sharding/)
 - [Distributed SQL Sharding: How Many Tablets, and at What Size?](https://www.yugabyte.com/blog/distributed-sql-sharding-how-many-tablets-size/)
 - [How Data Sharding Works in a Distributed SQL Database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
 - [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)

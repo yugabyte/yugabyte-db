@@ -92,6 +92,11 @@ public class RegionHandler {
               existingRegion.getCode()));
     }
 
+    if (provider.getCloudCode() == CloudType.onprem) {
+      existingRegion.setLatitude(region.getLatitude());
+      existingRegion.setLongitude(region.getLongitude());
+    }
+
     existingRegion.setDetails(region.getDetails());
     existingRegion.save();
     modifyImageBundlesIfRequired(provider, existingRegion);

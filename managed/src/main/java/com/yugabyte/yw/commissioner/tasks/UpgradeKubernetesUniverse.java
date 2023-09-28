@@ -34,10 +34,13 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected UpgradeKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected UpgradeKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   public static class Params extends UpgradeParams {}
@@ -56,8 +59,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-          universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
@@ -160,8 +162,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-          getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

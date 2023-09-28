@@ -245,6 +245,9 @@ public class Audit extends Model {
     @EnumValue("Sync XCluster Configuration")
     SyncXClusterConfig,
 
+    @EnumValue("Failover")
+    Failover,
+
     @EnumValue("Login")
     Login,
 
@@ -271,6 +274,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade Software")
     UpgradeSoftware,
+
+    @EnumValue("Finalize Upgrade")
+    FinalizeUpgrade,
 
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,

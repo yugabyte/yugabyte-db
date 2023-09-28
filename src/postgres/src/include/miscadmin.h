@@ -27,6 +27,8 @@
 
 #include "pgtime.h"				/* for pg_time_t */
 
+#include "postgres.h"			/* for HeapTuple */
+#include "access/htup.h"		/* for HeapTuple */
 
 #define InvalidPid				(-1)
 

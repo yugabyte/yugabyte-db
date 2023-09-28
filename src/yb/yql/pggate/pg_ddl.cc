@@ -405,5 +405,37 @@ Status PgAlterTable::Exec() {
 PgAlterTable::~PgAlterTable() {
 }
 
+//--------------------------------------------------------------------------------------------------
+// PgDropSequence
+//--------------------------------------------------------------------------------------------------
+
+PgDropSequence::PgDropSequence(PgSession::ScopedRefPtr pg_session,
+                               PgOid database_oid,
+                               PgOid sequence_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid),
+    sequence_oid_(sequence_oid) {
+}
+
+PgDropSequence::~PgDropSequence() {
+}
+
+Status PgDropSequence::Exec() {
+  return pg_session_->pg_client().DeleteSequenceTuple(database_oid_, sequence_oid_);
+}
+
+PgDropDBSequences::PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
+                                     PgOid database_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid) {
+}
+
+PgDropDBSequences::~PgDropDBSequences() {
+}
+
+Status PgDropDBSequences::Exec() {
+  return pg_session_->pg_client().DeleteDBSequences(database_oid_);
+}
+
 }  // namespace pggate
 }  // namespace yb

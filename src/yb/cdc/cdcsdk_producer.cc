@@ -140,6 +140,11 @@ bool AddBothOldAndNewValues(const CDCRecordType& record_type) {
          record_type == CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES;
 }
 
+bool IsOldRowNeededOnDelete(const CDCRecordType& record_type) {
+  return record_type == CDCRecordType::ALL ||
+         record_type == CDCRecordType::FULL_ROW_NEW_IMAGE;
+}
+
 template <class Value>
 Status AddColumnToMap(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ColumnSchema& col_schema,
@@ -298,7 +303,7 @@ Status PopulateBeforeImageForDeleteOp(
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     const Schema& schema, const std::vector<ColumnSchema>& columns, const qlexpr::QLTableRow& row,
     const cdc::CDCRecordType& record_type) {
-  if (record_type == CDCRecordType::ALL) {
+  if (IsOldRowNeededOnDelete(record_type)) {
     QLValue ql_value;
     if (row.ColumnCount() == columns.size()) {
       for (size_t index = 0; index < row.ColumnCount(); ++index) {
@@ -780,8 +785,8 @@ Status PopulateCDCSDKIntentRecord(
       row_message->set_commit_time(commit_time);
       row_message->set_record_time(intent.intent_ht.hybrid_time().ToUint64());
 
-      if ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
-        (row_message->op() == RowMessage_Op_DELETE)) {
+      if (IsOldRowNeededOnDelete(metadata.GetRecordType()) &&
+         (row_message->op() == RowMessage_Op_DELETE)) {
         VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                 << " with read time: " << ReadHybridTime::FromUint64(commit_time)
                 << "  cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
@@ -1155,8 +1160,8 @@ Status PopulateCDCSDKWriteRecord(
         }
       }
 
-      if ((metadata.GetRecordType() == cdc::CDCRecordType::ALL) &&
-        (row_message->op() == RowMessage_Op_DELETE)) {
+      if (IsOldRowNeededOnDelete(metadata.GetRecordType()) &&
+          (row_message->op() == RowMessage_Op_DELETE)) {
         VLOG(2) << "Get Beforeimage for tablet: " << tablet_peer->tablet_id()
                 << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
                 << " cdcsdk_safe_time: " << tablet_peer->get_cdc_sdk_safe_time()
@@ -1906,8 +1911,11 @@ Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
     const CoarseTimePoint& deadline) {
-  HybridTime consistent_stream_safe_time =
-      tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+  HybridTime consistent_stream_safe_time = HybridTime::kInvalid;
+  if (tablet_ptr->transaction_participant()) {
+    consistent_stream_safe_time =
+        tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+  }
   consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
                                     ? leader_safe_time
                                     : consistent_stream_safe_time;
@@ -2169,7 +2177,9 @@ Status GetChangesForCDCSDK(
   }
   uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
       tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
-  OpId historical_max_op_id = tablet_ptr->transaction_participant()->GetHistoricalMaxOpId();
+  OpId historical_max_op_id = tablet_ptr->transaction_participant()
+                                  ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
+                                  : OpId::Invalid();
   auto table_name = tablet_ptr->metadata()->table_name();
 
   auto safe_hybrid_time_resp = HybridTime::kInvalid;

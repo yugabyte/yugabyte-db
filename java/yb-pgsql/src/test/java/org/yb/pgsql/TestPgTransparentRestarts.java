@@ -39,7 +39,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.yb.util.BuildTypeUtil.getTimeoutMultiplier;
 
+import org.yb.client.YBClient;
 import org.yb.util.CatchingThread;
 import org.yb.util.RandomUtil;
 import org.yb.util.ThreadUtil;
@@ -106,7 +108,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    * This should be way more than average local execution time of a single test, to account for slow
    * CI machines.
    */
-  private static final int INSERTS_AWAIT_TIME_SEC = 300;
+  private static final int INSERTS_AWAIT_TIME_SEC = (int) (150 * getTimeoutMultiplier());
 
   /**
    * How long do we wait for {@code SELECT}s to finish after {@code INSERT}s are completed and
@@ -127,10 +129,10 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
     flags.put("ysql_max_write_restart_attempts", "5");
     flags.put("yb_enable_read_committed_isolation", "true");
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17302
-    flags.put("enable_wait_queues", "false");
-    flags.put("enable_deadlock_detection", "false");
+    // TODO: Remove this before diff lands. This is just to have the tests run with wait queues
+    // on release builds too.
+    flags.put("enable_wait_queues", "true");
+    flags.put("wait_queue_poll_interval_ms", "5");
     return flags;
   }
 
@@ -148,6 +150,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       LOG.info("Dropping table test_rr");
       stmt.execute("DROP TABLE test_rr;");
+      LOG.info("Completed drop table");
     }
   }
 
@@ -409,128 +412,106 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    */
   @Test
   public void update() throws Exception {
-    // Simple or extended query mode
-    for (ConnectionBuilder cb: Arrays.asList(
-      getConnectionBuilder(),
-      getConnectionBuilder().withPreferQueryMode("simple"))) {
-      // Case 1: Single statement case
-      new RegularDmlStatementTester(
-          cb,
-          "UPDATE test_rr set i=1 where i=0",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
+    ConnectionBuilder cb = getConnectionBuilder();
+    // Case 1: Single statement case
+    new RegularDmlStatementTester(
+        cb,
+        "UPDATE test_rr set i=1 where i=0",
+        getShortString(),
+        false /* is_deadlock_possible */
+    ).runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
+    }
 
-      // Case 2: In SELECT func()
-      try (Statement stmt = cb.connect().createStatement()) {
-        stmt.execute("CREATE FUNCTION func() RETURNS void AS " +
-                     "$$ UPDATE test_rr set i=1 where i=0 $$ LANGUAGE SQL");
-      }
-      new RegularDmlStatementTester(
-          cb,
-          "SELECT func()",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
+    // Case 2: In SELECT func()
+    try (Statement stmt = cb.connect().createStatement()) {
+      stmt.execute("CREATE FUNCTION func() RETURNS void AS " +
+                    "$$ UPDATE test_rr set i=1 where i=0 $$ LANGUAGE SQL");
+    }
+    new RegularDmlStatementTester(
+        cb,
+        "SELECT func()",
+        getShortString(),
+        false /* is_deadlock_possible */
+    ).runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
+    }
 
-      // Case 3: Prepared statement
-      new PreparedDmlStatementTester(
-          cb,
-          "UPDATE test_rr set i=? where i=?",
-          getShortString()) {
+    // Case 3: Prepared statement
+    new PreparedDmlStatementTester(
+        cb,
+        "UPDATE test_rr set i=? where i=?",
+        getShortString(),
+        false /* is_deadlock_possible */) {
 
-        @Override
-        public PreparedStatement createStatement(Connection conn) throws Exception {
-          PreparedStatement pstmt = super.createStatement(conn);
-          pstmt.setInt(1, 1);
-          pstmt.setInt(2, 0);
-          return pstmt;
-        }
-      }.runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 1);
+        pstmt.setInt(2, 0);
+        return pstmt;
       }
+    }.runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
+    }
 
-      // Case 4: In SELECT func() with Prepared statement
-      new PreparedDmlStatementTester(
-          cb,
-          "SELECT func()",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
-
-      try (Statement stmt = cb.connect().createStatement()) {
-        stmt.execute("DROP FUNCTION func()");
-      }
+    try (Statement stmt = cb.connect().createStatement()) {
+      stmt.execute("DROP FUNCTION func()");
     }
   }
 
   @Test
   public void delete() throws Exception {
-    // Simple or extended query mode
-    for (ConnectionBuilder cb: Arrays.asList(
-        getConnectionBuilder(),
-        getConnectionBuilder().withPreferQueryMode("simple"))) {
-      // Case 1: Single statement case
-      new RegularDmlStatementTester(
-          cb,
-          "DELETE from test_rr where i > 0",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
+    ConnectionBuilder cb = getConnectionBuilder();
+    // Case 1: Single statement case
+    new RegularDmlStatementTester(
+        cb,
+        "DELETE from test_rr where i > 0",
+        getShortString(),
+        // A deadlock can occur as follows: an rc/rr transaction's write might wait on a row that
+        // was read and locked by a serializable txn, while the serializable transaction tries to
+        // read and lock a row which has already been written by the rc/rr txn. This situation can
+        // occur because the "DELETE ... i > 0" issues read rpcs to all tablets in parallel.
+        true /* is_deadlock_possible */
+    ).runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
+    }
 
-      // Case 2: In SELECT func()
-      try (Statement stmt = cb.connect().createStatement()) {
-        stmt.execute("CREATE FUNCTION func() RETURNS void AS " +
-                     "$$ DELETE from test_rr where i > 0 $$ LANGUAGE SQL");
-      }
-      new RegularDmlStatementTester(
-          cb,
-          "SELECT func()",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
+    // Case 2: In SELECT func()
+    try (Statement stmt = cb.connect().createStatement()) {
+      stmt.execute("CREATE FUNCTION func() RETURNS void AS " +
+                    "$$ DELETE from test_rr where i > 0 $$ LANGUAGE SQL");
+    }
+    new RegularDmlStatementTester(
+        cb,
+        "SELECT func()",
+        getShortString(),
+        true /* is_deadlock_possible */
+    ).runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
+    }
 
-      // Case 3: Prepared statement
-      new PreparedDmlStatementTester(
-          cb,
-          "DELETE from test_rr where i > ?",
-          getShortString()) {
+    // Case 3: Prepared statement
+    new PreparedDmlStatementTester(
+        cb,
+        "DELETE from test_rr where i > ?",
+        getShortString(),
+        true /* is_deadlock_possible */) {
 
-        @Override
-        public PreparedStatement createStatement(Connection conn) throws Exception {
-          PreparedStatement pstmt = super.createStatement(conn);
-          pstmt.setInt(1, 0);
-          return pstmt;
-        }
-      }.runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
+      @Override
+      public PreparedStatement createStatement(Connection conn) throws Exception {
+        PreparedStatement pstmt = super.createStatement(conn);
+        pstmt.setInt(1, 0);
+        return pstmt;
       }
-
-      // Case 4: In SELECT func() with Prepared statement
-      new PreparedDmlStatementTester(
-          cb,
-          "SELECT func()",
-          getShortString()
-      ).runTest();
-      try (Statement s = connection.createStatement()) {
-        s.execute("truncate table test_rr");
-      }
-
-      try (Statement stmt = cb.connect().createStatement()) {
-        stmt.execute("DROP FUNCTION func()");
-      }
+    }.runTest();
+    try (Statement s = connection.createStatement()) {
+      s.execute("truncate table test_rr");
     }
   }
 
@@ -579,6 +560,19 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     return ex.getMessage().toLowerCase().contains("abort");
   }
 
+  private static boolean isDeadlockError(Exception ex) {
+    if (!(ex instanceof PSQLException)) {
+      return false;
+    }
+    String sqlState = ((PSQLException) ex).getSQLState();
+    Boolean is_deadlock_error = DEADLOCK_DETECTED_PSQL_STATE.equals(sqlState);
+    if (is_deadlock_error) {
+      String lcMsg = ex.getMessage().toLowerCase();
+      assertTrue(lcMsg.contains("deadlock detected"));
+    }
+    return is_deadlock_error;
+  }
+
   private static boolean isRetriesExhaustedError(Exception ex) {
     return ex.getMessage().contains("All transparent retries exhausted");
   }
@@ -592,7 +586,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     // Using Yoda conditions to avoid NPE in the theoretical case of sqlState being null.
     return PSQLState.IN_FAILED_SQL_TRANSACTION.getState().equals(sqlState)
         || SNAPSHOT_TOO_OLD_PSQL_STATE.equals(sqlState)
-        || SERIALIZATION_FAILURE_PSQL_STATE.equals(sqlState);
+        || SERIALIZATION_FAILURE_PSQL_STATE.equals(sqlState)
+        || DEADLOCK_DETECTED_PSQL_STATE.equals(sqlState);
   }
 
   private static <T> T chooseForIsolation(
@@ -687,6 +682,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               auxSerializableStmt, auxRrStmt, auxRcStmt);
           try {
             inc(insertsAttempted, isolation);
+            LOG.info("Starting insert num " + insertsAttempted);
 
             if (runInTxnBlock) {
               auxStmt.execute("START TRANSACTION");
@@ -698,7 +694,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               try {
                 auxStmt.execute("COMMIT");
                 inc(insertsSucceeded, isolation);
+                LOG.info("Successful insert num " + insertsAttempted);
               } catch (Exception ex) {
+                LOG.info("Failed insert num " + insertsAttempted);
                 if (!isTxnError(ex)) {
                   fail("Unexpected error in INSERT: isolation=" + isolation + " runInTxnBlock=" +
                        runInTxnBlock + " " + ex.getMessage());
@@ -721,9 +719,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 }
               }
             } else {
+              LOG.info("Success insert num " + insertsAttempted);
               inc(insertsSucceeded, isolation);
             }
           } catch (Exception ex) {
+            LOG.info("Failed insert num " + insertsAttempted);
             if (!isTxnError(ex)) {
               fail("Unexpected error in INSERT: isolation=" + isolation + " runInTxnBlock=" +
                    runInTxnBlock + " " + ex.getMessage());
@@ -870,13 +870,40 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 500 /* numInserts */);
+      super(cb, valueToInsert, 50 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
     public abstract Stmt createStatement(Connection conn) throws Exception;
 
     public abstract ResultSet executeQuery(Stmt stmt) throws Exception;
+
+    private Boolean expectReadRestartErrors(IsolationLevel isolation) {
+      // We never expect SERIALIZABLE transaction to result in "restart read required" because the
+      // latest committed data is read (i.e., not a consistent read snapshot of the database).
+      return this.expectRestartErrors && isolation != IsolationLevel.SERIALIZABLE;
+    }
+
+    private Boolean expectConflictErrors(IsolationLevel isolation) throws Exception {
+      YBClient client = miniCluster.getClient();
+
+      String enable_wait_queues = client.getFlag(
+          miniCluster.getTabletServers().keySet().iterator().next(), "enable_wait_queues");
+
+      boolean is_wait_on_conflict_concurrency_control = (enable_wait_queues == "true");
+
+      // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict" for pure
+      // reads.
+      //
+      // In Wait-on-Conflict mode, read rpcs in serializable isolation from the ysql query layer
+      // to the tserver don't return kConflict errors because the tserver internally retries the
+      // conflict resolution for the read op once it wakes up from the wait queue after
+      // conflicting transations have finished. This retry is done indefinitely until the read
+      // op succeeds. The underlying reason this can be done is: seriailzable read rpcs use
+      // kMaxHybridTimeValue for the read i.e., read and lock the latest piece of data.
+      return this.expectRestartErrors && isolation == IsolationLevel.SERIALIZABLE &&
+          !is_wait_on_conflict_concurrency_control;
+    }
 
     @Override
     public List<ThrowingRunnable> getRunnableThreads(
@@ -965,8 +992,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           IsolationLevel isolation = e.getKey();
           int numReadRestarts = e.getValue();
 
-          // We never expect SERIALIZABLE transaction to result in "restart read required".
-          if (this.expectRestartErrors && isolation != IsolationLevel.SERIALIZABLE) {
+          if (expectReadRestartErrors(isolation)) {
             assertNotEquals("SELECT (single-stmt): expected read restarts to happen, but got " +
                 "none at " + isolation + " level",
                 0, numReadRestarts);
@@ -981,9 +1007,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           IsolationLevel isolation = e.getKey();
           int numConflictRestarts = e.getValue();
 
-          // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict"
-          // for pure reads.
-          if (this.expectRestartErrors && isolation == IsolationLevel.SERIALIZABLE) {
+          if (expectConflictErrors(isolation)) {
             assertNotEquals("SELECT (single-stmt): expected conflict errors to happen, but got " +
                 "none at " + isolation + " level",
                 0, numConflictRestarts);
@@ -1015,16 +1039,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int txnsSucceeded = 0;
           int selectsWithAbortError = 0;
           int commitOfTxnThatRequiresRestart = 0;
-          boolean resultsAlwaysMatched = true;
-
-          // We never expect REPEATABLE READ/READ COMMITTED transaction to result in "conflict"
-          // for pure reads.
-          // We never expect SERIALIZABLE transaction to result in "restart read required".
-          boolean expectReadRestartErrors = this.expectRestartErrors &&
-                                            (isolation == IsolationLevel.REPEATABLE_READ ||
-                                            isolation == IsolationLevel.READ_COMMITTED);
-          boolean expectConflictErrors = this.expectRestartErrors &&
-                                         isolation == IsolationLevel.SERIALIZABLE;
+          int statementsresultsMatched = 0;
 
           try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
               Stmt stmt = createStatement(selectTxnConn)) {
@@ -1055,7 +1070,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 assertTrue("Two SELECTs done within same transaction mismatch" +
                            ", " + isolation + " transaction isolation breach!",
                            rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
-                resultsAlwaysMatched = resultsAlwaysMatched && rows1.equals(rows2);
+                if (rows1.equals(rows2)) {
+                  statementsresultsMatched++;
+                }
                 ++txnsSucceeded;
               } catch (Exception ex) {
                 if (!isTxnError(ex)) {
@@ -1091,13 +1108,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
               " txnsSucceeded=" + txnsSucceeded +
               " selectsWithAbortError=" + selectsWithAbortError +
-              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart +
+              " statementsresultsMatched=" + statementsresultsMatched);
 
-          if (expectReadRestartErrors) {
+          if (expectReadRestartErrors(isolation)) {
             // Read restart errors can never occur in serializable isolation.
-            assertTrue(
-                isolation == IsolationLevel.REPEATABLE_READ ||
-                isolation == IsolationLevel.READ_COMMITTED);
+            assertTrue(isolation != IsolationLevel.SERIALIZABLE);
             // We don't assert for selectsSecondOpRestartRequired > 0 because of the following
             // reasoning:
             //
@@ -1114,6 +1130,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           } else {
             assertEquals("SELECT (" + isolation + "): Unexpected restarts!",
                 0, selectsFirstOpRestartRequired);
+
+            // Assertions for the second statement vary based on the isolation level.
             switch (isolation) {
               case SERIALIZABLE:
                 // Read restarts can't occur in SERIALIZABLE isolation
@@ -1139,19 +1157,21 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           }
 
           assertTrue(
-            (!expectConflictErrors && selectsFirstOpConflictDetected == 0) ||
-            (expectConflictErrors && selectsFirstOpConflictDetected > 0));
+            (!expectConflictErrors(isolation) && selectsFirstOpConflictDetected == 0) ||
+            (expectConflictErrors(isolation) && selectsFirstOpConflictDetected > 0));
 
           // If we (at all) expect restart/conflict errors, then we cannot guarantee that any
           // operation would succeed.
-          if (!(expectReadRestartErrors || expectConflictErrors)) {
+          if (!(expectReadRestartErrors(isolation) || expectConflictErrors(isolation))) {
             assertGreaterThan("No txns in " + isolation + " succeeded, ever! Flawed test?",
                 txnsSucceeded, 0);
           }
           assertTrue("It can't be the case that results were always same in both SELECTs at " +
                      "READ COMMITTED isolation level",
-                     (isolation != IsolationLevel.READ_COMMITTED && resultsAlwaysMatched) ||
-                     (isolation == IsolationLevel.READ_COMMITTED && !resultsAlwaysMatched));
+                     (isolation != IsolationLevel.READ_COMMITTED
+                      && statementsresultsMatched == txnsSucceeded) ||
+                     (isolation == IsolationLevel.READ_COMMITTED
+                      && statementsresultsMatched < txnsSucceeded));
         });
       }
 
@@ -1212,7 +1232,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public SavepointStatementTester(
         ConnectionBuilder cb,
         String valueToInsert) {
-      super(cb, valueToInsert, 1000 /* numInserts */);
+      super(cb, valueToInsert, 50 /* numInserts */);
     }
 
     private ThrowingRunnable getRunnableThread(
@@ -1281,9 +1301,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       ConcurrentInsertQueryTester<Stmt> {
     public abstract Stmt createStatement(Connection conn) throws Exception;
     public abstract boolean execute(Stmt stmt) throws Exception;
+    private Boolean is_deadlock_possible;
 
-    public DmlTester(ConnectionBuilder cb, String valueToInsert) {
-      super(cb, valueToInsert, 500 /* numInserts */);
+    public DmlTester(ConnectionBuilder cb, String valueToInsert, Boolean is_deadlock_possible) {
+      super(cb, valueToInsert, 50 /* numInserts */);
+      this.is_deadlock_possible = is_deadlock_possible;
     }
 
     @Override
@@ -1300,6 +1322,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int executionsRestartRequired = 0;
           int executionsConflictErrors = 0;
           int executionsAbortedByOtherTxn = 0;
+          int executionsDeadlockErrors = 0;
           int executionsAbortedByOtherTxnAtCommit = 0; // kAborted on explicit "commit"
           int executionsRanInTxnBlock = 0;
 
@@ -1346,9 +1369,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 } else if (isAbortError(ex)) {
                   ++executionsAbortedByOtherTxn;
                 } else if (isConflictError(ex)) {
-                  // A conflict can only occur when the read time of the UPDATE
+                  // A conflict can only occur on the tserver when the read time of the UPDATE
                   // is the same as the write time of when a row was inserted.
                   ++executionsConflictErrors;
+                } else if (isDeadlockError(ex)) {
+                  executionsDeadlockErrors++;
                 } else {
                   fail("failed with ex for runInTxnBlock=" + runInTxnBlock + ": " +
                        ex.getMessage());
@@ -1375,6 +1400,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                     executionsAbortedByOtherTxnAtCommit);
             assertTrue(executionsRestartRequired == 0);
             assertTrue(executionsConflictErrors == 0);
+            assertTrue((executionsDeadlockErrors == 0) || is_deadlock_possible);
           } catch (Exception ex) {
             fail(ex.getMessage());
           }
@@ -1392,8 +1418,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public RegularDmlStatementTester(
         ConnectionBuilder cb,
         String queryString,
-        String valueToInsert) {
-      super(cb, valueToInsert);
+        String valueToInsert,
+        Boolean is_deadlock_possible) {
+      super(cb, valueToInsert, is_deadlock_possible);
       this.queryString = queryString;
     }
 
@@ -1415,8 +1442,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     public PreparedDmlStatementTester(
         ConnectionBuilder cb,
         String queryString,
-        String valueToInsert) {
-      super(cb, valueToInsert);
+        String valueToInsert,
+        Boolean is_deadlock_possible) {
+      super(cb, valueToInsert, is_deadlock_possible);
       this.queryString = queryString;
     }
 

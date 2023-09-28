@@ -61,6 +61,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -961,6 +962,26 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get a gflag's value from a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to get.
+   * @return string value of flag if valid, else empty string
+   */
+  public String getFlag(HostAndPort hp, String flag) throws Exception {
+    if (flag == null || hp == null) {
+      LOG.warn("Invalid arguments for hp: {}, flag {}", hp.toString(), flag);
+      return "";
+    }
+    Deferred<GetFlagResponse> d = asyncClient.getFlag(hp, flag);
+    GetFlagResponse result = d.join(getDefaultAdminOperationTimeoutMs());
+    if (result.getValid()) {
+      LOG.warn("Invalid flag {}", flag);
+      return result.getValue();
+    }
+    return "";
+  }
+
+  /**
    *  Get the list of master addresses from a given tserver.
    * @param hp the host and port of the server
    * @return a comma separated string containing the list of master addresses
@@ -1448,6 +1469,23 @@ public class YBClient implements AutoCloseable {
                                                   String recordType) throws Exception {
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
       nameSpaceName, format, checkpointType, recordType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType,
+                                                  String recordType,
+                                                  Boolean dbtype) throws Exception {
+    Deferred<CreateCDCStreamResponse> d;
+    if (dbtype) {
+      d = asyncClient.createCDCStream(table,
+        nameSpaceName, format, checkpointType, recordType,
+        CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    } else {
+      d = asyncClient.createCDCStream(table,
+          nameSpaceName, format, checkpointType, recordType);
+    }
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1955,6 +1993,24 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public GetXClusterSafeTimeResponse getXClusterSafeTime() throws Exception {
+    Deferred<GetXClusterSafeTimeResponse> d = asyncClient.getXClusterSafeTime();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds,
+      @Nullable Long targetTime) throws Exception {
+    Deferred<WaitForReplicationDrainResponse> d =
+        asyncClient.waitForReplicationDrain(streamIds, targetTime);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds) throws Exception {
+    return waitForReplicationDrain(streamIds, null /* targetTime */);
+  }
+
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
@@ -2057,6 +2113,13 @@ public class YBClient implements AutoCloseable {
       UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d =
       asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ValidateReplicationInfoResponse validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) throws Exception {
+    Deferred<ValidateReplicationInfoResponse> d =
+      asyncClient.validateReplicationInfo(replicationInfoPB);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

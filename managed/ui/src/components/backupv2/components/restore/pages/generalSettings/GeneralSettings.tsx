@@ -11,6 +11,7 @@ import React, { useCallback, useContext, useEffect, useImperativeHandle } from '
 import { FormProvider, useForm } from 'react-hook-form';
 import { noop } from 'lodash';
 import { useQuery } from 'react-query';
+import { useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -18,6 +19,7 @@ import BackupInfoBanner from '../../common/BackupInfoBanner';
 import ChooseUniverseConfig from './ChooseUniverseConfig';
 import SelectKeyspaceConfig from './SelectKeyspaceConfig';
 import ParallelThreadsConfig from './ParallelThreadsConfig';
+import { TablespaceConfig } from './TablespaceConfig';
 import { PageRef, RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
 import { SelectTablesConfig } from './SelectTablesConfig';
 import { BackupRestoreStepper } from '../../common/BackupRestoreStepper';
@@ -28,7 +30,6 @@ import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplica
 import { TableType } from '../../../../../../redesign/helpers/dtos';
 import { isDuplicateKeyspaceExistsinUniverse } from '../../RestoreUtils';
 import { IncrementalBackupProps } from '../../../BackupDetails';
-import { useTranslation } from 'react-i18next';
 
 type ReactSelectOption = { label: string; value: string } | null;
 
@@ -39,6 +40,7 @@ export type IGeneralSettings = {
   forceKeyspaceRename: boolean;
   tableSelectionType: 'ALL_TABLES' | 'SUBSET_OF_TABLES';
   parallelThreads: number;
+  useTablespaces: boolean;
   selectedKeyspace: ReactSelectOption;
   incrementalBackupProps: IncrementalBackupProps;
 };
@@ -79,7 +81,8 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
       moveToNextPage,
       savePreflightResponse,
       setSubmitLabel,
-      setDisableSubmit
+      setDisableSubmit,
+      setisSubmitting
     }
   ]: RestoreContextMethods = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 
@@ -118,11 +121,15 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     if (targetUniverseUUID === generalSettings?.targetUniverse?.value) return;
     methods.setValue('forceKeyspaceRename', false);
     methods.setValue('renameKeyspace', false);
+
+    setDisableSubmit(true);
+    setisSubmitting(true);
+    setSubmitLabel(t('newRestoreModal.generalSettings.verifying'));
   }, [targetUniverseUUID]);
 
   // send the preflight api request , when the user choses the universe
-  const { isSuccess } = useQuery(
-    ['backup', 'preflight', targetUniverseUUID],
+  const { isFetching, isSuccess } = useQuery(
+    ['backup', 'preflight', backupDetails!.commonBackupInfo.backupUUID, targetUniverseUUID],
     () =>
       getPreflightCheck({
         backupUUID: backupDetails!.commonBackupInfo.backupUUID,
@@ -139,6 +146,9 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
       onError: () => {
         toast.error('Preflight check failed!.');
         setDisableSubmit(true);
+      },
+      onSettled: () => {
+        setisSubmitting(false);
       }
     }
   );
@@ -168,11 +178,9 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   // till the preflight check is finished.
   useEffect(() => {
     setDisableSubmit(true);
+    savePreflightResponse(undefined);
+    methods.setValue('useTablespaces', false);
   }, [setDisableSubmit, targetUniverseUUID]);
-
-  useEffect(() => {
-    setDisableSubmit(!isSuccess);
-  }, [isSuccess, setDisableSubmit]);
 
   const renameKeyspace = watch('renameKeyspace');
   const tableSelectionType = watch('tableSelectionType');
@@ -180,12 +188,13 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   // if the user chooses rename keyspaces, or "subset of tables",
   // change the modal's submit button to 'Next'
   useEffect(() => {
+    if (isFetching) return;
     if (renameKeyspace || tableSelectionType === 'SUBSET_OF_TABLES') {
       setSubmitLabel(t('newRestoreModal.generalSettings.next'));
     } else {
       setSubmitLabel(t('newRestoreModal.generalSettings.restore'));
     }
-  }, [renameKeyspace, setSubmitLabel, tableSelectionType, t]);
+  }, [renameKeyspace, setSubmitLabel, tableSelectionType, t, isFetching]);
 
   return (
     <div className={classes.root}>
@@ -206,9 +215,11 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
           <section>
             <SelectTablesConfig />
           </section>
+          <section>
+            <TablespaceConfig />
+          </section>
           {backupDetails?.category === 'YB_BACKUP_SCRIPT' && (
             <section>
-              {' '}
               <ParallelThreadsConfig />
             </section>
           )}

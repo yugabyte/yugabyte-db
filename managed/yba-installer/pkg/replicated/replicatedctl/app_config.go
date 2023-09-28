@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,9 @@ var ErrorInvalidAppConfig error = errors.New("invalid app config")
 // ErrorConfigType for a single config entry not having the expected type
 var ErrorConfigType error = errors.New("invalid type for app config value")
 
+// StoragePathKey is the config key for the "storage path" or install root
+var StoragePathKey string = "storage_path"
+
 // ConfigEntry is a single config name and value
 type ConfigEntry struct {
 	Name  string
@@ -27,33 +31,33 @@ type ConfigEntry struct {
 }
 
 var replicatedToYbaCtl = map[string]string{
-	"storage_path": "installRoot",
+	"storage_path":      "installRoot",
 	"nginx_custom_port": "platform.port",
 	// value changed when we removed nginx from replicated
-	"ui_https_port": "platform.port",
-	"enable_proxy": "platform.proxy.enable",
-	"http_proxy": "platform.proxy.http_proxy",
-	"https_proxy": "platform.proxy.https_proxy",
-	"no_proxy": "platform.proxy.no_proxy",
-	"java_https_proxy_port": "platform.proxy.java_https_proxy_port",
-	"java_https_proxy_host": "platform.proxy.java_https_proxy_host",
-	"java_http_proxy_port": "platform.proxy.java_http_proxy_port",
-	"java_http_proxy_host": "platform.proxy.java_http_proxy_host",
-	"db_external_port": "postgres.install.port",
-	"dbuser": "postgres.install.username",
-	"dbldapauth": "postgres.install.ldap_enabled",
-	"ldap_server": "postgres.install.ldap_server",
-	"ldap_dn_prefix": "postgres.install.ldap_prefix",
-	"ldap_base_dn": "postgres.install.ldap_suffix",
-	"ldap_port": "postgres.install.ldap_port",
-	"prometheus_retention": "prometheus.retentionTime",
-	"prometheus_query_timeout": "prometheus.timeout",
-	"prometheus_scrape_interval": "prometheus.scrapeInterval",
-	"prometheus_scrape_timeout": "prometheus.scrapeTimeout",
+	"ui_https_port":                "platform.port",
+	"enable_proxy":                 "platform.proxy.enable",
+	"http_proxy":                   "platform.proxy.http_proxy",
+	"https_proxy":                  "platform.proxy.https_proxy",
+	"no_proxy":                     "platform.proxy.no_proxy",
+	"java_https_proxy_port":        "platform.proxy.java_https_proxy_port",
+	"java_https_proxy_host":        "platform.proxy.java_https_proxy_host",
+	"java_http_proxy_port":         "platform.proxy.java_http_proxy_port",
+	"java_http_proxy_host":         "platform.proxy.java_http_proxy_host",
+	"db_external_port":             "postgres.install.port",
+	"dbuser":                       "postgres.install.username",
+	"dbldapauth":                   "postgres.install.ldap_enabled",
+	"ldap_server":                  "postgres.install.ldap_server",
+	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
+	"ldap_base_dn":                 "postgres.install.ldap_suffix",
+	"ldap_port":                    "postgres.install.ldap_port",
+	"prometheus_retention":         "prometheus.retentionTime",
+	"prometheus_query_timeout":     "prometheus.timeout",
+	"prometheus_scrape_interval":   "prometheus.scrapeInterval",
+	"prometheus_scrape_timeout":    "prometheus.scrapeTimeout",
 	"prometheus_query_max_samples": "prometheus.maxSamples",
 	"prometheus_query_concurrency": "prometheus.maxConcurrency",
-	"prometheus_external_port": "prometheus.port",
-	"support_origin_url": "platform.support_origin_url",
+	"prometheus_external_port":     "prometheus.port",
+	"support_origin_url":           "platform.support_origin_url",
 }
 
 // Bool converts the value from a string
@@ -154,6 +158,15 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 
 // ExportYbaCtl writes existing replicated settings to /opt/yba-ctl/yba-ctl.yml
 func (ac *AppConfig) ExportYbaCtl() error {
+	if _, err := os.Stat(common.InputFile()); !errors.Is(err, os.ErrNotExist) {
+		prompt := fmt.Sprintf("Found existing config file at %s. Proceed with those settings?",
+			common.InputFile())
+		if common.UserConfirm(prompt, common.DefaultYes) {
+			return nil
+		}
+		return fmt.Errorf("found existing config file and asked not to proceed. " +
+			"please delete the config file to migrate replicated settings")
+	}
 	config.WriteDefaultConfig()
 	for _, e := range ac.EntriesAsSlice() {
 		// skip any settings that were not set by replicated
@@ -162,15 +175,15 @@ func (ac *AppConfig) ExportYbaCtl() error {
 		}
 		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
 			if b, err := e.Bool(); err == nil {
-				if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b));
-					 err != nil {
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+				if err != nil {
 					return fmt.Errorf("Error setting boolean value at %s: %s", ybaCtlPath, err.Error())
 				}
 			} else {
 				i, err := e.Int()
 				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i));
-						 err != nil {
+					err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i))
+					if err != nil {
 						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
 					}
 				} else {

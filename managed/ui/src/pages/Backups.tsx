@@ -7,16 +7,24 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Component } from 'react';
-import { AccountLevelBackup } from '../components/backupv2';
+import { Component, Suspense, lazy } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const AccountLevelBackupComponent = lazy(() =>
+  import('../components/backupv2/Account/AccountLevelBackup').then(({ AccountLevelBackup }) => ({
+    default: AccountLevelBackup
+  }))
+);
 
 export default class Backups extends Component {
   render() {
     return (
-      <div className="dashboard-container">
-        <h2 className="content-title">Backups</h2>
-        <AccountLevelBackup />
-      </div>
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <div className="dashboard-container">
+          <h2 className="content-title">Backups</h2>
+          <AccountLevelBackupComponent />
+        </div>
+      </Suspense>
     );
   }
 }

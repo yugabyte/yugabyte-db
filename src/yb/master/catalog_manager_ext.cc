@@ -33,7 +33,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
@@ -525,6 +525,10 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
+        if (l->has_ysql_ddl_txn_verifier_state()) {
+          return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
+                               table_info->id());
+        }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
           const auto res = GetPgSchemaName(table_info);

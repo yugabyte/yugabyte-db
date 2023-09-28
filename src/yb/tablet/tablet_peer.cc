@@ -335,14 +335,6 @@ Status TabletPeer::InitTabletPeer(
   }
   operation_tracker_.StartMemoryTracking(tablet_->mem_tracker());
 
-  if (tablet_->transaction_coordinator()) {
-    tablet_->transaction_coordinator()->Start();
-  }
-
-  if (tablet_->transaction_participant()) {
-    tablet_->transaction_participant()->Start();
-  }
-
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
 
   TRACE("TabletPeer::Init() finished");
@@ -450,6 +442,14 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
                               "Incorrect state to start TabletPeer, "));
   }
+  if (tablet_->transaction_coordinator()) {
+    tablet_->transaction_coordinator()->Start();
+  }
+
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->Start();
+  }
+
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
   // SysCatalogStateChanged, can get the lock when needed.
@@ -1505,6 +1505,14 @@ consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
   return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
+bool TabletPeer::IsLeaderAndReady() const {
+  return LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+}
+
+bool TabletPeer::IsNotLeader() const {
+  return LeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+}
+
 Result<HybridTime> TabletPeer::HtLeaseExpiration() const {
   auto consensus = VERIFY_RESULT(GetRaftConsensus());
   HybridTime result(
@@ -1716,15 +1724,17 @@ bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
       : false;
 }
 
-bool TabletPeer::TEST_IsFlushingRetryableRequests() {
+RetryableRequestsFlushState TabletPeer::TEST_RetryableRequestsFlusherState() const {
   if (!FlushRetryableRequestsEnabled()) {
-    return false;
+    return RetryableRequestsFlushState::kFlushIdle;
   }
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
-      ? retryable_requests_flusher->TEST_IsFlushing()
-      : false;
+      ? retryable_requests_flusher->flush_state()
+      : RetryableRequestsFlushState::kFlushIdle;
 }
+
+Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
 }  // namespace tablet
 }  // namespace yb

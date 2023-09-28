@@ -1,7 +1,6 @@
 package helpers
 
 import (
-    "apiserver/cmd/server/logger"
     "encoding/json"
     "net/url"
     "strconv"
@@ -50,8 +49,7 @@ type TablesFuture struct {
     Error  error
 }
 
-func GetTablesFuture(
-    log logger.Logger,
+func (h *HelperContainer) GetTablesFuture(
     nodeHost string,
     onlyUserTables bool,
     future chan TablesFuture,
@@ -60,7 +58,7 @@ func GetTablesFuture(
         Tables: TablesResponseStruct{},
         Error: nil,
     }
-    urls, err := BuildMasterURLs(log, "api/v1/tables")
+    urls, err := h.BuildMasterURLs("api/v1/tables")
     if err != nil {
         tables.Error = err
         future <- tables
@@ -80,7 +78,7 @@ func GetTablesFuture(
         requestUrl.RawQuery = params.Encode()
         requestUrls = append(requestUrls, requestUrl.String())
     }
-    body, err := AttemptGetRequests(log, requestUrls, true)
+    body, err := h.AttemptGetRequests(requestUrls, true)
     if err != nil {
             tables.Error = err
             future <- tables
@@ -135,8 +133,7 @@ type TableInfoFuture struct {
 }
 
 // Get info for a table given the table id
-func GetTableInfoFuture(
-    log logger.Logger,
+func (h *HelperContainer) GetTableInfoFuture(
     nodeHost string,
     id string,
     future chan TableInfoFuture,
@@ -145,7 +142,7 @@ func GetTableInfoFuture(
         TableInfo: TableInfoStruct{},
         Error: nil,
     }
-    urls, err := BuildMasterURLs(log, "api/v1/table")
+    urls, err := h.BuildMasterURLs("api/v1/table")
     if err != nil {
         tableInfo.Error = err
         future <- tableInfo
@@ -165,7 +162,7 @@ func GetTableInfoFuture(
         requestUrl.RawQuery = params.Encode()
         requestUrls = append(requestUrls, requestUrl.String())
     }
-    body, err := AttemptGetRequests(log, requestUrls, true)
+    body, err := h.AttemptGetRequests(requestUrls, true)
     if err != nil {
             tableInfo.Error = err
             future <- tableInfo

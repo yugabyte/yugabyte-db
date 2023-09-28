@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -62,6 +64,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -1298,14 +1301,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         if (cluster.userIntent.deviceInfo != null
             && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && cluster.userIntent.deviceInfo.numVolumes != null) {
+          int prevSize =
+              univCluster.userIntent.deviceInfo.volumeSize
+                  * univCluster.userIntent.deviceInfo.numVolumes;
+          int curSize =
+              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
+          if (curSize < prevSize
+              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
+            throw new IllegalArgumentException(
+                "Cannot decrease volume size from " + prevSize + " to " + curSize);
+          }
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
@@ -1320,8 +1326,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
-        } else { // During edit universe, overrides can't be changed.
+        } else {
           if (opType == UniverseOpType.EDIT) {
+            if (cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.deviceInfo.volumeSize != null
+                && cluster.userIntent.deviceInfo.volumeSize
+                    < univCluster.userIntent.deviceInfo.volumeSize) {
+              String errMsg =
+                  String.format(
+                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                      univCluster.userIntent.deviceInfo.volumeSize,
+                      cluster.userIntent.deviceInfo.volumeSize);
+              throw new IllegalStateException(errMsg);
+            }
+            // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
@@ -1372,9 +1390,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
             final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
             final boolean isCpuCoreCountOutOfRange =
-                (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
+                (cpuCoreCount < UserIntent.MIN_CPU || cpuCoreCount > UserIntent.MAX_CPU);
             final boolean isMemoryGibOutOfRange =
-                (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
+                (memoryGib < UserIntent.MIN_MEMORY || memoryGib > UserIntent.MAX_MEMORY);
 
             if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
               throw new IllegalArgumentException(
@@ -2432,6 +2450,47 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     updateNodeTask.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(updateNodeTask);
 
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected void createNodePrecheckTasks(
+      NodeDetails node,
+      Set<ServerType> processTypes,
+      SubTaskGroupType subGroupType,
+      @Nullable String targetSoftwareVersion) {
+    boolean underReplicatedTabletsCheckEnabled =
+        confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
+    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
+      createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion)
+          .setSubTaskGroupType(subGroupType);
+    }
+  }
+
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @param node node to check for under replicated tablets
+   * @param targetSoftwareVersion software version to check if under replicated tablets endpoint is
+   *     enabled. If null, will use the current software version of the node in the universe
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask(
+      NodeDetails node, @Nullable String targetSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.targetSoftwareVersion = targetSoftwareVersion;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+    params.nodeName = node.nodeName;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

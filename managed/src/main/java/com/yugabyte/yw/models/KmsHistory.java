@@ -84,8 +84,13 @@ public class KmsHistory extends Model {
   public static int getLatestReEncryptionCount(UUID targetUUID) {
     // If there is no universe with universe key, return 0.
     int latestReEncryptionCount =
-        KmsHistory.find.query().where().eq("target_uuid", targetUUID)
-            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY).findList().stream()
+        KmsHistory.find
+            .query()
+            .where()
+            .eq("target_uuid", targetUUID)
+            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+            .findList()
+            .stream()
             .mapToInt(kmsHistory -> kmsHistory.uuid.getReEncryptionCount())
             .max()
             .orElse(0);

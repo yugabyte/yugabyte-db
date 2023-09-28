@@ -92,7 +92,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   }
   const encryption = getEncryptionText(encryptionAtRest, encryptionInTransit);
 
-  const authentication = encryptionAtRest || encryptionInTransit ?
+  const authentication = encryptionInTransit === true ?
     t('clusters.password') : t('clusters.none');
 
   return (

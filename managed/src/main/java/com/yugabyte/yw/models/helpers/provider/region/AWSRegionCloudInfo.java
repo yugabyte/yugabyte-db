@@ -3,6 +3,7 @@ package com.yugabyte.yw.models.helpers.provider.region;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -24,11 +25,19 @@ public class AWSRegionCloudInfo implements CloudInfoInterface {
   public String securityGroupId;
 
   @ApiModelProperty(
-      value = "The AMI to be used in this region.",
+      value =
+          "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, "
+              + "Use provider.imageBundle instead",
       accessMode = AccessMode.READ_WRITE)
+  @YBADeprecated(sinceDate = "2023-19-09", sinceYBAVersion = "2.20.0")
   public String ybImage;
 
-  @ApiModelProperty(accessMode = AccessMode.READ_WRITE)
+  @ApiModelProperty(
+      value =
+          "Deprecated: sinceDate=2023-19-09, sinceYBAVersion=2.20.0, "
+              + "Use provider.imageBundle instead",
+      accessMode = AccessMode.READ_WRITE)
+  @YBADeprecated(sinceDate = "2023-19-09", sinceYBAVersion = "2.20.0")
   public Architecture arch;
 
   @JsonIgnore

@@ -30,12 +30,11 @@ import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
-import Importer from './pages/Importer';
 import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
-import { ReplicationDetails } from './components/xcluster';
+import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 
@@ -237,15 +236,11 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route path="/universes/import" component={Importer} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
-          <Route
-            path="/universes/:uuid/replication/:replicationUUID"
-            component={ReplicationDetails}
-          />
+          <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />

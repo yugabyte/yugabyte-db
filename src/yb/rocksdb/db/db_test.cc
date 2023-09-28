@@ -2921,7 +2921,7 @@ TEST_F(DBTest, ComparatorCheck) {
     const char* Name() const override {
       return "rocksdb.NewComparator";
     }
-    int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(Slice a, Slice b) const override {
       return BytewiseComparator()->Compare(a, b);
     }
     virtual void FindShortestSeparator(std::string* s,
@@ -2954,7 +2954,7 @@ TEST_F(DBTest, CustomComparator) {
     const char* Name() const override {
       return "test.NumberComparator";
     }
-    int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(Slice a, Slice b) const override {
       return ToNumber(a) - ToNumber(b);
     }
     virtual void FindShortestSeparator(std::string* s,
@@ -4729,6 +4729,8 @@ class ModelDB: public DB {
   }
 
   SequenceNumber GetLatestSequenceNumber() const override { return 0; }
+
+  uint64_t GetNextFileNumber() const override { return 0; }
 
   ColumnFamilyHandle* DefaultColumnFamily() const override {
     return nullptr;

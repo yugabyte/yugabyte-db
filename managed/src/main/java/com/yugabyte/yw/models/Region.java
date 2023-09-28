@@ -102,13 +102,13 @@ public class Region extends Model {
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
   @Constraints.Max(180)
-  private double longitude = -90;
+  private double longitude = 0.0;
 
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's latitude", example = "37.22", accessMode = READ_ONLY)
   @Constraints.Min(-90)
   @Constraints.Max(90)
-  private double latitude = -90;
+  private double latitude = 0.0;
 
   @Column(nullable = false)
   @ManyToOne
@@ -142,7 +142,8 @@ public class Region extends Model {
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
     return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid()).stream()
+        .getUniversesForProvider(getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> azUUIDs.contains(nd.azUuid))
         .count();
@@ -275,10 +276,17 @@ public class Region extends Model {
 
   @JsonIgnore
   public boolean isUpdateNeeded(Region region) {
-    return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
-        || !Objects.equals(this.getVnetName(), region.getVnetName())
-        || !Objects.equals(this.getYbImage(), region.getYbImage())
-        || !Objects.equals(this.getDetails(), region.getDetails());
+    boolean isUpdatedNeeded =
+        !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
+            || !Objects.equals(this.getVnetName(), region.getVnetName())
+            || !Objects.equals(this.getYbImage(), region.getYbImage())
+            || !Objects.equals(this.getDetails(), region.getDetails());
+    if (region.getProviderCloudCode() == CloudType.onprem) {
+      isUpdatedNeeded |=
+          !Objects.equals(this.getLatitude(), region.getLatitude())
+              || !Objects.equals(this.getLongitude(), region.getLongitude());
+    }
+    return isUpdatedNeeded;
   }
 
   /** Query Helper for PlacementRegion with region code */

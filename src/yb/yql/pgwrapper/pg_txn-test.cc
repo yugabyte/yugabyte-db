@@ -27,7 +27,6 @@ using namespace std::literals;
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 namespace yb {
 namespace pgwrapper {
@@ -148,7 +147,6 @@ class PgTxnTestFailOnConflict : public PgTxnTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgTxnTest::SetUp();
   }
 };
@@ -254,7 +252,7 @@ TEST_F(PgTxnTest, ReadRecentSet) {
         }
         uint64_t mask = 0;
         for (int j = 0, count = PQntuples(res->get()); j != count; ++j) {
-          mask |= 1ULL << (ASSERT_RESULT(GetInt32(res->get(), j, 0)) - read_min);
+          mask |= 1ULL << (ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 0)) - read_min);
         }
         std::lock_guard lock(reads_mutex);
         Read new_read{read_min, mask};
@@ -359,7 +357,7 @@ TEST_F_EX( PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
       // then we should expect one RPC thread to hold the lock for 10s while the others wait for
       // the sync point in this test to be hit. Then, each RPC thread should proceed in serial after
       // that, acquiring the lock and resolving conflicts.
-      auto res = conn.FetchValue<int>("SELECT value FROM test WHERE key=1 FOR UPDATE");
+      auto res = conn.FetchValue<int32_t>("SELECT value FROM test WHERE key=1 FOR UPDATE");
 
       read_succeeded[thread_idx] = res.ok();
       LOG(INFO) << "Thread read " << thread_idx << (res.ok() ? " succeeded" : " failed");

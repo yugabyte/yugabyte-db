@@ -243,9 +243,11 @@ set(TSERVER_SRCS
   stateful_services/pg_auto_analyze_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
+  xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
   xcluster_poller.cc
+  xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc)
 

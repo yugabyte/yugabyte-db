@@ -31,12 +31,15 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.SnapshotObjectDetails.TableData;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcSuccessBackupConfig;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -71,11 +74,13 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   private CustomerConfigService configService;
   private EncryptionAtRestManager encryptionAtRestManager;
   private YbcBackupUtil ybcBackupUtil;
+  private AutoFlagUtil autoFlagUtil;
 
   private ResponseCloudStoreSpec withoutRegion;
   private ResponseCloudStoreSpec withRegions;
   private Customer testCustomer;
   private JsonNode s3FormData, s3FormData_regions, s3FormData_noRegions;
+  private Universe defaultUniverse;
 
   private final String objectID = "000033e1000030008000000000004010";
 
@@ -84,8 +89,10 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     universeInfoHandler = mock(UniverseInfoHandler.class);
     configService = mock(CustomerConfigService.class);
     encryptionAtRestManager = mock(EncryptionAtRestManager.class);
+    autoFlagUtil = mock(AutoFlagUtil.class);
     ybcBackupUtil =
         new YbcBackupUtil(
+            autoFlagUtil,
             universeInfoHandler,
             configService,
             encryptionAtRestManager,
@@ -122,6 +129,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\":"
                 + " \"s3://def_bucket/default\","
                 + " \"AWS_ACCESS_KEY_ID\": \"A-KEY\", \"AWS_SECRET_ACCESS_KEY\": \"A-SECRET\"}}");
+    defaultUniverse = ModelFactory.createUniverse();
   }
 
   private void initResponseObjects() {
@@ -409,16 +417,21 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   public void testGetExtendedBackupArgs(String filePath) throws Exception {
     BackupTableParams tableParams = new BackupTableParams();
     tableParams.useTablespaces = true;
-    tableParams.setUniverseUUID(UUID.randomUUID());
+    tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode keysNode = mapper.readValue(backupKeys, ObjectNode.class);
     when(encryptionAtRestManager.backupUniverseKeyHistory(tableParams.getUniverseUUID()))
         .thenReturn(keysNode);
-    String keys = mapper.writeValueAsString(keysNode);
+    YbcSuccessBackupConfig backupConfig = new YbcSuccessBackupConfig();
+    String universeVersion =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    backupConfig.ybdbVersion = universeVersion;
+    backupConfig.universeKeys = keysNode.get("universe_keys");
+    backupConfig.masterKeyMetadata = keysNode.get("master_key_metadata");
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(tableParams);
     assertEquals(true, extArgs.getUseTablespaces());
-    assertEquals(keys, extArgs.getBackupConfigData());
+    assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
   }
 
   @Test
@@ -879,9 +892,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     TableRestoreSpec tRSpec = YbcBackupUtil.getTableRestoreSpec(backupResponse, bSInfo);
     assertTrue(tRSpec.getKeyspace().equals(bSInfo.keyspace));
     assertTrue(
-        tRSpec
-            .getTableList()
-            .parallelStream()
+        tRSpec.getTableList().parallelStream()
             .collect(Collectors.toList())
             .containsAll(tablesInSuccessFile));
   }

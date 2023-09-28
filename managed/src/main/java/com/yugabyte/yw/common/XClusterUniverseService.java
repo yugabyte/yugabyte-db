@@ -39,9 +39,15 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.yb.cdc.CdcConsumer;
+import org.yb.cdc.CdcConsumer.StreamEntryPB;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetReplicationStatusResponse;
+import org.yb.client.GetXClusterSafeTimeResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 
 @Singleton
@@ -284,8 +290,7 @@ public class XClusterUniverseService {
     }
 
     Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUuid);
-    String sourceUniverseMasterAddresses =
-        sourceUniverse.getMasterAddresses(true /* mastersQueryable */);
+    String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
     // If there is no queryable master, return the empty map.
     if (sourceUniverseMasterAddresses.isEmpty()) {
       return isBootstrapRequiredMap;
@@ -484,6 +489,78 @@ public class XClusterUniverseService {
       return statuses;
     } catch (Exception e) {
       log.error("XClusterUniverseService.GetReplicationStatus hit error : {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  public List<NamespaceSafeTimePB> getNamespaceSafeTimeList(XClusterConfig xClusterConfig) {
+    log.debug(
+        "XClusterUniverseService.getNamespaceSafeTimeList is called with xClusterConfig={}",
+        xClusterConfig);
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
+    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
+    YbClientConfig clientConfig =
+        ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+      GetXClusterSafeTimeResponse resp = client.getXClusterSafeTime();
+      if (resp.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "getXClusterSafeTime RPC call has errors in xCluster config %s: %s",
+                xClusterConfig, resp.errorMessage()));
+      }
+      return resp.getSafeTimes();
+    } catch (Exception e) {
+      log.error("XClusterUniverseService.getNamespaceSafeTimeList hit error : {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  public Map<String, String> getSourceTableIdTargetTableIdMap(
+      Universe targetUniverse, String replicationGroupName) {
+    String universeMasterAddresses = targetUniverse.getMasterAddresses();
+    String universeCertificate = targetUniverse.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+      GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
+      if (clusterConfigResp.hasError()) {
+        String errMsg =
+            String.format(
+                "Failed to getMasterClusterConfig from target universe (%s) for "
+                    + "replicationGroupName "
+                    + "(%s): %s",
+                targetUniverse.getUniverseUUID(),
+                replicationGroupName,
+                clusterConfigResp.errorMessage());
+        throw new RuntimeException(errMsg);
+      }
+      CatalogEntityInfo.SysClusterConfigEntryPB config = clusterConfigResp.getConfig();
+      CdcConsumer.ProducerEntryPB replicationGroup =
+          config.getConsumerRegistry().getProducerMapMap().get(replicationGroupName);
+      if (replicationGroup == null) {
+        throw new RuntimeException(
+            String.format(
+                "No replication group found with name (%s) in universe (%s) cluster config",
+                replicationGroupName, targetUniverse.getUniverseUUID()));
+      }
+
+      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
+          replicationGroup.getStreamMapMap();
+      Map<String, String> sourceTableIdTargetTableIdMap =
+          replicationStreams.values().stream()
+              .collect(
+                  Collectors.toMap(
+                      StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
+      log.debug(
+          "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
+              + "sourceTableIdTargetTableIdMap is {}",
+          sourceTableIdTargetTableIdMap);
+      return sourceTableIdTargetTableIdMap;
+    } catch (Exception e) {
+      log.error(
+          "XClusterUniverseService.getSourceTableIdTargetTableIdMap hit error : {}",
+          e.getMessage());
       throw new RuntimeException(e);
     }
   }

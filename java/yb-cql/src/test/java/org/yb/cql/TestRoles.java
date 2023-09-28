@@ -485,6 +485,33 @@ public class TestRoles extends BaseAuthenticationCQLTest {
         ALL_PERMISSIONS_FOR_ALL_KEYSPACES);
   }
 
+  @Test
+  public void testGrantRoleNoAccessToRecipient() throws Exception {
+    createRole(session, "db_admin", "password", true, false, true);
+    createRole(session, "db_reader", "pwd", false, false, false);
+    createRole(session, "user", "pwd", false, false, false);
+
+    // SuperUser can grant/revoke any role.
+    session.execute(GrantStmt("db_reader", "user"));
+    session.execute(RevokeStmt("db_reader", "user"));
+
+    // Connect as 'db_admin'.
+    try (ClusterAndSession cs = connectWithCredentials("db_admin", "password")) {
+      // AUTHORIZE permission was not granted.
+      thrown.expect(com.datastax.driver.core.exceptions.UnauthorizedException.class);
+      thrown.expectMessage("Unauthorized. User db_admin does not have sufficient privileges " +
+                           "to perform the requested operation");
+      cs.execute(GrantStmt("db_reader", "user"));
+    }
+
+    session.execute(GrantPermissionRoleStmt("AUTHORIZE", "db_reader", "db_admin"));
+    try (ClusterAndSession cs = connectWithCredentials("db_admin", "password")) {
+      // Access to 'user' is not required.
+      cs.execute(GrantStmt("db_reader", "user"));
+      cs.execute(RevokeStmt("db_reader", "user"));
+    }
+  }
+
   private void expectDescribeSyntaxError(String stmt) throws Exception {
     try {
       session.execute(stmt);

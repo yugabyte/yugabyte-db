@@ -17,7 +17,6 @@
 using namespace std::literals;
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 namespace yb {
 namespace pgwrapper {
@@ -108,7 +107,6 @@ class PgExplicitLockTestSerializable
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgExplicitLockTest::BeforePgProcessStart();
   }
 };
@@ -135,7 +133,7 @@ void PgExplicitLockTestSnapshot::TestSkipLocked() {
   auto res = ASSERT_RESULT(txn1_conn.Fetch("select * from test for update skip locked limit 1"));
   ASSERT_EQ(PQntuples(res.get()), 1);
   auto assert_val = [](PGResultPtr& res, int row, int col, int expected_val) {
-    auto val = ASSERT_RESULT(GetInt32(res.get(), row, col));
+    auto val = ASSERT_RESULT(GetValue<int32_t>(res.get(), row, col));
     ASSERT_EQ(val, expected_val);
   };
 

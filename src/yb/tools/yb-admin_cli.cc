@@ -505,7 +505,9 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
-    str << ' ' << i + 1 << ". " << commands_[i].name_ << commands_[i].usage_arguments_ << endl;
+    str << ' ' << i + 1 << ". " << commands_[i].name_
+        << (commands_[i].usage_arguments_.empty() ? "" : " ") << commands_[i].usage_arguments_
+        << endl;
   }
 
   str << endl;
@@ -1671,7 +1673,9 @@ Status create_change_data_stream_action(
   if (args.size() > 2) {
     ToUpperCase(args[2], &uppercase_record_type);
     if (uppercase_record_type != yb::ToString("ALL") &&
-        uppercase_record_type != yb::ToString("CHANGE")) {
+        uppercase_record_type != yb::ToString("CHANGE") &&
+        uppercase_record_type != yb::ToString("FULL_ROW_NEW_IMAGE") &&
+        uppercase_record_type != yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
       return ClusterAdminCli::kInvalidArguments;
     }
     record_type = uppercase_record_type;

@@ -26,4 +26,9 @@ struct SourceLocation {
 
 #define SOURCE_LOCATION() SourceLocation {__FILE__, __LINE__}
 
+// Shorten the given source file path by removing prefixes that are unnecessarily long and/or would
+// not prevent us from finding the original source file given that we know the toolchain directory,
+// the third-party libraries directory, etc.
+const char* ShortenSourceFilePath(const char* file_path);
+
 }  // namespace yb

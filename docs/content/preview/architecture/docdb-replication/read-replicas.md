@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In addition to the core distributed consensus-based replication, DocDB extends Raft to add read replicas (also known observer nodes) that do not participate in writes but get a timeline consistent copy of the data in an asynchronous manner.
+In addition to the core distributed consensus-based replication, DocDB extends Raft to add read replicas (also known as observer nodes) that do not participate in writes but get a timeline consistent copy of the data in an asynchronous manner.
 
 Read replicas are a read-only extension to the primary data in the universe. With read replicas, the primary data of the universe is replicated across multiple zones in one region, or across nearby regions. Read replicas do not add to the write latencies as the write does not synchronously replicate data to them. Instead, the data is replicated to read replicas asynchronously.
 

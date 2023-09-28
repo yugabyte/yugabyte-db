@@ -110,6 +110,10 @@ public class RoleBinding extends Model {
     return find.query().where().eq("uuid", roleBindingUUID).findOne();
   }
 
+  public static List<RoleBinding> fetchRoleBindingsForUser(UUID userUUID) {
+    return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
   public static RoleBinding getOrBadRequest(UUID roleBindingUUID) {
     RoleBinding roleBinding = get(roleBindingUUID);
     if (roleBinding == null) {
@@ -119,8 +123,16 @@ public class RoleBinding extends Model {
     return roleBinding;
   }
 
+  public static List<RoleBinding> getAll() {
+    return find.query().findList();
+  }
+
   public static List<RoleBinding> getAll(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  public static List<RoleBinding> getAllWithRole(UUID roleUUID) {
+    return find.query().where().eq("role_uuid", roleUUID).findList();
   }
 
   public void edit(Role role, ResourceGroup resourceGroup) {

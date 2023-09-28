@@ -30,8 +30,10 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/range.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 
@@ -85,6 +87,27 @@ inline void ApplyBound(
 [[nodiscard]] inline bool IsForInOperator(const LWPgsqlExpressionPB& expr) {
   // For IN operator expr->has_condition() returns 'true'.
   return expr.has_condition();
+}
+
+[[nodiscard]] bool InOpInversesOperandOrder(SortingType sorting_type, bool is_forward_scan) {
+  switch(sorting_type) {
+    case SortingType::kNotSpecified: return false;
+    case SortingType::kDescending: [[fallthrough]];
+    case SortingType::kDescendingNullsLast: return is_forward_scan;
+    case SortingType::kAscending: [[fallthrough]];
+    case SortingType::kAscendingNullsLast: return !is_forward_scan;
+  }
+  FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
+}
+
+// In some cases scan are sensitive to key values order. On DocDB side IN operator processes
+// based on column sort order and scan direction. It is necessary to preserve same order for
+// the constructed ybctids.
+[[nodiscard]] auto InOpOperandsProcessingRange(
+    size_t operands_count, SortingType sorting_type, bool is_forward_scan) {
+  auto operands_range = Range(narrow_cast<int>(operands_count));
+  return InOpInversesOperandOrder(sorting_type, is_forward_scan)
+      ? operands_range.Reversed() : operands_range;
 }
 
 } // namespace
@@ -702,12 +725,14 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     }
   }
   if (in_operator_info) {
-    auto& value_placeholder = range_components[in_operator_info->placeholder_idx];
-    const auto& column = in_operator_info->column;
     // Form ybctid for each argument in the IN operator.
-    size_t count = column.SubExprsCount();
+    const auto& column = in_operator_info->column;
+    const auto count = column.SubExprsCount();
     ybctids.reserve(count);
-    for (size_t idx = 0; idx != count; ++idx) {
+    const auto idx_range = InOpOperandsProcessingRange(
+        count, column.desc().sorting_type(), read_req_->is_forward_scan());
+    auto& value_placeholder = range_components[in_operator_info->placeholder_idx];
+    for (auto idx : idx_range) {
       value_placeholder = VERIFY_RESULT(column.BuildSubExprKeyColumnValue(idx));
       ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());
     }

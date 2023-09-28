@@ -4,7 +4,7 @@ import { YBToggle } from '../common/forms/fields';
 import { toggleFeature } from '../../actions/feature';
 import './toggleFeatureIntest.scss';
 
-export const ToggleFeatureInTest = () => {
+const ToggleFeatureInTest = () => {
   const [featuresInTest, getFeaturesInTest] = useSelector(getFeatureFromTest);
   const [featuresInReleased] = useSelector(getFeatureFromReleased);
   const featureKeys = Object.keys(featuresInTest);
@@ -42,3 +42,5 @@ export const ToggleFeatureInTest = () => {
     </div>
   );
 };
+
+export default ToggleFeatureInTest;

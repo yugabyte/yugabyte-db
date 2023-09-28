@@ -83,6 +83,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
@@ -91,7 +92,7 @@ DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
 TAG_FLAG(web_log_bytes, advanced);
 
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
-    "Include #TYPE and #HELP in promethus metrics output");
+    "Include #TYPE and #HELP in Prometheus metrics output by default");
 
 DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
@@ -158,7 +159,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   string logfile;
   GetFullLogFilename(google::INFO, &logfile);
   (*output) << tags.header <<"INFO logs" << tags.end_header << endl;
-  (*output) << "Log path is: " << logfile << endl;
+  (*output) << "Log path is: " << EscapeForHtmlToString(logfile) << endl;
 
   struct stat file_stat;
   if (stat(logfile.c_str(), &file_stat) == 0) {
@@ -170,12 +171,15 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
     // file is likely to be small, this is unlikely to be an issue in
     // practice.
     log.seekg(seekpos);
-    (*output) << tags.line_break <<"Showing last " << FLAGS_web_log_bytes
+    (*output) << tags.line_break << "Showing last " << FLAGS_web_log_bytes
               << " bytes of log" << endl;
-    (*output) << tags.line_break << tags.pre_tag << log.rdbuf() << tags.end_pre_tag;
+    (*output) << tags.line_break << tags.pre_tag;
+    EscapeForHtml(&log, output);
+    (*output) << tags.end_pre_tag;
 
   } else {
-    (*output) << tags.line_break << "Couldn't open INFO log file: " << logfile;
+    (*output) << tags.line_break << "Couldn't open INFO log file: "
+              << EscapeForHtmlToString(logfile);
   }
 }
 
@@ -334,7 +338,7 @@ static void FlagsHandler(
     }
 
     output << tags.row << tags.cell << flag_info.name << tags.end_cell;
-    output << tags.cell << flag_info.value << tags.end_cell << tags.end_row;
+    output << tags.cell << EscapeForHtmlToString(flag_info.value) << tags.end_cell << tags.end_row;
   }
 
   if (!first_table) {
@@ -359,6 +363,9 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();
+  if (!as_text) {
+    tmp = EscapeForHtmlToString(tmp);
+  }
   // Replace new lines with <br> for html.
   replace_all(tmp, "\n", tags.line_break);
   (*output) << tmp << tags.end_pre_tag;
@@ -396,7 +403,8 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
         HumanReadableNumBytes::ToString(tracker->consumption());
     const std::string peak_consumption_str =
         HumanReadableNumBytes::ToString(tracker->peak_consumption());
-    const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
+    const std::string tracker_id =
+        EscapeForHtmlToString(use_full_path ? tracker->ToString() : tracker->id());
     // GetPeakRootConsumption() in client-stress-test.cc depends on the HTML formatting.
     // Update the test, in case this changes in future.
     if (data.depth < 2) {
@@ -522,6 +530,11 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
                    MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
     prometheus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
       "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
+      prometheus_opts->export_help_and_type =
+          ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
+    }
   }
 
   if (json_mode) {
@@ -552,6 +565,8 @@ static void WriteMetricsAsJson(const MetricRegistry* const metrics,
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
+  opts.export_help_and_type =
+      ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
   MeticEntitiesOptions entities_opts;
   ParseRequestOptions(req, &entities_opts, &opts);
 
@@ -569,10 +584,8 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
     entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
   }
 
-  ExportHelpAndType export_help_and_type_in_prometheus_metrics(
-      GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
   for (const auto& entity_options : entities_opts) {
-    PrometheusWriter writer(output, export_help_and_type_in_prometheus_metrics,
+    PrometheusWriter writer(output, opts.export_help_and_type,
         entity_options.first);
     WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
                 "Couldn't write text metrics for Prometheus");
@@ -659,13 +672,14 @@ static void PathUsageHandler(FsManager* fsmanager,
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
       *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
-                        path, stats.status().message());
+                        EscapeForHtmlToString(path),
+                        EscapeForHtmlToString(stats.status().message().ToString()));
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
     const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
     *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
-                      path, used_space_str, total_space_str);
+                      EscapeForHtmlToString(path), used_space_str, total_space_str);
   }
   *output << "</table>\n";
 }
@@ -708,7 +722,7 @@ static void CertificateHandler(server::RpcServerBase* server,
   if(!details.empty()) {
     (*output) << tags.header << "Certificate details" << tags.end_header << endl;
 
-    (*output) << tags.pre_tag << details << tags.end_pre_tag << endl;
+    (*output) << tags.pre_tag << EscapeForHtmlToString(details) << tags.end_pre_tag << endl;
   }
 }
 

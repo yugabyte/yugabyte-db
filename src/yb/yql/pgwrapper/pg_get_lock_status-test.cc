@@ -28,7 +28,6 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_mock_tablet_hosts_all_transactions);
 DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 using std::string;
@@ -45,7 +44,6 @@ class PgGetLockStatusTest : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     PgLocksTestBase::SetUp();
   }
 
@@ -486,7 +484,7 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
   auto fetched_rows = PQntuples(table_names_res.get());
   ASSERT_EQ(fetched_rows, 3);
   for (int i = 0; i < fetched_rows; ++i) {
-    std::string value = ASSERT_RESULT(GetString(table_names_res.get(), i, 0));
+    std::string value = ASSERT_RESULT(GetValue<std::string>(table_names_res.get(), i, 0));
     ASSERT_TRUE(table_names.find(value) != table_names.end());
   }
   fetched_locks.CountDown();

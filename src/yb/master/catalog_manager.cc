@@ -116,6 +116,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
@@ -223,7 +224,10 @@ DEFINE_NON_RUNTIME_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
     "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
+// The time is temporarly set to 600 sec to avoid hitting the tablet replacement code inherited from
+// Kudu. Removing tablet replacement code will be fixed in GH-6006
+DEFINE_RUNTIME_int32(
+    tablet_creation_timeout_ms, 600 * 1000,  // 600 sec
     "Timeout used by the master when attempting to create tablet "
     "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
@@ -594,7 +598,17 @@ DEFINE_test_flag(string, block_alter_table, "",
     "\"alter_schema\" (blocks the schema from being altered) and \"completion\","
     "(blocks the service completion of the alter table request)");
 
+DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
+
 DECLARE_int32(heartbeat_interval_ms);
+
+DEFINE_RUNTIME_bool(master_join_existing_universe, false,
+    "This flag helps prevent the accidental creation of a new universe. If the master_addresses "
+    "flag is misconfigured or the on disk state of a master is wiped out the master could create a "
+    "fresh universe, causing inconsistency with other masters in the universe and potential data "
+    "loss. Setting this flag will prevent a master from creating a fresh universe regardless of "
+    "other factors. To create a new universe with a new group of masters, unset this flag. Set "
+    "this flag on all new and existing master processes once the universe creation completes.");
 
 #define RETURN_FALSE_IF(cond) \
   do { \
@@ -1536,6 +1550,12 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   LOG_WITH_PREFIX(INFO)
       << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
+  if (GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+    auto universe_uuid = Uuid::Generate().ToString();
+    LOG_WITH_PREFIX(INFO) << Format("Setting universe_uuid to $0 on new universe", universe_uuid);
+    config.set_universe_uuid(universe_uuid);
+  }
+
   // Create in memory object.
   cluster_config_ = std::make_shared<ClusterConfigInfo>();
 
@@ -1547,6 +1567,29 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   RETURN_NOT_OK(sys_catalog_->Upsert(term, cluster_config_.get()));
   l.Commit();
 
+  return Status::OK();
+}
+
+Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
+  if (!GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+    return Status::OK();
+  }
+
+  auto cluster_config = ClusterConfig();
+  SCHECK(cluster_config, IllegalState, "Cluster config is not initialized");
+
+  auto l = cluster_config->LockForWrite();
+  if (!l.data().pb.universe_uuid().empty()) {
+    return Status::OK();
+  }
+
+  auto universe_uuid = Uuid::Generate().ToString();
+  LOG_WITH_PREFIX(INFO) << Format("Setting universe_uuid to $0 on existing universe",
+                                  universe_uuid);
+
+  l.mutable_data()->pb.set_universe_uuid(universe_uuid);
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
+  l.Commit();
   return Status::OK();
 }
 
@@ -2029,25 +2072,34 @@ Status CatalogManager::InitSysCatalogAsync() {
   // Optimistically try to load data from disk.
   Status s = sys_catalog_->Load(master_->fs_manager());
 
-  if (!s.ok() && s.IsNotFound()) {
-    // We have yet to intialize the syscatalog metadata, need to create the metadata file.
-    LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
+  if (s.ok() || !s.IsNotFound()) { return s; }
+  LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
 
-    if (!master_->opts().AreMasterAddressesProvided()) {
-      master_->SetShellMode(true);
-      LOG(INFO) << "Starting master in shell mode.";
-      return Status::OK();
-    }
+  // Given loading the system catalog failed with NotFound we must decide
+  // whether to enter shell mode in order to join an existing universe or to create a fresh, empty
+  // system catalog for a new universe.
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe) ||
+      !master_->opts().AreMasterAddressesProvided()) {
+    // We unconditionally enter shell mode if master_join_existing_universe is true.
+    // Otherwise we determine whether or not master_addresses is empty to decide to enter shell
+    // mode.
+    master_->SetShellMode(true);
+    LOG(INFO) << "Starting master in shell mode.";
+    return Status::OK();
+  } else {
+    // master_join_existing_universe is false and master_addresses is set. This is how operators
+    // tell a set of master processes with empty on-disk state to create a new universe.
 
     RETURN_NOT_OK(CheckLocalHostInMasterAddresses());
-    RETURN_NOT_OK_PREPEND(sys_catalog_->CreateNew(master_->fs_manager()),
-        Substitute("Encountered errors during system catalog initialization:"
-                   "\n\tError on Load: $0\n\tError on CreateNew: ", s.ToString()));
+    RETURN_NOT_OK_PREPEND(
+        sys_catalog_->CreateNew(master_->fs_manager()),
+        Substitute(
+            "Encountered errors during system catalog initialization:"
+            "\n\tError on Load: $0\n\tError on CreateNew: ",
+            s.ToString()));
 
     return Status::OK();
   }
-
-  return s;
 }
 
 bool CatalogManager::IsInitialized() const {
@@ -2449,6 +2501,10 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
   {
     SharedLock lock(mutex_);
     for (const auto& ns : namespace_ids_map_) {
+      if (ns.second->state() != SysNamespaceEntryPB::RUNNING) {
+        continue;
+      }
+
       if (ns.second->database_type() != YQL_DATABASE_PGSQL) {
         continue;
       }
@@ -2736,7 +2792,7 @@ Status CatalogManager::CompactSysCatalog(
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
   return PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
-    return shared_tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction);
+    return shared_tablet->ForceManualRocksDBCompact();
   });
 }
 
@@ -2744,7 +2800,8 @@ namespace {
 
 Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
-  const auto& source_partition = tablet_info.LockForRead()->pb.partition();
+  // Making a copy of PartitionPB to avoid holding a lock.
+  const auto source_partition = tablet_info.LockForRead()->pb.partition();
 
   if (split_partition_key <= source_partition.partition_key_start() ||
       (!source_partition.partition_key_end().empty() &&
@@ -5939,6 +5996,12 @@ Status CatalogManager::DeleteTable(
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
+  if (req->ysql_ddl_rollback_enabled()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
+  }
+
   scoped_refptr<TableInfo> indexed_table;
   if (req->is_index_table()) {
     TRACE("Looking up index");
@@ -6729,14 +6792,18 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
   }
 
+  if (req->ysql_ddl_rollback_enabled()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
+  }
+
   TRACE("Locking table");
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // If the table is already undergoing an alter operation, return failure.
   if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
-    DCHECK(req->has_transaction());
-    DCHECK(req->transaction().has_transaction_id());
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
       const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
       return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
@@ -7189,6 +7256,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     if (tablegroup) {
       resp->set_tablegroup_id(tablegroup->id());
     }
+  }
+
+  if (l->has_ysql_ddl_txn_verifier_state()) {
+    resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
   }
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "

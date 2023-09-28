@@ -383,22 +383,10 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define VERIFY_RESULT_REF(expr) \
   VERIFY_RESULT(expr).get()
 
-  // Returns if result is not ok, prepending status with provided message,
-// extracts result value is case of success.
+// If expr's result is not ok, returns the error status prepended with provided message.
+// If expr's result is ok returns wrapped value.
 #define VERIFY_RESULT_PREPEND(expr, message) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_PREPEND(__result, message))
-
-// Asserts that result is ok, extracts result value is case of success.
-#define ASSERT_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
-
-// Expects that result is ok, extracts result value is case of success.
-#define EXPECT_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
-
-// Asserts that result is ok, extracts result value is case of success.
-#define ASSERT_RESULT_FAST(expr) \
-  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 template<class T>
 T&& OptionalWrapMove(Result<T>&& result) {

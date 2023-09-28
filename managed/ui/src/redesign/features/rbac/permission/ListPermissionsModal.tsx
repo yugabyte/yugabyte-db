@@ -10,6 +10,7 @@
 import { useMap } from 'react-use';
 import { find, flatten, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
+import { makeStyles } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
 import { Permission } from './IPermission';
 import { getPermissionDisplayText } from '../rbacUtils';
@@ -36,6 +37,15 @@ const convertPermissionListToMap = (
   return permMap;
 };
 
+const useStyles = makeStyles((theme) => ({
+  permission_container: {
+    padding: theme.spacing(2),
+    borderRadius: theme.spacing(1),
+    border: `1px solid ${theme.palette.grey[200]}`,
+    background: theme.palette.common.white
+  }
+}));
+
 function ListPermissionsModal({
   onHide,
   onSubmit,
@@ -51,10 +61,12 @@ function ListPermissionsModal({
     keyPrefix: 'rbac.permissions.selectPermissionModal'
   });
 
+  const classes = useStyles();
+
   const dependentPermissions = flatten(
     values(selectedPermissions).map((p: Permission) => {
       return flatten(
-        p.prerequisite_permissions.map((s) => {
+        p.prerequisitePermissions.map((s) => {
           const label = getPermissionDisplayText(s);
           if (!get(label)) {
             set(label, find(permissionsList, s) as any);
@@ -78,53 +90,55 @@ function ListPermissionsModal({
         onHide();
       }}
       onClose={onHide}
+      overrideHeight={'554px'}
     >
-      <div>
-        <YBCheckbox
-          label={t('selectAll', { keyPrefix: 'common' })}
-          indeterminate={
-            selectedPermissionsCount > 0 &&
-            permissionsList &&
-            selectedPermissionsCount < permissionsList.length
-          }
-          onChange={(_, state) => {
-            if (state) {
-              if (!permissionsList) return;
-              setAll(
-                Object.fromEntries(
-                  permissionsList.map((obj) => [getPermissionDisplayText(obj), obj])
-                )
-              );
-            } else {
-              reset();
+      <div className={classes.permission_container}>
+        <div>
+          <YBCheckbox
+            label={t('selectAll', { keyPrefix: 'common' })}
+            indeterminate={
+              selectedPermissionsCount > 0 &&
+              permissionsList &&
+              selectedPermissionsCount < permissionsList.length
             }
-          }}
-          checked={selectedPermissionsCount === permissionsList?.length}
-        />
+            onChange={(_, state) => {
+              if (state) {
+                if (!permissionsList) return;
+                setAll(
+                  Object.fromEntries(
+                    permissionsList.map((obj) => [getPermissionDisplayText(obj), obj])
+                  )
+                );
+              } else {
+                reset();
+              }
+            }}
+            checked={selectedPermissionsCount === permissionsList?.length}
+          />
+        </div>
+
+        {permissionsList.map((permission, i) => {
+          const label = getPermissionDisplayText(permission);
+          return (
+            <div key={i}>
+              <YBCheckbox
+                key={i}
+                name={`selectedPermissions.${i}`}
+                label={label}
+                onChange={(_, state) => {
+                  if (state) {
+                    set(label, permission);
+                  } else {
+                    remove(label);
+                  }
+                }}
+                checked={!!get(label)}
+                disabled={dependentPermissions.includes(label)}
+              />
+            </div>
+          );
+        })}
       </div>
-
-      {permissionsList.map((permission, i) => {
-        const label = getPermissionDisplayText(permission);
-
-        return (
-          <div key={i}>
-            <YBCheckbox
-              key={i}
-              name={`selectedPermissions.${i}`}
-              label={label}
-              onChange={(_, state) => {
-                if (state) {
-                  set(label, permission);
-                } else {
-                  remove(label);
-                }
-              }}
-              checked={!!get(label)}
-              disabled={dependentPermissions.includes(label)}
-            />
-          </div>
-        );
-      })}
     </YBModal>
   );
 }

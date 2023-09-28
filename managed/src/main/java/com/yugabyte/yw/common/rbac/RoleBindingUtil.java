@@ -41,7 +41,7 @@ public class RoleBindingUtil {
     Users user = Users.getOrBadRequest(userUUID);
     Role role = Role.getOrBadRequest(user.getCustomerUUID(), roleUUID);
     log.info(
-        "Creating {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
+        "Creating {} RoleBinding with user UUID '{}', role UUID {} on resource group {}.",
         type,
         userUUID,
         roleUUID,
@@ -96,9 +96,58 @@ public class RoleBindingUtil {
   public void validateResourceGroups(
       UUID customerUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
-      for (ResourceDefinition resourceDefinition :
-          roleResourceDefinition.getResourceGroup().getResourceDefinitionSet()) {
-        validateResourceDefinition(customerUUID, resourceDefinition);
+      validateRoleResourceDefinition(customerUUID, roleResourceDefinition);
+    }
+  }
+
+  public void validateRoleResourceDefinition(
+      UUID customerUUID, RoleResourceDefinition roleResourceDefinition) {
+    // Check that the resource definition set in the resource group is not empty.
+    if (roleResourceDefinition.getResourceGroup().getResourceDefinitionSet() == null
+        || roleResourceDefinition.getResourceGroup().getResourceDefinitionSet().isEmpty()) {
+      String errMsg =
+          String.format(
+              "resourceDefinitionSet cannot be empty in the roleResourceDefinition: %s.",
+              roleResourceDefinition.toString());
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    // Basic validatation on each resource definition individually.
+    for (ResourceDefinition resourceDefinition :
+        roleResourceDefinition.getResourceGroup().getResourceDefinitionSet()) {
+      validateResourceDefinition(customerUUID, resourceDefinition);
+    }
+
+    // Validate that for the given role, there is some resource definition that has allowAll = true
+    // from the permissions which have "permissionValidOnResource" = false. Which indicates that it
+    // is a generic permission, not valid on a specific resource.
+    Role role = Role.get(customerUUID, roleResourceDefinition.getRoleUUID());
+    for (Permission permission : role.getPermissionDetails().getPermissionList()) {
+      PermissionInfo permissionInfo = permissionUtil.getPermissionInfo(permission);
+      if (!permissionInfo.isPermissionValidOnResource()) {
+        if (!hasGenericResourceDefinition(
+            customerUUID,
+            roleResourceDefinition.getResourceGroup().getResourceDefinitionSet(),
+            permission.getResourceType())) {
+          if (ResourceType.OTHER.equals(permission.getResourceType())) {
+            String errMsg =
+                String.format(
+                    "For permission '%s' from role '%s' to be valid, it needs a "
+                        + "resource definition with '%s' and customerUUID in the resourceUUIDSet.",
+                    permission.toString(), role.getName(), permission.getResourceType());
+            log.error(errMsg);
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          } else {
+            String errMsg =
+                String.format(
+                    "For permission '%s' from role '%s' to be valid, "
+                        + "it needs a resource definition with '%s' and allowAll = true.",
+                    permission.toString(), role.getName(), permission.getResourceType());
+            log.error(errMsg);
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          }
+        }
       }
     }
   }
@@ -124,6 +173,64 @@ public class RoleBindingUtil {
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
     }
+    // Check that only one of the fields `allowAll` or `resourceUUIDSet` exists.
+    if (resourceDefinition.isAllowAll() ^ resourceDefinition.getResourceUUIDSet().isEmpty()) {
+      String errMsg =
+          String.format(
+              "One of 'allowAll' or 'resourceUUIDSet' should be filled in resourceDefinition: %s.",
+              resourceDefinition.toString());
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    // Check that for OTHER resource types, 'allowAll' is false and only one resource UUID is
+    // given, which is the customer UUID.
+    if (resourceDefinition.getResourceType().equals(ResourceType.OTHER)) {
+      if (resourceDefinition.isAllowAll()
+          || !(resourceDefinition.getResourceUUIDSet().size() == 1)
+          || (!resourceDefinition.getResourceUUIDSet().iterator().next().equals(customerUUID))) {
+        String errMsg =
+            String.format(
+                "For OTHER resource type, 'allowAll' must be false and "
+                    + "'resourceUUIDSet' should have only customerUUID in resourceDefinition: %s.",
+                resourceDefinition.toString());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+    }
+  }
+
+  /**
+   * This function checks if there is atleast one generic resource definition. Generic resource
+   * definition is a resource definition that groups all resources of a type. This check is used
+   * specifically for the permissions which have "permissionValidOnResource" = false.
+   *
+   * @param customerUUID
+   * @param resourceDefinitionSet
+   * @param resourceType
+   * @return true if there exists a generic resource definition, else false.
+   */
+  public boolean hasGenericResourceDefinition(
+      UUID customerUUID, Set<ResourceDefinition> resourceDefinitionSet, ResourceType resourceType) {
+    for (ResourceDefinition resourceDefinition : resourceDefinitionSet) {
+      if (resourceType.equals(resourceDefinition.getResourceType())) {
+        // Check that for OTHER resource types, 'allowAll' is false and only one resource UUID is
+        // given, which is the customer UUID.
+        if (ResourceType.OTHER.equals(resourceType)) {
+          if (resourceDefinition.getResourceUUIDSet().size() == 1
+              && resourceDefinition.getResourceUUIDSet().contains(customerUUID)) {
+            return true;
+          }
+        }
+        // Check that for UNIVERSE, ROLE, USER resource types, allowAll = true.
+        else {
+          if (resourceDefinition.isAllowAll()) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -236,10 +343,23 @@ public class RoleBindingUtil {
 
     // Add all the non resource specific permissions such as UNIVERSE.CREATE, etc.
     for (ResourceType resourceTypeToReturn : nonResourcePermissionsToAdd.keySet()) {
-      resourcePermissions.add(
-          new ResourcePermissionData(
-              resourceTypeToReturn, null, nonResourcePermissionsToAdd.get(resourceTypeToReturn)));
+      if (resourceType == null || resourceType.equals(resourceTypeToReturn)) {
+        resourcePermissions.add(
+            new ResourcePermissionData(
+                resourceTypeToReturn, null, nonResourcePermissionsToAdd.get(resourceTypeToReturn)));
+      }
     }
     return resourcePermissions;
+  }
+
+  public static void cleanupRoleBindings(ResourceType resourceType, UUID resourceUUID) {
+    List<RoleBinding> allRoleBindings = RoleBinding.getAll();
+    for (RoleBinding roleBinding : allRoleBindings) {
+      ResourceGroup resourceGroup = roleBinding.getResourceGroup();
+      // This method removes the UUIDs in place for efficiency.
+      ResourceGroup.removeResource(resourceGroup, resourceType, resourceUUID);
+      roleBinding.setResourceGroup(resourceGroup);
+      roleBinding.update();
+    }
   }
 }

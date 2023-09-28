@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -48,6 +49,8 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
 
   public static class Params extends NodeTaskParams {
     public Duration maxWaitTime;
+
+    @Nullable public String targetSoftwareVersion;
   }
 
   protected Params taskParams() {
@@ -65,9 +68,11 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String softwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-    if (!supportsUnderReplicatedCheck(universe)) {
+        taskParams().targetSoftwareVersion != null
+            ? taskParams().targetSoftwareVersion
+            : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    log.debug("Current master db software version {}", softwareVersion);
+    if (!supportsUnderReplicatedCheck(softwareVersion)) {
       log.debug(
           "Under-replicated tablets check skipped for universe {}. Universe version {} "
               + "does not support under-replicated tablets check.",
@@ -83,7 +88,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    Cluster cluster = universe.getUniverseDetails().getClusterByNodeUUID(currentNode.nodeUuid);
+    Cluster cluster = universe.getCluster(currentNode.placementUuid);
     int iterationNum = 0;
     Stopwatch stopwatch = Stopwatch.createStarted();
     Duration maxSubtaskTimeout = taskParams().maxWaitTime;
@@ -201,10 +206,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
     log.debug("{} pre-check passed successfully.", getName());
   }
 
-  private boolean supportsUnderReplicatedCheck(Universe universe) {
-    String ybSoftwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
+  private boolean supportsUnderReplicatedCheck(String ybSoftwareVersion) {
     return CommonUtils.isReleaseBetween(
             MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14, "2.15.0.0-b0", ybSoftwareVersion)
         || CommonUtils.isReleaseBetween(

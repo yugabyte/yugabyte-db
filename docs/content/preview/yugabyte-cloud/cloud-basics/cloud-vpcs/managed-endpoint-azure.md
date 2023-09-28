@@ -41,7 +41,7 @@ To use Azure Private Link, you need the following:
 
 Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
-To use Azure Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
+To use Azure Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create a corresponding private endpoint in Azure.
 
 ## Create a PSE in YugabyteDB Managed
 
@@ -63,7 +63,7 @@ To create a PSE, do the following:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `westus3`), and preferably match the region where your application is deployed.
-    - `azure_subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions to which you want to grant access.
+    - `azure_subscription_ids` - comma-separated list of the subscription IDs of Azure subscriptions that you want to grant access.
 
 1. Note the endpoint ID in the response.
 
@@ -83,7 +83,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings > Infrastructure** tab under **Connection Parameters**.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
 To delete a PSE, enter the following command:
@@ -210,7 +210,7 @@ The link is listed in the Virtual network links list.
         pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a
         ```
 
-        The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+        The PSE Host is also displayed in YugabyteDB Managed under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
     - **Type** - select the **A - Address record** option (this is the default).
     - **IP address** - enter the private IP address of your Azure private endpoint (noted earlier).

@@ -38,7 +38,6 @@ DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 namespace yb::pgwrapper {
 namespace {
@@ -193,7 +192,6 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     FLAGS_enable_wait_queues = false;
-    FLAGS_enable_deadlock_detection = false;
     PgFKeyTest::SetUp();
     auto aux_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateTables(&aux_conn));

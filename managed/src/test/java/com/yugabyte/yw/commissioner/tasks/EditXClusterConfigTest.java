@@ -16,10 +16,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,7 +26,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -577,19 +575,13 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .build();
       GetAutoFlagsConfigResponse resp = new GetAutoFlagsConfigResponse(0, null, responsePB);
       lenient().when(mockTargetClient.autoFlagsConfig()).thenReturn(resp);
-      GFlagDetails flagDetails = new GFlagDetails();
-      flagDetails.name = "FLAG_1";
-      flagDetails.target = "value";
-      flagDetails.initial = "initial";
-      flagDetails.tags = "auto";
-      when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      when(mockGFlagsValidation.extractGFlags(anyString(), anyString(), anyBoolean()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      doCallRealMethod()
-          .when(mockGFlagsValidation)
-          .getFilteredAutoFlagsWithNonInitialValue(anyMap(), anyString(), any());
-      doCallRealMethod().when(mockGFlagsValidation).isAutoFlag(any());
+      GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+      autoFlagDetails.name = "FLAG_1";
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = Collections.singletonList(autoFlagDetails);
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
     } catch (Exception ignore) {
     }
 
@@ -648,19 +640,13 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
               .build();
       GetAutoFlagsConfigResponse resp = new GetAutoFlagsConfigResponse(0, null, responsePB);
       lenient().when(mockTargetClient.autoFlagsConfig()).thenReturn(resp);
-      GFlagDetails flagDetails = new GFlagDetails();
-      flagDetails.name = "FLAG_1";
-      flagDetails.target = "value";
-      flagDetails.initial = "initial";
-      flagDetails.tags = "auto";
-      when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      when(mockGFlagsValidation.extractGFlags(anyString(), anyString(), anyBoolean()))
-          .thenReturn(Collections.singletonList(flagDetails));
-      doCallRealMethod()
-          .when(mockGFlagsValidation)
-          .getFilteredAutoFlagsWithNonInitialValue(anyMap(), anyString(), any());
-      doCallRealMethod().when(mockGFlagsValidation).isAutoFlag(any());
+      GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+      autoFlagDetails.name = "FLAG_1";
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = Collections.singletonList(autoFlagDetails);
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
     } catch (Exception ignore) {
     }
 

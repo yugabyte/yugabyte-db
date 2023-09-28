@@ -228,10 +228,12 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
   clang16
+  clang17
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -383,17 +385,16 @@ normalize_build_type() {
 decide_whether_to_use_linuxbrew() {
   expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ -n ${predefined_build_root:-} ]]; then
+    if [[ ${YB_BUILD_OPTS:-} =~ .*--linuxbrew.* ]]; then
+        YB_USE_LINUXBREW=1
+    elif [[ ${YB_BUILD_OPTS:-} =~ .*--no-linuxbrew.* ]]; then
+        YB_USE_LINUXBREW=0
+    elif [[ -n ${predefined_build_root:-} ]]; then
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -544,12 +545,7 @@ set_default_compiler_type() {
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
-        YB_COMPILER_TYPE=clang16
-      else
-        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang16
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi

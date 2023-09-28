@@ -99,22 +99,22 @@ You need to perform the following steps:
    ```properties
    image:
    commonRegistry: ""
-    	repository: **quay.io/yugabyte/yugaware**
-    	tag: **{{ version.build }}**
+      repository: **quay.io/yugabyte/yugaware**
+      tag: **{{ version.build }}**
    pullPolicy: IfNotPresent
    pullSecret: yugabyte-k8s-pull-secret
    thirdparty-deps:
-   	registry: quay.io
-   	tag: **latest**
-   	name: **yugabyte/thirdparty-deps**
+      registry: quay.io
+      tag: **latest**
+      name: **yugabyte/thirdparty-deps**
    prometheus:
-   	registry: ""
-   	tag:  **{{ version.prometheus }}**
-   	name: **prom/prometheus**
+      registry: ""
+      tag:  **{{ version.prometheus }}**
+      name: **prom/prometheus**
    nginx:
-   	registry: ""
-   	tag: **{{ version.nginx }}**
-   	name: nginx
+      registry: ""
+      tag: **{{ version.nginx }}**
+      name: nginx
    ```
 
 1. Pull images to your Docker Desktop, as follows:
@@ -298,25 +298,25 @@ You need to perform the following steps:
       pullPolicy: IfNotPresent
       pullSecret: yugabyte-k8s-pull-secret
       thirdparty-deps:
-      		registry: /yugabyte/thhirdparty-deps
-   			tag: **latest**
-   			name: **yugabyte/thirdparty-deps**
+            registry: /yugabyte/thhirdparty-deps
+            tag: **latest**
+            name: **yugabyte/thirdparty-deps**
       postgres:
-   			registry: "yugabyte/postgres"
-   			tag: 11.5
-   			name: **postgres**
+            registry: "yugabyte/postgres"
+            tag: 11.5
+            name: **postgres**
       prometheus:
-   			registry: "prom/prometheus"
-   			tag: **v2.2.1**
-   			name: **prom/prometheus**
+            registry: "prom/prometheus"
+            tag: **v2.2.1**
+            name: **prom/prometheus**
       nginx:
-   			registry: "yugabyte/nginx"
-   			tag: **1.17.4**
-   			name: nginx
+            registry: "yugabyte/nginx"
+            tag: **1.17.4**
+            name: nginx
       dnsmasq:
-   			registry: "janeczku/go-dnsmasq/"
-   			tag: **release-1.0.7**
-   			name: **janeczku/go-dnsmasq
+            registry: "janeczku/go-dnsmasq/"
+            tag: **release-1.0.7**
+            name: **janeczku/go-dnsmasq
    ```
 
 1. Install Helm chart or specify the container registry in YugabyteDB Anywhere cloud provider, as follows:

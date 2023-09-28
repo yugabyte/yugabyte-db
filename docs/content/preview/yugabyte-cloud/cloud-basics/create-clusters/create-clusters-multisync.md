@@ -13,8 +13,6 @@ type: docs
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
-Currently, Azure is not supported for replicated across region clusters (coming soon).
-
 {{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
 
 ## Preferred region
@@ -89,7 +87,7 @@ Set **Data Distribution** to **Replicate across regions**.
 
 The node throughput will be scaled according to the IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
 
-Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 

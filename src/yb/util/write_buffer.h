@@ -46,8 +46,9 @@ class WriteBuffer {
     AppendWithPrefix(prefix, data, end - data);
   }
 
-  void AppendWithPrefix(char prefix, Slice slice) {
-    DoAppend(prefix, slice);
+  template <class Value>
+  void AppendWithPrefix(char prefix, Value value) {
+    DoAppend(prefix, value);
   }
 
   void Append(const char* data, size_t length) {
@@ -58,8 +59,9 @@ class WriteBuffer {
     Append(data, end - data);
   }
 
-  void Append(Slice slice) {
-    DoAppend(slice);
+  template <class Value>
+  void Append(Value value) {
+    DoAppend(value);
   }
 
   Status Write(const WriteBufferPos& pos, const char* data, const char* end);
@@ -81,7 +83,7 @@ class WriteBuffer {
   size_t BytesAfterPosition(const WriteBufferPos& pos) const;
 
   size_t size() const {
-    return size_;
+    return size_without_last_block_ + filled_in_last_block();
   }
 
   void AllocateBlock(size_t space);
@@ -110,7 +112,7 @@ class WriteBuffer {
   void CopyTo(size_t begin, size_t end, std::byte* out) const;
 
   void CopyTo(std::byte* out) const {
-    CopyTo(0, size_, out);
+    CopyTo(0, size(), out);
   }
 
  private:
@@ -118,19 +120,23 @@ class WriteBuffer {
   template <class Out>
   void DoAppendTo(Out* out) const;
 
-  static size_t AppendSize(Slice slice) {
-    return slice.size();
+  template <class Value>
+  static size_t AppendSize(Value value) {
+    return value.size();
   }
 
-  static void AppendCopyTo(char* out, Slice slice) {
-    slice.CopyTo(out);
+  template <class Value>
+  static void AppendCopyTo(char* out, Value value) {
+    value.CopyTo(out);
   }
 
-  static size_t AppendSize(char prefix, Slice slice) {
-    return slice.size() + 1;
+  template <class Value>
+  static size_t AppendSize(char prefix, Value value) {
+    return value.size() + 1;
   }
 
-  static void AppendCopyTo(char* out, char prefix, Slice value) {
+  template <class Value>
+  static void AppendCopyTo(char* out, char prefix, Value value) {
     *out++ = prefix;
     value.CopyTo(out);
   }
@@ -138,22 +144,18 @@ class WriteBuffer {
   template <class... Args>
   void DoAppend(Args&&... value) {
     auto len = AppendSize(std::forward<Args>(value)...);
-    size_ += len;
 
     auto out = last_block_free_begin_;
     auto end = last_block_free_end_;
-    if (make_signed(len) <= end - out) {
+    // Use bit_cast to make UBSAN happy. Otherwise, it does not like adding non-zero to nullptr.
+    auto new_end = bit_cast<char*>(bit_cast<ptrdiff_t>(out) + len);
+    if (PREDICT_TRUE(new_end <= end)) {
+      last_block_free_begin_ = new_end;
       AppendCopyTo(out, std::forward<Args>(value)...);
-      last_block_free_begin_ = out + len;
       return;
     }
 
-    if (out == end) {
-      AppendToNewBlock(std::forward<Args>(value)...);
-      return;
-    }
-
-    DoAppendSplit(out, end - out, std::forward<Args>(value)...);
+    DoAppendFallback(out, end - out, std::forward<Args>(value)...);
   }
 
   void AppendToNewBlock(Slice slice);
@@ -161,6 +163,23 @@ class WriteBuffer {
 
   void DoAppendSplit(char* out, size_t out_size, Slice slice);
   void DoAppendSplit(char* out, size_t out_size, char ch, Slice slice);
+
+  template <class Value>
+  void DoAppendFallback(char* out, size_t out_size, Value value) {
+    DoAppendFallback(out, out_size, value.AsSlice());
+  }
+
+  template <class Value>
+  void DoAppendFallback(char* out, size_t out_size, char ch, Value value) {
+    DoAppendFallback(out, out_size, ch, value.AsSlice());
+  }
+
+  void DoAppendFallback(char* out, size_t out_size, Slice slice);
+  void DoAppendFallback(char* out, size_t out_size, char ch, Slice slice);
+
+  size_t filled_in_last_block() const {
+    return last_block_free_begin_ ? last_block_free_begin_ - blocks_.back().data() : 0;
+  }
 
   class Block {
    public:
@@ -204,7 +223,7 @@ class WriteBuffer {
   const size_t block_size_;
   char* last_block_free_begin_ = nullptr;
   char* last_block_free_end_ = nullptr;
-  size_t size_ = 0;
+  size_t size_without_last_block_ = 0;
   boost::container::small_vector<Block, kMinWriteBufferBlocks> blocks_;
   ScopedTrackedConsumption* consumption_;
 };

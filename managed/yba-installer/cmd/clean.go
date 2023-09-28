@@ -31,16 +31,13 @@ func cleanCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			state, err := ybactlstate.LoadState()
+			state, err := ybactlstate.Initialize()
 			if err != nil {
 				log.Warn("failed to load internal state, continue with uninstall")
 				state = ybactlstate.New()
 			}
-			state.CurrentStatus = ybactlstate.CleaningStatus
-
-			// Ignore errors as we want to clean no matter what
-			if err := ybactlstate.StoreState(state); err != nil {
-				log.Warn("failed to update internal state - continue with uninstall")
+			if err := state.TransitionStatus(ybactlstate.CleaningStatus); err != nil {
+				log.Fatal("Could not start clean: " + err.Error())
 			}
 
 			// TODO: Only clean up per service.
@@ -55,8 +52,7 @@ func cleanCmd() *cobra.Command {
 			// If this is a soft clean, update internal state. Otherwise skip, as there is nothing left to
 			// update.
 			if !removeData {
-				state.CurrentStatus = ybactlstate.SoftCleanStatus
-				if err := ybactlstate.StoreState(state); err != nil {
+				if err := state.TransitionStatus(ybactlstate.SoftCleanStatus); err != nil {
 					log.Warn("failed to update internal state - continue with uninstall")
 				}
 			}

@@ -136,7 +136,7 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 } // namespace
 
 constexpr size_t kRunningTransactionSize = sizeof(RunningTransaction);
-const std::string kParentMemTrackerId = "transactions";
+const std::string kParentMemTrackerId = "Transactions";
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
@@ -173,7 +173,8 @@ class TransactionParticipant::Impl
     auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
         kParentMemTrackerId, tablets_mem_tracker);
     mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
-        participant_context_.tablet_id()), parent_mem_tracker);
+        participant_context_.tablet_id()), /* metric_name */ "PerTransaction",
+            parent_mem_tracker, AddToParent::kTrue, CreateMetrics::kFalse);
   }
 
   ~Impl() {
@@ -1089,7 +1090,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  size_t TEST_GetNumRunningTransactions() {
+  size_t GetNumRunningTransactions() {
     std::lock_guard lock(mutex_);
     auto txn_to_id = [](const RunningTransactionPtr& txn) {
       return txn->id();
@@ -2033,8 +2034,8 @@ Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimeP
   return impl_->ResolveIntents(resolve_at, deadline);
 }
 
-size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
-  return impl_->TEST_GetNumRunningTransactions();
+size_t TransactionParticipant::GetNumRunningTransactions() const {
+  return impl_->GetNumRunningTransactions();
 }
 
 OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(

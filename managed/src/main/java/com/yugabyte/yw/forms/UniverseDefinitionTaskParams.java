@@ -13,6 +13,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
@@ -24,6 +25,8 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -175,9 +178,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Override the default DB present in pre-built Ami
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
+
+  @ApiModelProperty public Architecture arch;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -599,6 +605,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public String ycqlPassword;
 
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYsqlPassword = false;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYcqlPassword = false;
+
     @ApiModelProperty() public Long kubernetesOperatorVersion;
 
     @ApiModelProperty() public boolean enableYSQLAuth = false;
@@ -666,7 +678,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
-    @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty("YbaApi Internal: Used by YBM")
+    private UserIntentOverrides userIntentOverrides;
 
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     // 0 will not set any cgroup limits.

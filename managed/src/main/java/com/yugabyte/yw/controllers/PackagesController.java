@@ -3,8 +3,16 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PackagesRequestParams;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -35,6 +43,12 @@ public class PackagesController extends AbstractPlatformController {
         required = true,
         dataType = "com.yugabyte.yw.forms.PackagesRequestParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result fetchPackage(Http.Request request) {
 

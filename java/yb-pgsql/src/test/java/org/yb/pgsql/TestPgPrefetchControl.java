@@ -23,17 +23,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.pgsql.ExplainAnalyzeUtils.checkReadRequests;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
@@ -78,31 +76,17 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
 
     int tableRowCount = 5000;
     try (Statement statement = connection.createStatement()) {
-      List<Row> insertedRows = new ArrayList<>();
-
-      for (int i = 0; i < tableRowCount; i++) {
-        int h = i;
-        String r = String.format("range_%d", h);
-        int vi = i + 10000;
-        String vs = String.format("value_%d", vi);
-        String stmt = String.format("INSERT INTO %s VALUES (%d, '%s', %d, '%s')",
-                                    tableName, h, r, vi, vs);
-        statement.execute(stmt);
-        insertedRows.add(new Row(h, r, vi, vs));
-      }
-
-      // Check rows.
-      String stmt = String.format("SELECT * FROM %s ORDER BY h", tableName);
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertEquals(insertedRows, getRowList(rs));
-      }
+      statement.execute(String.format(
+        "INSERT INTO %s SELECT " +
+        "  g, CONCAT('range_', g::TEXT), " +
+        "  g + 10000, CONCAT('value_', (g + 10000)::TEXT) " +
+        "FROM generate_series(0, %d) g",
+        tableName, tableRowCount - 1));
 
       String seqScanQuery = String.format("SELECT * FROM %s", tableName);
-      String ybSeqScanQuery = String.format("/*+ SeqScan(%s) */ SELECT * FROM %s",
-                                            tableName, tableName);
 
-      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN, 51, tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN, 51, tableRowCount);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(51), tableRowCount);
     }
   }
 
@@ -111,18 +95,6 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     LOG.info(String.format("Row limit = %d, Size limit = %d", rowLimit, sizeLimit));
     statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
     statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimit));
-  }
-
-  private void checkReadRequests(Statement statement, String query, String scanType,
-      int expectedReadRequests, int tableRowCount) throws Exception {
-    Checker checker = makeTopLevelBuilder()
-        .plan(makePlanBuilder()
-            .nodeType(scanType)
-            .actualRows(Checkers.equal(tableRowCount))
-            .build())
-        .storageReadRequests(Checkers.equal(expectedReadRequests))
-        .build();
-    ExplainAnalyzeUtils.testExplain(statement, query, checker);
   }
 
   @Test
@@ -142,35 +114,41 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       statement.execute(String.format("create index on %s (v asc)", tableName));
 
       String seqScanQuery = String.format("SELECT * FROM %s", tableName);
-      String ybSeqScanQuery = String.format("/*+ SeqScan(%s) */ SELECT * FROM %s",
-                                            tableName, tableName);
       String indexScanQuery = String.format("SELECT * FROM %s WHERE k > 0", tableName);
       String indexOnlyScanQuery = String.format("SELECT v FROM %s WHERE v > ''", tableName);
 
       setRowAndSizeLimit(statement, 1024, 0);
-      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN, 98, tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN, 98, tableRowCount);
-      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN, 98, tableRowCount);
-      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN, 98, tableRowCount);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(98), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(98), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(98), tableRowCount);
 
       setRowAndSizeLimit(statement, 0, 0);
-      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN, 1, tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN, 1, tableRowCount);
-      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN, 1, tableRowCount);
-      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN, 1, tableRowCount);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(1), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(1), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(1), tableRowCount);
 
       // row buffer fills up faster in YbSeqScan
       setRowAndSizeLimit(statement, 0, 512);
-      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN, 25, tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN, 29, tableRowCount);
-      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN, 29, tableRowCount);
-      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN, 23, tableRowCount);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(25), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(25), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(23), tableRowCount);
 
       setRowAndSizeLimit(statement, 0, 1024);
-      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN, 13, tableRowCount);
-      checkReadRequests(statement, ybSeqScanQuery, NODE_YB_SEQ_SCAN, 15, tableRowCount);
-      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN, 15, tableRowCount);
-      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN, 12, tableRowCount);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(13), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(13), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(12), tableRowCount);
     }
   }
 

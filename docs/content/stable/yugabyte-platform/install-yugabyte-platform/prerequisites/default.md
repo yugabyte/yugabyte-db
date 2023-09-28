@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -16,9 +16,9 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| Replicated | Docker containers | You're able to use Docker containers. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
@@ -27,6 +27,10 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
+  <li>
     <a href="../default/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
@@ -34,11 +38,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   <li>
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>

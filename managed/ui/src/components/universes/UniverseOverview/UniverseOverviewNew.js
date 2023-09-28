@@ -524,6 +524,7 @@ export default class UniverseOverviewNew extends Component {
           type={'primary'}
           universeInfo={currentUniverse}
           isDedicatedNodes={isDedicatedNodes}
+          runtimeConfigs={this.props.runtimeConfigs}
         />
       </Col>
     ) : (
@@ -532,6 +533,7 @@ export default class UniverseOverviewNew extends Component {
           type={'primary'}
           universeInfo={currentUniverse}
           isDedicatedNodes={isDedicatedNodes}
+          runtimeConfigs={this.props.runtimeConfigs}
         />
       </Col>
     );
@@ -617,7 +619,7 @@ export default class UniverseOverviewNew extends Component {
       <StandaloneMetricsPanelContainer
         metricKey={metricKey}
         additionalMetricKeys={secondaryMetric}
-        isDedicatedNodes={isDedicatedNodes}
+        isDedicatedNodes={isDedicatedNodes && !isKubernetes}
         type="overview"
       >
         {(props) => {
@@ -636,7 +638,7 @@ export default class UniverseOverviewNew extends Component {
                 <DiskUsagePanel
                   metric={props.metric}
                   masterMetric={props.masterMetric}
-                  isDedicatedNodes={isDedicatedNodes}
+                  isDedicatedNodes={isDedicatedNodes && !isKubernetes}
                   className={'disk-usage-container'}
                 />
               }
@@ -657,7 +659,7 @@ export default class UniverseOverviewNew extends Component {
       <Col lg={isDedicatedNodes ? 2 : 4} md={4} sm={4} xs={6}>
         <StandaloneMetricsPanelContainer
           metricKey={isItKubernetesUniverse ? 'container_cpu_usage' : 'cpu_usage'}
-          isDedicatedNodes={isDedicatedNodes}
+          isDedicatedNodes={isDedicatedNodes && !isItKubernetesUniverse}
           type="overview"
         >
           {(props) => {
@@ -676,7 +678,7 @@ export default class UniverseOverviewNew extends Component {
                     masterMetric={props.masterMetric}
                     className={'disk-usage-container'}
                     isKubernetes={isItKubernetesUniverse}
-                    isDedicatedNodes={isDedicatedNodes}
+                    isDedicatedNodes={isDedicatedNodes && !isItKubernetesUniverse}
                   />
                 }
               />

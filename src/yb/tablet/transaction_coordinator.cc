@@ -114,7 +114,8 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
                  "When enabled, the txn coordinator responds to all abort transaction requests "
                  "with TryAgain error status, for the set of transactions it hosts.");
 
-DECLARE_bool(enable_deadlock_detection);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(disable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
 
 using namespace std::literals;
@@ -1522,7 +1523,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       DeadlockDetectorRpcCallback&& callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << req.ShortDebugString();
 
-    if (!ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       YB_LOG_EVERY_N(WARNING, 100)
           << "Received wait-for report at node with deadlock detection disabled. "
           << "This should only happen during rolling restart.";
@@ -1536,7 +1537,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const tserver::ProbeTransactionDeadlockRequestPB&req,
       tserver::ProbeTransactionDeadlockResponsePB* resp,
       DeadlockDetectorRpcCallback&& callback) {
-    if (!ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       YB_LOG_EVERY_N(WARNING, 100)
           << "Received probe at node with deadlock detection disabled. "
           << "This should only happen during rolling restart.";
@@ -1762,7 +1763,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   void PollDeadlockDetector() {
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (FLAGS_enable_wait_queues && !PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       deadlock_detector_.TriggerProbes();
     }
   }

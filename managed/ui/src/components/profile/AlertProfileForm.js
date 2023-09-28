@@ -14,7 +14,6 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
-import { toast } from 'react-toastify';
 
 // TODO set predefined defaults another way not to share defaults this way
 const MILLISECONDS_IN_MINUTE = 60000;
@@ -85,11 +84,14 @@ export default class AlertProfileForm extends Component {
   componentDidUpdate() {
     const { customerProfile } = this.props;
     const { statusUpdated } = this.state;
+
     if (
       statusUpdated &&
       (getPromiseState(customerProfile).isSuccess() || getPromiseState(customerProfile).isError())
     ) {
-      this.setState({ statusUpdated: false });
+      this.setState({
+        statusUpdated: false
+      });
     }
   }
 
@@ -181,7 +183,6 @@ export default class AlertProfileForm extends Component {
             updateCustomerDetails(data);
             this.setState({ statusUpdated: true });
             setSubmitting(false);
-            toast.success('Configuration updated successfully');
 
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);

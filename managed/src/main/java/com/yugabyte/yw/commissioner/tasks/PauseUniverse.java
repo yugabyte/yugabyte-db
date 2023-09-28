@@ -76,9 +76,7 @@ public class PauseUniverse extends UniverseTaskBase {
         if (!node.disksAreMountedByUUID) {
           UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
           createUpdateMountedDisksTask(
-              node,
-              cluster.userIntent.getInstanceTypeForNode(node),
-              cluster.userIntent.getDeviceInfoForNode(node));
+              node, node.getInstanceType(), cluster.userIntent.getDeviceInfoForNode(node));
         }
       }
 

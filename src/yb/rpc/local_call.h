@@ -49,6 +49,8 @@ class LocalOutboundCall : public OutboundCall {
     return req_;
   }
 
+  bool is_local() const override { return true; }
+
  protected:
   void Serialize(ByteBlocks* output) override;
 

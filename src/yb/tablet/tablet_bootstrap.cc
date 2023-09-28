@@ -652,8 +652,15 @@ class TabletBootstrap {
   // Sets result to true if there was any data on disk for this tablet.
   Result<bool> OpenTablet() {
     CleanupSnapshots();
-
-    auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
+    // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
+    // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
+    // object itself being allocated on the control block.
+    //
+    // Since we create weak_ptr from this shared_ptr and store it in other classes like WriteQuery,
+    // any leaked weak_ptr wouldn't prevent the underlying object's memory deallocation after the
+    // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
+    // the object's memory even after all shared_ptrs go out of scope.
+    std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -664,8 +671,27 @@ class TabletBootstrap {
     // happening concurrently as we haven't opened the tablet yet.
     const bool has_ss_tables = VERIFY_RESULT(tablet->HasSSTables());
 
+    // Tablet meta data may require some updates after tablet is opened.
+    RETURN_NOT_OK(MaybeUpdateMetaAfterTabletHasBeenOpened(*tablet));
+
     tablet_ = std::move(tablet);
     return has_ss_tables;
+  }
+
+  // Makes updates to tablet meta if required.
+  Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
+    // post split compaction algorithm by explicitly setting the value for
+    // post_split_compaction_file_number_upper_bound.
+    if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
+        !meta_->parent_data_compacted() &&
+        !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
+      meta_->set_post_split_compaction_file_number_upper_bound(
+          tablet.regular_db()->GetNextFileNumber());
+      RETURN_NOT_OK(meta_->Flush());
+    }
+
+    return Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir

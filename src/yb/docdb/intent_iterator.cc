@@ -362,7 +362,6 @@ void IntentIterator::AppendStrongWriteAndPerformSeek(KeyBytes* key_bytes, bool s
   AppendStrongWrite(key_bytes);
 
   if (seek_forward) {
-    intent_iter_.Next();
     docdb::SeekPossiblyUsingNext(&intent_iter_, *key_bytes);
   } else {
     ROCKSDB_SEEK(&intent_iter_, *key_bytes);

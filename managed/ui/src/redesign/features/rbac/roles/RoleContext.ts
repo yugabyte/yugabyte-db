@@ -9,10 +9,10 @@
 
 import { createContext } from 'react';
 import { createStateContext } from 'react-use';
-import { IRole } from './IRoles';
+import { Role } from './IRoles';
 
 // export const roleMethods
-export default createStateContext<IRole | null>(null);
+export default createStateContext<Role | null>(null);
 
 export const Pages = ['CREATE_ROLE', 'LIST_ROLE', 'EDIT_ROLE'] as const;
 
@@ -22,7 +22,7 @@ export type RoleViewContext = {
   formProps: {
     currentPage: Page;
   };
-  currentRole: IRole | null;
+  currentRole: Role | null;
 };
 
 export const initialRoleContextState: RoleViewContext = {
@@ -42,7 +42,7 @@ export const roleMethods = (context: RoleViewContext) => ({
       currentPage: page
     }
   }),
-  setCurrentRole: (currentRole: IRole | null): RoleViewContext => ({
+  setCurrentRole: (currentRole: Role | null): RoleViewContext => ({
     ...context,
     currentRole
   })

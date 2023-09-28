@@ -1653,6 +1653,8 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 			}
 
+// Disabled the unnecessary logs
+#ifndef YB_SUPPORT_FOUND
 #if OD_DEVEL_LVL != OD_RELEASE_MODE
 			if (server != NULL && server->is_allocated &&
 			    server->is_transaction &&
@@ -1663,14 +1665,16 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					client->id.id);
 			}
 #endif
-
+#endif
 			/* one minute */
 			if (machine_cond_wait(client->cond, 60000) == 0) {
 				client->time_last_active = machine_time_us();
+#ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
 					1,
 					"change client last active time %lld\n",
 					client->time_last_active);
+#endif
 				break;
 			}
 		}
@@ -1950,6 +1954,59 @@ static void od_application_name_add_host(od_client_t *client)
 		      length + 1); // return code ignored
 }
 
+/*
+ * Clean the shared memory segment which is storing the client's context.
+ * A control connection will be used here.
+ */
+int yb_clean_shmem(od_client_t *client, od_server_t *server)
+{
+	od_instance_t *instance = client->global->instance;
+	od_route_t *route = client->route;
+	machine_msg_t *msg;
+	int rc = 0;
+
+	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
+
+	/* Send `SET SESSION PARAMETER` packet. */
+	rc = od_write(&server->io, msg);
+	if (rc == -1) {
+		od_debug(&instance->logger, "clean shared memory", client, server,
+			 "Unable to send `SET SESSION PARAMETER` packet");
+		return -1;
+	} else {
+		od_debug(&instance->logger, "clean shared memory", client, server,
+			 "Sent `SET SESSION PARAMETER` packet for %d", client->client_id);
+	}
+
+	client->client_id = 0;
+
+	/* Wait for the KIWI_BE_READY_FOR_QUERY packet. */
+	for (;;) {
+		msg = od_read(&server->io, UINT32_MAX);
+		if (msg == NULL) {
+			if (!machine_timedout()) {
+				od_error(&instance->logger, "clean shared memory",
+					 server->client, server,
+					 "read error from server: %s",
+					 od_io_error(&server->io));
+				return -1;
+			}
+		}
+
+		kiwi_be_type_t type;
+		type = *(char *)machine_msg_data(msg);
+		od_debug(&instance->logger, "clean shared memory", server->client,
+			 server, "Got a packet of type: %s",
+			 kiwi_be_type_to_string(type));
+
+		if (type == KIWI_BE_READY_FOR_QUERY) {
+			return 0;
+		} else if (type == KIWI_BE_ERROR_RESPONSE) {
+			return -1;
+		}
+	}
+}
+
 void od_frontend(void *arg)
 {
 	od_client_t *client = arg;
@@ -2175,7 +2232,7 @@ void od_frontend(void *arg)
 		       client->startup.user.value);
 	} else {
 /* For auth passthrough, error message will be directly forwaded to the client */
-#if YB_AUTH_PASSTHROUGH_USED != FALSE
+#ifndef YB_SUPPORT_FOUND
 		od_error(
 			&instance->logger, "auth", client, NULL,
 			"ip '%s' user '%s.%s': host based authentication rejected",
@@ -2250,6 +2307,12 @@ void od_frontend(void *arg)
 	/* cleanup */
 
 cleanup:
+#ifdef YB_SUPPORT_FOUND
+	/* clean shared memory associated with the client */
+	if (client->client_id != 0)
+		yb_execute_on_control_connection(client, yb_clean_shmem);
+#endif
+
 	/* detach client from its route */
 	od_router_unroute(router, client);
 	/* close frontend connection */
