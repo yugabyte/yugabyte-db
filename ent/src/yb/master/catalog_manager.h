@@ -14,6 +14,7 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
+#include "../../../../ent/src/yb/master/restore_sys_catalog_state.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -470,6 +471,17 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
       TabletSnapshotOperationCallback callback) override;
 
   void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
+
+  Status RestoreSysCatalogCommon(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
+    docdb::KeyValuePairPB* restore_kv);
+
+  Status RestoreSysCatalogSlowPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
+
+  Status RestoreSysCatalogFastPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
 
   Status RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,

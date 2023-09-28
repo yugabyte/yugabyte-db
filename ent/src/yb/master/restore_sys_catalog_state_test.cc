@@ -48,6 +48,7 @@ TEST(RestoreSysCatalogStateTest, Filter) {
       .op_id = OpId(),
       .write_time = {},
       .term = 0,
+      .db_oid = std::nullopt,
       .schedules = {},
       .non_system_obsolete_tablets = {},
       .non_system_obsolete_tables = {},

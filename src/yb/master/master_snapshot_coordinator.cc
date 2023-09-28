@@ -462,6 +462,7 @@ class MasterSnapshotCoordinator::Impl {
       .op_id = operation.op_id(),
       .write_time = operation.hybrid_time(),
       .term = leader_term,
+      .db_oid = std::nullopt,
       .schedules = {},
       .non_system_obsolete_tablets = {},
       .non_system_obsolete_tables = {},

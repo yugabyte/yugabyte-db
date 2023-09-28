@@ -48,6 +48,8 @@
 
 using namespace std::placeholders;
 
+DECLARE_bool(enable_fast_pitr);
+
 namespace yb {
 namespace master {
 
@@ -346,13 +348,25 @@ void RestoreSysCatalogState::FillHideInformation(
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysNamespaceEntryPB* pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(restoration_.db_oid, Corruption, "Namespace entry not found in existing state");
+    SCHECK(*(restoration_.db_oid) ==
+        VERIFY_RESULT(GetPgsqlDatabaseOid(id)), Corruption,
+        "Namespace entry in restoring and existing state are different");
+  }
   return true;
 }
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    restoration_.restoring_system_tables.emplace(id);
+    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      restoration_.restoring_system_tables.emplace(id);
+      return false;
+    }
+    if (VERIFY_RESULT(GetPgsqlTableOid(id)) == kPgYbMigrationTableOid) {
+      restoration_.restoring_system_tables.emplace(id);
+    }
     return false;
   }
 
@@ -754,9 +768,15 @@ Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysTablesEntryPB& pb) {
   VLOG_WITH_FUNC(4) << "Table: " << id << ", " << pb.ShortDebugString();
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
-    restoration_.existing_system_tables.emplace(id, pb.name());
-
+    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+      restoration_.existing_system_tables.emplace(id, pb.name());
+      return Status::OK();
+    }
+    if (VERIFY_RESULT(GetPgsqlTableOid(id)) == kPgYbMigrationTableOid) {
+      LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
+      restoration_.existing_system_tables.emplace(id, pb.name());
+    }
     return Status::OK();
   }
   if (restoring_objects_.tables.count(id)) {
@@ -771,6 +791,10 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 // We don't delete newly created namespaces, because our filters namespace based.
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysNamespaceEntryPB& pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(!restoration_.db_oid, NotSupported, "Only one database at a time can be restored");
+    restoration_.db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(id));
+  }
   return Status::OK();
 }
 

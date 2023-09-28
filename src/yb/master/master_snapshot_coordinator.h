@@ -41,6 +41,8 @@ struct SnapshotScheduleRestoration {
   OpId op_id;
   HybridTime write_time;
   int64_t term;
+  // DB OID of the database that is being restored.
+  std::optional<int64_t> db_oid;
   std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
