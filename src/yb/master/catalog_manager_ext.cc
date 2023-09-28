@@ -153,6 +153,10 @@ DEFINE_RUNTIME_bool(
     allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
+DEFINE_RUNTIME_bool(
+    enable_fast_pitr, false,
+    "Whether fast restore of sys catalog on the master is enabled.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -2335,18 +2339,10 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
   WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
-Status CatalogManager::RestoreSysCatalog(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
-  bool restore_successful = false;
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard<simple_spinlock> l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
+Status CatalogManager::RestoreSysCatalogCommon(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
+    docdb::KeyValuePairPB* restore_kv) {
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
@@ -2360,41 +2356,28 @@ Status CatalogManager::RestoreSysCatalog(
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
-  RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db));
+  RETURN_NOT_OK(state->LoadRestoringObjects(doc_read_context(), doc_db));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db()));
-  RETURN_NOT_OK(state.Process());
-
-  docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+  RETURN_NOT_OK(
+      state->LoadExistingObjects(doc_read_context(), tablet->doc_db()));
+  RETURN_NOT_OK(state->Process());
 
   // Restore the pg_catalog tables.
-  if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
+  if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.
-    RETURN_NOT_OK(state.PatchSequencesDataObjects());
+    RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
-    auto status = state.ProcessPgCatalogRestores(
+    RETURN_NOT_OK(state->ProcessPgCatalogRestores(
         doc_db, tablet->doc_db(),
-        &write_batch, doc_read_context(), tablet->metadata());
-
-    // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
-    // status in case of validation failures so that it gets propagated back to the client before
-    // doing any write operations.
-    if (status.IsNotSupported()) {
-      *complete_status = status;
-      return Status::OK();
-    }
-
-    RETURN_NOT_OK(status);
+        write_batch, doc_read_context(), tablet->metadata()));
   }
 
   // Crash for tests.
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(schema(), write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
@@ -2404,8 +2387,33 @@ Status CatalogManager::RestoreSysCatalog(
   // Also, generates the restoration state entry.
   // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
   // rpcs can be retried.
-  auto restore_kv = VERIFY_RESULT(
+  *restore_kv = VERIFY_RESULT(
       snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
+
+  return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalogSlowPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+
+  bool restore_successful = false;
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
+
+  RestoreSysCatalogState state(restoration);
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+  docdb::KeyValuePairPB restore_kv;
+
+  RETURN_NOT_OK(RestoreSysCatalogCommon(
+      restoration, tablet, &state, &write_batch, &restore_kv));
 
   // Apply write batch to RocksDB.
   state.WriteToRocksDB(
@@ -2421,6 +2429,86 @@ Status CatalogManager::RestoreSysCatalog(
   restore_successful = true;
 
   return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalogFastPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+  bool restore_successful = false;
+
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard<simple_spinlock> l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
+
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional);
+  RestoreSysCatalogState state(restoration);
+  docdb::KeyValuePairPB restore_kv;
+
+  RETURN_NOT_OK(RestoreSysCatalogCommon(
+      restoration, tablet, &state, &write_batch, &restore_kv));
+
+  if (state.IsYsqlRestoration()) {
+    // Set Hybrid Time filter for pg catalog tables.
+    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownRocksDBs(
+        tablet::DisableFlushOnShutdown::kFalse);
+
+    std::lock_guard<std::mutex> lock(tablet->create_checkpoint_lock_);
+
+    tablet->CompleteShutdownRocksDBs(op_pauses);
+
+    rocksdb::Options rocksdb_opts;
+    tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());
+    docdb::RocksDBPatcher patcher(tablet->metadata()->rocksdb_dir(), rocksdb_opts);
+    RETURN_NOT_OK(patcher.Load());
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));
+
+    RETURN_NOT_OK(tablet->OpenKeyValueTablet());
+    RETURN_NOT_OK(tablet->EnableCompactions(&op_pauses.non_abortable));
+
+    // Ensure that op_pauses stays in scope throughout this function.
+    for (auto* op_pause : op_pauses.AsArray()) {
+      DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+    }
+  }
+
+  // Apply write batch to RocksDB.
+  state.WriteToRocksDB(
+      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
+
+  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm() << ", wrote "
+                        << write_batch.size() << " entries to rocksdb";
+
+  if (LeaderTerm() >= 0) {
+    RETURN_NOT_OK(ElectedAsLeaderCb());
+  }
+
+  restore_successful = true;
+
+  return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalog(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
+  Status s;
+  if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    s = RestoreSysCatalogFastPitr(restoration, tablet);
+  } else {
+    s = RestoreSysCatalogSlowPitr(restoration, tablet);
+  }
+  // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
+  // status in case of validation failures so that it gets propagated back to the client before
+  // doing any write operations.
+  if (s.IsNotSupported()) {
+    *complete_status = s;
+    return Status::OK();
+  }
+  return s;
 }
 
 Status CatalogManager::VerifyRestoredObjects(
