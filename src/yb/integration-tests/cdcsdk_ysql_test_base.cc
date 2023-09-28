@@ -2842,13 +2842,6 @@ namespace cdc {
     ValidateColumnCounts(change_resp, 2);
   }
 
-  void CDCSDKYsqlTest::EnableVerboseLoggingForModule(const std::string& module, int level) {
-    if (!FLAGS_vmodule.empty()) {
-      FLAGS_vmodule += Format(",$0=$1", module, level);
-    } else {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = Format("$0=$1", module, level);
-    }
-  }
 
   Result<std::string> CDCSDKYsqlTest::GetValueFromMap(const QLMapValuePB& map_value,
     const std::string& key) {

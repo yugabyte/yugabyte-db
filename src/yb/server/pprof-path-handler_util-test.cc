@@ -39,7 +39,7 @@ namespace yb {
 
 void SamplingProfilerTest::SetUp() {
   YBTest::SetUp();
-  ASSERT_OK(EnableVerboseLoggingForModule("pprof-path-handlers_util", 2));
+  google::SetVLOGLevel("pprof-path-handlers_util", 2);
 }
 
 // Changes to tcmalloc's sample rate only take effect once we take a sample. Upon initialization,

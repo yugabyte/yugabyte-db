@@ -193,13 +193,6 @@ void OverrideFlagForSlowTests(const std::string& flag_name,
                                        google::SET_FLAG_IF_DEFAULT);
 }
 
-Status EnableVerboseLoggingForModule(const std::string& module, int level) {
-  string old_value = FLAGS_vmodule;
-  string new_value = Format("$0$1$2=$3", old_value, (old_value.empty() ? "" : ","), module, level);
-
-  return SET_FLAG(vmodule, new_value);
-}
-
 int SeedRandom() {
   int seed;
   // Initialize random seed
