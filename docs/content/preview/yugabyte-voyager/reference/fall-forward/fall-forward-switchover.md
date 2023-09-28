@@ -32,8 +32,8 @@ The valid *arguments* for fall-forward switchover are described in the following
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help for switchover. |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help for switchover. |
 
 #### Example
 
@@ -57,8 +57,8 @@ The valid *arguments* for fall-forward switchover status are described in the fo
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help for cutover status. |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help for cutover status. |
 
 #### Example
 

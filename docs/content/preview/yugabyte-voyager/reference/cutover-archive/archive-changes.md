@@ -25,11 +25,10 @@ The valid *arguments* for archive changes status are described in the following 
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help for archive changes. |
-| [--delete](#delete) |  Delete exported data after moving it to the target database. (Default: false) |
-| [--move-to](#move-to) <path> | Destination path to move exported data to. |
-| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. (Default: true) |
-| [--verbose](#verbose) | Display extra information in the output. |
-| [-y, --yes](#yes) | Answer yes to all prompts during migration (Default: false). |
-
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help for archive changes. |
+| --delete |  Delete exported data after moving it to the target database. (default: false) |
+| --move-to <path> | Destination path to move exported data to. |
+| --send-diagnostics | Send diagnostics information to Yugabyte. (default: true) |
+| --verbose | Display extra information in the output. (default: false) |
+| -y, --yes | Answer yes to all prompts during migration (default: false). |

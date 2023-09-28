@@ -46,7 +46,8 @@ To verify the version of yb-voyager installed on your machine, run:
 yb-voyager version
 ```
 
-## Arguments
+
+<!-- ## Arguments
 
 ### --export-dir
 
@@ -346,4 +347,4 @@ Specifies disk utilization percentage after which you can [archive changes](#arc
 
 ### --move-to
 
-Specifies the destination path to which [archive changes](#archive-changes) should move the files to.
+Specifies the destination path to which [archive changes](#archive-changes) should move the files to. -->

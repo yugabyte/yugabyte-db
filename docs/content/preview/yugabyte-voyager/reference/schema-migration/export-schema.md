@@ -26,27 +26,27 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help. |
-| [--oracle-db-sid](#oracle-db-sid) <SID> | Oracle System Identifier. Oracle migrations only.|
-| [--oracle-home](#oracle-home) <path> | Path to set `$ORACLE_HOME` environment variable. Oracle migrations only.|
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -h, --help | Command line help. |
+| --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
+| --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
 | [--oracle-tns-alias](#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--source-db-type](#source-db-type) <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
-| [--source-db-host](#source-db-host) <hostname> | Hostname of the source database server. |
-| [--source-db-name](#source-db-name) <name> | Source database name. |
-| [--source-db-password](#source-db-password) <password>| Source database password. |
-| [--source-db-port](#source-db-port) <port> | Port number of the source database machine. |
-| [--source-db-schema](#source-db-schema) <schemaName> | Schema name of the source database. |
-| [--source-db-user](#source-db-user) <username> | Name of the source database user (typically `ybvoyager`). |
+| --send-diagnostics | Sends diagnostics information to Yugabyte. (default: true)|
+| --source-db-type <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
+| --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
+| --source-db-name <name> | Source database name. |
+| --source-db-password <password>| Source database password. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --source-db-port <port> | Port number of the source database machine. |
+| --source-db-schema <schemaName> | Schema name of the source database. |
+| --source-db-user <username> | Name of the source database user (typically `ybvoyager`). |
 | [--source-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Starts a fresh schema export after clearing the `schema` directory. |
-| [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
+| --start-clean | Starts a fresh schema export after clearing the `schema` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
+| --use-orafce | Use the Orafce extension. Oracle migrations only. (default: true) |
+| -y, --yes | Answer yes to all prompts during the export schema operation. |
 
 #### Example
 

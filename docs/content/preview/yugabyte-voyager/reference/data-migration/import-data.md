@@ -34,28 +34,28 @@ The valid *arguments* for import data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--disable-pb](#disable-pb) | Hide progress bars. |
-| [--table-list](#table-list) | Comma-separated list of the tables for which data is exported. |
-| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [-e, --export-dir](#export-dir) <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
-| [-h, --help](#command-line-help) | Command line help. |
-| [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
-| [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Starts a fresh import with data files present in the `data` directory. If any table on the YugabyteDB database is not empty, you are prompted to continue the import without truncating those tables. If you continue, yb-voyager starts ingesting the data present in the data files with upsert mode, and for cases where a table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
-| [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
-| [--target-db-name](#target-db-name) <name> | Target database name. |
-| [--target-db-password](#target-db-password) <password>| Target database password. |
-| [--target-db-port](#target-db-port) <port> | Port number of the target database machine. |
-| [--target-db-schema](#target-db-schema) <schemaName> | Schema name of the target database. |
-| [--target-db-user](#target-db-user) <username> | Username of the target database. |
+| --batch-size <number> | Size of batches generated for ingestion during import data. (default: 20000 rows) |
+| --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
+| --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. |
+| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. For live migration, during import data, the `--exclude-table-list` argument is not supported. |
+| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
+| -h, --help | Command line help. |
+| --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. (default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.)|
+| --send-diagnostics | Send diagnostics information to Yugabyte. |
+| --start-clean | Starts a fresh import with data files present in the `data` directory. If any table on the YugabyteDB database is not empty, you are prompted to continue the import without truncating those tables. If you continue, yb-voyager starts ingesting the data present in the data files with upsert mode, and for cases where a table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
+| --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: "127.0.0.1") |
+| --target-db-name <name> | Target database name. |
+| --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
+| --target-db-port <port> | Port number of the target database machine. (default: 5433) |
+| --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
+| --target-db-user <username> | Username of the target database. |
 | [--target-ssl-cert](#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--verbose](#verbose) | Display extra information in the output. |
-| [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
+| --verbose | Display extra information in the output. (default: false) |
+| -y, --yes | Answer yes to all prompts during the export schema operation. |
 
 <!-- To do : document the following arguments with description
 | --continue-on-error |
