@@ -19,27 +19,9 @@ resources:
     url: /preview/yugabyte-voyager/
 ---
 
-YugabyteDB is a scalable, resilient, and secure PostgreSQL-compatible cloud-native database for powering global, internet-scale applications.
+YugabyteDB is distributed PostgreSQL that delivers on-demand scale, built-in resilience, and a multi-API interface to eliminate complexity and risk when powering business-critical transactional applications.
 
-YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. With support for hybrid and multi-cloud setups, YugabyteDB can be deployed across public and private clouds as well as in Kubernetes environments.
-
-{{< sections/2-boxes >}}
-  {{< sections/bottom-image-box
-    title="Get Started in the Cloud"
-    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
-    buttonText="Get started"
-    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
-    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
-  >}}
-
-  {{< sections/bottom-image-box
-    title="Get Started locally on your Laptop"
-    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
-    buttonText="Get started"
-    buttonUrl="/preview/quick-start/"
-    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
-  >}}
-{{< /sections/2-boxes >}}
+Using an innovative and re-architected distributed storage layer, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. YugabyteDB can be deployed across public, private, and hybrid clouds as well as in Kubernetes environments
 
 ### Explore
 
@@ -78,6 +60,24 @@ YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with lo
   >}}
 
 {{< /sections/3-boxes >}}
+
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="Get Started in the Cloud"
+    description="Create your first cluster, explore distributed SQL, and build a sample application in 15 minutes. No credit card required."
+    buttonText="Get started"
+    buttonUrl="/preview/yugabyte-cloud/cloud-quickstart/"
+    imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
+  >}}
+
+  {{< sections/bottom-image-box
+    title="Get Started locally on your Laptop"
+    description="Download and install YugabyteDB on your laptop to create clusters, test features, and explore distributed SQL."
+    buttonText="Get started"
+    buttonUrl="/preview/quick-start/"
+    imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
+  >}}
+{{< /sections/2-boxes >}}
 
 ### Products
 
