@@ -1246,10 +1246,12 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   auto session = client()->NewSession();
   session->SetDeadline(deadline);
 
+  // If set_latest_entry is true i.e. the case of bootstrap, we know it is not a snapshot call.
+  // Similarly, if bootstrap (set_latest_entry) is false, we know it is a snapshot call.
   RETURN_NOT_OK_SET_CODE(
       UpdateCheckpointAndActiveTime(
           producer_tablet, checkpoint, checkpoint, session, GetCurrentTimeMicros(),
-          CDCRequestSource::CDCSDK, true, cdc_sdk_safe_time),
+          CDCRequestSource::CDCSDK, true, cdc_sdk_safe_time, !set_latest_entry),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   if (req.has_initial_checkpoint() || set_latest_entry) {
