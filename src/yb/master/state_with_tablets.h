@@ -65,7 +65,7 @@ class StateWithTablets {
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
   void Done(const TabletId& tablet_id, Status status);
-  bool AllInState(SysSnapshotEntryPB::State state);
+  bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 

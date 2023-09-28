@@ -167,6 +167,7 @@ message ListTablesResponsePB {
     optional SysTablesEntryPB.State state = 6;
     optional string pgschema_name = 7;
     optional ColocatedInfo colocated_info = 8;
+    optional bool hidden = 9;
   }
 
   repeated TableInfo tables = 2;

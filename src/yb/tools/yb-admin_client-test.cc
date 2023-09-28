@@ -60,7 +60,8 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithDe
   const TypedNamespaceName database {
     .db_type = YQL_DATABASE_PGSQL,
     .name = "yugabyte"};
-  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(database));
+  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
+      database, 0 /* retention_duration_hours */));
   EnumBitSet<ListSnapshotsFlag> flags;
   flags.Set(ListSnapshotsFlag::SHOW_DETAILS);
   auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(flags));
@@ -103,7 +104,8 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithou
     .db_type = YQL_DATABASE_PGSQL,
     .name = "yugabyte"
   };
-  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(database));
+  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
+      database, 0 /* retention_duration_hours */));
   auto resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(EnumBitSet<ListSnapshotsFlag>()));
   EXPECT_EQ(resp.snapshots_size(), 1);
   EXPECT_EQ(resp.snapshots(0).entry().entries_size(), 0);
@@ -144,7 +146,8 @@ TEST_F(
     .db_type = YQL_DATABASE_PGSQL,
     .name = db_name
   };
-  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(database));
+  ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
+      database, 0 /* retention_duration_hours */));
 }
 
 }  // namespace tools
