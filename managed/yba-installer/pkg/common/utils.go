@@ -53,38 +53,6 @@ const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
 const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
 
-// GetVersion gets the version at execution time so that yba-installer
-// installs the correct version of YugabyteDB Anywhere.
-func GetVersion() string {
-
-	// locate the version metadata json file in the same dir as the yba-ctl
-	// binary
-	var configViper = viper.New()
-	configViper.SetConfigName(VersionMetadataJSON)
-	configViper.SetConfigType("json")
-	configViper.AddConfigPath(GetBinaryDir())
-
-	err := configViper.ReadInConfig()
-	if err != nil {
-		panic(err)
-	}
-
-	versionNumber := fmt.Sprint(configViper.Get("version_number"))
-	buildNumber := fmt.Sprint(configViper.Get("build_number"))
-	if buildNumber == "PRE_RELEASE" && os.Getenv("YBA_MODE") == "dev" {
-		// hack to allow testing dev itest builds
-		buildNumber = fmt.Sprint(configViper.Get("build_id"))
-	}
-
-	version := versionNumber + "-b" + buildNumber
-
-	if !IsValidVersion(version) {
-		log.Fatal(fmt.Sprintf("Invalid version in metadata file '%s'", version))
-	}
-
-	return version
-}
-
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
 
@@ -450,15 +418,6 @@ func GetJsonRepr[T any](obj T) []byte {
 
 func init() {
 	InitViper()
-	// Init globals that rely on viper
-
-	/*
-		Version = GetVersion()
-		InstallRoot = GetSoftwareRoot()
-		InstallVersionDir = GetInstallerSoftwareDir()
-		yugabundleBinary = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
-		currentUser = GetCurrentUser()
-	*/
 }
 
 // UpdateRootInstall will update the yaml files .installRoot entry with what is currently

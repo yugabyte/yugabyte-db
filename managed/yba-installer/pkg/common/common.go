@@ -107,7 +107,7 @@ func createUpgradeDirs() {
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
-	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
+	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
@@ -410,7 +410,8 @@ func generateSelfSignedCerts() (string, string) {
 
 }
 
-func WaitForYBAReady() {
+// WaitForYBAReady waits for a YBA to be running with specified version
+func WaitForYBAReady(version string) {
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error
@@ -444,9 +445,9 @@ func WaitForYBAReady() {
 		if err == nil {
 			var result map[string]string
 			json.NewDecoder(resp.Body).Decode(&result)
-			if result["version"] != GetVersion() {
+			if result["version"] != version {
 				log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
-					result["version"], GetVersion()))
+					result["version"], version))
 			}
 		} else {
 			log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
