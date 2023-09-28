@@ -8842,6 +8842,14 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "tableNameList" : {
+          "description" : "Restored Table name List",
+          "items" : {
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
         "targetKeyspace" : {
           "description" : "Target keyspace name",
           "readOnly" : true,
