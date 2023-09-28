@@ -115,6 +115,8 @@ Result<RefCntSlice> RpcController::ExtractSidecar(size_t idx) const {
   return call_->ExtractSidecar(idx);
 }
 
+size_t RpcController::GetSidecarsCount() const { return call_->GetSidecarsCount(); }
+
 size_t RpcController::TransferSidecars(Sidecars* dest) {
   return call_->TransferSidecars(dest);
 }

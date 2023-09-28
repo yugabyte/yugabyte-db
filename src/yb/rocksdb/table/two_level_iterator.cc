@@ -238,6 +238,8 @@ bool TwoLevelIterator::InitDataBlock() {
     // second_level_iter is already constructed with this iterator, so
     // no need to change anything
   } else {
+    // TODO(secondary_iter): consider updating existing iterator rather than recreating, measure
+    // potential perf impact.
     InternalIterator* iter = state_->NewSecondaryIterator(handle);
     data_block_handle_.assign(handle.cdata(), handle.size());
     SetSecondLevelIterator(iter);

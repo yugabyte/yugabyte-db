@@ -319,6 +319,24 @@ InternalIterator* TableCache::DoNewIterator(
   return result;
 }
 
+InternalIterator* TableCache::NewIndexIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh) {
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
+
+  InternalIterator* result = trwh->table_reader->NewIndexIterator(options);
+
+  if (trwh->created_new) {
+    DCHECK(trwh->handle == nullptr);
+    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
+  } else if (trwh->handle != nullptr) {
+    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
+  }
+
+  trwh->Release();
+
+  return result;
+}
+
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
     const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,

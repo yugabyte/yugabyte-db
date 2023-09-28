@@ -78,6 +78,15 @@ class PgMutationCounter;
     (WaitForBackendsCatalogVersion) \
     /**/
 
+// These methods may respond with Status::OK() and continue async processing (including network
+// operations). In this case it is their responsibility to fill response and call
+// context.RespondSuccess asynchronously.
+// If such method responds with error Status, it will be handled by the upper layer that will fill
+// response with error status and call context.RespondSuccess.
+#define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (GetTableKeyRanges) \
+    /**/
+
 using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
@@ -116,7 +125,14 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext* context);
 
+  #define PG_CLIENT_SESSION_ASYNC_METHOD_DECLARE(r, data, method) \
+  void method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      rpc::RpcContext context);
+
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_DECLARE, ~, PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_DECLARE, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
 
  private:
   std::string LogPrefix();
@@ -207,6 +223,13 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   // read time and send back as "used read time" in the response for use by future rpcs of the
   // session.
   PgClientSession::UsedReadTimePtr ResetReadPoint(PgClientSessionKind kind);
+
+  // NOTE: takes ownership of paging_state.
+  void GetTableKeyRanges(
+      client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
+      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback);
 
   const uint64_t id_;
   client::YBClient& client_;

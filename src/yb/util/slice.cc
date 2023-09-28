@@ -155,6 +155,10 @@ Slice Slice::Prefix(size_t n) const {
   return Slice(begin_, n);
 }
 
+Slice Slice::PrefixNoLongerThan(size_t n) const {
+  return Slice(begin_, std::min(n, size()));
+}
+
 Slice Slice::WithoutPrefix(size_t n) const {
   DCHECK_LE(n, size());
   return Slice(begin_ + n, end_);
@@ -177,6 +181,13 @@ Slice Slice::WithoutSuffix(size_t n) const {
 
 void Slice::truncate(size_t n) {
   DCHECK_LE(n, size());
+  end_ = begin_ + n;
+}
+
+void Slice::MakeNoLongerThan(size_t n) {
+  if (n >= size()) {
+    return;
+  }
   end_ = begin_ + n;
 }
 

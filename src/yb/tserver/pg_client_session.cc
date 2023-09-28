@@ -1627,6 +1627,99 @@ Status PgClientSession::DeleteDBSequences(
   return session->TEST_ApplyAndFlush(std::move(psql_delete));
 }
 
+void PgClientSession::GetTableKeyRanges(
+    yb::tserver::PgGetTableKeyRangesRequestPB const& req,
+    yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
+  const auto table = table_cache_.Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  if (!table.ok()) {
+    StatusToPB(table.status(), resp->mutable_status());
+    context.RespondSuccess();
+    return;
+  }
+
+  auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
+  auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  GetTableKeyRanges(
+      session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
+      req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),
+      /* paging_state = */ nullptr,
+      [resp, shared_context](Status status) {
+        if (!status.ok()) {
+          StatusToPB(status, resp->mutable_status());
+        }
+        shared_context->RespondSuccess();
+      });
+}
+
+void PgClientSession::GetTableKeyRanges(
+    client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
+    Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+    uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
+    PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback) {
+  // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
+  // instead of passing through YBSession.
+  auto psql_read = client::YBPgsqlReadOp::NewSelect(table, sidecars);
+
+  auto* read_request = psql_read->mutable_request();
+  if (paging_state) {
+    if (paging_state->total_num_rows_read() >= max_num_ranges) {
+      callback(Status::OK());
+      return;
+    }
+    read_request->set_limit(max_num_ranges - paging_state->total_num_rows_read());
+    read_request->set_allocated_paging_state(paging_state);
+  } else {
+    read_request->set_limit(max_num_ranges);
+  }
+
+  auto* req = read_request->mutable_get_tablet_key_ranges_request();
+
+  if (!lower_bound_key.empty()) {
+    read_request->mutable_lower_bound()->mutable_key()->assign(
+        lower_bound_key.cdata(), lower_bound_key.size());
+    read_request->mutable_lower_bound()->set_is_inclusive(true);
+    read_request->mutable_partition_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+    req->mutable_lower_bound_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+  }
+  if (!upper_bound_key.empty()) {
+    read_request->mutable_upper_bound()->mutable_key()->assign(
+        upper_bound_key.cdata(), upper_bound_key.size());
+    read_request->mutable_upper_bound()->set_is_inclusive(false);
+    req->mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
+  }
+  req->set_is_forward(is_forward);
+  req->set_range_size_bytes(range_size_bytes);
+  req->set_max_key_length(max_key_length);
+
+  session->Apply(psql_read);
+  session->FlushAsync([this, session, psql_read, callback = std::move(callback), table,
+                       lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
+                       is_forward, max_key_length, sidecars](client::FlushStatus* flush_status) {
+    const auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
+    if (!status.ok()) {
+      callback(status);
+      return;
+    }
+
+    {
+      std::lock_guard guard(plain_session_used_read_time_.lock);
+      if (!plain_session_used_read_time_.value) {
+        plain_session_used_read_time_.value = psql_read->used_read_time();
+        plain_session_used_read_time_.tablet_id = psql_read->used_tablet();
+      }
+    }
+
+    auto* resp = psql_read->mutable_response();
+    if (!resp->has_paging_state()) {
+      callback(Status::OK());
+      return;
+    }
+    GetTableKeyRanges(
+        session, table, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
+        is_forward, max_key_length, sidecars, resp->release_paging_state(), std::move(callback));
+  });
+}
+
 client::YBSessionPtr& PgClientSession::EnsureSession(
     PgClientSessionKind kind, CoarseTimePoint deadline) {
   auto& session = Session(kind);

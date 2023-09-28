@@ -59,6 +59,7 @@
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
+#include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -1730,6 +1731,45 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id) {
   return ToYBCStatus(pgapi->CancelTransaction(transaction_id));
+}
+
+YBCStatus YBCGetTableKeyRanges(
+    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param) {
+  auto res = pgapi->GetTableKeyRanges(
+      PgObjectId(database_oid, table_oid), Slice(lower_bound_key, lower_bound_key_size),
+      Slice(upper_bound_key, upper_bound_key_size), max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
+  if (!res.ok()) {
+    return ToYBCStatus(res.status());
+  }
+
+  auto& encoded_table_range_slices = *res;
+  if (!is_forward) {
+    return ToYBCStatus(
+        STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
+  }
+
+  for (size_t i = 0; i < encoded_table_range_slices.size(); ++i) {
+    Slice encoded_tablet_ranges = encoded_table_range_slices[i].AsSlice();
+    while (!encoded_tablet_ranges.empty()) {
+      // Consume null-flag
+      const auto s = encoded_tablet_ranges.consume_byte(0);
+      if (!s.ok()) {
+        return ToYBCStatus(s);
+      }
+      // Read key from buffer.
+      const auto key_size = PgWire::ReadNumber<uint64_t>(&encoded_tablet_ranges);
+      Slice key(encoded_tablet_ranges.cdata(), key_size);
+      encoded_tablet_ranges.remove_prefix(key_size);
+
+      callback(callback_param, key.cdata(), key.size());
+    }
+  }
+
+  return YBCStatusOK();
 }
 
 } // extern "C"

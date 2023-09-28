@@ -613,6 +613,11 @@ uint64_t PlainTableReader::ApproximateOffsetOf(const Slice& key) {
   return 0;
 }
 
+InternalIterator* PlainTableReader::NewIndexIterator(const ReadOptions& read_options) {
+  return NewErrorInternalIterator(
+      STATUS(NotSupported, "NewIndexIterator() is not supported for PlainTableBuilder"));
+}
+
 PlainTableIterator::PlainTableIterator(PlainTableReader* table,
                                        bool use_prefix_seek)
     : table_(table),

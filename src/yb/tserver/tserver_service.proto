@@ -112,6 +112,8 @@ service TabletServerService {
 
   rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
       returns (StartRemoteSnapshotTransferResponsePB);
+
+  rpc GetTabletKeyRanges(GetTabletKeyRangesRequestPB) returns (GetTabletKeyRangesResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields

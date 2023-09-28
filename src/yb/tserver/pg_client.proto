@@ -59,9 +59,7 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
+
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
@@ -85,6 +83,12 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
+
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  // DEPRECATED
+  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
+      returns (PgSetActiveSubTransactionResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -705,4 +709,19 @@ message PgGetActiveTransactionListResponsePB {
   }
   AppStatusPB status = 1;
   repeated EntryPB entries = 2;
+}
+
+message PgGetTableKeyRangesRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+  bytes lower_bound_key = 3;
+  bytes upper_bound_key = 4;
+  uint64 max_num_ranges = 5;
+  uint64 range_size_bytes = 6;
+  bool is_forward = 7;
+  uint32 max_key_length = 8;
+}
+
+message PgGetTableKeyRangesResponsePB {
+  AppStatusPB status = 1;
 }

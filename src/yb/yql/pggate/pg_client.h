@@ -37,6 +37,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -170,6 +171,10 @@ class PgClient {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);

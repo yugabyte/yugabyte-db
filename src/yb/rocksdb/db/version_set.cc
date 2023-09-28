@@ -816,6 +816,37 @@ uint64_t VersionStorageInfo::GetEstimatedActiveKeys() const {
   }
 }
 
+template <typename MergeIteratorBuilderType, typename CreateIteratorFunc>
+void Version::AddLevel0Iterators(
+    const ReadOptions& read_options,
+    const EnvOptions& soptions,
+    MergeIteratorBuilderType* merge_iter_builder,
+    Arena* arena,
+    const CreateIteratorFunc& create_iterator_func) {
+  for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
+    const auto& file = storage_info_.LevelFilesBrief(0).files[i];
+    if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
+      InternalIterator *file_iter;
+      TableCache::TableReaderWithHandle trwh;
+      Status s = cfd_->table_cache()->GetTableReaderForIterator(read_options, soptions,
+          cfd_->internal_comparator(), file.fd, &trwh, cfd_->internal_stats()->GetFileReadHist(0),
+          false);
+      if (s.ok()) {
+        if (!read_options.table_aware_file_filter ||
+            read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
+          file_iter = create_iterator_func(&trwh, i);
+        } else {
+          file_iter = nullptr;
+        }
+      } else {
+        file_iter = NewErrorInternalIterator(s, arena);
+      }
+      if (file_iter) {
+        merge_iter_builder->AddIterator(file_iter);
+      }
+    }
+  }}
+
 void Version::AddIterators(const ReadOptions& read_options,
                            const EnvOptions& soptions,
                            MergeIteratorBuilder* merge_iter_builder) {
@@ -829,30 +860,12 @@ void Version::AddIterators(const ReadOptions& read_options,
   auto* arena = merge_iter_builder->GetArena();
 
   // Merge all level zero files together since they may overlap
-  for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
-    const auto& file = storage_info_.LevelFilesBrief(0).files[i];
-    if (!read_options.file_filter || read_options.file_filter->Filter(file)) {
-      InternalIterator *file_iter;
-      TableCache::TableReaderWithHandle trwh;
-      Status s = cfd_->table_cache()->GetTableReaderForIterator(read_options, soptions,
-          cfd_->internal_comparator(), file.fd, &trwh, cfd_->internal_stats()->GetFileReadHist(0),
-          false);
-      if (s.ok()) {
-        if (!read_options.table_aware_file_filter ||
-            read_options.table_aware_file_filter->Filter(trwh.table_reader)) {
-          file_iter = cfd_->table_cache()->NewIterator(
-              read_options, &trwh, storage_info_.LevelFiles(0)[i]->UserFilter(), false, arena);
-        } else {
-          file_iter = nullptr;
-        }
-      } else {
-        file_iter = NewErrorInternalIterator(s, arena);
-      }
-      if (file_iter) {
-        merge_iter_builder->AddIterator(file_iter);
-      }
-    }
-  }
+  AddLevel0Iterators(
+      read_options, soptions, merge_iter_builder, arena,
+      [this, &read_options, arena](TableCache::TableReaderWithHandle* trwh, size_t i) {
+        return cfd_->table_cache()->NewIterator(
+            read_options, trwh, storage_info_.LevelFiles(0)[i]->UserFilter(), false, arena);
+      });
 
   // For levels > 0, we can use a concatenating iterator that sequentially
   // walks through the non-overlapping files in the level, opening them
@@ -874,6 +887,37 @@ void Version::AddIterators(const ReadOptions& read_options,
     }
   }
 }
+
+template<typename MergeIteratorBuilderType>
+void Version::AddIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions,
+    MergeIteratorBuilderType* merge_iter_builder) {
+  DCHECK(storage_info_.finalized_);
+
+  if (storage_info_.num_non_empty_levels() == 0) {
+    return;
+  }
+
+  LOG_IF(FATAL, storage_info_.num_non_empty_levels() != 1)
+      << "Only single level is supported for now by Version::AddIndexIterators.";
+
+  // TODO(index_iter): consider using arena.
+  AddLevel0Iterators(
+      read_options, soptions, merge_iter_builder, /* arena = */ nullptr,
+      [this, &read_options](TableCache::TableReaderWithHandle* trwh, size_t i) {
+        return cfd_->table_cache()->NewIndexIterator(read_options, trwh);
+      });
+}
+
+template void Version::AddIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions,
+    MergeIteratorInHeapBuilder<IteratorWrapperBase</* kSkipLastEntry = */ false>>*
+        merge_iter_builder);
+
+template void Version::AddIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions,
+    MergeIteratorInHeapBuilder<IteratorWrapperBase</* kSkipLastEntry = */ true>>*
+        merge_iter_builder);
 
 VersionStorageInfo::VersionStorageInfo(
     const InternalKeyComparatorPtr& internal_comparator,

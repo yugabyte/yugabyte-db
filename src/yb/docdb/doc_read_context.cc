@@ -90,7 +90,7 @@ void DocReadContext::UpdateKeyPrefix() {
     BigEndian::Store32(out, schema_.colocation_id());
     out += sizeof(ColocationId);
   }
-  key_prefix_encoded_len_ = out - shared_key_prefix_buffer_.data();
+  key_prefix_encoded_len_ = table_key_prefix_len_ = out - shared_key_prefix_buffer_.data();
   bool use_inplace_increment_for_upperbound = false;
   if (schema_.num_hash_key_columns()) {
     *out++ = dockv::KeyEntryTypeAsChar::kUInt16Hash;

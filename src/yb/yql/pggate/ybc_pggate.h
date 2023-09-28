@@ -716,6 +716,19 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 
+// Breaks table data into ranges of approximately range_size_bytes each, at most into
+// `max_num_ranges`.
+// Returns (through callback) list of these ranges end keys.
+// It is guaranteed that returned keys are at most max_key_length bytes.
+// lower_bound_key is inclusive, upper_bound_key is exclusive.
+// Iff we've reached the end of the table (or upper bound) then empty key is returned as the last
+// key.
+YBCStatus YBCGetTableKeyRanges(
+    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
