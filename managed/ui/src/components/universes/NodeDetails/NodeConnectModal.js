@@ -76,11 +76,11 @@ class NodeConnectModal extends Component {
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
       const podNamespace = currentRow.cloudInfo.kubernetesNamespace
-	    ? currentRow.cloudInfo.kubernetesNamespace
-	    : currentRow.privateIP?.split('.')[2];
+        ? currentRow.cloudInfo.kubernetesNamespace
+        : currentRow.privateIP?.split('.')[2];
       const podName = currentRow.cloudInfo.kubernetesPodName
-	    ? currentRow.cloudInfo.kubernetesPodName
-	    : currentRow.privateIP?.split('.')[0];
+        ? currentRow.cloudInfo.kubernetesPodName
+        : currentRow.privateIP?.split('.')[0];
       let container_name_selector = '';
 
       if (currentRow.isMaster === 'Details') {
@@ -97,12 +97,16 @@ class NodeConnectModal extends Component {
         (key) => key.idKey.providerUUID === providerUUID && key.idKey.keyCode === accessKeyCode
       );
 
-      const accessKeyInfo = accessKey.keyInfo;
-      const sshPort = accessKeyInfo.sshPort || 22;
+      const accessKeyInfo = accessKey?.keyInfo;
+      const sshPort = accessKeyInfo?.sshPort || 22;
       if (!isTectiaSSHEnabled) {
-        accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sudo ssh -i ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       } else {
-        accessCommand = `sshg3 -K ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sshg3 -K ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       }
     }
 
