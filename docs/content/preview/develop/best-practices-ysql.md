@@ -121,7 +121,7 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 
 ## JSONB datatype
-YugabyteDB has [`jsonb`](../../api/ysql/datatypes/type_json) datatype that makes it easy to model json data which does not have a set schema and are truly dynamic values. 
+YugabyteDB has [`jsonb`](../../api/ysql/datatypes/type_json) datatype that makes it easy to model json data which does not have a set schema but have a truly dynamic schema. 
 It is the same as Postgresql [`jsonb`](https://www.postgresql.org/docs/11/datatype-json.html) datatype.
 You can use jsonb to group less interesting / lesser accessed columns of a table. 
 YSQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
