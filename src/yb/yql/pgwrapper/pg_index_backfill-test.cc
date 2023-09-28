@@ -2152,6 +2152,16 @@ TEST_F_EX(PgIndexBackfillTest,
   thread_holder_.Stop();
 }
 
+// Override to use YSQL backends manager.
+class PgIndexBackfillBackendsManager : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillBlockDoBackfill::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
+  }
+};
+
 // Make sure transaction is not aborted by getting safe time.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
@@ -2168,7 +2178,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // TODO(#19000): enable for TSAN.
 TEST_F_EX(PgIndexBackfillTest,
           YB_DISABLE_TEST_IN_TSAN(NoAbortTxn),
-          PgIndexBackfillBlockDoBackfill) {
+          PgIndexBackfillBackendsManager) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
                                  kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));
