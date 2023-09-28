@@ -439,7 +439,7 @@ class BlockerData {
     bool was_txn_local = !IsPromotedUnlocked();
 
     // TODO(wait-queues): Track status hybrid times and ignore old status updates
-    txn_status_ = UnwrapResult(txn_status_response);
+    txn_status_or_res_ = UnwrapResult(txn_status_response);
     bool is_txn_pending = IsPendingUnlocked();
 
     // txn_underwent_promotion is set to true only on the first call to Signal with
@@ -465,7 +465,7 @@ class BlockerData {
     if (should_signal) {
       if (txn_status_ht_.is_special()) {
         DCHECK(IsAbortedUnlocked())
-          << "Unexpected special status ht in blocker " << txn_status_
+          << "Unexpected special status ht in blocker " << txn_status_or_res_
           << " @ " << txn_status_ht_;
         txn_status_ht_ = now;
       }
@@ -520,16 +520,17 @@ class BlockerData {
   }
 
   bool IsPendingUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() &&
-        (*txn_status_ == ResolutionStatus::kPending || *txn_status_ == ResolutionStatus::kPromoted);
+    return txn_status_or_res_.ok() && (*txn_status_or_res_ == ResolutionStatus::kPending ||
+                                       *txn_status_or_res_ == ResolutionStatus::kPromoted);
   }
 
   bool IsAbortedUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kAborted;
+    return txn_status_or_res_.ok() && (*txn_status_or_res_ == ResolutionStatus::kAborted ||
+                                       *txn_status_or_res_ == ResolutionStatus::kDeadlocked);
   }
 
   bool IsPromotedUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kPromoted;
+    return txn_status_or_res_.ok() && *txn_status_or_res_ == ResolutionStatus::kPromoted;
   }
 
   auto CleanAndGetSize() {
@@ -624,7 +625,7 @@ class BlockerData {
     SharedLock l(mutex_);
     out << "<tr>"
           << "<td>|" << id_ << "</td>"
-          << "<td>|" << txn_status_ << "</td>"
+          << "<td>|" << txn_status_or_res_ << "</td>"
         << "</tr>" << std::endl;
   }
 
@@ -632,7 +633,7 @@ class BlockerData {
   const TransactionId id_;
   TabletId status_tablet_ GUARDED_BY(mutex_);;
   mutable rw_spinlock mutex_;
-  Result<ResolutionStatus> txn_status_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
+  Result<ResolutionStatus> txn_status_or_res_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
   HybridTime txn_status_ht_ GUARDED_BY(mutex_) = HybridTime::kMin;
   SubtxnSet aborted_subtransactions_ GUARDED_BY(mutex_);
   std::vector<std::weak_ptr<WaiterData>> waiters_ GUARDED_BY(mutex_);
