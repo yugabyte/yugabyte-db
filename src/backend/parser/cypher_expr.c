@@ -31,6 +31,7 @@
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/value.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
