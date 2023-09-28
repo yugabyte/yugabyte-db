@@ -271,7 +271,7 @@ void Batcher::FlushAsync(
   }
 }
 
-bool Batcher::Has(const std::shared_ptr<YBOperation>& yb_op) const {
+bool Batcher::Has(const YBOperationPtr& yb_op) const {
   for (const auto& op : ops_) {
     if (op == yb_op) {
       return true;
@@ -280,14 +280,14 @@ bool Batcher::Has(const std::shared_ptr<YBOperation>& yb_op) const {
   return false;
 }
 
-void Batcher::Add(std::shared_ptr<YBOperation> op) {
+void Batcher::Add(YBOperationPtr op) {
   if (state_ != BatcherState::kGatheringOps) {
     LOG_WITH_PREFIX(DFATAL)
         << "Adding op to batcher in a wrong state: " << state_ << "\n" << GetStackTrace();
     return;
   }
 
-  ops_.push_back(op);
+  ops_.emplace_back(std::move(op));
 }
 
 void Batcher::CombineError(const InFlightOp& in_flight_op) {

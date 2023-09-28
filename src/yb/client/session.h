@@ -131,9 +131,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Applied operations just added to the session and waits to be flushed.
   void Apply(YBOperationPtr yb_op);
 
-  bool IsInProgress(YBOperationPtr yb_op) const;
-
   void Apply(const std::vector<YBOperationPtr>& ops);
+
+  bool IsInProgress(YBOperationPtr yb_op) const;
 
   // Flush any pending writes.
   //
@@ -172,17 +172,12 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void FlushAsync(FlushCallback callback);
   std::future<FlushStatus> FlushFuture();
 
+  // These block the thread until the operations complete or timeout/deadline has passed.
   // For production code use async variants of the following functions instead.
   FlushStatus TEST_FlushAndGetOpsErrors();
   Status TEST_Flush();
   Status TEST_ApplyAndFlush(YBOperationPtr yb_op);
   Status TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
-  Status TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
-
-  // These block the thread until the operations complete or timeout/deadline has passed
-  Status ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops);
-  Status ApplyAndFlushSync(YBOperationPtr ops);
-  Status ReadSync(std::shared_ptr<YBOperation> yb_op);
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();

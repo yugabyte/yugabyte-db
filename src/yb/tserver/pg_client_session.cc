@@ -1470,7 +1470,8 @@ Status PgClientSession::FetchSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   session->Apply(std::move(psql_write));
-  auto fetch_status = session->FlushFuture().get();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto fetch_status = session->TEST_FlushAndGetOpsErrors();
   RETURN_NOT_OK(CombineErrorsToStatus(fetch_status.errors, fetch_status.status));
 
   // Expect exactly two rows on success: sequence value range start and end, each as a single value
@@ -1552,7 +1553,7 @@ Status PgClientSession::ReadSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(session->TEST_ReadSync(psql_read));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
 
   CHECK_EQ(psql_read->sidecar_index(), 0);
 

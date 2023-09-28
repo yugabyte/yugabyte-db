@@ -86,7 +86,7 @@ void RedisTableTestBase::GetKeyValue(
     const string& key, const string& value, bool expect_not_found) {
   auto get_op = std::make_shared<YBRedisReadOp>(table_->shared_from_this());
   ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
-  ASSERT_OK(session_->TEST_ReadSync(get_op));
+  ASSERT_OK(session_->TEST_ApplyAndFlush(get_op));
   if (expect_not_found) {
     ASSERT_EQ(RedisResponsePB_RedisStatusCode_NIL, get_op->response().code());
   } else {
