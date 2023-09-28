@@ -94,6 +94,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table/index_iterator.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
@@ -4015,6 +4016,20 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
   return internal_iter;
 }
 
+template <bool kSkipLastEntry>
+std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
+    const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
+  std::unique_ptr<InternalIterator> merge_iter;
+  MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
+      cfd->internal_comparator().get());
+  super_version->current->AddIndexIterators(read_options, env_options_, &merge_iter_builder);
+  merge_iter = merge_iter_builder.Finish();
+
+  IterState* cleanup = new IterState(this, &mutex_, super_version);
+  merge_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
+  return merge_iter;
+}
+
 ColumnFamilyHandle* DBImpl::DefaultColumnFamily() const {
   return default_cf_handle_;
 }
@@ -4823,6 +4838,41 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   }
   // To stop compiler from complaining
   return nullptr;
+}
+
+std::unique_ptr<Iterator> DBImpl::NewIndexIterator(
+    const ReadOptions& read_options, SkipLastEntry skip_last_index_entry,
+    ColumnFamilyHandle* column_family) {
+  if (read_options.read_tier != kReadAllTier) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Only ReadTier::kReadAllTier is supported for NewIndexIterator()")));
+  }
+  if (read_options.managed) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Managed iterator is not supported for NewIndexIterator()")));
+  }
+  if (read_options.tailing) {
+    return std::unique_ptr<Iterator>(NewErrorIterator(
+        STATUS(NotSupported, "Tailing iterator is not supported for NewIndexIterator()")));
+  }
+
+  auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
+  auto cfd = cfh->cfd();
+
+  const auto latest_snapshot_number = versions_->LastSequence();
+  SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
+
+  const auto snapshot_number =
+      read_options.snapshot != nullptr
+          ? reinterpret_cast<const SnapshotImpl*>(read_options.snapshot)->number_
+          : latest_snapshot_number;
+
+  auto internal_index_iter =
+      skip_last_index_entry
+          ? NewInternalIndexIterator</* kSkipLastEntry = */ true>(read_options, cfd, sv)
+          : NewInternalIndexIterator</* kSkipLastEntry = */ false>(read_options, cfd, sv);
+
+  return std::make_unique<IndexIterator>(std::move(internal_index_iter), latest_snapshot_number);
 }
 
 Status DBImpl::NewIterators(

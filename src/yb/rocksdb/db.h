@@ -60,6 +60,7 @@ class WriteBatch;
 class Env;
 class EventListener;
 
+YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
 
 extern const char kDefaultColumnFamilyName[];
 
@@ -313,6 +314,16 @@ class DB {
   virtual Iterator* NewIterator(const ReadOptions& options) {
     return NewIterator(options, DefaultColumnFamily());
   }
+
+  virtual std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) = 0;
+
+  std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry) {
+    return NewIndexIterator(options, skip_last_index_entry, DefaultColumnFamily());
+  }
+
   // Returns iterators from a consistent database state across multiple
   // column families. Iterators are heap allocated and need to be deleted
   // before the db is deleted

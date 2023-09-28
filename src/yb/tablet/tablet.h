@@ -96,7 +96,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-
+YB_STRONGLY_TYPED_BOOL(IsForward)
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -891,6 +891,47 @@ class Tablet : public AbstractTablet,
   // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
 
+  // Breaks tablet data into ranges of approximately range_size_bytes each, at most into
+  // `max_num_ranges` and adds to `keys_buffer` a list of these ranges end keys.
+  //
+  // It is guaranteed that returned keys are at most max_key_length bytes.
+  // lower_bound_key is inclusive, upper_bound_key is exclusive. They are adjusted by this function
+  // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
+  // key_bounds_ is not set) and to be no longer than max_key_length. Due to truncation the last
+  // returned key can be outside tablet partition boundaries.
+  //
+  // If `is_forward` is set, list will consist of:
+  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_end_key \in (1st_range_end_key, adjusted_upper_bound_key)
+  // ...
+  // - nth_range_end_key \in ((n-1)th_range_end_key, adjusted_upper_bound_key]
+  //   or empty key iff next tablet can't have more keys (meaning we've already reached
+  //   specified upper_bound_key or the end of the last tablet).
+  //
+  // If `is_forward` is not set, list will consist of:
+  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_end_key \in (adjusted_lower_bound_key, 1st_range_end_key)
+  // ...
+  // - nth_range_end_key \in [adjusted_lower_bound_key, (n-1)_th_range_key)
+  //   or empty key iff next tablet can't have more keys (meaning we've already reached
+  //   specified lower_bound_key or the beginning of the first tablet).
+  //
+  // where n <= max_num_ranges.
+  // If max_num_ranges is 0, nothing will be written to the `keys_buffer`.
+  Status GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      WriteBuffer* keys_buffer, const TableId& colocated_table_id = "") const;
+
+  Status TEST_GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      std::function<void(Slice key)> callback, const TableId& colocated_table_id = "") const {
+    return GetTabletKeyRanges(
+        lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+        max_key_length, std::move(callback), colocated_table_id);
+  }
+
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
@@ -973,6 +1014,25 @@ class Tablet : public AbstractTablet,
 
   Status TriggerAdminFullCompactionIfNeededHelper(
       std::function<void()> on_compaction_completion = []() {});
+
+  Status GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      std::function<void(Slice key)> callback, const TableId& colocated_table_id) const;
+
+  Status GetTabletKeyRangesForward(
+      rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
+      Slice upper_bound_key, uint64_t max_num_ranges, uint64_t num_blocks_to_skip,
+      uint32_t max_key_length, std::function<void(Slice key)> callback,
+      bool use_empty_as_end_key) const;
+
+  Status GetTabletKeyRangesBackward(
+      rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t num_blocks_to_skip, uint32_t max_key_length,
+      std::function<void(Slice key)> callback) const;
+
+  Status ProcessPgsqlGetTableKeyRangesRequest(
+      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
 
   std::unique_ptr<const Schema> key_schema_;
 

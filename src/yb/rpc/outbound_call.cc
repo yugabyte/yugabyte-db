@@ -659,6 +659,10 @@ Result<RefCntSlice> OutboundCall::ExtractSidecar(size_t idx) const NO_THREAD_SAF
   return call_response_.ExtractSidecar(idx);
 }
 
+size_t OutboundCall::GetSidecarsCount() const NO_THREAD_SAFETY_ANALYSIS {
+  return call_response_.GetSidecarsCount();
+}
+
 size_t OutboundCall::TransferSidecars(Sidecars* dest) NO_THREAD_SAFETY_ANALYSIS  {
   return call_response_.TransferSidecars(dest);
 }

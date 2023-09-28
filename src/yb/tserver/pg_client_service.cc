@@ -990,7 +990,21 @@ class PgClientServiceImpl::Impl {
     return VERIFY_RESULT(GetSession(req))->method(req, resp, context); \
   }
 
+  #define PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD(r, data, method) \
+  void method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      rpc::RpcContext context) { \
+    const auto session = GetSession(req); \
+    if (!session.ok()) { \
+      Respond(session.status(), resp, &context); \
+      return; \
+    } \
+    (*session)->method(req, resp, std::move(context)); \
+  }
+
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
 
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
@@ -1145,7 +1159,16 @@ void PgClientServiceImpl::method( \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
+#define YB_PG_CLIENT_ASYNC_METHOD_DEFINE(r, data, method) \
+void PgClientServiceImpl::method( \
+    const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+    BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+    rpc::RpcContext context) { \
+  impl_->method(*req, resp, std::move(context)); \
+}
+
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 
 }  // namespace tserver
 }  // namespace yb

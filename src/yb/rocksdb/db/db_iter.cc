@@ -210,14 +210,14 @@ class DBIter final : public Iterator {
     EnsureValidIsChecked();
     valid_set_and_not_checked_ = true;
 
-#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK
+#if defined(DEBUG_ROCKSDB_CAPTURE_ITER_SET_VALID_STACK)
     set_valid_stack_trace_.Collect(/* skip_frames = */ 1);
-#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+#if defined(DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK)
     if (!entry_) {
       set_valid_false_stack_trace_ = set_valid_stack_trace_;
     }
 #endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
-#elif DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+#elif defined(DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK)
     if (!entry_) {
       set_valid_false_stack_trace_.Collect(/* skip_frames = */ 1);
     }

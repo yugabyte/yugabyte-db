@@ -128,6 +128,10 @@ class DBImpl : public DB {
   using DB::NewIterator;
   virtual Iterator* NewIterator(const ReadOptions& options,
                                 ColumnFamilyHandle* column_family) override;
+  std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) override;
+
   virtual Status NewIterators(
       const ReadOptions& options,
       const std::vector<ColumnFamilyHandle*>& column_families,
@@ -506,6 +510,11 @@ class DBImpl : public DB {
                                         ColumnFamilyData* cfd,
                                         SuperVersion* super_version,
                                         Arena* arena);
+
+  // TODO(index_iter): consider using arena.
+  template <bool kSkipLastEntry>
+  std::unique_ptr<InternalIterator> NewInternalIndexIterator(
+      const ReadOptions&, ColumnFamilyData* cfd, SuperVersion* super_version);
 
   // Except in DB::Open(), WriteOptionsFile can only be called when:
   // 1. WriteThread::Writer::EnterUnbatched() is used.

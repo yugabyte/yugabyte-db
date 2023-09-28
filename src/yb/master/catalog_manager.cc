@@ -3006,10 +3006,10 @@ Status CatalogManager::DoSplitTablet(
           split_partition_key = child_partition.partition_key_start();
         }
       }
-      // Re-compute the encoded key
-      // to ensure we use the same partition boundary for both child tablets
-      split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedKeyPrefix(
-        split_partition_key, source_table_lock->pb.partition_schema()));
+      // Re-compute the encoded key to ensure we use the same partition boundary for both child
+      // tablets.
+      split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedPartitionKey(
+          split_partition_key, source_table_lock->pb.partition_schema()));
     }
 
     LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
