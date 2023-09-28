@@ -63,8 +63,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       verifyParams(UniverseOpType.EDIT);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       // This value is used by subsequent calls to helper methods for
@@ -167,12 +166,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      kubernetesStatus.updateYBUniverseStatus(
-          getUniverse(),
-          taskParams().getKubernetesResourceDetails(),
-          getName(),
-          getUserTaskUUID(),
-          th);
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

@@ -50,7 +50,6 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -1084,18 +1083,6 @@ public class UniverseCRUDHandler {
       boolean isForceDelete,
       boolean isDeleteBackups,
       boolean isDeleteAssociatedCerts) {
-    return destroy(
-        customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts, null);
-  }
-
-  // destroy with KubernetesResourceDetails is to allow the operator to
-  public UUID destroy(
-      Customer customer,
-      Universe universe,
-      boolean isForceDelete,
-      boolean isDeleteBackups,
-      boolean isDeleteAssociatedCerts,
-      KubernetesResourceDetails resourceDetails) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.getUuid(),
@@ -1117,9 +1104,6 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.DestroyKubernetesUniverse;
-      if (resourceDetails != null) {
-        taskParams.setKubernetesResourceDetails(resourceDetails);
-      }
     }
 
     // Update all current tasks for this universe to be marked as done if it is a force delete.
