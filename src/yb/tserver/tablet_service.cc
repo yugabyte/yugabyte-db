@@ -218,6 +218,10 @@ DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
 DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
                  "Force updates in transaction status location to fail.");
 
+DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
+                 "Forced updates in transaction status location failure should be retryable "
+                 "error.");
+
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
                  "Inject delay to slowdown handling of updates in transaction status location.");
 
@@ -1333,7 +1337,11 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
+      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    } else {
+      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
+    }
   }
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
