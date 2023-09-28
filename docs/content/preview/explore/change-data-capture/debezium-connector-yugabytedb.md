@@ -989,7 +989,7 @@ The following properties are _required_ unless a default value is available:
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |
-| database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address.  Alternatively, a coma separated list of multiple host addresses along with corresponding ports can be specified, for ex: `ip1:port1,ip2:port2,ip3:port3`. This is useful for connection fail-over cases. |
+| database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. Alternatively, you can specify a comma-separated list of multiple host addresses and corresponding ports (for example,`ip1:port1,ip2:port2,ip3:port3`). This is useful for connection fail-over cases. |
 | database.port | N/A | The port at which the YSQL process is running. |
 | database.master.addresses | N/A | Comma-separated list of `host:port` values. |
 | database.user | N/A | The user which will be used to connect to the database. |
