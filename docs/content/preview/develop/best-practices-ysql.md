@@ -121,19 +121,19 @@ For more details, see [Large scans and batch jobs](../../develop/learn/transacti
 
 
 ## JSONB datatype
-YugabyteDB has [`jsonb`](../../api/ysql/datatypes/type_json) datatype that makes it easy to model json data which does not have a set schema and might change often. 
+YugabyteDB has [`jsonb`](../../api/ysql/datatypes/type_json) datatype that makes it easy to model json data which does not have a set schema and are truly dynamic values. 
 It is the same as Postgresql [`jsonb`](https://www.postgresql.org/docs/11/datatype-json.html) datatype.
 You can use jsonb to group less interesting / lesser accessed columns of a table. 
 YSQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
 
 {{< note title="Use jsonb columns only when necessary" >}}
-`jsonb` columns are slower to read/write compared to normal columns.
-
-They also take more space because they need to store keys in strings and make keeping data consistency harder and 
-needing complex queries to get/set jsonb values. 
-A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic values. 
-Don't create a `data jsonb` column where you put everything, but a `dynamic_data jsonb` column and other ones being 
+- A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you put everything, but a `only_dynamic_data jsonb` column and other ones being 
 primitive columns.
+- `jsonb` columns are slower to read/write compared to normal columns.
+- `jsonb` values take more space because they need to store keys in strings and make keeping data consistency harder and needing complex queries to get/set jsonb values.
+- `jsonb` is good when write is done as a whole document with a per-row hierarchical structure. If there are arrays, the choice is not JSONB vs. column, but vs additional relational tables.
+- For read, they are good if you read the whole document and the searched expression is indexed. 
+- When reading one attribute frequently, it's better to move it to a column as it can be included in an index for `Index Only Scan`.
 
 {{< /note >}}
 
