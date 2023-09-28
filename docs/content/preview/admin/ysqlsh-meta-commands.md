@@ -138,6 +138,10 @@ Lists aggregate functions, together with their return type and the data types th
 
 Lists access methods. If *pattern* is specified, only access methods whose names match the pattern are shown. If `+` is appended to the command name, each access method is listed with its associated handler function and description.
 
+##### \db[+] [ [pattern](#patterns) ]
+
+Lists tablespaces. If *pattern* is specified, only tablespaces whose names match the pattern are listed. If `+` is appended to the command name, each tablespace is listed with its associated options, on-disk size, permissions, and description.
+
 ##### \dc[S+] [ [pattern](#patterns) ]
 
 Lists conversions between character-set encodings. If *pattern* is specified, only conversions whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, each object is listed with its associated description.
