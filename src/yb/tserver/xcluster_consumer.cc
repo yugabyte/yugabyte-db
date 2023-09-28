@@ -734,15 +734,11 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
     VLOG_WITH_FUNC(2) << "UniverseID: " << safe_time_info.first.replication_group_id
                       << ", TabletId: " << safe_time_info.first.tablet_id
                       << ", SafeTime: " << safe_time_info.second.ToDebugString();
-    session->Apply(op);
+    session->Apply(std::move(op));
   }
 
-  auto future = session->FlushFuture();
-  auto future_status = future.wait_for(client->default_rpc_timeout().ToChronoMilliseconds());
-  SCHECK(
-      future_status == std::future_status::ready, IOError,
-      "Timed out waiting for flush to XClusterSafeTime table");
-  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to flush to XClusterSafeTime table");
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Failed to flush to XClusterSafeTime table");
 
   last_safe_time_published_at_ = MonoTime::Now();
 

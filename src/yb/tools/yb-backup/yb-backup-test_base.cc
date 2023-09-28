@@ -47,7 +47,7 @@ Status RedisGet(std::shared_ptr<client::YBSession> session,
                 const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
-  RETURN_NOT_OK(session->TEST_ReadSync(get_op));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(get_op));
   if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
     return STATUS_FORMAT(RuntimeError,
                          "Redis get returned bad response code: $0",

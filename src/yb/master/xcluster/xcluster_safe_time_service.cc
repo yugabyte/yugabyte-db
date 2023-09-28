@@ -630,9 +630,6 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
 
   auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
-  std::vector<client::YBOperationPtr> ops;
-  ops.reserve(entries_to_delete.size());
-
   for (auto& tablet : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
@@ -643,11 +640,11 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
                       << ". cluster_uuid: " << tablet.cluster_uuid
                       << ", tablet_id: " << tablet.tablet_id;
 
-    ops.push_back(std::move(op));
+    session->Apply(std::move(op));
   }
 
-  RETURN_NOT_OK_PREPEND(
-      session->ApplyAndFlushSync(ops), "Failed to cleanup to XClusterSafeTime table");
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Failed to cleanup to XClusterSafeTime table");
 
   return OK();
 }
