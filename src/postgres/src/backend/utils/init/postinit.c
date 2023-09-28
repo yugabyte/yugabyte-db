@@ -693,12 +693,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		const YBCPgLastKnownCatalogVersionInfo catalog_version =
-			YbGetCatalogCacheVersionForTablePrefetching();
-
+		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
+		 * kind of a hack and must be removed. This function is called before
+		 * starting prefetching because for now switching into DB catalog
+		 * version mode is impossible in case prefething is started.
+		 */
+		YBIsDBCatalogVersionMode();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching(
-			catalog_version, YB_YQL_PREFETCHER_NO_CACHE);
+		YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
 		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
 

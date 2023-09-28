@@ -2513,20 +2513,25 @@ typedef struct YbRunWithPrefetcherContext
 	bool is_using_response_cache;
 } YbRunWithPrefetcherContext;
 
+typedef struct YbPrefetcherStarterFunctor
+{
+   bool (*call)(struct YbPrefetcherStarterFunctor* );
+} YbPrefetcherStarterFunctor;
+
 static YBCStatus
 YbRunWithPrefetcherImpl(
-	YBCPgLastKnownCatalogVersionInfo catalog_version,
-	YBCPgSysTablePrefetcherCacheMode cache_mode,
-	YBCStatus (*func)(YbRunWithPrefetcherContext* ctx),
+	YbPrefetcherStarterFunctor *prefetcher_starter,
+	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
 	bool keep_prefetcher)
 {
 	YBCPgResetCatalogReadTime();
-	YBCStartSysTablePrefetching(catalog_version, cache_mode);
+	const bool is_using_response_cache =
+		prefetcher_starter->call(prefetcher_starter);
 	YBCStatus result = NULL;
 	PG_TRY();
 	{
 		YbRunWithPrefetcherContext ctx = {};
-		ctx.is_using_response_cache = cache_mode != YB_YQL_PREFETCHER_NO_CACHE;
+		ctx.is_using_response_cache = is_using_response_cache;
 		result = func(&ctx);
 	}
 	PG_CATCH();
@@ -2547,37 +2552,76 @@ YbRunWithPrefetcherImpl(
 	return result;
 }
 
+typedef struct YbPrefetcherStarterWithCache {
+	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
+	YbPrefetcherStarterFunctor functor;
+	const YBCPgLastKnownCatalogVersionInfo *version;
+	YBCPgSysTablePrefetcherCacheMode mode;
+} YbPrefetcherStarterWithCache;
+
+static bool
+YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor) {
+	const YbPrefetcherStarterWithCache *this =
+		(const YbPrefetcherStarterWithCache *)functor;
+	YBCStartSysTablePrefetching(*this->version, this->mode);
+	return true;
+}
+
+static YbPrefetcherStarterWithCache
+MakeStarterWithCache(YBCPgSysTablePrefetcherCacheMode mode,
+					 const YBCPgLastKnownCatalogVersionInfo *version)
+{
+	return (YbPrefetcherStarterWithCache){
+		.functor = {.call = &YbPrefetcherStarterWithCacheCall},
+		.version = version,
+		.mode = mode
+	};
+}
+
+static bool
+YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
+{
+	YBCStartSysTablePrefetchingNoCache();
+	return false;
+}
+
 static void
 YbRunWithPrefetcher(
-	YBCStatus (*func)(YbRunWithPrefetcherContext*),
-	bool keep_prefetcher)
+	YBCStatus (*func)(YbRunWithPrefetcherContext *), bool keep_prefetcher)
 {
-	static const YBCPgSysTablePrefetcherCacheMode cache_modes[] =
-	{
-		YB_YQL_PREFETCHER_TRUST_CACHE,
-		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-		YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-		YB_YQL_PREFETCHER_NO_CACHE
+	YBCPgLastKnownCatalogVersionInfo catalog_version = {};
+	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_TRUST_CACHE, &catalog_version);
+	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_RENEW_CACHE_SOFT, &catalog_version);
+	YbPrefetcherStarterWithCache renew_hard = MakeStarterWithCache(
+		YB_YQL_PREFETCHER_RENEW_CACHE_HARD, &catalog_version);
+	YbPrefetcherStarterFunctor no_cache =
+		{.call = &YbPrefetcherStarterNoCacheCall};
+
+	YbPrefetcherStarterFunctor *prefetcher_starters[] = {
+		&trust_cache.functor,
+		&renew_soft.functor,
+		&renew_hard.functor,
+		&no_cache
 	};
 
-	static const size_t kCacheModesCount = lengthof(cache_modes);
-	const YBCPgLastKnownCatalogVersionInfo catalog_version =
-		YbGetCatalogCacheVersionForTablePrefetching();
+	static const size_t kStartersCount = lengthof(prefetcher_starters);
 
-	size_t cache_mode_idx =
-		YBCIsInitDbModeEnvVarSet() ||
-		!*YBCGetGFlags()->ysql_enable_read_request_caching
-			? (kCacheModesCount - 1) : 0;
+	size_t starter_idx = kStartersCount - 1;
+	if (!YBCIsInitDbModeEnvVarSet() &&
+		*YBCGetGFlags()->ysql_enable_read_request_caching)
+	{
+		starter_idx = 0;
+		catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
+	}
 	for (;;)
 	{
 		YBCStatus status = YbRunWithPrefetcherImpl(
-			catalog_version,
-			cache_modes[cache_mode_idx],
-			func,
-			keep_prefetcher);
+			prefetcher_starters[starter_idx], func, keep_prefetcher);
 		if (!status)
 			break;
-		if (++cache_mode_idx == kCacheModesCount ||
+		if (++starter_idx == kStartersCount ||
 			!YBCStatusIsSnapshotTooOld(status))
 		{
 			HandleYBStatus(status);
@@ -2925,7 +2969,7 @@ YbPrefetchRequiredDataImpl(
 	YbRunWithPrefetcherContext* ctx,
 	bool preload_rel_cache)
 {
-	YbTablePrefetcherState* prefetcher = &ctx->prefetcher;
+	YbTablePrefetcherState *prefetcher = &ctx->prefetcher;
 
 	YBCStatus status = NULL;
 	if (preload_rel_cache)
@@ -2954,13 +2998,13 @@ YbPrefetchRequiredDataImpl(
 }
 
 static YBCStatus
-YbPrefetchRequiredDataWithoutRelCache(YbRunWithPrefetcherContext* ctx)
+YbPrefetchRequiredDataWithoutRelCache(YbRunWithPrefetcherContext *ctx)
 {
 	return YbPrefetchRequiredDataImpl(ctx, false /* preload_rel_cache */);
 }
 
 static YBCStatus
-YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext* ctx)
+YbPrefetchRequiredDataWithRelCache(YbRunWithPrefetcherContext *ctx)
 {
 	return YbPrefetchRequiredDataImpl(ctx, true /* preload_rel_cache */);
 }
