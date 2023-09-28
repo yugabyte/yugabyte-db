@@ -11,45 +11,51 @@ import {
   XClusterTableStatus
 } from './constants';
 
-import { TableType, YBTable } from '../../redesign/helpers/dtos';
+import { PitrConfig, TableType, YBTable } from '../../redesign/helpers/dtos';
 
 /**
  * XCluster supported table type.
  */
-export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
+export type XClusterTableType = typeof TableType.PGSQL_TABLE_TYPE | typeof TableType.YQL_TABLE_TYPE;
 
 /**
  * Source: XClusterTableConfig.java
  */
 export interface XClusterTableDetails {
+  indexTable: boolean;
   needBootstrap: boolean;
   replicationSetupDone: true;
-  bootstrapCreateTime: string;
   status: XClusterTableStatus;
-  restoreTime: string;
   streamId: string;
   tableId: string;
+
+  bootstrapCreateTime?: string;
+  restoreTime?: string;
 }
 
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
 
 export interface XClusterConfig {
   createTime: string;
+  imported: boolean;
   modifyTime: string;
   name: string;
   paused: boolean;
+  pitrConfigs: PitrConfig[];
   replicationGroupName: string;
   sourceActive: boolean;
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
+  tableType: 'UNKNOWN' | 'YSQL' | 'YCQL';
   tables: string[];
   targetActive: boolean;
-  txnTableDetails: XClusterTableDetails;
   type: XClusterConfigType;
+  usedForDr: boolean;
   uuid: string;
 
   sourceUniverseUUID?: string;
   targetUniverseUUID?: string;
+  txnTableDetails?: XClusterTableDetails;
 }
 
 //------------------------------------------------------------------------------------
@@ -80,6 +86,7 @@ export interface XClusterTableCandidate extends YBTable {
  * Holds list of tables for a keyspace and provides extra metadata.
  */
 export interface KeyspaceItem {
+  name: string;
   tableEligibilityCount: {
     ineligible: number;
     eligibleInCurrentConfig: number;

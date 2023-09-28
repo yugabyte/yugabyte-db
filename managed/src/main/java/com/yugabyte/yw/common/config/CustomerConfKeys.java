@@ -111,6 +111,17 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> showDrUi =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.disaster_recovery",
+          ScopeType.CUSTOMER,
+          "Show disaster recovery UI",
+          "YBA provides an active-active single-master disaster recovery (DR) solution "
+              + "through the API. This runtime config exposes a user interface for managing DR "
+              + "configurations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",

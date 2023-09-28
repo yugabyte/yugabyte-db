@@ -47,7 +47,7 @@ export const SmartResizeModal: FC<SRModalProps> = ({
       titleSeparator
       submitTestId="SmartResizeModal-FM"
       cancelTestId="SmartResizeModal-Cancel"
-      actionsInfo={
+      footerAccessory={
         <YBButton data-testid="SmartResizeModal-SR" variant="primary" onClick={handleSmartResize}>
           {t('universeForm.smartResizeModal.buttonLabel')}
         </YBButton>
