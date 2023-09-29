@@ -12,6 +12,7 @@
 should_create_package="0"
 should_use_package="0"
 use_dynamic_paths="0"
+should_use_pex="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -44,11 +45,21 @@ while [[ $# -gt 0 ]]; do
     --use_dynamic_paths)
       use_dynamic_paths="1"
     ;;
+    --use_pex)
+      should_use_pex="1"
+    ;;
     *)
       fatal "Invalid option: $1"
   esac
   shift
 done
+
+if [[ "$should_use_pex" == "1" ]]; then
+  log "Activating pex environment $pex_venv_dir"
+  activate_pex
+  rm $pex_lock
+  exit
+fi
 
 if [[ "$should_create_package" == "1" ]]; then
   log "Creating wheels package $YB_PYTHON_MODULES_PACKAGE"
