@@ -1349,7 +1349,7 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace name not found");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "YCQL keyspace name not found");
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1656,7 +1656,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   {
     Status s = CreateTable("nonexistingns", kTableName, kTableSchema);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
-    ASSERT_STR_CONTAINS(s.ToString(), "Keyspace name not found");
+    ASSERT_STR_CONTAINS(s.ToString(), "YCQL keyspace name not found");
   }
 
   // List tables, should show 1 table.
@@ -1710,7 +1710,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
-    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "Keyspace name not found");
+    ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(), "YCQL keyspace name not found");
   }
   ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
