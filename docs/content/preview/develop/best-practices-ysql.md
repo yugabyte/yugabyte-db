@@ -133,7 +133,8 @@ Big columns add up when you select full or multiple rows. For consistent latency
 
 
 ## Column size limit
-For consistent latency/performance, we suggest keeping columns in the `2MB` range or less even though we support an individual column/row being about `32MB`.
+
+For consistent latency or performance, it is recommended to size columns in the 2MB range or less even though an individual column or row limit is supported till `32MB`.
 
 
 ## TRUNCATE tables instead of DELETE
