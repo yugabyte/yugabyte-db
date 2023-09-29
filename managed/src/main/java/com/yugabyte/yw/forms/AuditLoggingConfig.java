@@ -3,6 +3,8 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
@@ -24,6 +26,17 @@ public class AuditLoggingConfig {
 
   @ApiModelProperty(value = "Rollover Pattern", example = "yyyy-MM-dd", required = false)
   private String rolloverPattern = "yyyy-MM-dd";
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Audit log file name prefix. Defaults to \"\". For example, setting this to"
+              + " \"yb-platform-\" will generate audit log files as \"yb-platform-audit.log\""
+              + " instead of \"audit.log\".",
+      example = "yb-platform-",
+      required = false)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  private String fileNamePrefix;
 
   @Min(value = 0)
   @ApiModelProperty(
