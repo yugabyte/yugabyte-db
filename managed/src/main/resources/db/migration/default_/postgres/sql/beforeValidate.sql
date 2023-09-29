@@ -62,6 +62,9 @@ $$
        UPDATE schema_version SET checksum = -906427156
        WHERE version = '93' AND checksum = 664171038;
 
+       -- Rerun migration 296
+       DELETE FROM SCHEMA_VERSION where version = '296' AND checksum = -1228390187;
+
        -- Fix next migration here
     END IF;
   END;
