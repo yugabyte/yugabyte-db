@@ -12042,16 +12042,7 @@ checkFkeyPermissions(Relation rel, int16 *attnums, int natts)
 	}
 }
 
-/*
- * Helper structure to emulate virtual functions for YbFKTriggerScan.
- * This scan works as regular heap_scan in non-YB mode and has some extra
- * functionality in YB mode.
- */
-typedef struct YbFKTriggerVTable
-{
-	HeapTuple (*get_next)();
-	Buffer (*get_buffer)();
-} YbFKTriggerVTable;
+typedef struct YbFKTriggerVTable YbFKTriggerVTable;
 
 /*
  * YbFKTriggerScanDescData holds the state of the YbFKTriggerScan which reads multiple
@@ -12062,11 +12053,10 @@ typedef struct YbFKTriggerScanDescData
 {
 	TableScanDesc scan;
 	ScanDirection scan_direction;
-	MemoryContext cxt;
-	MemoryContext old_cxt;
+	MemoryContext per_batch_cxt;
 	YbFKTriggerVTable* vptr;
 	Trigger* trigger;
-	Relation pkrel;
+	Relation fk_rel;
 	int buffered_tuples_capacity;
 	int buffered_tuples_size;
 	int current_tuple_idx;
@@ -12076,28 +12066,29 @@ typedef struct YbFKTriggerScanDescData
 
 typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
 
-static HeapTuple
-YbPgGetNext(YbFKTriggerScanDesc desc)
+/*
+ * Helper structure to emulate virtual functions for YbFKTriggerScan.
+ * This scan works as regular heap_scan in non-YB mode and has some extra
+ * functionality in YB mode.
+ */
+typedef struct YbFKTriggerVTable
 {
-	/* Clear per-tuple context */
-	MemoryContextReset(desc->cxt);
-	return heap_getnext(desc->scan, desc->scan_direction);
+	bool (*get_next)(YbFKTriggerScanDesc descr, TupleTableSlot *slot);
+} YbFKTriggerVTable;
+
+static bool
+YbPgGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
+{
+	return table_scan_getnextslot(desc->scan, desc->scan_direction, slot);
 }
 
-static Buffer
-YbPgGetBuffer(YbFKTriggerScanDesc desc)
-{
-	HeapScanDesc hscan = (HeapScanDesc)desc->scan;
-	return hscan->rs_cbuf;
-}
-
-static HeapTuple
-YbGetNext(YbFKTriggerScanDesc desc)
+static bool
+YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 {
 	if (desc->current_tuple_idx >= desc->buffered_tuples_size && !desc->all_tuples_processed)
 	{
 		/* Clear context of previously buffered tuples */
-		MemoryContextReset(desc->cxt);
+		MemoryContextReset(desc->per_batch_cxt);
 		desc->current_tuple_idx = 0;
 		desc->buffered_tuples_size = 0;
 		while (desc->buffered_tuples_size < desc->buffered_tuples_capacity)
@@ -12108,43 +12099,36 @@ YbGetNext(YbFKTriggerScanDesc desc)
 				desc->all_tuples_processed = true;
 				break;
 			}
-			YbAddTriggerFKReferenceIntent(desc->trigger, desc->pkrel, tuple);
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, tuple);
 			desc->buffered_tuples[desc->buffered_tuples_size++] = tuple;
 		}
 	}
-	return desc->current_tuple_idx < desc->buffered_tuples_size
-		? desc->buffered_tuples[desc->current_tuple_idx++]
-		: NULL;
-}
-
-static Buffer
-YbGetBuffer(YbFKTriggerScanDesc desc)
-{
-	/*
-	 * In YB mode data from trigdata.tg_trigtuplebuf is not used.
-	 * It is safe to return InvalidBuffer.
-	 */
-	return InvalidBuffer;
+	if (desc->current_tuple_idx < desc->buffered_tuples_size)
+	{
+		HeapTuple tuple = desc->buffered_tuples[desc->current_tuple_idx++];
+		ExecForceStoreHeapTuple(tuple, slot, false);
+		return true;
+	}
+	return false;
 }
 
 static YbFKTriggerVTable YbFKTriggerScanVTableNotYugaByteEnabled =
 	{
 		.get_next = &YbPgGetNext,
-		.get_buffer = &YbPgGetBuffer
 	};
 
 static YbFKTriggerVTable YbFKTriggerScanVTableIsYugaByteEnabled =
 	{
 		.get_next = &YbGetNext,
-		.get_buffer = &YbGetBuffer
 	};
 
 static YbFKTriggerScanDesc
 YbFKTriggerScanBegin(TableScanDesc scan,
-                     ScanDirection direction,
-                     Trigger* trigger,
-                     Relation pkrel,
-                     int buffer_capacity)
+					 ScanDirection direction,
+					 Trigger *trigger,
+					 Relation fk_rel,
+					 int buffer_capacity,
+					 MemoryContext per_batch_cxt)
 {
 	YbFKTriggerScanDesc descr = (YbFKTriggerScanDesc) palloc(
 		sizeof(YbFKTriggerScanDescData) + buffer_capacity * sizeof(HeapTuple));
@@ -12152,54 +12136,20 @@ YbFKTriggerScanBegin(TableScanDesc scan,
 	descr->scan = scan;
 	descr->scan_direction = direction;
 	descr->trigger = trigger;
-	descr->pkrel = pkrel;
+	descr->fk_rel = fk_rel;
 	descr->buffered_tuples_capacity = buffer_capacity;
-	if (IsYBRelation(scan->rs_rd))
-	{
-		descr->vptr = &YbFKTriggerScanVTableIsYugaByteEnabled;
-		descr->cxt = AllocSetContextCreate(
-			GetCurrentMemoryContext(), "validateForeignKeyConstraint", ALLOCSET_DEFAULT_SIZES);
-	}
-	else
-	{
-		descr->vptr = &YbFKTriggerScanVTableNotYugaByteEnabled;
-		descr->cxt = AllocSetContextCreate(
-			GetCurrentMemoryContext(), "validateForeignKeyConstraint", ALLOCSET_SMALL_SIZES);
-	}
-	descr->old_cxt = MemoryContextSwitchTo(descr->cxt);
+	descr->vptr = IsYBRelation(scan->rs_rd) ?
+					  &YbFKTriggerScanVTableIsYugaByteEnabled :
+					  &YbFKTriggerScanVTableNotYugaByteEnabled;
+	descr->per_batch_cxt = per_batch_cxt;
 	return descr;
 }
 
-static void
-YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
+static bool
+YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr, TupleTableSlot *slot)
 {
-	MemoryContextSwitchTo(descr->old_cxt);
-	MemoryContextDelete(descr->cxt);
-	heap_endscan(descr->scan);
-	pfree(descr);
+	return descr->vptr->get_next(descr, slot);
 }
-
-static HeapTuple
-YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr)
-{
-#ifdef YB_TODO
-	/* prototype mismatch */
-	return descr->vptr->get_next(descr);
-#else
-	/* workaround */
-	return descr->vptr->get_next();
-#endif
-}
-
-#ifdef YB_TODO
-/* YB_TODO(neil) Need to rework */
-static Buffer
-YbFKTriggerScanGetBuffer(YbFKTriggerScanDesc descr)
-{
-	/* prototype mismatch */
-	return descr->vptr->get_buffer(descr);
-}
-#endif
 
 /*
  * Scan the existing rows in a table to verify they meet a proposed FK
@@ -12215,8 +12165,11 @@ validateForeignKeyConstraint(char *conname,
 							 Oid constraintOid)
 {
 	TupleTableSlot *slot;
+	TableScanDesc scan;
 	Trigger		trig;
 	Snapshot	snapshot;
+	MemoryContext oldcxt;
+	MemoryContext perTupCxt;
 
 	ereport(DEBUG1,
 			(errmsg_internal("validating foreign key constraint \"%s\"", conname)));
@@ -12252,22 +12205,29 @@ validateForeignKeyConstraint(char *conname,
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
 	slot = table_slot_create(rel, NULL);
+	scan = table_beginscan(rel, snapshot, 0, NULL);
+
+	if (IsYBRelation(rel))
+		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+										  "validateForeignKeyConstraint",
+										  ALLOCSET_DEFAULT_SIZES);
+	else
+		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+										  "validateForeignKeyConstraint",
+										  ALLOCSET_SMALL_SIZES);
 
 	YbFKTriggerScanDesc fk_scan = YbFKTriggerScanBegin(
-		heap_beginscan(rel, snapshot, 0, NULL, NULL, SO_TYPE_SEQSCAN),
+		scan,
 		ForwardScanDirection,
 		&trig,
-		pkrel,
-		*YBCGetGFlags()->ysql_session_max_batch_size);
+		rel,
+		*YBCGetGFlags()->ysql_session_max_batch_size,
+		perTupCxt);
+	oldcxt = MemoryContextSwitchTo(perTupCxt);
 
-	/* YB_TODO(dmitry@yugabyte)
-	 * - Need to reimplement YbFK*.
-	 * - PG13 api works with slot & TableScanDesc instead of HeapTuple & HeapScanDesc.
-	 * - This code is not mergeable.
-	 */
-	while (YbFKTriggerScanGetNext(fk_scan) != NULL)
+	while (YbFKTriggerScanGetNext(fk_scan, slot))
 	{
-		FunctionCallInfoBaseData fcinfo;
+		LOCAL_FCINFO(fcinfo, 0);
 		TriggerData trigdata = {0};
 
 		CHECK_FOR_INTERRUPTS();
@@ -12277,7 +12237,7 @@ validateForeignKeyConstraint(char *conname,
 		 *
 		 * No parameters are passed, but we do set a context
 		 */
-		MemSet(&fcinfo, 0, sizeof(fcinfo));
+		MemSet(fcinfo, 0, SizeForFunctionCallInfo(0));
 
 		/*
 		 * We assume RI_FKey_check_ins won't look at flinfo...
@@ -12289,20 +12249,18 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigslot = slot;
 		trigdata.tg_trigger = &trig;
 
-		/*
-		 * YB_TODO(dmitry@yugabyte)
-		 * - Check if this code is still needed.
-		 * - Postgres no longer used "tg_trigtuplebuf"
+		fcinfo->context = (Node *) &trigdata;
 
-		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
-		 */
+		RI_FKey_check_ins(fcinfo);
 
-		fcinfo.context = (Node *) &trigdata;
-
-		RI_FKey_check_ins(&fcinfo);
+		if (!IsYBRelation(rel))
+			MemoryContextReset(perTupCxt);
 	}
 
-	YbFKTriggerScanEnd(fk_scan);
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(perTupCxt);
+	table_endscan(scan);
+	pfree(fk_scan);
 	UnregisterSnapshot(snapshot);
 	ExecDropSingleTupleTableSlot(slot);
 }
@@ -20852,6 +20810,11 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 
 	int numkeys = ARR_DIMS(DatumGetArrayTypeP(conkey_val))[0];
 
+	bool is_confdelsetcols_null;
+	Datum confdelsetcols_val =
+		SysCacheGetAttr(CONSTROID, tuple, Anum_pg_constraint_confdelsetcols,
+						&is_confdelsetcols_null);
+
 	int16 conkey[numkeys];
 	int16 confkey[numkeys];
 	Oid   pfeqop[numkeys];
@@ -20860,6 +20823,17 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 
 	Oid index_oid;
 	Oid index_opclasses[numkeys];
+
+	int16 fkdelsetcols[numkeys];
+	int numFkDeleteSetCols = 0;
+
+	if (!is_confdelsetcols_null)
+	{
+		ArrayType *arr = DatumGetArrayTypeP(confdelsetcols_val);
+		numFkDeleteSetCols = ARR_DIMS(arr)[0];
+		memcpy(fkdelsetcols, ARR_DATA_PTR(arr),
+			   numFkDeleteSetCols * sizeof(int16));
+	}
 
 	memcpy(conkey, ARR_DATA_PTR(DatumGetArrayTypeP(conkey_val)),
 		   numkeys * sizeof(int16));
@@ -20886,40 +20860,21 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 	index_oid = transformFkeyCheckAttrs(fk_rel, numkeys, confkey, index_opclasses);
 
 	/* Record the FK constraint in pg_constraint. */
-	CreateConstraintEntry(
-		fk_name,
-		con_form->connamespace,
-		CONSTRAINT_FOREIGN,
-		con_form->condeferrable,
-		con_form->condeferred,
-		con_form->convalidated,
-		con_form->conparentid,
-		RelationGetRelid(base_rel),
-		conkey,
-		numkeys,
-		numkeys,
-		InvalidOid /* not a domain constraint */,
-		index_oid,
-		RelationGetRelid(fk_rel),
-		confkey,
-		pfeqop,
-		ppeqop,
-		ffeqop,
-		numkeys,
-		con_form->confupdtype,
-		con_form->confdeltype,
-		NULL, /* fkDeleteSetCols - YB_TODO(neil) Needs appropriate value */
-		0, /* numFkDeleteSetCols - YB_TODO(neil) Needs appropriate value */
-	    con_form->confmatchtype,
+	Oid constr_oid = CreateConstraintEntry(
+		fk_name, con_form->connamespace, CONSTRAINT_FOREIGN,
+		con_form->condeferrable, con_form->condeferred, con_form->convalidated,
+		con_form->conparentid, RelationGetRelid(base_rel), conkey, numkeys,
+		numkeys, InvalidOid /* not a domain constraint */, index_oid,
+		RelationGetRelid(fk_rel), confkey, pfeqop, ppeqop, ffeqop, numkeys,
+		con_form->confupdtype, con_form->confdeltype,
+		is_confdelsetcols_null ? NULL : fkdelsetcols, numFkDeleteSetCols,
+		con_form->confmatchtype,
 		NULL /* exclOp - not an exclusion constraint */,
 		NULL /* conExpr - not a check constraint */,
-		NULL /* conBin - not a check constraint */,
-		true /* islocal */,
-		0 /* inhcount */,
-		con_form->connoinherit /* conNoInherit */,
+		NULL /* conBin - not a check constraint */, true /* islocal */,
+		0 /* inhcount */, con_form->connoinherit /* conNoInherit */,
 		false /* is_internal */);
 
-#ifdef YB_TODO
 	/* Postgres no longer has this function. Need to use new Postgres's implementation. */
 	Constraint* entity = makeNode(Constraint);
 	entity->deferrable      = con_form->condeferrable;
@@ -20934,15 +20889,32 @@ YbATCreateSimilarForeignKey(HeapTuple tuple, const char *fk_name,
 
 	/*
 	 * Create the triggers that will enforce the constraint.
-	 * Note that this calls CommandCounterIncrement().
+	 * Note that we also call CommandCounterIncrement().
 	 */
-	createForeignKeyTriggers(base_rel, RelationGetRelid(fk_rel), entity,
-							 constr_oid, index_oid, true /* create_action */);
 
+	/*
+	 * For the referenced side, create action triggers, if requested.  (If the
+	 * referencing side is partitioned, there is still only one trigger, which
+	 * runs on the referenced side and points to the top of the referencing
+	 * hierarchy.)
+	 */
+	createForeignKeyActionTriggers(base_rel, RelationGetRelid(fk_rel), entity,
+								   constr_oid, index_oid, InvalidOid,
+								   InvalidOid, NULL, NULL);
+
+	/*
+	 * For the referencing side, create the check triggers.
+	 */
+	if (base_rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+	{
+		Oid insertTriggerOid, updateTriggerOid;
+		createForeignKeyCheckTriggers(RelationGetRelid(base_rel),
+									  RelationGetRelid(fk_rel), entity,
+									  constr_oid, index_oid, InvalidOid,
+									  InvalidOid, &insertTriggerOid,
+									  &updateTriggerOid);
+	}
 	return constr_oid;
-#endif
-
-	return YB_HACK_INVALID_OID;
 }
 
 /*
