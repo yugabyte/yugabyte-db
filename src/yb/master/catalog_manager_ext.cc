@@ -154,7 +154,7 @@ DEFINE_RUNTIME_bool(
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
 DEFINE_RUNTIME_bool(
-    enable_fast_pitr, false,
+    enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
 namespace yb {
@@ -3326,7 +3326,8 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
-HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
+    tablet::RaftGroupMetadata* metadata) {
   return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
 }
 

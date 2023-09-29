@@ -210,7 +210,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
       auto safe_time = *safe_time_result.get();
       for (auto& tablet : tablet_ptrs) {
         if (tablet->metadata()->namespace_id() == namespace_id_) {
-          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(tablet->metadata()));
+          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(
+              tablet->metadata()).primary_cutoff_ht);
         }
       }
     }

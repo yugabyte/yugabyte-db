@@ -26,6 +26,7 @@
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/opid.h"
@@ -130,7 +131,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
-  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata);
 
   void SysCatalogLoaded(int64_t term);
 

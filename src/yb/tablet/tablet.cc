@@ -875,7 +875,8 @@ Status Tablet::OpenKeyValueTablet() {
   auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
   if (regular_flushed_frontier) {
     retention_policy_->UpdateCommittedHistoryCutoff(
-        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).history_cutoff());
+        static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier).
+            history_cutoff());
   }
 
   LOG_WITH_PREFIX(INFO) << "Successfully opened a RocksDB database at " << db_dir

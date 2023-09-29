@@ -2678,7 +2678,8 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
+    tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
@@ -2695,7 +2696,7 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
     // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
     // when we have new replication setup and safe time is not yet computed. In this case, we return
     // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
-    return HybridTime::kMin;
+    return { HybridTime::kInvalid, HybridTime::kMin };
   }
   auto opt_xcluster_safe_time = *xcluster_safe_time_result;
   if (opt_xcluster_safe_time) {
@@ -2736,18 +2737,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
           schedules_to_remove.push_back(schedule_id);
           continue;
         }
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       if (!it->second) {
         // Schedules does not have snapshots yet.
-        return HybridTime::kMin;
+        return { HybridTime::kInvalid, HybridTime::kMin };
       }
       result.MakeAtMost(it->second);
     }
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
-  return result;
+  return { HybridTime::kInvalid, result };
 }
 
 void TSTabletManager::FlushDirtySuperblocks() {

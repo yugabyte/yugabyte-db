@@ -40,7 +40,12 @@ consensus::LWHistoryCutoffPB* RequestTraits<consensus::LWHistoryCutoffPB>::Mutab
 }
 
 Status HistoryCutoffOperation::Apply(int64_t leader_term) {
-  HybridTime history_cutoff(request()->history_cutoff());
+  auto primary_cutoff = request()->has_primary_cutoff_ht() ?
+      HybridTime(request()->primary_cutoff_ht()) : HybridTime();
+  auto cotables_cutoff = request()->has_cotables_cutoff_ht() ?
+      HybridTime(request()->cotables_cutoff_ht()) : HybridTime();
+  docdb::HistoryCutoff history_cutoff(
+      { cotables_cutoff, primary_cutoff });
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
@@ -50,7 +55,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
   if (regular_db) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;
-    frontiers.Largest().set_history_cutoff(history_cutoff);
+    frontiers.Largest().set_history_cutoff_information(history_cutoff);
     batch.SetFrontiers(&frontiers);
     rocksdb::WriteOptions options;
     RETURN_NOT_OK(regular_db->Write(options, &batch));

@@ -102,8 +102,9 @@ class LazyHybridTime {
 class PackedRowData {
  public:
   PackedRowData(PackedRowFeed* feed, SchemaPackingProvider* provider,
-                HybridTime history_cutoff)
-      : feed_(*feed), schema_packing_provider_(provider), history_cutoff_(history_cutoff) {
+                HistoryCutoff history_cutoff)
+      : feed_(*feed), schema_packing_provider_(provider),
+        history_cutoff_(history_cutoff) {
   }
 
   bool active() const {
@@ -253,8 +254,10 @@ class PackedRowData {
 
   Status StartRepacking() {
     if (old_schema_version_ != old_packing_.schema_version) {
+      HybridTime chosen_ht = GetHistoryCutoffForKey(
+          active_coprefix_.AsSlice(), history_cutoff_);
       old_packing_ = VERIFY_RESULT(schema_packing_provider_->CotablePacking(
-          new_packing_.cotable_id, old_schema_version_, history_cutoff_));
+          new_packing_.cotable_id, old_schema_version_, chosen_ht));
     }
     InitPacker();
     return Status::OK();
@@ -362,20 +365,21 @@ class PackedRowData {
   }
 
   Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
+    HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff_);
     if (coprefix.empty()) {
       return schema_packing_provider_->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion, history_cutoff_);
+          Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
       if (coprefix.size() != sizeof(ColocationId)) {
         return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
       }
       uint32_t colocation_id = BigEndian::Load32(coprefix.data());
       return schema_packing_provider_->ColocationPacking(
-          colocation_id, kLatestSchemaVersion, history_cutoff_);
+          colocation_id, kLatestSchemaVersion, chosen_ht);
     } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
       auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
       return schema_packing_provider_->CotablePacking(
-          cotable_id, kLatestSchemaVersion, history_cutoff_);
+          cotable_id, kLatestSchemaVersion, chosen_ht);
     } else {
       return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
     }
@@ -412,7 +416,7 @@ class PackedRowData {
   boost::optional<RowPacker> packer_;
   bool can_start_packing_ = false; // Whether we could start packing row with current schema.
 
-  HybridTime history_cutoff_;
+  HistoryCutoff history_cutoff_;
 
   using UsedSchemaVersionsMap =
       std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
@@ -438,21 +442,22 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed),
-        retention_(retention),
+        retention_directive_(retention),
         // Use max write id, to be sure that entries with hybrid time equals to history cutoff
         // would not be garbage collected.
-        encoded_history_cutoff_(retention_.history_cutoff, kMaxWriteId),
+        encoded_history_cutoff_information_(retention_directive_.history_cutoff),
         key_bounds_(key_bounds),
         // We use min write id for two fields below to correctly handle entries with
         // matching hybrid time.
         encoded_min_other_data_ht_(
-            retention_.retain_delete_markers_in_major_compaction
+            retention_directive_.retain_delete_markers_in_major_compaction
                 ? HybridTime::kMin : min_other_data_ht,
             kMinWriteId),
         could_change_key_range_(
             !CanHaveOtherDataBefore(EncodedDocHybridTime(min_input_hybrid_time, kMinWriteId))),
         boundary_extractor_(boundary_extractor),
-        packed_row_(this, schema_packing_provider, retention_.history_cutoff) {
+        packed_row_(this, schema_packing_provider,
+                    retention_directive_.history_cutoff) {
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
@@ -579,8 +584,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   }
 
   rocksdb::CompactionFeed& next_feed_;
-  const HistoryRetentionDirective retention_;
-  EncodedDocHybridTime encoded_history_cutoff_;
+  const HistoryRetentionDirective retention_directive_;
+  EncodedHistoryCutoff encoded_history_cutoff_information_;
   const KeyBounds* key_bounds_;
   const EncodedDocHybridTime encoded_min_other_data_ht_;
   const bool could_change_key_range_;
@@ -663,7 +668,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(INFO) << "DocDB compaction feed, min_other_data_ht: "
               << encoded_min_other_data_ht_.ToString()
-              << ", history_cutoff=" << retention_.history_cutoff;
+              << ", history_cutoff = " << retention_directive_.history_cutoff;
     feed_usage_logged_ = true;
   }
 
@@ -725,6 +730,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   if (packed_row_.active_coprefix_dropped()) {
     return Status::OK();
+  }
+
+  bool key_contains_cotable_prefix = false;
+  if (key[0] == KeyEntryTypeAsChar::kTableId) {
+    VLOG(4) << "Key " << key.ToDebugHexString() << " contains cotable prefix";
+    key_contains_cotable_prefix = true;
   }
 
   const size_t new_stack_size = sub_key_ends_.size();
@@ -809,12 +820,25 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // In case of ht > history_cutoff_, we just keep the parent document's highest known overwrite
   // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
-  if (encoded_doc_ht > encoded_history_cutoff_) {
+  HybridTime chosen_doc_ht =
+      retention_directive_.history_cutoff.primary_cutoff_ht;
+  EncodedDocHybridTime encoded_chosen_doc_ht =
+      encoded_history_cutoff_information_.primary_cutoff_encoded;
+  // For cotables on master, use the cotables_cutoff_ht.
+  if (key_contains_cotable_prefix &&
+      retention_directive_.history_cutoff.cotables_cutoff_ht) {
+    encoded_chosen_doc_ht =
+        encoded_history_cutoff_information_.cotables_cutoff_encoded;
+    chosen_doc_ht =
+        retention_directive_.history_cutoff.cotables_cutoff_ht;
+  }
+  VLOG(4) << "Chosen hybrid time cutoff: " << encoded_chosen_doc_ht.ToString();
+  if (encoded_doc_ht > encoded_chosen_doc_ht) {
     AssignPrevSubDocKey(key.cdata(), same_bytes);
     overwrite_.push_back({prev_overwrite_ht, LastExpiration()});
     VLOG_WITH_FUNC(4)
         << "Feed to next because of history cutoff: " << encoded_doc_ht.ToString() << ", "
-        << encoded_history_cutoff_.ToString();
+        << encoded_chosen_doc_ht.ToString();
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
     if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
@@ -930,11 +954,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   // Only check for expiration if the current hybrid time is at or below history cutoff.
   // The key could not have possibly expired by history_cutoff_ otherwise.
-  MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_.table_ttl);
+  MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_directive_.table_ttl);
   const auto has_expired = HasExpiredTTL(
       true_ttl == expiration.ttl ? expiration.write_ht : VERIFY_RESULT(lazy_ht.Get()),
-      true_ttl,
-      retention_.history_cutoff);
+      true_ttl, chosen_doc_ht);
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
@@ -1034,7 +1057,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
   }
 
  private:
-  HybridTime history_cutoff_;
+  HistoryCutoff history_cutoff_;
   const KeyBounds* key_bounds_;
   std::unique_ptr<DocDBCompactionFeed> feed_;
 };
@@ -1056,7 +1079,7 @@ DocDBCompactionContext::DocDBCompactionContext(
 
 rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
-  consensus_frontier->set_history_cutoff(history_cutoff_);
+  consensus_frontier->set_history_cutoff_information(history_cutoff_);
   return rocksdb::UserFrontierPtr(consensus_frontier);
 }
 
@@ -1157,21 +1180,55 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
 // ------------------------------------------------------------------------------------------------
 
 HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() {
-  return {history_cutoff_.load(std::memory_order_acquire),
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  LOG(INFO) << "Retention directive from manual policy " << history_cutoff_;
+  return { history_cutoff_,
           table_ttl_.load(std::memory_order_acquire),
-          ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
+          ShouldRetainDeleteMarkersInMajorCompaction::kFalse };
 }
 
+// TODO(Sanket): Is this even used anywhere?
 HybridTime ManualHistoryRetentionPolicy::ProposedHistoryCutoff() {
-  return history_cutoff_.load(std::memory_order_acquire);
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  return history_cutoff_.primary_cutoff_ht;
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {
-  history_cutoff_.store(history_cutoff, std::memory_order_release);
+  // Set primary cutoff by default.
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  history_cutoff_ = { HybridTime::kInvalid, history_cutoff };
+}
+
+void ManualHistoryRetentionPolicy::SetHistoryCutoff(HistoryCutoff history_cutoff) {
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  history_cutoff_ = history_cutoff;
 }
 
 void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {
   table_ttl_.store(ttl, std::memory_order_release);
+}
+
+HistoryCutoff ConstructMinCutoff(HistoryCutoff a, HistoryCutoff b) {
+  return { std::min(a.cotables_cutoff_ht, b.cotables_cutoff_ht),
+           std::min(a.primary_cutoff_ht, b.primary_cutoff_ht) };
+}
+
+bool operator==(HistoryCutoff lhs, HistoryCutoff rhs) {
+  return YB_STRUCT_EQUALS(primary_cutoff_ht, cotables_cutoff_ht);
+}
+
+std::ostream& operator<<(std::ostream& out, HistoryCutoff cutoff) {
+  return out << cutoff.ToString();
+}
+
+HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info) {
+  // True only for cotables on the master.
+  if (!coprefix.empty() && cutoff_info.cotables_cutoff_ht) {
+    VLOG(4) << "Cotable on the master, cutoff " << cutoff_info.cotables_cutoff_ht;
+    return cutoff_info.cotables_cutoff_ht;
+  }
+  VLOG(4) << "Primary cutoff " << cutoff_info.primary_cutoff_ht;
+  return cutoff_info.primary_cutoff_ht;
 }
 
 }  // namespace docdb

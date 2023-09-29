@@ -362,13 +362,20 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     auto propagated_history_cutoff =
         tablet_->RetentionPolicy()->HistoryCutoffToPropagate(last_write_ht);
 
-    if (propagated_history_cutoff) {
+    if (propagated_history_cutoff.cotables_cutoff_ht ||
+        propagated_history_cutoff.primary_cutoff_ht) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
       auto operation = std::make_unique<HistoryCutoffOperation>(tablet_);
       auto request = operation->AllocateRequest();
-      request->set_history_cutoff(propagated_history_cutoff.ToUint64());
-
+      if (propagated_history_cutoff.primary_cutoff_ht) {
+        request->set_primary_cutoff_ht(
+            propagated_history_cutoff.primary_cutoff_ht.ToUint64());
+      }
+      if (propagated_history_cutoff.cotables_cutoff_ht) {
+        request->set_cotables_cutoff_ht(
+            propagated_history_cutoff.cotables_cutoff_ht.ToUint64());
+      }
       Submit(std::move(operation), leader_term);
     }
   }
