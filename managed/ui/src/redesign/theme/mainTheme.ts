@@ -347,13 +347,6 @@ export const mainTheme = createTheme({
         cursor: 'not-allowed'
       }
     },
-    MuiButtonBase: {
-      root: {
-        '&:hover': {
-          backgroundColor: 'inherit !important'
-        }
-      }
-    },
     MuiInput: {
       root: {
         overflow: 'hidden',
