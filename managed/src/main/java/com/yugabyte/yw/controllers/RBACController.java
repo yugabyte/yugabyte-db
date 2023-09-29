@@ -96,9 +96,9 @@ public class RBACController extends AuthenticatedController {
     List<PermissionInfo> permissionInfoList = Collections.emptyList();
     ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
     if (resourceTypeEnum != null) {
-      permissionInfoList = permissionUtil.getAllPermissionInfo(resourceTypeEnum);
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache(resourceTypeEnum);
     } else {
-      permissionInfoList = permissionUtil.getAllPermissionInfo();
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache();
     }
     return PlatformResults.withData(permissionInfoList);
   }
