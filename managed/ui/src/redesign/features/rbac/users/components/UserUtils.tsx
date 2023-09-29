@@ -22,7 +22,8 @@ export const convertRbacBindingsToUISchema = (
   };
   rbacBindings.forEach((binding) => {
     const resGroup = {
-      roleUUID: binding.role.roleUUID,
+      role: binding.role,
+      roleType: binding.role.roleType,
       resourceGroup: {
         resourceDefinitionSet: binding.resourceGroup.resourceDefinitionSet
       }

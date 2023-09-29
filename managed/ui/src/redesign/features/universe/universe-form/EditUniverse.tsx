@@ -182,7 +182,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
 
   return (
     <>
-      <UniverseForm defaultFormData={initialFormData} onFormSubmit={onSubmit} onCancel={onCancel} />
+      <UniverseForm defaultFormData={initialFormData} onFormSubmit={onSubmit} onCancel={onCancel} editUniverseUUID={uuid}/>
       {universePayload && (
         <>
           {showRNModal && (

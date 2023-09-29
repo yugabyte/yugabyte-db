@@ -17,6 +17,7 @@ import { YBTable } from '../../../../components/backupv2/components/restore/page
 import { YBCheckboxField, YBModal } from '../../../components';
 import { Universe } from '../../../helpers/dtos';
 import { UniverseNameAndUUIDMapping } from './IPolicy';
+import { Resource } from '../permission';
 import { RbacUserWithResources } from '../users/interface/Users';
 
 import Checked from '../../../assets/checkbox/Checked.svg';
@@ -104,9 +105,10 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   const classes = useStyle();
 
   const { control, watch, setValue } = useFormContext<RbacUserWithResources>();
-  const roleUUID = watch(`roleResourceDefinitions.${fieldIndex}.roleUUID`);
+
+  const role = watch(`roleResourceDefinitions.${fieldIndex}.role`);
   const roleMappings = watch(`roleResourceDefinitions.${fieldIndex}.resourceGroup`);
-  
+
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
     roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
   );
@@ -129,8 +131,12 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
     fieldIndex
   ]);
 
-  if (!roleUUID) {
+  if (!role) {
     return <div className={classes.noRole}>{t('noRole')}</div>;
+  }
+
+  if (!find(role.permissionDetails.permissionList, { resourceType: Resource.UNIVERSE })) {
+    return <div className={classes.noRole}>{t('noUniversePermInRole')}</div>;
   }
 
   const getUniverseSelectionText = () => {
@@ -154,6 +160,7 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
         <span>{getUniverseSelectionText()}</span>
         <div
           className={classes.editSelection}
+          data-testid={`rbac-edit-universe-selection`}
           onClick={() => {
             toggleUniverseSelectionModal(true);
           }}

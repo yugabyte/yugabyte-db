@@ -11,22 +11,31 @@ import { forwardRef, useContext, useImperativeHandle, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery } from 'react-query';
 import { toast } from 'react-toastify';
-import { isEmpty } from 'lodash';
+import { find, groupBy, isEmpty } from 'lodash';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
-import { Box, Divider, Grid, Typography, makeStyles } from '@material-ui/core';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Typography,
+  makeStyles
+} from '@material-ui/core';
 import Container from '../../common/Container';
 import ListPermissionsModal from '../../permission/ListPermissionsModal';
 import { YBButton, YBInputField } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
+import { resourceOrderByRelevance } from '../../common/RbacUtils';
 import { Role } from '../IRoles';
-import { Permission } from '../../permission';
+import { Permission, Resource } from '../../permission';
 import { createRole, editRole, getAllAvailablePermissions } from '../../api';
-import { getPermissionDisplayText } from '../../rbacUtils';
 import { RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
-import { Create } from '@material-ui/icons';
+import { ArrowDropDown, Create } from '@material-ui/icons';
+
+const PERMISSION_MODAL_TRANSLATION_PREFIX = 'rbac.permissions.selectPermissionModal';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -198,46 +207,77 @@ const permissionsStyles = makeStyles((theme) => ({
     width: '100%'
   },
   header: {
-    height: '50px',
-    borderRadius: `${theme.spacing(1)}px ${theme.spacing(1)}px 0px 0px`,
-    border: '1px solid #E5E5E6',
-    background: theme.palette.ybacolors.backgroundGrayLightest,
     display: 'flex',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: theme.spacing(2)
+    alignItems: 'center',
+    marginBottom: '16px',
+    '& > p': {
+      fontSize: '16px'
+    }
   },
   selectionCount: {
-    width: theme.spacing(5),
-    height: theme.spacing(3),
-    padding: theme.spacing(0.8),
-    border: '1px solid #E5E5E6',
-    background: theme.palette.common.white,
-    display: 'flex',
-    alignItems: 'center',
-    borderRadius: theme.spacing(0.75)
+    padding: '2px 6px',
+    borderRadius: '4px',
+    background: theme.palette.primary[200],
+    color: theme.palette.primary[700]
   },
   divider: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(2)
   },
   editSelection: {
-    display: 'flex',
-    gap: theme.spacing(0.5),
-    alignItems: 'center',
-    cursor: 'pointer',
-    userSelect: 'none',
+    fontSize: '12px',
+    height: '30px',
+    '& .MuiButton-label': {
+      fontSize: '12px'
+    },
     '& svg': {
-      marginRight: theme.spacing(0.5)
+      fontSize: '14px !important'
     }
   },
-  permItems: {
-    border: '1px solid #E5E5E6',
-    borderTop: 0,
-    padding: theme.spacing(2),
-    '& > div': {
-      marginBottom: theme.spacing(2)
+  permCollection: {
+    '& .MuiAccordionSummary-root': {
+      background: theme.palette.ybacolors.backgroundGrayLightest,
+      padding: '14px 24px',
+      height: '45px',
+      '&.Mui-expanded': {
+        borderBottom: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`
+      }
+    },
+    '& .MuiAccordionDetails-root': {
+      display: 'flex',
+      flexDirection: 'column',
+      padding: `16px`,
+      gap: '8px'
+    },
+    '& .MuiAccordion-root.Mui-expanded,& .MuiAccordionSummary-root.Mui-expanded': {
+      minHeight: 'unset',
+      margin: 0
     }
+  },
+  permItem: {
+    marginBottom: theme.spacing(2)
+  },
+  expandMore: {
+    fontSize: '24px'
+  },
+  resourceTitle: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    width: '100%'
+  },
+  permissionGroupTitle: {
+    textTransform: 'capitalize'
+  },
+  readReplica: {
+    color: '#67666C',
+    marginLeft: '5px'
+  },
+  selectedPermCount: {
+    padding: '2px 6px',
+    borderRadius: '4px',
+    background: theme.palette.primary[200],
+    color: theme.palette.primary[700]
   }
 }));
 
@@ -276,29 +316,82 @@ const SelectPermissions = ({
     </Box>
   );
 
-  const listPermissions = () => (
-    <div className={classes.permList}>
-      <div className={classes.header}>
-        <span>{t('permissions')}</span>
-        <Grid container alignItems="center" justifyContent="flex-end" spacing={1}>
-          <div className={classes.selectionCount}>
-            <Typography variant="subtitle1">{selectedPermissions.length}&nbsp;/&nbsp;</Typography>
-            <Typography variant="subtitle1">{availablePermissions?.length}</Typography>
-          </div>
-          <Divider orientation="vertical" flexItem className={classes.divider} />
-          <div className={classes.editSelection} onClick={() => togglePermissionModal(true)}>
-            <Create />
+  const listPermissions = () => {
+    if (!availablePermissions) return <YBLoadingCircleIcon />;
+
+    const permissions = availablePermissions.filter((p) =>
+      find(selectedPermissions, { action: p.action, resourceType: p.resourceType })
+    );
+    const permissionGroups = groupBy(permissions, (perm) => perm.resourceType);
+    return (
+      <div className={classes.permList}>
+        <div className={classes.header}>
+          <Typography variant="body1">{t('permissions')}</Typography>
+          <YBButton
+            variant="secondary"
+            className={classes.editSelection}
+            startIcon={<Create />}
+            onClick={() => togglePermissionModal(true)}
+            data-testid={`rbac-edit-universe-selection`}
+          >
             {t('editSelection')}
-          </div>
-        </Grid>
+          </YBButton>
+        </div>
+        <div className={classes.permCollection}>
+          {resourceOrderByRelevance.map((resourceType, i) => {
+            if (!isDefinedNotNull(permissionGroups[resourceType])) return null;
+            return (
+              <Accordion key={i}>
+                <AccordionSummary
+                  expandIcon={<ArrowDropDown className={classes.expandMore} />}
+                  data-testid={`rbac-resource-${resourceType}`}
+                >
+                  <div className={classes.resourceTitle}>
+                    <Typography variant="body1" className={classes.permissionGroupTitle}>
+                      {t('resourceManagement', {
+                        resource: resourceType.toLowerCase(),
+                        keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
+                      })}
+                      {resourceType === Resource.UNIVERSE && (
+                        <Typography
+                          variant="subtitle1"
+                          component={'span'}
+                          className={classes.readReplica}
+                        >
+                          {t('universePrimaryAndReplica', {
+                            keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
+                          })}
+                        </Typography>
+                      )}
+                    </Typography>
+                    <span
+                      className={classes.selectedPermCount}
+                      data-testid={`rbac-resource-${resourceType}-count`}
+                    >
+                      {t('permissionsCount', { count: permissionGroups[resourceType].length })}
+                    </span>
+                  </div>
+                </AccordionSummary>
+                <AccordionDetails>
+                  {permissionGroups[resourceType].map((permission, i) => {
+                    return (
+                      <div
+                        key={i}
+                        className={classes.permItem}
+                        data-testid={`rbac-resource-${resourceType}-${permission.name}`}
+                      >
+                        {permission.name}
+                      </div>
+                    );
+                  })}
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
+        </div>
       </div>
-      <div className={classes.permItems}>
-        {selectedPermissions.map((p, i) => (
-          <div key={i}>{getPermissionDisplayText(p)}</div>
-        ))}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>

@@ -55,6 +55,8 @@ import { ReactComponent as Strikethrough } from '../icons/strikethrough.svg';
 import { FormatAlignCenter, FormatAlignLeft, FormatAlignRight } from '@material-ui/icons';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
 import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
+import { RbacValidator } from '../../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../../rbac/UserPermPathMapping';
 
 const ToolbarMarkIcons: Partial<Record<TextDecorators, { icon: React.ReactChild }>> = {
   italic: {
@@ -414,15 +416,20 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
             alignItems="center"
             justifyContent="space-between"
           >
-            <YBButton
-              variant="secondary"
-              onClick={() => {
-                setShowPreviewModal(true);
-              }}
-              data-testid="preview-email-button"
+            <RbacValidator
+              accessRequiredOn={UserPermissionMap.editAlertsConfig}
+              isControl
             >
-              {t('alertCustomTemplates.composer.previewTemplateButton')}
-            </YBButton>
+              <YBButton
+                variant="secondary"
+                onClick={() => {
+                  setShowPreviewModal(true);
+                }}
+                data-testid="preview-email-button"
+              >
+                {t('alertCustomTemplates.composer.previewTemplateButton')}
+              </YBButton>
+            </RbacValidator>
             <div>
               <YBButton
                 variant="secondary"
@@ -433,30 +440,37 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
               >
                 {t('common.cancel')}
               </YBButton>
-              <YBButton
-                variant="primary"
-                type="submit"
-                disabled={
-                  !isEditorDirty(subjectEditorRef.current) &&
-                  !isEditorDirty(bodyEditorRef.current) &&
-                  !isRollbackedToDefaultTemplate
-                }
-                autoFocus
-                className={composerStyles.submitButton}
-                data-testid="save-email-button"
-                onClick={() => {
-                  if (bodyEditorRef.current && subjectEditorRef.current) {
-                    const subjectHtml = new HTMLSerializer(subjectEditorRef.current).serialize();
-                    const bodyHtml = new HTMLSerializer(bodyEditorRef.current).serialize();
-                    createTemplate.mutateAsync({
-                      textTemplate: convertHTMLToText(bodyHtml) ?? '',
-                      titleTemplate: convertHTMLToText(subjectHtml) ?? ''
-                    });
-                  }
+              <RbacValidator
+                accessRequiredOn={{
+                  ...UserPermissionMap.createAlertsConfig
                 }}
+                isControl
               >
-                {t('common.save')}
-              </YBButton>
+                <YBButton
+                  variant="primary"
+                  type="submit"
+                  disabled={
+                    !isEditorDirty(subjectEditorRef.current) &&
+                    !isEditorDirty(bodyEditorRef.current) &&
+                    !isRollbackedToDefaultTemplate
+                  }
+                  autoFocus
+                  className={composerStyles.submitButton}
+                  data-testid="save-email-button"
+                  onClick={() => {
+                    if (bodyEditorRef.current && subjectEditorRef.current) {
+                      const subjectHtml = new HTMLSerializer(subjectEditorRef.current).serialize();
+                      const bodyHtml = new HTMLSerializer(bodyEditorRef.current).serialize();
+                      createTemplate.mutateAsync({
+                        textTemplate: convertHTMLToText(bodyHtml) ?? '',
+                        titleTemplate: convertHTMLToText(subjectHtml) ?? ''
+                      });
+                    }
+                  }}
+                >
+                  {t('common.save')}
+                </YBButton>
+              </RbacValidator>
             </div>
           </Grid>
         </Grid>

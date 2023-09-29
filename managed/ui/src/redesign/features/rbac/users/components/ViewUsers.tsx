@@ -10,6 +10,8 @@
 import { useContext, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
+import { useToggle } from 'react-use';
 
 import { Box, makeStyles } from '@material-ui/core';
 import { TableHeaderColumn } from 'react-bootstrap-table';
@@ -17,8 +19,11 @@ import { YBTable } from '../../../../../components/common/YBTable';
 import { MoreActionsMenu } from '../../../../../components/customCACerts/MoreActionsMenu';
 import { YBButton } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
+import { DeleteUserModal } from './DeleteUserModal';
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
 
+import { RBAC_ERR_MSG_NO_PERM, RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { UserPermissionMap } from '../../UserPermPathMapping';
 import { getAllUsers } from '../../api';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { UserContextMethods, UserViewContext } from './UserContext';
@@ -94,6 +99,8 @@ export const ViewUsers = () => {
     UserViewContext
   ) as unknown) as UserContextMethods;
 
+  const [showDeleteModal, toggleDeleteModal] = useToggle(false);
+
   const [searchText, setSearchText] = useState('');
 
   if (isLoading) return <YBLoadingCircleIcon />;
@@ -114,6 +121,10 @@ export const ViewUsers = () => {
             text: t('table.moreActions.editAssignedRoles'),
             icon: <User />,
             callback: () => {
+              if (!hasNecessaryPerm({ ...UserPermissionMap.updateUser, onResource: user.uuid })) {
+                toast.error(RBAC_ERR_MSG_NO_PERM);
+                return;
+              }
               setCurrentUser(user);
               setCurrentPage('EDIT_USER');
             }
@@ -121,7 +132,11 @@ export const ViewUsers = () => {
           {
             text: t('table.moreActions.deleteUser'),
             icon: <Delete />,
-            callback: () => {}
+            callback: () => {
+              if (!hasNecessaryPerm(UserPermissionMap.deleteUser)) return;
+              setCurrentUser(user);
+              toggleDeleteModal(true);
+            }
           }
         ]}
       >
@@ -133,6 +148,7 @@ export const ViewUsers = () => {
   };
 
   return (
+    // <RbacValidator accessRequiredOn={UserPermissionMap.listUser}>
     <Box className={classes.root}>
       <div className={classes.actions}>
         <div className={classes.search}>
@@ -142,17 +158,20 @@ export const ViewUsers = () => {
             onEnterPressed={(val: string) => setSearchText(val)}
           />
         </div>
-        <YBButton
-          startIcon={<Add />}
-          size="large"
-          variant="primary"
-          onClick={() => {
-            setCurrentUser(null);
-            setCurrentPage('CREATE_USER');
-          }}
-        >
-          {t('createUser')}
-        </YBButton>
+        <RbacValidator accessRequiredOn={UserPermissionMap.createUser} isControl>
+          <YBButton
+            startIcon={<Add />}
+            size="large"
+            variant="primary"
+            onClick={() => {
+              setCurrentUser(null);
+              setCurrentPage('CREATE_USER');
+            }}
+            data-testid={`rbac-resource-create-user`}
+          >
+            {t('createUser')}
+          </YBButton>
+        </RbacValidator>
       </div>
       <YBTable data={filteredRoles ?? []}>
         <TableHeaderColumn dataField="uuid" hidden isKey />
@@ -166,6 +185,13 @@ export const ViewUsers = () => {
           {t('table.actions')}
         </TableHeaderColumn>
       </YBTable>
+      <DeleteUserModal
+        open={showDeleteModal}
+        onHide={() => {
+          toggleDeleteModal(false);
+        }}
+      />
     </Box>
+    // </RbacValidator>
   );
 };

@@ -26,6 +26,8 @@ import {
 } from './GflagHelper';
 import { GFlagsField } from '../../universe-form/form/fields';
 import { useFormMainStyles } from '../../universe-form/universeMainStyle';
+import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
 
 interface EditGflagsModalProps {
   open: boolean;
@@ -220,6 +222,11 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
     }
   ];
 
+  const canEditGFlags = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...UserPermissionMap.editUniverse
+  });
+
   return (
     <YBModal
       open={open}
@@ -234,6 +241,12 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
       onSubmit={handleFormSubmit}
       submitTestId="EditGflags-Submit"
       cancelTestId="EditGflags-Close"
+      buttonProps={{
+        primary: {
+          disabled: !canEditGFlags
+        }
+      }}
+      submitButtonTooltip={!canEditGFlags ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box
