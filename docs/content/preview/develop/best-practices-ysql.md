@@ -135,7 +135,13 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 Each table and index is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
 
 ## Tablets per server
-Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver#ysql_num_shards_per_tserver)
+
+Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag. 
+For a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL (write-ahead log).
+
+You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
+
+An effort to increase this limit is currently in progress. See GitHub issue [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317).
 gflag. In a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL.
 You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
 We're actively working on [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
