@@ -158,9 +158,9 @@ public class NFSUtil implements StorageUtil {
         bulkCheckFilesExistWithAbsoluteLocations(
             Universe.getOrBadRequest(universeUUID), absoluteLocationsList);
     if (checkExistsOnAll) {
-      return locationsFileCheckResultMap.values().contains(true);
+      return locationsFileCheckResultMap.values().stream().allMatch(b -> b.equals(true));
     }
-    return locationsFileCheckResultMap.values().parallelStream().allMatch(b -> b.equals(true));
+    return locationsFileCheckResultMap.values().contains(true);
   }
 
   // Method accepts list of absolute file locations, performs a search on primary cluster node for
@@ -171,13 +171,11 @@ public class NFSUtil implements StorageUtil {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
     NodeDetails node = universe.getLiveTServersInPrimaryCluster().get(0);
     String identifierUUID = UUID.randomUUID().toString();
-    String sourceFilesToCheckFilename =
-        identifierUUID + "-" + "bulk_check_files_node" + "-" + node.getNodeUuid().toString();
+    String sourceFilesToCheckFilename = identifierUUID + "-" + "bulk_check_files_node";
     String sourceFilesToCheckPath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), sourceFilesToCheckFilename);
-    String targetLocalFilename =
-        identifierUUID + "-" + "bulk_check_files_output_node" + "-" + node.getNodeUuid().toString();
+    String targetLocalFilename = identifierUUID + "-" + "bulk_check_files_output_node";
     String targetLocalFilepath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), targetLocalFilename);
