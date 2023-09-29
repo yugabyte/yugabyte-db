@@ -131,7 +131,6 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
-
 ## Number of tables and indexes
 Each table and index is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
 
