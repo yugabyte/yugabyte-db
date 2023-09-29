@@ -141,7 +141,7 @@ gflag. In a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft 
 You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
 We're actively working on [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317) to increase this limit.
 
-There are different ways to reduce number of tablets:
+You can try one of the following ways to reduce the number of tablets:
 
 - Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
 2. Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver#ysql_num_shards_per_tserver) gflag.
