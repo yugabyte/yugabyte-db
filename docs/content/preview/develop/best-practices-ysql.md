@@ -145,5 +145,5 @@ You can try one of the following ways to reduce the number of tablets:
 
 - Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
 - Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) gflag.
-3. Use [`SPLIT INTO`](../api/ysql/commands/ddl_create_table.md#split-into) clause when creating the table.
+- Use [`SPLIT INTO`](../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
 4. Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/)
