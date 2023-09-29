@@ -283,8 +283,21 @@ class TransactionParticipant::Impl
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
                         << " with begin_time: " << metadata.start_time.ToUint64();
-    transactions_.insert(std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
+
+    auto txn = std::make_shared<RunningTransaction>(
+        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this);
+
+    {
+      // Some transactions might not have metadata flushed into intents DB, but may have apply state
+      // stored in regular DB. This can only happen during bootstrap.
+      auto pending_apply = loader_.GetPendingApply(metadata.transaction_id);
+      if (pending_apply) {
+        txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
+        txn->SetApplyData(pending_apply->state);
+      }
+    }
+
+    transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
@@ -1297,7 +1310,7 @@ class TransactionParticipant::Impl
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
-  void LoadFinished(const ApplyStatesMap& pending_applies) override {
+  void LoadFinished() EXCLUDES(status_resolvers_mutex_) override {
     // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
     // sure that at the end of Load, we unblock shutdown.
     auto se = ScopeExit([&] {
@@ -1305,6 +1318,7 @@ class TransactionParticipant::Impl
     });
     start_latch_.Wait();
     std::vector<ScopedRWOperation> operations;
+    auto pending_applies = loader_.MovePendingApplies();
     operations.reserve(pending_applies.size());
     for (;;) {
       if (Closing()) {

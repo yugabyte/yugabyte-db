@@ -1593,8 +1593,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TRACE_EVENT1("tserver", "FlushTablets",
                "TS: ", req->dest_uuid());
 
-  LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
-  VLOG(1) << "Full FlushTablets request: " << req->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Processing FlushTablets from " << context.requestor_string();
+  VLOG_WITH_PREFIX(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
 
@@ -1612,10 +1612,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
   }
   switch (req->operation()) {
-    case FlushTabletsRequestPB::FLUSH:
+    case FlushTabletsRequestPB::FLUSH: {
+      auto flush_flags = req->regular_only() ? tablet::FlushFlags::kRegular
+                                             : tablet::FlushFlags::kAllDbs;
+      VLOG_WITH_PREFIX(1) << "flush_flags: " << to_underlying(flush_flags);
       for (const tablet::TabletPtr& tablet : tablet_ptrs) {
         resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            tablet->Flush(tablet::FlushMode::kAsync, flush_flags), resp, &context);
         if (!FLAGS_TEST_skip_force_superblock_flush) {
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(
               tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
@@ -1630,6 +1634,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
         resp->clear_failed_tablet_id();
       }
       break;
+    }
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),

@@ -105,7 +105,8 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   // Send FlushTablets requests to all Tablet Servers (one TS - one request).
   for (const auto& ts : ts_tablet_map) {
     // Using last table async task queue.
-    SendFlushTabletsRequest(ts.first, table, ts.second, flush_id, is_compaction, epoch);
+    SendFlushTabletsRequest(
+        ts.first, table, ts.second, flush_id, is_compaction, req->regular_only(), epoch);
   }
 
   resp->set_flush_request_id(flush_id);
@@ -145,10 +146,11 @@ void FlushManager::SendFlushTabletsRequest(const TabletServerId& ts_uuid,
                                            const vector<TabletId>& tablet_ids,
                                            const FlushRequestId& flush_id,
                                            const bool is_compaction,
+                                           const bool regular_only,
                                            const LeaderEpoch& epoch) {
   auto call = std::make_shared<AsyncFlushTablets>(
       master_, catalog_manager_->AsyncTaskPool(), ts_uuid, table, tablet_ids, flush_id,
-      is_compaction, epoch);
+      is_compaction, regular_only, epoch);
   table->AddTask(call);
   WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
 }

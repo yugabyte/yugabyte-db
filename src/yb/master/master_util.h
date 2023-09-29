@@ -36,6 +36,10 @@ namespace yb {
 
 const char* DatabasePrefix(YQLDatabase db);
 
+// A short version of the given database type, such as "YCQL" or "YSQL". Used
+// for human-readable messages.
+std::string ShortDatabaseType(YQLDatabase db_type);
+
 namespace consensus {
 
 class RaftPeerPB;

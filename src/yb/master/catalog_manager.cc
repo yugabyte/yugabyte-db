@@ -5418,8 +5418,11 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
     auto db = GetDatabaseType(ns_identifier);
     auto it = namespace_names_mapper_[db].find(ns_identifier.name());
     if (it == namespace_names_mapper_[db].end()) {
-      return STATUS(NotFound, "Keyspace name not found", ns_identifier.name(),
-                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+      return STATUS(
+          NotFound,
+          Format("$0 keyspace name not found", ShortDatabaseType(db)),
+          ns_identifier.name(),
+          MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
     return it->second;
   }
@@ -12629,6 +12632,9 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
           table_id_pb.has_namespace_()) {
         auto namespace_info = FindNamespaceUnlocked(table_id_pb.namespace_());
         if (!namespace_info.ok()) {
+          VLOG_WITH_PREFIX_AND_FUNC(1)
+              << "Namespace not found: " << table_id_pb.namespace_().ShortDebugString()
+              << ", status: "<< namespace_info.status().ToString();
           if (namespace_info.status().IsNotFound()) {
             continue;
           }

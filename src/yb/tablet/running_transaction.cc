@@ -583,8 +583,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   apply_state_ = apply_state;
   bool active = apply_state_.active();
   if (active) {
-    // We are trying to assign set processing apply before starting actual process, and unset
-    // after we complete processing.
+    // We are trying to set processing_apply before starting the actual process of applying, and
+    // unset it after we complete processing.
     processing_apply_.store(true, std::memory_order_release);
   }
 
