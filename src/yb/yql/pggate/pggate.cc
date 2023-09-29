@@ -2056,8 +2056,11 @@ Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
 
-Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TableIDMetadata() {
-  return pg_session_->TableIDMetadata();
+// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgApiImpl::TableIDMetadata() {
+//   return pg_session_->TableIDMetadata();
+// }
+Result<tserver::PgTableIDMetadataResponsePB> PgApiImpl::TableIDMetadata() {
+    return pg_session_->TableIDMetadata();
 }
 
 Status PgApiImpl::SetTopLevelNodeId() {

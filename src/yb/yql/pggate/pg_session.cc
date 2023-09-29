@@ -989,12 +989,14 @@ Result<bool> PgSession::CheckIfPitrActive() {
 Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
-Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgSession::TableIDMetadata() {
-  return pg_client_.TableIDMetadata();
-}
-// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgSession::TabletIDMetadata() {
-//   return pg_client_.TabletIDMetadata();
+
+// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgSession::TableIDMetadata() {
+//   return pg_client_.TableIDMetadata();
 // }
+Result<tserver::PgTableIDMetadataResponsePB> PgSession::TableIDMetadata() {
+    return pg_client_.TableIDMetadata();
+}
+
 Status PgSession::SetTopLevelNodeId() {
   auh_metadata_.top_level_node_id = VERIFY_RESULT(pg_client_.GetTServerUUID());
   pg_callbacks_.ProcSetTopLevelNodeId(&auh_metadata_.top_level_node_id[0]);

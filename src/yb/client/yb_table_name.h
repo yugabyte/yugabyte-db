@@ -76,24 +76,6 @@ class YBTableName {
     set_relation_type(relation_type);  
   } 
 
-  // YBTableName(YQLDatabase db_type,
-  //             const std::string& namespace_id,
-  //             const std::string& namespace_name,
-  //             const std::string& table_id,
-  //             const std::string& table_name,
-  //             const std::string& pgschema_name = "",
-  //             //yb::TableType table_type = yb::TableType(),
-  //             boost::optional<master::RelationType> relation_type = boost::none)
-  //           : namespace_type_(db_type) {
-  //   set_namespace_id(namespace_id);
-  //   set_namespace_name(namespace_name);
-  //   set_table_id(table_id);
-  //   set_table_name(table_name);
-  //   set_pgschema_name(pgschema_name);
-  //   //set_table_type(table_type);
-  //   set_relation_type(relation_type);  
-  // }
-
   // Simple table name (no namespace provided at the moment of construction).
   // In this case the namespace has not been set yet and it MUST be set later.
   YBTableName(YQLDatabase db_type, const std::string& table_name) : namespace_type_(db_type) {

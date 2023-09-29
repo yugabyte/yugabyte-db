@@ -1643,11 +1643,11 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
-YBCStatus YBCTableIDMetadata() {
-  const auto result = (pgapi->TableIDMetadata());
-  if (!result.ok()) {
-    return ToYBCStatus(result.status());
-  }
+YBCStatus YBCTableIDMetadata(tserver::PgTableIDMetadataResponsePB *info) {
+  *info = VERIFY_RESULT(pgapi->TableIDMetadata());
+  // if (!result.ok()) {
+  //   return ToYBCStatus(result.status());
+  // }
   return YBCStatusOK();
 }
 

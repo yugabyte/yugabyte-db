@@ -745,27 +745,13 @@ class PgClient::Impl {
     return resp;
   }
 
-  // Result<std::vector<master::ListTablesResponsePB::TableInfo>>TabletIDMetadata() {
-  // }
-
-  Result<std::vector<master::ListTablesResponsePB::TableInfo>>TableIDMetadata() {
-    master::ListTablesRequestPB req; 
-    master::ListTablesResponsePB resp;
+  //Result<std::vector<master::ListTablesResponsePB::TableInfo>>TableIDMetadata() {
+    Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata() {
+    tserver::PgTableIDMetadataRequestPB req; 
+    tserver::PgTableIDMetadataResponsePB resp;
     RETURN_NOT_OK(proxy_->TableIDMetadata(req, &resp, PrepareController()));
     //std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
-    std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
-    // for (const auto& tableInfo : result) {
-    //     LOG(INFO) << "Table ID: " << tableInfo.id();
-    //     LOG(INFO) << "Name: " << tableInfo.name();
-    //     //LOG(ERROR) << "Table Type: " << tableInfo.has_table_type() ? std::to_string(tableInfo.table_type()) : "Not set";
-    //     //LOG(ERROR) << "Namespace Identifier: " << tableInfo.has_namespace() ? tableInfo.namespace().ToString() : "Not set";
-    //     LOG(INFO) << "Relation Type: " << (tableInfo.has_relation_type() ? std::to_string(tableInfo.relation_type()) : "Not set");
-    //    // LOG(ERROR) << "State: " << tableInfo.has_state() ? std::to_string(tableInfo.state()) : "Not set";
-    //     LOG(INFO) << "PgSchema Name: " << (tableInfo.has_pgschema_name() ? tableInfo.pgschema_name() : "Not set");
-    //     //LOG(ERROR) << "Colocated Info: " << tableInfo.has_colocated_info() ? "Set" : "Not set";
-    // }
-
-    return result;
+    return resp;
   }
 
   Result<client::RpcsInfo> ActiveUniverseHistory() {
@@ -1044,7 +1030,10 @@ Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
 }
 
-Result<std::vector<master::ListTablesResponsePB::TableInfo>>PgClient::TableIDMetadata() {
+// Result<std::vector<master::ListTablesResponsePB::TableInfo>>PgClient::TableIDMetadata() {
+//   return impl_->TableIDMetadata();
+// }
+Result<tserver::PgTableIDMetadataResponsePB> PgClient::TableIDMetadata() {
   return impl_->TableIDMetadata();
 }
 

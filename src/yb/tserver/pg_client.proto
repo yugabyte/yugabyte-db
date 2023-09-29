@@ -86,8 +86,8 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
       returns (PgActiveUniverseHistoryResponsePB);
-  rpc TableIDMetadata(master.ListTablesRequestPB)
-      returns (master.ListTablesResponsePB);
+  rpc TableIDMetadata(PgTableIDMetadataRequestPB)
+      returns (PgTableIDMetadataResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 }
@@ -707,6 +707,12 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
+message PgTableIDMetadataRequestPB {}
+
+message PgTableIDMetadataResponsePB {
+  AppStatusPB status = 1;
+  repeated master.ListTablesResponsePB.TableInfo tables = 2;
+}
 message PgActiveUniverseHistoryRequestPB {}
 
 message PgActiveUniverseHistoryResponsePB {
