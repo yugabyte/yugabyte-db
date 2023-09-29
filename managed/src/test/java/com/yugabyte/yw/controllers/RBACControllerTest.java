@@ -166,7 +166,8 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
+        permissionInfoList.size(),
+        permissionUtil.getAllPermissionInfoFromCache(ResourceType.OTHER).size());
   }
 
   @Test

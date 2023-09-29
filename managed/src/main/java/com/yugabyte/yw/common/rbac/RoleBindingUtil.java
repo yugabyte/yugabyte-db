@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -283,6 +284,52 @@ public class RoleBindingUtil {
                 customerUUID, userUUID, Users.Role.valueOf(role.getName()));
         roleResourceDefinition.setResourceGroup(systemDefaultResourceGroup);
       }
+    }
+  }
+
+  /**
+   * This method goes through all existing role bindings with the given role and expands all the
+   * resource definitions to allow access to all the resources which have the given generic resource
+   * types.
+   *
+   * @param customerUUID
+   * @param role
+   * @param genericResourceTypesToExpand
+   */
+  public void expandRoleBindings(
+      UUID customerUUID, Role role, Set<ResourceType> genericResourceTypesToExpand) {
+    List<RoleBinding> roleBindingsWithRole = RoleBinding.getAllWithRole(role.getRoleUUID());
+    for (RoleBinding roleBinding : roleBindingsWithRole) {
+      for (ResourceDefinition resourceDefinition :
+          roleBinding.getResourceGroup().getResourceDefinitionSet()) {
+        if (genericResourceTypesToExpand.contains(resourceDefinition.getResourceType())) {
+          ResourceDefinition oldResourceDefinition = resourceDefinition.clone();
+          switch (resourceDefinition.getResourceType()) {
+            case OTHER:
+              // For "OTHER" resource type, ensure allowAll is false and resource UUID set has only
+              // the customer UUID.
+              resourceDefinition.setAllowAll(false);
+              resourceDefinition.setResourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)));
+              break;
+            default:
+              // For the rest of the resource types, ensure allowAll is true and empty resource UUID
+              // set.
+              resourceDefinition.setAllowAll(true);
+              resourceDefinition.setResourceUUIDSet(new HashSet<>());
+              break;
+          }
+          log.info(
+              "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+                  + "old resource definition '{}' to new resource definition '{}'.",
+              roleBinding.getType(),
+              roleBinding.getUuid(),
+              roleBinding.getUser().getUuid(),
+              roleBinding.getRole().getRoleUUID(),
+              oldResourceDefinition,
+              resourceDefinition);
+        }
+      }
+      roleBinding.update();
     }
   }
 
