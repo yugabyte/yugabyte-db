@@ -40,11 +40,11 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --null-string "<NULL_STRING>"
 ```
 
-Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
 
 ### Incremental data loading
 
-The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
+The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/bulk-data-load/import-data-file/#arguments) flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
 
 For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
 

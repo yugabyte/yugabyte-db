@@ -89,9 +89,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- `--source-db-schema` (Schema name of the source database.)
-- `--oracle-db-sid` (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- `--oracle-tns-alias` (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
 
 ## Prepare the target database
@@ -293,7 +293,7 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
-- --parallel-jobs argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
+- `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
 Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
 

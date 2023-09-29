@@ -80,9 +80,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- `--source-db-schema` (Schema name of the source database.)
-- `--oracle-db-sid` (Oracle System Identifier you can use while exporting data from Oracle instances.)
-- `--oracle-tns-alias` (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
 
 ## Prepare the target database
