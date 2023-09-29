@@ -84,11 +84,11 @@ def handle_run_command(args, client):
 
 def handle_test_directory(args, client):
     filename = args.test_directory + str(uuid.uuid4())
-    client.exec_command('touch ' + filename)
-    client.exec_command('echo "This is some text" > ' + filename)
-    output = client.exec_command('cat ' + filename)
-    client.exec_command('rm ' + filename)
-    if 'This is some text' in str(output):
+    client.exec_command(['touch', filename])
+    client.exec_command(['bash', '-c', "echo write-test > {}".format(filename)])
+    output = client.exec_command(['cat', filename])
+    client.exec_command(['rm', filename])
+    if 'write-test' in str(output):
         print('Directory is writable')
     else:
         print('Directory is not writable')
