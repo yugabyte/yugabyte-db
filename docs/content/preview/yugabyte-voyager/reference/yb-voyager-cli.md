@@ -58,7 +58,7 @@ The list of commands for various phases of migration are as follows:
 - [export data status](../../reference/data-migration/export-data/#export-data-status)
 - [import data](../../reference/data-migration/import-data/)
 - [import data status](../../reference/data-migration/import-data/#import-data-status)
-- [import data file](../../reference/data-migration/import-data-file/)
+- [import data file](../../reference/bulk-data-load/import-data-file/)
 - [fall-forward setup](../../reference/fall-forward/fall-forward-setup)
 - [fall-forward synchronize](../../reference/fall-forward/fall-forward-synchronize)
 - [fall-forward switchover](../../reference/fall-forward/fall-forward-switchover)
