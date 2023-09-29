@@ -2629,17 +2629,18 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
   return Status::OK();
 }
 
-HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
+    tablet::RaftGroupMetadata* metadata) {
   auto schedules = metadata->SnapshotSchedules();
   if (schedules.empty()) {
     if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
       VLOG(1) << "Setting the allowed historycutoff: " << metadata->cdc_sdk_safe_time()
               << " for tablet: " << metadata->raft_group_id();
-      return metadata->cdc_sdk_safe_time();
+      return { HybridTime::kInvalid, metadata->cdc_sdk_safe_time() };
     }
     VLOG(1) << "Setting the allowed historycutoff: " << HybridTime::kMax
             << " for tablet: " << metadata->raft_group_id();
-    return HybridTime::kMax;
+    return { HybridTime::kInvalid, HybridTime::kMax };
   }
   std::vector<SnapshotScheduleId> schedules_to_remove;
   auto se = ScopeExit([&schedules_to_remove, metadata]() {
@@ -2672,11 +2673,11 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
         schedules_to_remove.push_back(schedule_id);
         continue;
       }
-      return HybridTime::kMin;
+      return { HybridTime::kInvalid, HybridTime::kMin };
     }
     if (!it->second) {
       // Schedules does not have snapshots yet.
-      return HybridTime::kMin;
+      return { HybridTime::kInvalid, HybridTime::kMin };
     }
     result = std::min(result, it->second);
   }
@@ -2685,7 +2686,7 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
-  return result;
+  return { HybridTime::kInvalid, result };
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

@@ -977,8 +977,9 @@ class RocksDBPatcher::Impl {
 
     auto* existing_frontier = down_cast<docdb::ConsensusFrontier*>(version_set_.FlushedFrontier());
     if (existing_frontier) {
-      if (!frontier.history_cutoff()) {
-        final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      if (!frontier.history_cutoff_valid()) {
+        final_frontier.set_history_cutoff_information(
+            existing_frontier->history_cutoff());
       }
       if (!frontier.op_id()) {
         // Update op id only if it was specified in frontier.
@@ -1000,8 +1001,8 @@ class RocksDBPatcher::Impl {
           consensus_frontier.set_op_id(OpId());
           modified = true;
         }
-        if (frontier.history_cutoff()) {
-          consensus_frontier.set_history_cutoff(frontier.history_cutoff());
+        if (frontier.history_cutoff_valid()) {
+          consensus_frontier.set_history_cutoff_information(frontier.history_cutoff());
           modified = true;
         }
       }

@@ -63,6 +63,7 @@ using namespace std::literals;
 using namespace std::placeholders;
 
 DECLARE_int32(sys_catalog_write_timeout_ms);
+DECLARE_bool(enable_fast_pitr);
 
 DEFINE_uint64(snapshot_coordinator_poll_interval_ms, 5000,
               "Poll interval for snapshot coordinator in milliseconds.");
@@ -760,21 +761,30 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata) {
     HybridTime min_last_snapshot_ht = HybridTime::kMax;
+    HybridTime min_retention = HybridTime::kMax;
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& schedule : schedules_) {
       if (schedule->deleted()) {
         continue;
       }
+      int64_t retention = schedule->options().retention_duration_sec();
+      HybridTime retention_ht = context_.Clock()->Now().AddSeconds(-retention);
+      min_retention.MakeAtMost(retention_ht);
       auto complete_time = LastSnapshotTime(schedule->id());
       // No snapshot yet for the schedule so retain everything.
       if (!complete_time) {
-        return HybridTime::kMin;
+        min_last_snapshot_ht = HybridTime::kMin;
+        continue;
       }
       min_last_snapshot_ht.MakeAtMost(complete_time);
     }
-    return min_last_snapshot_ht;
+    if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+      return { min_retention, min_last_snapshot_ht };
+    }
+    return { min_last_snapshot_ht, min_last_snapshot_ht };
   }
 
   Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
@@ -2058,7 +2068,7 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
   return impl_->FillHeartbeatResponse(resp);
 }
 
-HybridTime MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
+docdb::HistoryCutoff MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
   return impl_->AllowedHistoryCutoffProvider(metadata);
 }

@@ -216,7 +216,7 @@ DEFINE_int32(
     "task.");
 
 DEFINE_RUNTIME_bool(
-    enable_fast_pitr, false,
+    enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
 namespace yb {
@@ -8476,7 +8476,8 @@ Status CatalogManager::ProcessTabletReplicationStatus(
   return Status::OK();
 }
 
-HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
+    tablet::RaftGroupMetadata* metadata) {
   return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
 }
 

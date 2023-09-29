@@ -1011,8 +1011,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
-  virtual HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
-    return HybridTime();
+  virtual docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+    return { HybridTime(), HybridTime() };
   }
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(

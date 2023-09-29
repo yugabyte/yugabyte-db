@@ -406,6 +406,23 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         },
         wait_time * kTimeMultiplier, description);
   }
+  // Waits for snapshot count to increase from current to current + delta.
+  Status WaitForMoreSnapshots(
+      const std::string& schedule_id, MonoDelta wait_time, uint32_t delta,
+      const std::string& description) {
+    // Get current count.
+    auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+    const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+    auto current_count = snapshots.GetArray().Size();
+    return WaitFor(
+        [this, &schedule_id, delta, current_count]() -> Result<bool> {
+          auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+          snapshots.IsArray();
+          return current_count + delta <= snapshots.GetArray().Size();
+        },
+        wait_time * kTimeMultiplier, description);
+  }
 
   // Note: Only populates interval and retention_duration.
   Result<master::SnapshotScheduleOptionsPB> GetSnapshotScheduleOptions(
@@ -2721,6 +2738,38 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SysCatalogRetenti
 
   // Tables should exist now.
   for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
+          YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 30s, 600s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Create 10 tables.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Enable fast pitr.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_fast_pitr", "true"));
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+
+  // Wait for at least one more snapshot.
+  ASSERT_OK(WaitForMoreSnapshots(schedule_id, 300s, 2, "Wait for 2 more snapshots"));
+
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Tables should exist now.
+  for (int i = 1; i <= 10; i++) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
   }
 }
