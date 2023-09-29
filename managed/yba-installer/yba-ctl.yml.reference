@@ -171,6 +171,8 @@ postgres:
 # Config parameters for Prometheus
 # Format for specifying timing information can be found at
 # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
+# h/m/d syntax not supported by golang time parse function https://pkg.go.dev/time#ParseDuration.
+# If you want to use that syntax skip the prometheus preflight check.
 # ================================
 
 prometheus:
