@@ -14,10 +14,19 @@ interface ReplicationFactorProps {
   isPrimary: boolean;
 }
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   rfButton: {
     height: themeVariables.inputHeight,
-    borderWidth: '0.5px !important'
+    borderWidth: '0.5px !important',
+    border: '1px solid #DEDEE0'
+  },
+  groupedButton: {
+    boxShadow: 'none'
+  },
+  overrideMuiInput: {
+    '& .MuiInput-root': {
+      minWidth: '80px'
+    }
   }
 }));
 
@@ -70,7 +79,7 @@ export const ReplicationFactor = ({
       </YBLabel>
       <Box flex={1} className={fieldClasses.defaultTextBox}>
         {isPrimary ? (
-          <ButtonGroup variant="contained" color="default">
+          <ButtonGroup variant="contained" color="default" className={classes.groupedButton}>
             {PRIMARY_RF.map((factor) => {
               return (
                 <YBButton
@@ -90,18 +99,20 @@ export const ReplicationFactor = ({
             })}
           </ButtonGroup>
         ) : (
-          <YBInputField
-            control={control}
-            name={REPLICATION_FACTOR_FIELD}
-            fullWidth
-            type="number"
-            inputProps={{
-              'data-testid': 'ReplicationFactor-Input',
-              min: ASYNC_RF_MIN,
-              max: ASYNC_RF_MAX
-            }}
-            onChange={handleChange}
-          />
+          <Box>
+            <YBInputField
+              control={control}
+              name={REPLICATION_FACTOR_FIELD}
+              type="number"
+              inputProps={{
+                'data-testid': 'ReplicationFactor-Input',
+                min: ASYNC_RF_MIN,
+                max: ASYNC_RF_MAX
+              }}
+              className={classes.overrideMuiInput}
+              onChange={handleChange}
+            />
+          </Box>
         )}
       </Box>
     </Box>

@@ -239,6 +239,7 @@ set(TSERVER_SRCS
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
+  txn_cache.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
   stateful_services/stateful_service_base.cc
@@ -247,6 +248,7 @@ set(TSERVER_SRCS
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
   xcluster_poller.cc
+  xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc)
 

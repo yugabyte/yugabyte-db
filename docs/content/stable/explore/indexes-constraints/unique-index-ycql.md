@@ -61,7 +61,7 @@ CREATE UNIQUE INDEX index_name ON table_name(column_list);
     CREATE UNIQUE INDEX index_employee_name ON employees(name);
     ```
 
-1. Use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to verify the index creation.
+1. Use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to verify the index creation.
 
     ```cql
     ycqlsh:yb_demo> DESCRIBE INDEX index_employee_name;

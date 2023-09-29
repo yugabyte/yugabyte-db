@@ -61,7 +61,7 @@ Status TestEchoService::RecordRequestInTable(const std::string& message) {
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply1");
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply2");
 
-  return session->ApplyAndFlushSync(op);
+  return session->TEST_ApplyAndFlush(std::move(op));
 }
 
 Status TestEchoService::ReloadEchoCountFromTable() {

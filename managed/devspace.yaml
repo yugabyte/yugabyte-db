@@ -1,0 +1,133 @@
+# Copyright 2023 Yugabyte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/
+# POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# DevSpace cofiguration file to develop YBA on Kubernetes. Local
+# changes are synced with the Pod running in a Kubernetes cluster.
+# https://www.devspace.sh/docs/getting-started/installation?x0=4
+
+version: v2beta1
+name: yugabyte-db-anywhere-git
+
+pipelines:
+  dev:
+    run: |-
+      # ensure_pull_secrets --all  # 2. Ensure pull secrets
+      echo "Deploying YBA tag ${YB_IMAGE_TAG} on the cluster"
+      echo "You can override this by running 'export YB_IMAGE_TAG=<custom tag>'"
+      create_deployments --all
+
+      echo "Building the YBA UI"
+      sbt uIBuild
+      echo "Building YBA"
+      sbt devSpaceReload
+
+      echo "Starting the development mode"
+      echo "You can run a build with 'sbt devSpaceReload' after code modifications"
+      start_dev yba
+
+deployments:
+  yba:
+    helm:
+      chart:
+        name: ../../charts/stable/yugaware/
+      values:
+        image:
+          repository: quay.io/yugabyte/yugaware-itest
+          tag: ${YB_IMAGE_TAG}
+        yugaware:
+          service:
+            type: ClusterIP
+      # valuesFiles:
+      # -
+
+dev:
+  yba:
+    imageSelector: quay.io/yugabyte/yugaware-itest
+    container: yugaware
+
+    sync:
+      - path: ./${YB_SYNC_DIR}:./
+        printLogs: true
+        # Don't delete files from remote
+        initialSync: preferLocal
+        # Minimize the number of files we upload
+        initialSyncCompareBy: size
+        excludePaths:
+        - '**'
+        # Only sync these files
+        - '!/bin/'
+        - '!/conf/'
+        - '!/kanela-agent/'
+        - '!/lib/'
+        - '!/README.md'
+        startContainer: true
+        onUpload:
+          restartContainer: true
+        disableDownload: true
+    ports:
+      - port: 9000
+      # Prometheus
+      - port: 9090
+
+    logs:
+      enabled: true
+      lastLines: 200
+
+    patches:
+    # Since we run as non-root user the /.devspace is not writable, so
+    # we create emptyDir volume which is writable by the group with
+    # which process runs, we have fsGroup set.
+    - op: add
+      path: spec.volumes
+      value:
+        name: devspace-script-dir
+        emptyDir: {}
+    - op: add
+      path: spec.containers.name=yugaware.volumeMounts
+      value:
+        mountPath: /.devspace
+        name: devspace-script-dir
+
+    command:
+    - "bin/yugaware"
+    - "-Dconfig.file=/data/application.docker.conf"
+    - "-DAPPLICATION_CONSOLE_LOG_LEVEL=${YBA_LOG_LEVEL}"
+    args: []
+
+commands:
+  # Can be run with `devspace run extract-archive`
+  extract-archive:
+    description: |
+      Extract the build archive to staging directory, and copy over
+      only the modified files to the sync directory. DevSpace doesn't
+      support hash based file comparison, so we use rsync locally.
+      Build archive -> Staging directory -(rsync)-> Sync directory ->
+      Container.
+    command: |-
+      rm -rf "${YB_SYNC_STAGE_DIR}"
+      mkdir -p "${YB_SYNC_STAGE_DIR}"
+      # tar -xf "target/universal/yugaware-${YB_VERSION}.txz" -C "${YB_SYNC_STAGE_DIR}"
+      echo "Extracting the build archive"
+      unzip -q "target/universal/yugaware-${YB_VERSION}.zip" -d "${YB_SYNC_STAGE_DIR}"
+      mkdir -p "${YB_SYNC_DIR}"
+      rsync --recursive --itemize-changes --checksum --delete \
+        "${YB_SYNC_STAGE_DIR}" "${YB_SYNC_DIR}"
+
+vars:
+  # This directory is used as a staging area to extract the build
+  # tars.
+  YB_SYNC_STAGE_DIR: "target/universal/devspace-stage/"
+  # The directory which is synced with container file system.
+  YB_SYNC_DIR: "target/universal/devspace-sync/"
+  YB_VERSION: "$(cat version.txt)"
+  GIT_LATEST_TAG: "$(git describe --tags --abbrev=0)"
+  YB_IMAGE_TAG:
+    source: env
+    default: "${GIT_LATEST_TAG}"
+  YBA_LOG_LEVEL: "DEBUG"

@@ -531,24 +531,41 @@ YBIsDBCatalogVersionMode()
 	{
 		cached_is_db_catalog_version_mode = true;
 		/*
-		 * Switching to per-db mode and set catalog version to 1, which is the
-		 * initial per-database catalog version value after the table
-		 * pg_yb_catalog_version is upgraded to have one row per database.
-		 * Note that we assume there are no DDL statements running during
-		 * YSQL upgrade and in particular we do not support concurrent DDL
-		 * statements when switching from global catalog version mode to
-		 * per-database catalog version mode. As of 2023-08-07, this is not
-		 * enforced and therefore if a concurrent DDL statement is executed:
-		 * (1) if this DDL statement also increments a table schema, we still
-		 * have the table schema version mismatch check as a safety net to
-		 * reject stale read/write RPCs;
-		 * (2) if this DDL statement only increments the catalog version,
-		 * then stale read/write RPCs are possible which can lead to wrong
-		 * results;
+		 * If MyDatabaseId is not resolved, the caller is going to set up the
+		 * catalog version in per-database catalog version mode. There is
+		 * no need to set it up here.
 		 */
-		yb_last_known_catalog_cache_version = 1;
-		YbUpdateCatalogCacheVersion(1);
-		elog(DEBUG3, "switching to per-db mode");
+		if (OidIsValid(MyDatabaseId))
+		{
+			/*
+			 * MyDatabaseId is already resolved so the caller may have already
+			 * set up the catalog version in global catalog version mode. The
+			 * upgrade of table pg_yb_catalog_version to per-database catalog
+			 * version mode does not change the catalog version of database
+			 * template1 but will set the initial per-database catalog version
+			 * value to 1 for all other databases. Set catalog version to 1
+			 * except for database template1 to avoid unnecessary catalog cache
+			 * refresh.
+			 * Note that we assume there are no DDL statements running during
+			 * YSQL upgrade and in particular we do not support concurrent DDL
+			 * statements when switching from global catalog version mode to
+			 * per-database catalog version mode. As of 2023-08-07, this is not
+			 * enforced and therefore if a concurrent DDL statement is executed:
+			 * (1) if this DDL statement also increments a table schema, we still
+			 * have the table schema version mismatch check as a safety net to
+			 * reject stale read/write RPCs;
+			 * (2) if this DDL statement only increments the catalog version,
+			 * then stale read/write RPCs are possible which can lead to wrong
+			 * results;
+			 */
+			elog(INFO, "change to per-db mode");
+			if (MyDatabaseId != TemplateDbOid)
+			{
+				yb_last_known_catalog_cache_version = 1;
+				YbUpdateCatalogCacheVersion(1);
+			}
+		}
+
 		/*
 		 * YB does write operation buffering to reduce the number of RPCs.
 		 * That is, PG backend can buffer several write operations and send
@@ -3729,8 +3746,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
+		elog(DEBUG1, "Falling back to LockWaitError since wait-queues are not enabled");
 		*docdb_wait_policy = LockWaitError;
 	}
+	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", *docdb_wait_policy, pg_wait_policy);
 }
 
 uint32_t YbGetNumberOfDatabases()

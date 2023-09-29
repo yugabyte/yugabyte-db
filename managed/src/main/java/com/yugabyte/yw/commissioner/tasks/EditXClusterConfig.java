@@ -4,6 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Restore;
@@ -235,6 +238,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       createDeleteXClusterConfigSubtasks(
           xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Initializing,
+                SourceUniverseState.Unconfigured,
+                TargetUniverseState.Unconfigured)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
+
       createXClusterConfigSetStatusTask(
           xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
@@ -253,6 +265,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           xClusterConfig,
           tableIdsDeleteReplication,
           XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
+
+      if (xClusterConfig.isUsedForDr()) {
+        createSetDrStatesTask(
+                xClusterConfig,
+                State.Initializing,
+                SourceUniverseState.Unconfigured,
+                TargetUniverseState.Unconfigured)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      }
 
       createXClusterConfigSetStatusForTablesTask(
           xClusterConfig, tableIdsDeleteReplication, XClusterTableConfig.Status.Updating);

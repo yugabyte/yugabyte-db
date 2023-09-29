@@ -233,6 +233,8 @@ message TSHeartbeatRequestPB {
   repeated FullCompactionStatusPB full_compaction_statuses = 20;
 
   optional uint64 ysql_db_catalog_versions_fingerprint = 21;
+
+  optional string universe_uuid = 22;
 }
 
 message TSHeartbeatResponsePB {
@@ -302,6 +304,8 @@ message TSHeartbeatResponsePB {
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 23;
 
   optional uint32 xcluster_config_version = 24;
+
+  optional string universe_uuid = 25;
 }
 
 service MasterHeartbeat {

@@ -336,6 +336,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNotOk(r, error);
     assertAuditEntry(0, customer.getUuid());
   }
+
   // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS
   // provider as well
   @Test

@@ -48,6 +48,7 @@ public class VaultAccessor {
   private Vault vault;
   private long tokenTTL;
   private Calendar tokenTtlExpiry;
+
   /** Vault supports 2 versions of API, we have to use version 1 to connect with Vault. */
   private int apiVersion;
 
@@ -320,6 +321,7 @@ public class VaultAccessor {
     AuthResponse ar = vault.auth().createToken(tr);
     return ar.getAuthClientToken();
   }
+
   /**
    * Performs list operation on provided path of secret engine.
    *
@@ -370,6 +372,7 @@ public class VaultAccessor {
     if ("".equals(filter)) return logicalResp.getData().toString();
     else return logicalResp.getData().get(filter).toString();
   }
+
   /**
    * Performs POST operation on path provided
    *

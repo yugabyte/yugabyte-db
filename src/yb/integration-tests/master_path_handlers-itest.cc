@@ -610,7 +610,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
     auto insert = table.NewInsertOp();
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, i);
-    ASSERT_OK(session->ApplyAndFlushSync(insert));
+    ASSERT_OK(session->TEST_ApplyAndFlush(insert));
   }
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();

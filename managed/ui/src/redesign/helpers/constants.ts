@@ -34,8 +34,12 @@ export const SortOrder = {
 export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
-  PROVIDER_REDESIGN_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
+  PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
+  DISASTER_RECOVERY_UI_FEATURE_FLAG: 'yb.ui.feature_flags.disaster_recovery',
+  DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
+  PERFOMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
+  IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources'
 } as const;
 

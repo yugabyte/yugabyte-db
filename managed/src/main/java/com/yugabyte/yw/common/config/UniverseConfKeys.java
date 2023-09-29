@@ -775,7 +775,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.backup.use_server_broadcast_address_for_yb_backup",
           ScopeType.UNIVERSE,
           "Use server broadcast address for yb_backup",
-          "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
+          "Controls whether server_broadcast_address entry should be used during yb_backup.py"
+              + " backup/restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
@@ -909,5 +910,30 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip backup metadata validation",
           "Skip backup metadata based validation during restore",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> alwaysBackupTablespaces =
+      new ConfKeyInfo<>(
+          "yb.backup.always_backup_tablespaces",
+          ScopeType.UNIVERSE,
+          "Always backup tablespaces when taking YSQL backup",
+          "Always backup tablespaces when taking ysql backups. This is a UI flag"
+              + " used to appropriately send 'useTablespaces' parameter to backend in API.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
+      new ConfKeyInfo<>(
+          "yb.edit.allow_volume_decrease",
+          ScopeType.UNIVERSE,
+          "Allow decrease volume size",
+          "Allow decrease volume size for universe during full move",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
+      new ConfKeyInfo<>(
+          "yb.node_agent.reinstall_parallelism",
+          ScopeType.UNIVERSE,
+          "Parallelism for Node Agent Reinstallation",
+          "Number of parallel node agent reinstallations at a time",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

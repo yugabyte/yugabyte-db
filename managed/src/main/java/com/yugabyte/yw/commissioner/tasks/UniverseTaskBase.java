@@ -28,6 +28,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.*;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -584,7 +586,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
-    final String err = error;
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
@@ -1085,41 +1086,63 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
+  protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
+      Universe universe, Collection<NodeDetails> nodes) {
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    Map<UUID, Boolean> clusterSkip = new HashMap<>();
+    return nodes.stream()
+        .filter(n -> n.cloudInfo != null && n.cloudInfo.private_ip != null)
+        .filter(
+            n ->
+                clusterSkip.computeIfAbsent(
+                    n.placementUuid,
+                    k -> {
+                      Cluster cluster = universe.getCluster(n.placementUuid);
+                      Provider provider =
+                          Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                      if (!nodeAgentClient.isClientEnabled(provider)) {
+                        return false;
+                      }
+                      if (provider.getCloudCode() == CloudType.onprem) {
+                        AccessKey accessKey =
+                            AccessKey.getOrBadRequest(
+                                provider.getUuid(), cluster.userIntent.accessKeyCode);
+                        return !accessKey.getKeyInfo().skipProvisioning;
+                      } else if (provider.getCloudCode() != CloudType.aws
+                          && provider.getCloudCode() != CloudType.azu
+                          && provider.getCloudCode() != CloudType.gcp) {
+                        return false;
+                      }
+                      return true;
+                    }))
+        .collect(Collectors.toSet());
+  }
+
+  public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
+    return createInstallNodeAgentTasks(nodes, false);
+  }
+
+  public SubTaskGroup createInstallNodeAgentTasks(
+      Collection<NodeDetails> nodes, boolean reinstall) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
-    for (NodeDetails node : nodes) {
-      if (node.cloudInfo == null) {
-        continue;
-      }
-      Cluster cluster = getUniverse().getCluster(node.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentClient.isClientEnabled(provider)) {
-        if (provider.getCloudCode() == CloudType.onprem) {
-          AccessKey accessKey =
-              AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
-          if (accessKey.getKeyInfo().skipProvisioning) {
-            continue;
-          }
-        } else if (provider.getCloudCode() != CloudType.aws
-            && provider.getCloudCode() != CloudType.azu
-            && provider.getCloudCode() != CloudType.gcp) {
-          continue;
-        }
-        InstallNodeAgent.Params params = new InstallNodeAgent.Params();
-        params.nodeName = node.nodeName;
-        params.customerUuid = provider.getCustomerUUID();
-        params.azUuid = node.azUuid;
-        params.setUniverseUUID(universe.getUniverseUUID());
-        params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
-        params.nodeAgentPort = serverPort;
-        InstallNodeAgent task = createTask(InstallNodeAgent.class);
-        task.initialize(params);
-        subTaskGroup.addSubTask(task);
-      }
-    }
+    Customer customer = Customer.get(universe.getCustomerId());
+    filterNodesForInstallNodeAgent(universe, nodes)
+        .forEach(
+            n -> {
+              InstallNodeAgent.Params params = new InstallNodeAgent.Params();
+              params.nodeName = n.nodeName;
+              params.customerUuid = customer.getUuid();
+              params.azUuid = n.azUuid;
+              params.setUniverseUUID(universe.getUniverseUUID());
+              params.nodeAgentHome = NodeAgent.ROOT_NODE_AGENT_HOME;
+              params.nodeAgentPort = serverPort;
+              params.reinstall = reinstall;
+              InstallNodeAgent task = createTask(InstallNodeAgent.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
@@ -1854,6 +1877,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createTServerTaskForNode(NodeDetails currentNode, String taskType) {
     return createTServerTaskForNode(currentNode, taskType, false /*isIgnoreError*/);
   }
+
   /**
    * Start T-Server process on the given node
    *
@@ -2044,6 +2068,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createStopTServerTasks(Collection<NodeDetails> nodes) {
     return createStopServerTasks(nodes, ServerType.TSERVER, false);
   }
+
   /**
    * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
    * queue.
@@ -2447,9 +2472,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
     preflightParams.setStorageConfigUUID(restoreParams.storageConfigUUID);
     Set<String> backupLocations =
-        restoreParams
-            .backupStorageInfoList
-            .parallelStream()
+        restoreParams.backupStorageInfoList.parallelStream()
             .map(bSI -> bSI.storageLocation)
             .collect(Collectors.toSet());
     preflightParams.setBackupLocations(backupLocations);
@@ -2949,10 +2972,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param blacklistNodes list of nodes which are being removed.
    */
   public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
+    return createPlacementInfoTask(blacklistNodes, null);
+  }
+
+  /**
+   * Creates a task list to update the placement information by making a call to the master leader
+   * and adds it to the task queue.
+   *
+   * @param blacklistNodes list of nodes which are being removed.
+   * @param targetClusterStates new state of clusters (for the case when placement info is updated
+   *     but not persisted in db)
+   */
+  public SubTaskGroup createPlacementInfoTask(
+      Collection<NodeDetails> blacklistNodes, @Nullable List<Cluster> targetClusterStates) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdatePlacementInfo");
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Add the universe uuid.
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.targetClusterStates = targetClusterStates;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<>();
@@ -3230,6 +3267,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
   }
+
   /**
    * Create Load Balancer map to add/remove nodes from load balancer.
    *
@@ -4131,16 +4169,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createSetDrStatesTask(
+      XClusterConfig xClusterConfig,
+      @Nullable DrConfigStates.State drConfigState,
+      @Nullable SourceUniverseState sourceUniverseState,
+      @Nullable TargetUniverseState targetUniverseState) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SetDrStates");
+    SetDrStates.Params params = new SetDrStates.Params();
+    params.xClusterConfig = xClusterConfig;
+    params.drConfigState = drConfigState;
+    params.sourceUniverseState = sourceUniverseState;
+    params.targetUniverseState = targetUniverseState;
+
+    SetDrStates task = createTask(SetDrStates.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected void createDeleteXClusterConfigSubtasks(
       XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
     // If target universe is destroyed, ignore creating this subtask.
-    if (xClusterConfig.getTargetUniverseUUID() != null) {
-      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        // Set back the target universe role to Active.
-        createChangeXClusterRoleTask(
-                xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-      }
+    if (xClusterConfig.getTargetUniverseUUID() != null
+        && xClusterConfig.getType().equals(ConfigType.Txn)) {
+      // Set back the target universe role to Active.
+      createChangeXClusterRoleTask(
+              xClusterConfig, null /* sourceRole */, XClusterRole.ACTIVE /* targetRole */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
 
     // Delete the replication CDC streams on the target universe.

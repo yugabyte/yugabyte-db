@@ -61,6 +61,9 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
 }
 
 void DocReadContext::LogAfterLoad() {
+  if (schema_packing_storage.SingleSchemaVersion() == 0) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << __func__ << ": " << schema_packing_storage.VersionsToString();
 }
 

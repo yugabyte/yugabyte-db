@@ -503,7 +503,7 @@ public class TaskExecutor {
    */
   @FunctionalInterface
   public interface TaskExecutionListener {
-    default void beforeTask(TaskInfo taskInfo) {};
+    default void beforeTask(TaskInfo taskInfo) {}
 
     void afterTask(TaskInfo taskInfo, Throwable t);
   }

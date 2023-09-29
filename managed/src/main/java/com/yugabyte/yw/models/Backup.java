@@ -454,8 +454,7 @@ public class Backup extends Model {
       List<BackupTableParams> paramsCollection,
       BackupTableParams incrementalParam,
       TableType backupType) {
-    return paramsCollection
-        .parallelStream()
+    return paramsCollection.parallelStream()
         .filter(
             backupParams ->
                 incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
@@ -489,8 +488,7 @@ public class Backup extends Model {
     List<BackupTableParams> params = getBackupParamsCollection();
     if (CollectionUtils.isNotEmpty(params)) {
       oParams =
-          params
-              .parallelStream()
+          params.parallelStream()
               .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
               .findAny();
     }
@@ -621,8 +619,14 @@ public class Backup extends Model {
   }
 
   public static Optional<Backup> fetchLatestByState(UUID customerUuid, BackupState state) {
-    return Backup.find.query().where().eq("customer_uuid", customerUuid).eq("state", state)
-        .orderBy("create_time DESC").findList().stream()
+    return Backup.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUuid)
+        .eq("state", state)
+        .orderBy("create_time DESC")
+        .findList()
+        .stream()
         .findFirst();
   }
 

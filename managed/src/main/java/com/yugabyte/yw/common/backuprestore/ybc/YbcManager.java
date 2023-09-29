@@ -739,9 +739,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe
-              .getLiveTServersInPrimaryCluster()
-              .parallelStream()
+          universe.getLiveTServersInPrimaryCluster().parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
@@ -860,7 +858,13 @@ public class YbcManager {
                           provider.getUuid(), nodeDetails.cloudInfo.instance_type)
                       .getNumCores());
     } else {
-      hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      if (userIntent.tserverK8SNodeResourceSpec != null) {
+        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        hardwareConcurrency = 2;
+        LOG.warn(
+            "Could not determine hardware concurrency based on resource spec, assuming default");
+      }
     }
     Map<String, String> ybcGflags =
         GFlagsUtil.getYbcFlagsForK8s(

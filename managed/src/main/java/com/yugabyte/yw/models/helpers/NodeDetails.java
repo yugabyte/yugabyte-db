@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -100,6 +101,8 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is finalized after upgrade.
+    FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
@@ -373,6 +376,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.FinalizeUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved

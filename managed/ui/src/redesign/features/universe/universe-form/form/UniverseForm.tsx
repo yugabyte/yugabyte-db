@@ -149,9 +149,9 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             {isNewUniverse && onDeleteRR && !!asyncFormData && (
               <YBButton
                 className={classes.clearRRButton}
-                component={Link}
-                variant="ghost"
-                size="small"
+                // component={Link}
+                variant="secondary"
+                size="medium"
                 data-testid="UniverseForm-ClearRR"
                 onClick={onDeleteRR}
               >
@@ -168,7 +168,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
     return (
       <>
         <Grid container justifyContent="space-between">
-          <Grid item lg={8}>
+          <Grid item lg={6}>
             <Box
               width="100%"
               display="flex"
@@ -179,8 +179,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               <UniverseResourceContainer data={universeResourceTemplate} />
             </Box>
           </Grid>
-          <Grid item lg={4}>
-            <Box width="100%" display="flex" justifyContent="flex-end">
+          <Grid item lg={6}>
+            <Box
+              width="100%"
+              display="flex"
+              justifyContent="flex-end"
+              className={classes.universeFormButtons}
+            >
               <YBButton
                 variant="secondary"
                 size="large"

@@ -138,6 +138,10 @@ struct TransactionStatusResult {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
+  static TransactionStatusResult Deadlocked(Status deadlock_status) {
+    return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime(), {}, deadlock_status);
+  }
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }

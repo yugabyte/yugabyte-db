@@ -706,11 +706,6 @@ Status PgApiImpl::ReadSequenceTuple(int64_t db_oid,
   return Status::OK();
 }
 
-Status PgApiImpl::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return pg_session_->DeleteSequenceTuple(db_oid, seq_oid);
-}
-
-
 //--------------------------------------------------------------------------------------------------
 
 void PgApiImpl::DeleteStatement(PgStatement *handle) {
@@ -1048,6 +1043,31 @@ Status PgApiImpl::ExecTruncateTable(PgStatement *handle) {
   return down_cast<PgTruncateTable*>(handle)->Exec();
 }
 
+Status PgApiImpl::NewDropSequence(const YBCPgOid database_oid,
+                                  const YBCPgOid sequence_oid,
+                                  PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropSequence>(pg_session_, database_oid,
+      sequence_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropSequence(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_SEQUENCE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgDropSequence *pg_stmt = down_cast<PgDropSequence*>(handle);
+  return pg_stmt->Exec();
+}
+
+Status PgApiImpl::NewDropDBSequences(const YBCPgOid database_oid,
+                                     PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropDBSequences>(pg_session_, database_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
 Status PgApiImpl::GetTableDesc(const PgObjectId& table_id,
                                PgTableDesc **handle) {
   // First read from memory context.
@@ -1213,6 +1233,10 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
       return down_cast<PgDropIndex*>(handle)->Exec();
     case StmtOp::STMT_DROP_TABLEGROUP:
       return down_cast<PgDropTablegroup*>(handle)->Exec();
+    case StmtOp::STMT_DROP_SEQUENCE:
+      return down_cast<PgDropSequence*>(handle)->Exec();
+    case StmtOp::STMT_DROP_DB_SEQUENCES:
+      return down_cast<PgDropDBSequences*>(handle)->Exec();
 
     default:
       break;

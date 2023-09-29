@@ -90,6 +90,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       const docdb::DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const override;
 
+  std::string ToString() const override;
+
  private:
   const DocDB doc_db_;
 };

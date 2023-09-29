@@ -62,6 +62,7 @@ import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -546,7 +547,9 @@ public class Universe extends Model {
   public NodeDetails getNodeByPrivateIP(String nodeIP) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
-      if (node.cloudInfo.private_ip.equals(nodeIP)) {
+      if (node.cloudInfo != null
+          && StringUtils.isNotBlank(node.cloudInfo.private_ip)
+          && node.cloudInfo.private_ip.equals(nodeIP)) {
         return node;
       }
     }
@@ -1002,9 +1005,7 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails()
-        .nodeDetailsSet
-        .parallelStream()
+    return getUniverseDetails().nodeDetailsSet.parallelStream()
         .anyMatch(
             n ->
                 n.cloudInfo.private_ip != null
@@ -1059,7 +1060,12 @@ public class Universe extends Model {
   }
 
   static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
-    return find.query().select("universeUUID").where().eq("customer_id", customerId).findList()
+    return find
+        .query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
         .stream()
         .map(Universe::getUniverseUUID)
         .collect(Collectors.toSet());

@@ -141,7 +141,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
     universeUUID: values['universeUUID'],
-    tableByTableBackup: values['isTableByTableBackup']
+    tableByTableBackup: values['isTableByTableBackup'],
+    useTablespaces: values['useTablespaces']
   };
 
   let dbMap: Dictionary<any> = [];

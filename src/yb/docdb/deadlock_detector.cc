@@ -61,6 +61,8 @@ DEFINE_RUNTIME_int32(
     "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
     "retained, after it has been reported to be aborted. This ensures the memory used to track "
     "info of deadlocked transactions does not grow unbounded.");
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, hidden);
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, advanced);
 
 METRIC_DEFINE_event_stats(
     tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
@@ -370,7 +372,7 @@ using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
 } // namespace
 
 std::string ConstructDeadlockedMessage(const TransactionId& waiter,
-                                 const tserver::ProbeTransactionDeadlockResponsePB& resp) {
+                                       const tserver::ProbeTransactionDeadlockResponsePB& resp) {
   std::stringstream ss;
   ss << Format("Transaction $0 aborted due to a deadlock.\n$0", waiter.ToString());
   for (auto i = 1 ; i < resp.deadlocked_txn_ids_size() ; i++) {
@@ -628,10 +630,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     if (it == recently_deadlocked_txns_info_.end()) {
       return Status::OK();
     }
-    // Deadlock status is currently used in wait-queues alone. It is required that we set status
-    // type as InternalError for pg to decode the error and throw ERRCODE_T_R_DEADLOCK_DETECTED.
+    // Return Expired so that TabletInvoker does not retry. Also, query layer proactively sends
+    // clean up requests to transaction participant only for transactions with Expired status.
     return STATUS_EC_FORMAT(
-        InternalError, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
+        Expired, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
   }
 
  private:

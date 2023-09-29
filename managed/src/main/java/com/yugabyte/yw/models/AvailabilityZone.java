@@ -154,7 +154,8 @@ public class AvailabilityZone extends Model {
   @JsonIgnore
   public long getNodeCount() {
     return Customer.get(getRegion().getProvider().getCustomerUUID())
-        .getUniversesForProvider(getRegion().getProvider().getUuid()).stream()
+        .getUniversesForProvider(getRegion().getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> nd.azUuid.equals(getUuid()))
         .count();

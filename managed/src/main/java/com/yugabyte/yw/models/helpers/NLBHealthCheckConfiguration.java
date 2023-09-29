@@ -38,8 +38,11 @@ public class NLBHealthCheckConfiguration {
               + ", paths: "
               + healthCheckPaths);
     }
-    return IntStream.range(0, healthCheckPorts.size()).boxed()
-        .collect(Collectors.toMap(healthCheckPorts::get, healthCheckPaths::get)).entrySet().stream()
+    return IntStream.range(0, healthCheckPorts.size())
+        .boxed()
+        .collect(Collectors.toMap(healthCheckPorts::get, healthCheckPaths::get))
+        .entrySet()
+        .stream()
         .filter(entry -> (entry.getKey() > 0 && entry.getKey() <= 65535))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
   }

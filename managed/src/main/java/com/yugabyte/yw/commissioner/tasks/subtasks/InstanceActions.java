@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.TaskInfo;
-import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,7 +30,6 @@ public class InstanceActions extends NodeTaskBase {
     public NodeManager.NodeCommandType type;
     // CSV of tag keys to be deleted.
     public String deleteTags = "";
-    public Map<String, String> tags;
     public boolean force = false;
   }
 

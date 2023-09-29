@@ -78,9 +78,14 @@ struct MetricJsonOptions : public MetricOptions {
   bool include_schema_info = false;
 };
 
+YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
+
 struct MetricPrometheusOptions : public MetricOptions {
   // Number of tables to include metrics for.
   uint32_t max_tables_metrics_breakdowns;
+
+  // Include #TYPE and #HELP in Prometheus metrics output
+  ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
 };
 
 struct MetricEntityOptions {

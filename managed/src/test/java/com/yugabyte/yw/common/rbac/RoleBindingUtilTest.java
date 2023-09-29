@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -31,10 +32,15 @@ import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Spy;
+import play.Environment;
+import play.Mode;
 
 @RunWith(JUnitParamsRunner.class)
 public class RoleBindingUtilTest extends FakeDBApplication {
 
+  @Spy Environment environment;
+  PermissionUtil permissionUtil;
   private RoleBindingUtil roleBindingUtil;
   private Customer customer;
   private Universe universe1;
@@ -44,7 +50,11 @@ public class RoleBindingUtilTest extends FakeDBApplication {
 
   @Before
   public void setup() {
-    roleBindingUtil = new RoleBindingUtil(null);
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+    this.environment = new Environment(new File("."), classLoader, Mode.TEST);
+    this.permissionUtil = new PermissionUtil(environment);
+
+    roleBindingUtil = new RoleBindingUtil(permissionUtil);
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     universe1 = ModelFactory.createUniverse("Test Universe 1", customer.getId());
     universe2 = ModelFactory.createUniverse("Test Universe 2", customer.getId());
@@ -301,5 +311,72 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .getResourceUUIDSet();
     assertFalse(resourceUUIDs.contains(universe1.getUniverseUUID()));
     assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinition() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.Custom,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.READ))));
+
+    // Assert that exception is not thrown when correct resource definition for both UNIVERSE and
+    // OTHER is given.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceDefinition resourceDefinition2 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(customer.getUuid())))
+            .build();
+    ResourceGroup resourceGroup1 = new ResourceGroup();
+    resourceGroup1.setResourceDefinitionSet(
+        new HashSet<>(Arrays.asList(resourceDefinition1, resourceDefinition2)));
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    roleResourceDefinition1.setResourceGroup(resourceGroup1);
+    // Assert that this doesn't throw any exception.
+    roleBindingUtil.validateRoleResourceDefinition(customer.getUuid(), roleResourceDefinition1);
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinitionInvalid() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.Custom,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.READ))));
+
+    // Assert that exception is thrown when correct resource definition for only UNIVERSE is given
+    // and not OTHER.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup resourceGroup1 = new ResourceGroup();
+    resourceGroup1.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition1)));
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    roleResourceDefinition1.setResourceGroup(resourceGroup1);
+    // Exception should be thrown because we haven't given allowAll for OTHER in above resource
+    // definition, even though OTHER.READ permission is given in the role.
+    assertPlatformException(
+        () ->
+            roleBindingUtil.validateRoleResourceDefinition(
+                customer.getUuid(), roleResourceDefinition1));
   }
 }

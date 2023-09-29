@@ -343,4 +343,21 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
           new Row("2", "xyz")));
     }
   }
+
+  @Test
+  public void testTempTables() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table (col1 text UNIQUE)");
+      statement.execute("INSERT INTO test_table VALUES ('1'), ('01')");
+      runInvalidQuery(statement,
+          "ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int",
+          "ERROR: could not create unique index \"test_table_col1_key\"" +
+              "\n  Detail: Key (col1)=(1) is duplicated.");
+      statement.execute("ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key");
+      statement.execute("ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int");
+      assertRowList(statement, "SELECT * FROM test_table", Arrays.asList(
+          new Row(1),
+          new Row(1)));
+    }
+  }
 }

@@ -29,6 +29,9 @@
       "selected": "Selected",
       "note": "Note :"
     },
+    "task": {
+      "viewDetails": "View Details"
+    },
     "universeActions": {
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
@@ -475,6 +478,242 @@
           "Connections": "Connections",
           "Queries": "Queries"
         }
+      },
+      "disasterRecovery": {
+        "heading": "Disaster Recovery",
+        "actionButton": {
+          "abortFailover": "Abort Failover",
+          "connectApplications": "Connect",
+          "initiateFailover": "Initiate Failover",
+          "repairDr": "Repair DR",
+          "restartReplication": "Restart Replication",
+          "viewTaskDetails": "View Details",
+          "actionMenu": {
+            "label": "Actions",
+            "deleteConfig": "Remove disaster recovery",
+            "editDrConfig": "Edit recovery configuration",
+            "editDrConfigTarget": "Change DR Replica Universe",
+            "editTables": "Select databases and tables",
+            "advancedMenu": "Advanced",
+            "restartReplication": "Restart replication",
+            "reconcileConfig": "Reconcile config with database"
+          }
+        },
+        "error": {
+          "failToFetchUniverse": "Error fetching details for the universe with the UUID: {{universeUuid}}",
+          "failToFetchDrConfig": "Error fetching details for the DR config with the UUID: {{drConfigUuid}}"
+        },
+        "enableDrPrompt": {
+          "featureDescription": "Enable <bold>Active-Active Single-Master Disaster Recovery</bold> (DR) for near-zero recovery point objective (RPO) & recovery time objective (RTO) in the event of a universe outage.",
+          "actionButton": "Configure & Enable Disaster Recovery",
+          "learnMore": "Learn more about <docsLink>DR.</docsLink>"
+        },
+        "banner": {
+          "enablingDr": "<bold>Enabling disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
+          "failoverInProgress": "<bold>Failover in progress...</bold> Universe operations are not available while the operation is in progress.",
+          "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
+          "drConfigHalted": "<bold>Warning!</bold> DR replication stream has been manually halted. ",
+          "drConfigRestartRequired": "<bold>Warning!</bold> DR replication failed which means the DR replica is severely out-of-sync with the DR primary."
+        },
+        "failover": {
+          "initiateModal": {
+            "title": "Failover",
+            "instruction": "Select failover type",
+            "submitButton": "Initiate Failover",
+            "option": {
+              "failoverImmediately": {
+                "optionName": "Failover Immediately",
+                "description": "Start failover immediately at the cost of losing some data that is not replicated to the standby universe yet."
+              },
+              "waitForReplicationDrain": {
+                "optionName": "Wait for Replication Drain",
+                "description": "Wait for the standby cluster to be fully synchronized with the primary by draining replication before failing over."
+              }
+            },
+            "property": {
+              "estimatedDataLoss": {
+                "label": "Estimated data loss",
+                "tooltip": "Data loss is estimated based on the internal clock skew on the standby cluster.",
+                "rpoBenchmark": {
+                  "below": "{{ms}}ms lower than RPO",
+                  "above": "{{ms}}ms greater than RPO",
+                  "equal": "Data loss equal to RPO"
+                },
+                "none": "None"
+              }
+            },
+            "note": {
+              "stopWorkload": "<bold>Stop application workloads</bold> before initiating failover as all <bold>writes will be rejected</bold> during failover."
+            }
+          },
+          "abortModal": {
+            "title": "Abort Failover",
+            "instruction": "The replication drain is erroring out. To proceed with failover, accept the estimated data loss of {{estimatedDataLoss}}ms.",
+            "acknowledge": "I understand and acknowledge the estimated data loss of {{estimatedDataLoss}}ms.",
+            "submitButton": "Abort Failover"
+          }
+        },
+        "config": {
+          "aria": {
+            "drConfigTabs": "DR Config Tabs"
+          },
+          "tab": {
+            "overview": "Overview",
+            "drStatus": "DR Status"
+          },
+          "streamStatus": {
+            "operational": "Operational",
+            "paused": "Paused",
+            "error": "Error",
+            "inProgress": "In Progress"
+          },
+          "property": {
+            "drStatus": {
+              "label": "DR status",
+              "tooltip": "Disaster Recovery (DR) utilizes asynchronous replication to ensure consistency between the primary and standby universe. An unhealthy stream means there is significant replication lag."
+            },
+            "estimatedDataLoss": {
+              "label": "Estimated data loss",
+              "tooltip": "If you would like to failover, this is the estimated data loss measured in time. This is estimated based on the clock skew of tablets on the standby universe."
+            },
+            "replicationLag": "Replication Lag",
+            "minSafeTimeLagAcrossAllTables": "Minimum Safe Time Lag across all tables"
+          },
+          "participant": {
+            "drPrimary": "DR PRIMARY",
+            "drReplica": "DR REPLICA",
+            "role": {
+              "active": "Active",
+              "standby": "Standby"
+            }
+          },
+          "createModal": {
+            "title": "Configure Active-Active Single-Master Disaster Recovery (DR)",
+            "step": {
+              "selectTargetUniverse": {
+                "instruction": "1. Select a universe to use as the DR replica.",
+                "submitButton": "Next: Select databases",
+                "drReplica": "DR Replica Universe"
+              },
+              "selectDatabases": {
+                "instruction": "2. Select the databases to enable disaster recovery for.",
+                "submitButton": "Next: Configure boostrap",
+                "databases": "Databases",
+                "sizeGb": "Size (GB)",
+                "ysqlDatabasesSelected": "YSQL: {{selectedDatabaseCount}} out of {totalDatabaseCount}} selected.",
+                "pitrSetUpNote": "Note: Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
+              },
+              "configureBootstrap": {
+                "instruction": "3. Configure bootstrap.",
+                "submitButton": "Next: Configure RPO",
+                "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
+                "parallelThreads": "Parallel threads",
+                "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
+              },
+              "configureRpo": {
+                "instruction": "4. Configure RPO threshold to receive alerts.",
+                "submitButton": "Set up and Enable Disaster Recovery",
+                "rpo": "Recovery Point Objective (RPO)",
+                "duration": {
+                  "second": "Second",
+                  "minute": "Minute",
+                  "hour": "Hour"
+                }
+              }
+            },
+            "error": {
+              "requestFailure": "Create active-active single-master disaster recovery (DR) request failed",
+              "taskFailure": "Failed to enable active-active single-master disaster recovery (DR)."
+            },
+            "success": {
+              "requestSuccess": "Enabling active-active single-master disaster recovery (DR)...",
+              "taskSuccess": "Active-active single-master disaster recovery (DR) is now enabled."
+            }
+          },
+          "deleteModal": {
+            "title": "Remove Active-Active Single-Master Disaster Recovery (DR): {{drConfigName}}",
+            "submitButton": "Remove",
+            "deleteConfirmation": "Are you sure you want to remove disaster recovery?",
+            "deleteConsequence": "Your databases will no longer be replicated and there will be no DR replica universe to failover to in case of a disaster.",
+            "confirmationInstructions": "Enter DR config name to proceed.",
+            "error": {
+              "requestFailure": "Active-active single-master disaster recovery (DR) removal request failed",
+              "taskFailure": "Active-active single-master disaster recovery (DR) removal task failed."
+            },
+            "success": {
+              "requestSuccess": "Removing active-active single-master disaster recovery (DR)...",
+              "taskSuccess": "Removed active-active single-master disaster recovery (DR)."
+            }
+          },
+          "editModal": {
+            "title": "Edit DR Configuration",
+            "bootstrapConfiguration": "Bootstrap Configuration",
+            "backupStorageConfig": {
+              "label": "Backup Storage Config",
+              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            },
+            "error": {
+              "requestFailure": "Edit DR configuration request failed",
+              "taskFailure": "Edit DR configuration task failed.",
+              "backupStorageConfigRequired": "Please select a backup storage config."
+            },
+            "success": {
+              "requestSuccess": "Editing DR configuration...",
+              "taskSuccess": "Edit DR configuration task succeeded."
+            }
+          },
+          "editTargetModal": {
+            "title": "Change DR Replica Universe",
+            "step": {
+              "selectTargetUniverse": {
+                "drReplica": "DR Replica Universe",
+                "nextButton": "Next: Configure bootstrap",
+                "error": {
+                  "targetUniverseRequired": "Required."
+                }
+              },
+              "configureBootstrap": {
+                "infoText": "Initial seeding is required when the database contains data. This involves a process called bootstrapping. Bootstrapping requires a backup storage config as an intermediate third party storage, and is <bold>time and resource intensive.</bold>",
+                "backupStorageConfig": {
+                  "label": "Backup Storage Config",
+                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                },
+                "error": {
+                  "backupStorageConfigRequired": "Required."
+                }
+              }
+            },
+            "error": {
+              "requestFailure": "Change DR replica request failed",
+              "taskFailure": "Change DR replica task failed."
+            },
+            "success": {
+              "requestSuccess": "Changing DR replica...",
+              "taskSuccess": "Change DR replica task succeeded."
+            }
+          },
+          "editTablesModal": {
+            "title": "Select Databases and tables",
+            "instruction": "Select the databases to enable disaster recovery for",
+            "submitButton": {
+              "validate": "Validate Selection",
+              "applyChanges": "Apply Changes"
+            },
+            "error": {
+              "requestFailure": "Edit tables request failed",
+              "taskFailure": "Edit tables task failed.",
+              "fetchSourceUniverseDetailsFailure": "Failed to fetch source universe details.",
+              "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
+              "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe",
+              "undefinedTargetUniverseUuid": "The xcluster config does not have an assoicated target universe",
+              "validationMinimumTableUuids": "Select at least one table to proceed."
+            },
+            "success": {
+              "requestSuccess": "Updating tables under replication.",
+              "taskSuccess": "Updated tables under replication."
+            }
+          }
+        }
       }
     },
     "admin": {
@@ -606,6 +845,11 @@
       "all": "All Providers",
       "errorMessage": "Failed to fetch list of providers"
     },
+    "storageConfig": {
+      "pill": {
+        "multiRegionSupport": "Multi-region support"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -641,6 +885,7 @@
       "restoreSuccess": "Success. Click <0>here</0> for task details",
       "allKeyspaces": "All Keyspaces",
       "preparingRestore": "Preparing Restore...",
+      "waitingMsg": "This can take a few seconds",
       "backupInfoBanner": {
         "backupSource": "Backup source (universe name)",
         "createdAt": "Created at",
@@ -653,6 +898,7 @@
       "generalSettings": {
         "restore": "Restore",
         "next": "Next",
+        "verifying": "Verifying",
         "universeSelection": {
           "title": "Select target",
           "selectTargetUniverse": "Select target universe",
@@ -712,6 +958,21 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      },
+      "tablespaces": {
+        "checkboxTitle": "Restore tablespaces and data to their respective regions",
+        "checkboxHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+        "unSupportedModal": {
+          "title": "Unable to Restore Tablespaces",
+          "warningText": "<b>Note!</b> You can proceed without restoring tablespaces, however none of the tablespaces are preserved and all their data is written to the primary region [location]. After the restore, you will have to re-add all the tablespaces. <a>Learn more</a>",
+          "submitLabel": "Restore Without Tablespaces",
+          "cancelLabel": "Cancel Restore",
+          "subTitle": "Tablespaces that don't meet the requirements for the restore",
+          "logs": "See the <a>logs</a> for more information.",
+          "topologyMismatch": "Topology mismatch with the target Universe",
+          "nameAlreadyExists": "Name already exists in the target universe",
+          "tablespaceName": "Tablespace name"
+        }
       }
     },
     "rbac": {

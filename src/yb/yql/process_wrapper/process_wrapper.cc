@@ -66,7 +66,7 @@ void ProcessSupervisor::RunThread() {
       if (ret_code == 0) {
         LOG(INFO) << process_name << " exited normally";
       } else {
-        util::LogWaitCode(ret_code);
+        util::LogWaitCode(ret_code, process_name);
       }
       process_wrapper_.reset();
     } else {

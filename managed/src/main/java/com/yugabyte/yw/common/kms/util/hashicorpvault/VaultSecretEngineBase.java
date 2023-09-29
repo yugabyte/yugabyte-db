@@ -55,6 +55,7 @@ public abstract class VaultSecretEngineBase {
       }
     }
   }
+
   /** Operations enum : key operations related to usage of secret engine keys */
   public enum VaultOperations {
     @EnumValue("keys")
@@ -156,6 +157,7 @@ public abstract class VaultSecretEngineBase {
   }
 
   public abstract void checkForPermissions() throws Exception;
+
   /**
    * @param engineKeyName name of the "vault key" to be created. Vault key is then further used to
    *     encrypt universekey.

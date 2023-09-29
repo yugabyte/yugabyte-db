@@ -62,7 +62,9 @@ import play.libs.Json;
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
-  private static final Pattern AZU_NO_LOCAL_DISK = Pattern.compile("Standard_(D|E)[0-9]*as\\_v5");
+  // todo: https://yugabyte.atlassian.net/browse/PLAT-10505
+  private static final Pattern AZU_NO_LOCAL_DISK =
+      Pattern.compile("Standard_(D|E)[0-9]*as\\_v5|Standard_D[0-9]*s\\_v5|Standard_D[0-9]*s\\_v4");
 
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");

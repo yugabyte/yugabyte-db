@@ -1080,7 +1080,7 @@ TEST_F(RpcStubTest, OutboundSidecars) {
   auto& sidecars = controller.outbound_sidecars();
   for (auto i : Range(kNumSidecars)) {
     auto data = RandomHumanReadableString(1_KB + 2_KB * i);
-    sidecars.Start().Append(data);
+    sidecars.Start().Append(Slice(data));
     values.push_back(data);
   }
 

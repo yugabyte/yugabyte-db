@@ -1291,3 +1291,9 @@ enum { kPlatformUsesOPDSections = 1 };
 enum { kPlatformUsesOPDSections = 0 };
 #define FUNC_PTR_TO_CHAR_PTR(func)  (reinterpret_cast<char *>(func))
 #endif
+
+#if defined(__clang__)
+#define MUST_TAIL [[clang::musttail]]
+#else
+#define MUST_TAIL
+#endif

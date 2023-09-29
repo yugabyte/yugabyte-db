@@ -195,6 +195,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Time of the next check whether this transaction has been aborted.
   HybridTime abort_check_ht_;
+
+  // Number of outstanding status request rpcs.
+  std::atomic<int64_t> outstanding_status_requests_{0};
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

@@ -126,9 +126,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
 
       // Update the user intent.
-      // This writes placement info and user intent of all clusters to DB.
-      writeUserIntentToUniverse();
-
+      // This writes new state of nodes to DB.
+      updateUniverseNodesAndSettings(universe, taskParams(), false);
       // primary cluster edit.
       boolean mastersAddrChanged =
           editCluster(
@@ -137,6 +136,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getPrimaryCluster(),
               masterAddresses,
               false /* restartAllPods */);
+      // Updating cluster in DB
+      createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -147,6 +148,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getClusterByUuid(cluster.uuid),
               masterAddresses,
               mastersAddrChanged);
+          // Updating cluster in DB
+          createUpdateUniverseIntentTask(cluster);
         }
       }
 
@@ -341,7 +344,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     // Update the blacklist servers on master leader.
-    createPlacementInfoTask(tserversToRemove)
+    createPlacementInfoTask(tserversToRemove, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     // If the tservers have been removed, move the data.

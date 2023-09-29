@@ -85,6 +85,7 @@ public class KubernetesOperatorStatusUpdater {
       }
     }
   }
+
   /*
    * Update Backup Status
    */
@@ -322,7 +323,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   private Backup getBackupByUUID(KubernetesClient kubernetesClient, UUID uuid) {
-    return kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()
+    return kubernetesClient
+        .resources(Backup.class)
+        .inNamespace(namespace)
+        .list()
+        .getItems()
         .stream()
         .filter(r -> Strings.equals(r.getStatus().getResourceUUID(), uuid.toString()))
         .findFirst()
@@ -330,7 +335,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   private Release getReleaseByUUID(KubernetesClient kubernetesClient, UUID uuid) {
-    return kubernetesClient.resources(Release.class).inNamespace(namespace).list().getItems()
+    return kubernetesClient
+        .resources(Release.class)
+        .inNamespace(namespace)
+        .list()
+        .getItems()
         .stream()
         .filter(r -> Strings.equals(r.getStatus().getResourceUUID(), uuid.toString()))
         .findFirst()
@@ -338,7 +347,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   private StorageConfig getStorageConfigByUUID(KubernetesClient kubernetesClient, UUID uuid) {
-    return kubernetesClient.resources(StorageConfig.class).inNamespace(namespace).list().getItems()
+    return kubernetesClient
+        .resources(StorageConfig.class)
+        .inNamespace(namespace)
+        .list()
+        .getItems()
         .stream()
         .filter(r -> Strings.equals(r.getStatus().getResourceUUID(), uuid.toString()))
         .findFirst()
@@ -346,7 +359,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   private SupportBundle getSupportBundleByUUID(KubernetesClient kubernetesClient, UUID uuid) {
-    return kubernetesClient.resources(SupportBundle.class).inNamespace(namespace).list().getItems()
+    return kubernetesClient
+        .resources(SupportBundle.class)
+        .inNamespace(namespace)
+        .list()
+        .getItems()
         .stream()
         .filter(r -> Strings.equals(r.getStatus().getResourceUUID(), uuid.toString()))
         .findFirst()
@@ -354,7 +371,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   private YBUniverse getYBUniverseByUUID(KubernetesClient kubernetesClient, UUID uuid) {
-    return kubernetesClient.resources(YBUniverse.class).inNamespace(namespace).list().getItems()
+    return kubernetesClient
+        .resources(YBUniverse.class)
+        .inNamespace(namespace)
+        .list()
+        .getItems()
         .stream()
         .filter(r -> Strings.equals(r.getStatus().getResourceUUID(), uuid.toString()))
         .findFirst()

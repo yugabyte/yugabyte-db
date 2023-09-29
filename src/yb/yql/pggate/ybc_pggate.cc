@@ -280,6 +280,24 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
   return Status::OK();
 }
 
+void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInfo> caching_info) {
+  pgapi->StartSysTablePrefetching({caching_info, implicit_cast<uint64_t>(yb_fetch_row_limit)});
+}
+
+PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode mode) {
+  switch (mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE:
+      return PrefetchingCacheMode::TRUST_CACHE;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
+      return PrefetchingCacheMode::RENEW_CACHE_SOFT;
+    case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
+      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
+      return PrefetchingCacheMode::RENEW_CACHE_HARD;
+  }
+  LOG(DFATAL) << "Unexpected PgSysTablePrefetcherCacheMode value " << mode;
+  return PrefetchingCacheMode::RENEW_CACHE_HARD;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -644,8 +662,19 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return ToYBCStatus(pgapi->DeleteSequenceTuple(db_oid, seq_oid));
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropSequence(database_oid, sequence_oid, handle));
+}
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropSequence(handle));
+}
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropDBSequences(database_oid, handle));
 }
 
 // Table Operations -------------------------------------------------------------------------------
@@ -1648,28 +1677,16 @@ void* YBCPgGetThreadLocalErrStatus() {
   return PgGetThreadLocalErrStatus();
 }
 
+void YBCStartSysTablePrefetchingNoCache() {
+  YBCStartSysTablePrefetchingImpl(std::nullopt);
+}
+
 void YBCStartSysTablePrefetching(
-  YBCPgLastKnownCatalogVersionInfo version_info,
-  YBCPgSysTablePrefetcherCacheMode cache_mode) {
-  PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
-  switch (cache_mode) {
-    case YB_YQL_PREFETCHER_TRUST_CACHE:
-      mode = PrefetchingCacheMode::TRUST_CACHE;
-      break;
-    case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
-      mode = PrefetchingCacheMode::RENEW_CACHE_SOFT;
-      break;
-    case YB_YQL_PREFETCHER_RENEW_CACHE_HARD:
-      LOG(DFATAL) << "Emergency fallback prefetching cache mode is used";
-      mode = PrefetchingCacheMode::RENEW_CACHE_HARD;
-      break;
-    default:
-      break;
-  }
-  pgapi->StartSysTablePrefetching(PrefetcherOptions{
+    YBCPgLastKnownCatalogVersionInfo version_info,
+    YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
       {version_info.version, version_info.is_db_catalog_version_mode},
-      mode,
-      implicit_cast<uint64_t>(yb_fetch_row_limit)});
+      YBCMapPrefetcherCacheMode(cache_mode)});
 }
 
 void YBCStopSysTablePrefetching() {

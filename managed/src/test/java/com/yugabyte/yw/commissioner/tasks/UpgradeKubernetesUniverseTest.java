@@ -130,6 +130,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
           .thenReturn(mockUpgradeYsqlResponse);
       when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromString(masterLeaderName));
     } catch (Exception ex) {
       fail();
     }
@@ -570,7 +572,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testSoftwareUpgradeMultiAZ() {
     setupUniverseMultiAZ(/* Create Masters */ false);
-
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);

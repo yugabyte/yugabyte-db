@@ -27,13 +27,13 @@ Each read replica cluster can have its own [replication factor](../../../archite
 
 You can delete, modify, and scale read replicas. Adding or removing nodes incurs a load on the replica. Perform scaling operations when the replica isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
 
-The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region of the primary cluster and its replicas.
+The **Regions** section on the cluster **Settings > Infrastructure** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region of the primary cluster and its replicas.
 
 ## Prerequisites
 
 Read replicas require the following:
 
-- Primary cluster that is deployed in a VPC, in AWS or GCP.
+- Primary cluster that is deployed in a VPC.
 - Read replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy a read replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Limitations

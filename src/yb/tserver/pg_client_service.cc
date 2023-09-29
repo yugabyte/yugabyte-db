@@ -50,6 +50,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/txn_cache.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -194,19 +195,6 @@ void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB*
   partition_list->set_version(table_partition_list->version);
 }
 
-void AddTransactionInfo(
-    PgGetActiveTransactionListResponsePB* out, const PgClientSessionLocker& locker) {
-  auto& session = *locker;
-  const auto* txn_id = session.GetTransactionId();
-  if (!txn_id) {
-    return;
-  }
-
-  auto& entry = *out->add_entries();
-  entry.set_session_id(session.id());
-  txn_id->AsSlice().CopyToBuffer(entry.mutable_txn_id());
-}
-
 } // namespace
 
 template <class Extractor>
@@ -249,6 +237,7 @@ class PgClientServiceImpl::Impl {
   }
 
   ~Impl() {
+    txn_cache_.ClearCache();
     check_expired_sessions_.Shutdown();
   }
 
@@ -266,7 +255,7 @@ class PgClientServiceImpl::Impl {
     auto session = std::make_shared<LockablePgClientSession>(
         FLAGS_pg_client_session_expiration_ms * 1ms, session_id, &client(), clock_,
         transaction_pool_provider_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
+        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, &txn_cache_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_.data(), instance_id_.size());
@@ -915,20 +904,11 @@ class PgClientServiceImpl::Impl {
       const PgGetActiveTransactionListRequestPB& req, PgGetActiveTransactionListResponsePB* resp,
       rpc::RpcContext* context) {
     if (req.has_session_id()) {
-      AddTransactionInfo(resp, VERIFY_RESULT(GetSession(req.session_id().value())));
+      txn_cache_.CopyTransactionInfo(req.session_id().value(), resp);
       return Status::OK();
     }
 
-    decltype(sessions_) sessions_snapshot;
-    {
-      std::lock_guard lock(mutex_);
-      sessions_snapshot = sessions_;
-    }
-
-    for (const auto& session : sessions_snapshot) {
-      AddTransactionInfo(resp, PgClientSessionLocker(session));
-    }
-
+    txn_cache_.CopyTransactionInfoForAllSessions(resp);
     return Status::OK();
   }
 
@@ -991,6 +971,11 @@ class PgClientServiceImpl::Impl {
       if (status.IsNotFound()) {
         status = Status::OK();
       }
+    }
+
+    if (status.ok()) {
+      const auto& txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.transaction_id()));
+      txn_cache_.EraseTransactionById(TransactionId(txn_id));
     }
 
     StatusToPB(status, resp->mutable_status());
@@ -1063,6 +1048,7 @@ class PgClientServiceImpl::Impl {
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
+          txn_cache_.EraseTransactionEntries(it->get()->id());
           sessions_.erase(it);
         }
       }
@@ -1115,6 +1101,8 @@ class PgClientServiceImpl::Impl {
   PgResponseCache response_cache_;
 
   PgSequenceCache sequence_cache_;
+
+  TransactionCache txn_cache_;
 
   const Uuid instance_id_;
 };

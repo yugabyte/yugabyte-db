@@ -75,7 +75,7 @@ export default class ClusterInfoPanel extends Component {
                   </span>
                 </Col>
               </Row>
-              {useK8CustomResources ? (
+              {useK8CustomResources && isItKubernetesUniverse ? (
                 <Row className={'cluster-metadata'}>
                   <Col lg={8} md={6} sm={6} xs={6}>
                     <span className={'cluster-metadata__label'}>{'Number of Cores:'}</span>
@@ -133,7 +133,7 @@ export default class ClusterInfoPanel extends Component {
                       </span>
                     </Col>
                   </Row>
-                  {useK8CustomResources ? (
+                  {useK8CustomResources && isItKubernetesUniverse ? (
                     <Row className={'cluster-metadata'}>
                       <Col lg={8} md={6} sm={6} xs={6}>
                         <span className={'cluster-metadata__label'}>{'Number of Cores:'}</span>

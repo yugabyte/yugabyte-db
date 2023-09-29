@@ -51,7 +51,8 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
-        xClusterConfig?.data?.status &&
+        !xClusterConfig.data?.usedForDr &&
+        xClusterConfig.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
         queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.data.uuid));
@@ -66,20 +67,23 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     return <YBErrorIndicator />;
   }
 
+  const nonDrXClusterConfigQueries = xClusterConfigQueries.filter(
+    (xClusterConfigQuery) => !xClusterConfigQuery.data?.usedForDr
+  );
   return (
     <>
       <ul className={styles.listContainer}>
-        {xClusterConfigQueries.length === 0 ? (
+        {nonDrXClusterConfigQueries.length === 0 ? (
           <div className={clsx(styles.configCard, styles.emptyConfigListPlaceholder)}>
             No replications to show.
           </div>
         ) : (
-          xClusterConfigQueries.map((xClusterConfigQuery, index) => {
+          nonDrXClusterConfigQueries.map((xClusterConfigQuery, index) => {
             const xClusterConfigUUID = universeXClusterConfigUUIDs[index];
             if (xClusterConfigQuery.isLoading) {
               return (
                 <li className={clsx(styles.listItem)} key={xClusterConfigUUID}>
-                  <div className={(styles.configCard, styles.loading)}>
+                  <div className={clsx(styles.configCard, styles.loading)}>
                     <YBLoadingCircleIcon />
                   </div>
                 </li>

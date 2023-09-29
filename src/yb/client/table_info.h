@@ -38,6 +38,10 @@ struct YBTableInfo {
   boost::optional<master::ReplicationInfoPB> replication_info;
   boost::optional<uint32> wal_retention_secs;
 
+  // Populated and used by GetTableSchema() for YSQL tables.
+  boost::optional<google::protobuf::RepeatedPtrField<yb::master::YsqlDdlTxnVerifierStatePB>>
+      ysql_ddl_txn_verifier_state;
+
   size_t DynamicMemoryUsage() const {
     size_t size =
         sizeof(*this) + DynamicMemoryUsageOf(table_name, table_id, schema, partition_schema);

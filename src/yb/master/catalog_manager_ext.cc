@@ -38,6 +38,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/snapshot_state.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/client/client-internal.h"
@@ -155,6 +156,10 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_bool(
     enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
+
+DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
+    "Number of hours for which to keep the snapshot around. Only used if no value was provided "
+    "by the client when creating the snapshot.");
 
 namespace yb {
 
@@ -434,13 +439,25 @@ server::Clock* CatalogManager::Clock() {
 
 Status CatalogManager::CreateTransactionAwareSnapshot(
     const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline) {
+  if (req.has_retention_duration_hours() && req.retention_duration_hours() == 0) {
+    return STATUS(
+        InvalidArgument, "Snapshot Ttl value must be non-zero. -1 to retain indefinitely");
+  }
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
   flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
        .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types());
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
 
+  // If client does not explicitly pass in a value then use a default
+  // governed by gflag default_snapshot_retention_hours. Cases when this can happen:
+  // 1. Client is on a version that does not have this feature.
+  // 2. The user did not specify any Ttl value explicitly.
+  int32_t retention_duration_hours = req.has_retention_duration_hours() ?
+      req.retention_duration_hours() : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, req.imported(), leader_ready_term(), deadline));
+      entries, req.imported(), leader_ready_term(), deadline,
+      retention_duration_hours));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -525,6 +542,10 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
+        if (l->has_ysql_ddl_txn_verifier_state()) {
+          return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
+                               table_info->id());
+        }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
           const auto res = GetPgSchemaName(table_info);
@@ -2649,24 +2670,10 @@ void CatalogManager::CleanupHiddenTablets(
       continue;
     }
     auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-    bool cleanup = true;
-    for (const auto& schedule_id_str : lock->pb.retained_by_snapshot_schedules()) {
-      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-      auto it = schedule_min_restore_time.find(schedule_id);
-      // If schedule is not present in schedule_min_restore_time then it means that schedule
-      // was deleted, so it should not retain the tablet.
-      if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-        VLOG_WITH_PREFIX(1)
-            << "Retaining tablet: " << tablet->tablet_id() << ", hide hybrid time: "
-            << hide_hybrid_time << ", because of schedule: " << schedule_id
-            << ", min restore time: " << it->second;
-        cleanup = false;
-        break;
-      }
-    }
-    if (cleanup) {
-      cleanup = !RetainedByXRepl(tablet->id());
-    }
+    bool cleanup = !CatalogManagerUtil::RetainTablet(
+        lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
+        hide_hybrid_time, tablet->tablet_id()) && !RetainedByXRepl(tablet->id()) &&
+        !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->id());
     if (cleanup) {
       tablets_to_delete.push_back(tablet);
     }
@@ -2674,8 +2681,8 @@ void CatalogManager::CleanupHiddenTablets(
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
     WARN_NOT_OK(DeleteTabletListAndSendRequests(
-        tablets_to_delete, "Cleanup hidden tablets", {} /* retained_by_snapshot_schedules */,
-        false /* transaction_status_tablets */, epoch),
+        tablets_to_delete, "Cleanup hidden tablets", {} /* retaining_snapshot_schedules */,
+        false /* transaction_status_tablets */, epoch, false /* active_snapshots */),
         "Failed to cleanup hidden tablets");
   }
 
@@ -2710,24 +2717,11 @@ void CatalogManager::CleanupHiddenTables(
         auto tablet_info = table->GetColocatedUserTablet();
         if (tablet_info) {
           auto tablet_lock = tablet_info->LockForRead();
-          bool cleanup = true;
           auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-
-          for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
-            auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-            auto it = schedule_min_restore_time.find(schedule_id);
-            // If schedule is not present in schedule_min_restore_time then it means that schedule
-            // was deleted, so it should not retain the tablet.
-            if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-              VLOG_WITH_PREFIX(1)
-                  << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
-                  << hide_hybrid_time << ", because of schedule: " << schedule_id
-                  << ", min restore time: " << it->second;
-              cleanup = false;
-              break;
-            }
-          }
-
+          bool cleanup = !CatalogManagerUtil::RetainTablet(
+              tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
+              hide_hybrid_time, tablet_info->tablet_id()) &&
+              !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id());
           if (!cleanup) {
             return true;
           }

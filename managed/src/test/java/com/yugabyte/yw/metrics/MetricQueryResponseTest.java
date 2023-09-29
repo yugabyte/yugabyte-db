@@ -36,8 +36,10 @@ public class MetricQueryResponseTest {
     JsonNode responseJson =
         Json.parse(
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
-                + " {\"node_prefix\": \"1-host\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
-                + " {\"node_prefix\": \"1-host\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+                + " {\"node_prefix\":"
+                + " \"1-host\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
+                + " {\"node_prefix\": \"1-host\"},"
+                + " \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
 

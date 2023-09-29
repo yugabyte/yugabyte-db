@@ -142,7 +142,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Ignore(
-      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
+      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper"
+          + " for an unknown reason")
   @Test
   public void testCreateAndRecoverKey() {
     String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";

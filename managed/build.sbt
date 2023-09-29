@@ -13,9 +13,6 @@ useCoursier := false
 // Constants
 // ------------------------------------------------------------------------------------------------
 
-// This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), default = true)
-
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
 
@@ -96,6 +93,8 @@ lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
+lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -327,6 +326,7 @@ externalResolvers := {
     ).value
   buildUI.value
   versionGenerate.value
+  downloadThirdPartyDeps.value
 }
 
 cleanPlatform := {
@@ -389,9 +389,21 @@ generateCrdObjects := {
   status
 }
 
+downloadThirdPartyDeps := {
+  ybLog("Downloading third-party dependencies...")
+  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  status
+}
+
 compileJavaGenClient := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
+  status
+}
+
+devSpaceReload := {
+  (Universal / packageBin).value
+  val status = Process("devspace run extract-archive").!
   status
 }
 
@@ -408,7 +420,7 @@ cleanModules := {
 }
 
 def get_venv_dir(): String = {
-  if (USE_PYTHON3) "venv" else "python_virtual_env"
+  "venv"
 }
 
 cleanVenv := {
@@ -459,6 +471,11 @@ lazy val gogen = project.in(file("client/go"))
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
+// Being used by DevSpace tool to build an archive without building the UI
+Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
+
+Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
+
 runPlatformTask := {
   (Compile / run).toTask("").value
 }
@@ -475,7 +492,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.63-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.64-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b14"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31"
 

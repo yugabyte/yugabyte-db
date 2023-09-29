@@ -48,6 +48,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -163,6 +164,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     user = ModelFactory.testUser(defaultCustomer);
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "true");
     provider =
         Provider.create(
             defaultCustomer.getUuid(), Common.CloudType.aws, "test", new ProviderDetails());
@@ -202,6 +204,8 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     // depend on this value being non-null
     when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
         .thenReturn("/tmp/some-fake-path-here/kubernetes.conf");
+    when(mockCloudQueryHelper.getDefaultImage(any(Region.class), any()))
+        .thenReturn("ybImage-default");
   }
 
   private void setUpCredsValidation(boolean valid) {
@@ -246,22 +250,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.CloudRegionSetup);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CloudAccessKeySetup);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CloudInitializer);
-  }
-
-  @Test
-  public void testAddRegionNoZonesFail() throws InterruptedException {
-    setUpCredsValidation(true);
-    Provider editProviderReq = Provider.getOrBadRequest(provider.getUuid());
-    Region region = new Region();
-    region.setProviderCode(provider.getCloudCode().name());
-    region.setCode("us-west-2");
-    region.setName("us-west-2");
-    region.setVnetName("vnet");
-    region.setSecurityGroupId("sg-1");
-    region.setYbImage("yb-image2");
-    editProviderReq.getRegions().add(region);
-    verifyEditError(
-        editProviderReq, false, "Zone info needs to be specified for region: us-west-2");
   }
 
   @Test
@@ -899,7 +887,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
     regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
     details.setRegions(regionImageInfo);
-    ImageBundle.create(awsProvider, "ib-1", details, true);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_ACTIVE);
+    ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
 
     Result providerRes = getProvider(awsProvider.getUuid());
     JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
@@ -929,6 +920,96 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
     ImageBundleDetails.BundleInfo bInfo = ib1.getDetails().getRegions().get("us-west-2");
     assertEquals("Updated YB Image", bInfo.getYbImage());
+  }
+
+  @Test
+  public void testFailEditProviderRegionAddCustomBundle() throws InterruptedException {
+    Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.CUSTOM);
+    ImageBundle iB = ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+
+    Result providerRes = getProvider(awsProvider.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    awsProvider = Json.fromJson(bodyJson, Provider.class);
+
+    // Add a region to the provider
+    awsProvider.getRegions().add(Json.fromJson(getAWSRegionJson(), Region.class));
+    Provider updatedProvider = awsProvider;
+    Result result = assertPlatformException(() -> editProvider(updatedProvider, false));
+    assertBadRequest(result, "Specify the AMI for the region us-west-2 in the image bundle ib-1");
+
+    regionImageInfo.put("us-west-2", new ImageBundleDetails.BundleInfo());
+    iB.getDetails().setRegions(regionImageInfo);
+
+    awsProvider.setImageBundles(ImmutableList.of(iB));
+    UUID taskUUID = doEditProvider(awsProvider, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = iB.getDetails().getRegions();
+    assertEquals(2, bundleInfoMap.size());
+    assertTrue(bundleInfoMap.keySet().contains("us-west-2"));
+  }
+
+  @Test
+  public void testEditProviderRegionAddYBADeprecatedBundle() throws InterruptedException {
+    Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_DEPRECATED);
+    ImageBundle iB = ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+
+    Result providerRes = getProvider(awsProvider.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    awsProvider = Json.fromJson(bodyJson, Provider.class);
+
+    // Add a region to the provider
+    awsProvider.getRegions().add(Json.fromJson(getAWSRegionJson(), Region.class));
+    UUID taskUUID = doEditProvider(awsProvider, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+
+    Map<String, ImageBundleDetails.BundleInfo> bundleInfoMap = iB.getDetails().getRegions();
+    assertEquals(1, bundleInfoMap.size());
+    assertFalse(awsProvider.getImageBundles().get(0).getActive());
+  }
+
+  @Test
+  public void testRegionDeleteImageBundleUpdate() throws InterruptedException {
+    Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
+    Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    ImageBundle.Metadata metadata = new ImageBundle.Metadata();
+    metadata.setType(ImageBundleType.YBA_DEPRECATED);
+    ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+
+    Result providerRes = getProvider(awsProvider.getUuid());
+    JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    awsProvider = Json.fromJson(bodyJson, Provider.class);
+
+    assertEquals(awsProvider.getImageBundles().get(0).getDetails().getRegions().size(), 1);
+    awsProvider.getRegions().get(0).setActive(false);
+    UUID taskUUID = doEditProvider(awsProvider, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    awsProvider = Provider.getOrBadRequest(awsProvider.getUuid());
+
+    assertEquals(awsProvider.getImageBundles().get(0).getDetails().getRegions().size(), 0);
   }
 
   @Test

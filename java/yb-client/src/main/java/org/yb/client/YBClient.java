@@ -61,6 +61,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -958,6 +959,26 @@ public class YBClient implements AutoCloseable {
     }
     Deferred<SetFlagResponse> d = asyncClient.setFlag(hp, flag, value, force);
     return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   * Get a gflag's value from a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to get.
+   * @return string value of flag if valid, else empty string
+   */
+  public String getFlag(HostAndPort hp, String flag) throws Exception {
+    if (flag == null || hp == null) {
+      LOG.warn("Invalid arguments for hp: {}, flag {}", hp.toString(), flag);
+      return "";
+    }
+    Deferred<GetFlagResponse> d = asyncClient.getFlag(hp, flag);
+    GetFlagResponse result = d.join(getDefaultAdminOperationTimeoutMs());
+    if (result.getValid()) {
+      LOG.warn("Invalid flag {}", flag);
+      return result.getValue();
+    }
+    return "";
   }
 
   /**
@@ -2092,6 +2113,13 @@ public class YBClient implements AutoCloseable {
       UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d =
       asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ValidateReplicationInfoResponse validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) throws Exception {
+    Deferred<ValidateReplicationInfoResponse> d =
+      asyncClient.validateReplicationInfo(replicationInfoPB);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

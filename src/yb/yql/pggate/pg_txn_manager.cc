@@ -466,6 +466,7 @@ void PgTxnManager::SetupPerformOptions(
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
+  options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(txn_serial_no_);
   options->set_read_time_serial_no(read_time_serial_no_);

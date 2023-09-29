@@ -38,6 +38,7 @@
 #include <vector>
 #include <atomic>
 
+#include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_fwd.h"
@@ -276,6 +277,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetConfigVersionAndConsumerRegistry(
       int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
 
+  Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
+
   XClusterConsumer* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
@@ -293,6 +296,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
+
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
 
  protected:
   virtual Status RegisterServices();

@@ -14,29 +14,11 @@ showRightNav: true
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_exception_section,plpgsql_handler,plpgsql_handler_condition.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_exception_section,plpgsql_handler,plpgsql_handler_condition.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  plpgsql_exception_section,
+  plpgsql_handler,
+  plpgsql_handler_condition
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -313,29 +295,11 @@ It helps to distinguish between two kinds of error:
 
 The dedicated _[plpgsql_get_stacked_diagnostics_stmt](#plpgsql-get-stacked-diagnostics-stmt)_ (one of the kinds of _[plpgsql_basic_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-basic-stmt)_), gives information about the error that the current handler caught.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_get_stacked_diagnostics_stmt,plpgsql_stacked_diagnostics_item,plpgsql_stacked_diagnostics_item_name.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_get_stacked_diagnostics_stmt,plpgsql_stacked_diagnostics_item,plpgsql_stacked_diagnostics_item_name.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  plpgsql_get_stacked_diagnostics_stmt,
+  plpgsql_stacked_diagnostics_item,
+  plpgsql_stacked_diagnostics_item_name
+{{%/ebnf%}}
 
 The attempt to invoke it in a block statement's executable section causes the _0Z002_ run-time error:
 

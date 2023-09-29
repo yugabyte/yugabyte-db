@@ -3664,5 +3664,39 @@ TEST_F(PgLibPqTempTest, DiscardTempTable) {
   ASSERT_OK(TestRemoveTempTable(false));
 }
 
+// Drop Sequence test.
+TEST_F(PgLibPqTest, DropSequenceTest) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE foo"));
+
+  // Verify that if DROP SEQUENCE fails, the sequence is actually not
+  // dropped.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
+  auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('foo')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior for sequences created using CREATE TABLE.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior is seen while trying to drop the table.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP TABLE t"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "2");
+
+  // Verify that if DROP SEQUENCE is successful, we cannot query the sequence
+  // anymore.
+  ASSERT_OK(conn.Execute("DROP SEQUENCE foo"));
+  ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -47,7 +47,7 @@ Status RedisGet(std::shared_ptr<client::YBSession> session,
                 const string& value) {
   auto get_op = std::make_shared<client::YBRedisReadOp>(table);
   RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
-  RETURN_NOT_OK(session->TEST_ReadSync(get_op));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(get_op));
   if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
     return STATUS_FORMAT(RuntimeError,
                          "Redis get returned bad response code: $0",
@@ -74,6 +74,21 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
 
 } // namespace helpers
 
+
+string YBBackupTestBase::GetTempDir(const string& subdir) {
+  return tmp_dir_ / subdir;
+}
+
+Status YBBackupTestBase::RunBackupCommand(const vector<string>& args, auto *cluster) {
+  return tools::RunBackupCommand(
+      cluster->pgsql_hostport(0), cluster->GetMasterAddresses(),
+      cluster->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
+}
+
+// Explicit instantiation.
+template Status YBBackupTestBase::RunBackupCommand(
+    const vector<string>& args, ExternalMiniCluster* cluster);
+
 void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
@@ -88,14 +103,8 @@ void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options)
   options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
 }
 
-string YBBackupTest::GetTempDir(const string& subdir) {
-  return tmp_dir_ / subdir;
-}
-
 Status YBBackupTest::RunBackupCommand(const vector<string>& args) {
-  return tools::RunBackupCommand(
-      cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(),
-      cluster_->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
+  return YBBackupTestBase::RunBackupCommand(args, cluster_.get());
 }
 
 void YBBackupTest::RecreateDatabase(const string& db) {

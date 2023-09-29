@@ -494,6 +494,10 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
   ASSERT_OK(SetFlagOnAllTServers("ysql_yb_locks_max_transactions", "32"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_max_transactions", "32"));
 
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replication_commands", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
+
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
 }
@@ -509,6 +513,7 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_pg_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_min_txn_age=100");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_max_transactions=3");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=false");
   }
 };
 
@@ -521,6 +526,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_min_txn_age", "100"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_max_transactions", "3"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -553,6 +559,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(true /* expect_target_value */));
 }
@@ -574,6 +581,7 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
 }
