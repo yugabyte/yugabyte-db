@@ -128,7 +128,8 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 {{</tip>}}
 
 ## Row size limit
-Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, we suggest keeping the size in the `10MB` range or less, maximum `32MB`. 
+
+Big columns add up when you select full or multiple rows. For consistent latency or performance, it is recommended keeping the size under 10MB or less, and a maximum of 32MB. 
 
 
 ## Column size limit
