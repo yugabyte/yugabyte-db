@@ -755,7 +755,7 @@ public class GFlagsUtil {
        * Refer Design Doc:
        * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
        */
-      processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams);
+      processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams.getUniverseUUID());
     }
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
@@ -1025,17 +1025,29 @@ public class GFlagsUtil {
   }
 
   public static void processHbaConfFlagIfRequired(
-      NodeDetails node,
+      @Nullable NodeDetails node,
       Map<String, String> userFlags,
       RuntimeConfGetter confGetter,
-      AnsibleConfigureServers.Params taskParams) {
+      UUID universeUUID) {
+    processHbaConfFlagIfRequired(node, userFlags, confGetter, universeUUID, null);
+  }
+
+  public static void processHbaConfFlagIfRequired(
+      @Nullable NodeDetails node,
+      Map<String, String> userFlags,
+      RuntimeConfGetter confGetter,
+      UUID universeUUID,
+      @Nullable UUID placementUUID) {
     String hbaConfValue = userFlags.get(YSQL_HBA_CONF_CSV);
     Path tmpDirectoryPath =
         FileUtils.getOrCreateTmpDirectory(
             confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
     Path localGflagFilePath = tmpDirectoryPath;
-    if (node.getNodeUuid() != null) {
+    if (node != null && node.getNodeUuid() != null) {
       localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    } else if (placementUUID != null) {
+      // For k8s universes we will copy the JWKS key to `/tmp/<clusterUUID>`
+      localGflagFilePath = tmpDirectoryPath.resolve(placementUUID.toString());
     }
     if (!Files.isDirectory(localGflagFilePath)) {
       try {
@@ -1046,9 +1058,20 @@ public class GFlagsUtil {
             String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
       }
     }
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
+    if (placementUUID == null) {
+      if (node == null || (node != null && node.placementUuid == null)) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing placement information for the node in universe {}. Can't Continue",
+                universeUUID.toString()));
+      } else {
+        placementUUID = node.placementUuid;
+      }
+    }
+    UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
     String providerUUID = userIntent.provider;
 
     String modifiedHbaConfEntries = "";

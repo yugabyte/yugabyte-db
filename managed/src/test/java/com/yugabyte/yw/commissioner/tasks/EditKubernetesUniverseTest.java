@@ -146,6 +146,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.UpdatePlacementInfo,
           TaskType.KubernetesCommandExecutor,
+          TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateUniverseIntent,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
@@ -160,6 +161,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));

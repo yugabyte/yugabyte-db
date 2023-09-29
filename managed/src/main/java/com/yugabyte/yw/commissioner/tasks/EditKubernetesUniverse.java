@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -431,6 +432,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         KubernetesCommandExecutor.CommandType.POD_INFO,
         newPI,
         isReadOnlyCluster);
+    if (!tserversToAdd.isEmpty()) {
+      installThirdPartyPackagesTaskK8s(
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+    }
 
     if (!mastersToAdd.isEmpty()) {
       // Update the master addresses on the target universes whose source universe belongs to

@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -2400,7 +2401,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         installThirdPartyPackagesTask(universe)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
       } else {
-        installThirdPartyPackagesTaskK8s(universe)
+        installThirdPartyPackagesTaskK8s(
+                universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
       }
     }
@@ -2552,7 +2554,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         installThirdPartyPackagesTask(universe)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
       } else {
-        installThirdPartyPackagesTaskK8s(universe)
+        installThirdPartyPackagesTaskK8s(
+                universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
             .setSubTaskGroupType(SubTaskGroupType.InstallingThirdPartySoftware);
       }
     }
@@ -2691,12 +2694,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup installThirdPartyPackagesTaskK8s(Universe universe) {
+  public SubTaskGroup installThirdPartyPackagesTaskK8s(
+      Universe universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType upgradeType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstallingThirdPartySoftware");
     InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
     InstallThirdPartySoftwareK8s.Params params = new InstallThirdPartySoftwareK8s.Params();
     params.universeUUID = universe.getUniverseUUID();
-    params.softwareType = InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM;
+    params.softwareType = upgradeType;
     task.initialize(params);
 
     subTaskGroup.addSubTask(task);
