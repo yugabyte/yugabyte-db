@@ -194,13 +194,13 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   NamespaceId namespace_id;
   TablegroupId tablegroup_id = "11223344556677889900aabbccddeeff";
   TablespaceId tablespace_id = "";
-  auto client_ = ASSERT_RESULT(cluster_->CreateClient());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
+  ASSERT_OK(client->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,
                                      boost::none /* next_pg_oid */, nullptr /* txn */, false));
   {
-    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    auto namespaces = ASSERT_RESULT(client->ListNamespaces(boost::none));
     for (const auto& ns : namespaces) {
       if (ns.id.name() == namespace_name) {
         namespace_id = ns.id.id();
@@ -211,14 +211,14 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   }
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId.
-  ASSERT_OK(client_->CreateTablegroup(namespace_name,
+  ASSERT_OK(client->CreateTablegroup(namespace_name,
                                       namespace_id,
                                       tablegroup_id,
                                       tablespace_id,
                                       nullptr /* txn */));
 
   // Ensure that the newly created tablegroup shows up in the list.
-  auto exist = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
+  auto exist = ASSERT_RESULT(client->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exist);
   TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
 
@@ -227,7 +227,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
       nullptr, YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, WaitSnapshot::kTrue,
       kSnapshotInterval, kSnapshotInterval * 2));
 
-  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id, nullptr /* txn */));
+  ASSERT_OK(client->DeleteTablegroup(tablegroup_id, nullptr /* txn */));
 
   // We give 2 rounds of retention period for cleanup.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {

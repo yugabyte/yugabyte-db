@@ -114,6 +114,14 @@ Status MiniClusterTestWithClient<T>::CreateClient() {
 }
 
 template <class T>
+Status MiniClusterTestWithClient<T>::EnsureClientCreated() {
+  if (!client_) {
+    return CreateClient();
+  }
+  return Status::OK();
+}
+
+template <class T>
 void MiniClusterTestWithClient<T>::DoTearDown() {
   client_.reset();
   YBMiniClusterTestBase<T>::DoTearDown();

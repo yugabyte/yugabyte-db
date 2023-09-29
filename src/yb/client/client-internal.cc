@@ -1099,8 +1099,8 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
 }
 
 Status YBClient::Data::FlushTablesHelper(YBClient* client,
-                                                const CoarseTimePoint deadline,
-                                                const FlushTablesRequestPB& req) {
+                                         const CoarseTimePoint deadline,
+                                         const FlushTablesRequestPB& req) {
   FlushTablesResponsePB resp;
 
   RETURN_NOT_OK(SyncLeaderMasterRpc(
