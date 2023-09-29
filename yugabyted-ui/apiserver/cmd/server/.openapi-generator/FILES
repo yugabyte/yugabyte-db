@@ -17,6 +17,7 @@ models/model_cluster_table.go
 models/model_cluster_table_list_response.go
 models/model_cluster_tablet.go
 models/model_cluster_tablet_list_response.go
+models/model_column_info.go
 models/model_encryption_info.go
 models/model_entity_metadata.go
 models/model_health_check_info.go
@@ -34,10 +35,17 @@ models/model_node_data.go
 models/model_node_data_cloud_info.go
 models/model_node_data_metrics.go
 models/model_node_data_metrics_active_connections.go
+models/model_placement_block.go
+models/model_placement_cloud_info.go
 models/model_placement_info.go
+models/model_raft_config.go
 models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go
 models/model_slow_query_response_ysql_query_item.go
+models/model_table_info.go
+models/model_table_info_table_replication_info.go
+models/model_table_replication_info.go
+models/model_tablet_info.go
 models/model_version_info.go
 models/model_yb_api_enum.go

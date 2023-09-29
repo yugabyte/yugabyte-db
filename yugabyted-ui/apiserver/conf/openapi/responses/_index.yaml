@@ -105,3 +105,9 @@ VersionInfo:
     application/json:
       schema:
         $ref: '../schemas/_index.yaml#/VersionInfo'
+TableInfoResponse:
+  description: Information for a single table
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/TableInfo'

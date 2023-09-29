@@ -454,6 +454,10 @@ ClusterInfo:
       default: 3
     fault_tolerance:
       $ref: '#/ClusterFaultTolerance'
+    replication_factor:
+      description: The replication factor applied on the cluster
+      title: Cluster Replication Factor
+      type: integer
     node_info:
       $ref: '#/ClusterNodeInfo'
     is_production:
@@ -467,6 +471,7 @@ ClusterInfo:
   required:
     - num_nodes
     - fault_tolerance
+    - replication_factor
     - node_info
     - cluster_tier
     - is_production
@@ -614,7 +619,7 @@ HealthCheckInfo:
 ClusterTabletData:
   title: Cluster Tablet Data
   description: List of cluster tablets
-  type: array
+  type: object
   additionalProperties:
     $ref: '#/ClusterTablet'
 ClusterTablet:
@@ -640,6 +645,132 @@ ClusterTablet:
     - table_uuid
     - table_id
     - has_leader
+TableInfo:
+  title: Table Info
+  description: Table Info
+  type: object
+  properties:
+    table_name:
+      type: string
+    table_id:
+      type: string
+      format: uuid
+    table_version:
+      type: integer
+    table_type:
+      type: string
+    table_state:
+      type: string
+    table_state_message:
+      type: string
+    table_tablespace_oid:
+      type: string
+    table_replication_info:
+      type: object
+      properties:
+        live_replicas:
+          $ref: '#/TableReplicationInfo'
+        read_replicas:
+          type: array
+          items:
+            $ref: '#/TableReplicationInfo'
+    columns:
+      type: array
+      items:
+        $ref: '#/ColumnInfo'
+    tablets:
+      type: array
+      items:
+        $ref: '#/TabletInfo'
+  required:
+    - table_name
+    - table_id
+    - table_version
+    - table_type
+    - table_state
+    - table_state_message
+    - table_replication_info
+    - columns
+    - tablets
+TabletInfo:
+  title: Tablet Info
+  description: Tablet Info
+  type: object
+  properties:
+    tablet_id:
+      type: string
+      format: uuid
+    partition:
+      type: string
+    split_depth:
+      type: integer
+    state:
+      type: string
+    hidden:
+      type: boolean
+    message:
+      type: string
+    raft_config:
+      type: array
+      items:
+        $ref: '#/RaftConfig'
+RaftConfig:
+  title: Raft Config
+  description: Raft Config
+  type: object
+  properties:
+    uuid:
+      type: string
+      format: uuid
+    role:
+      type: string
+    location:
+      type: string
+ColumnInfo:
+  title: Column Info
+  description: Column Info
+  type: object
+  properties:
+    column:
+      type: string
+    id:
+      type: string
+    type:
+      type: string
+TableReplicationInfo:
+  title: TableReplicationInfo
+  description: TableReplicationInfo
+  type: object
+  properties:
+    num_replicas:
+      type: integer
+    placement_blocks:
+      type: array
+      items:
+        $ref: '#/PlacementBlock'
+    placement_uuid:
+      type: string
+      format: uuid
+PlacementBlock:
+  title: Placement Block
+  description: Placement Block
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/PlacementCloudInfo'
+    min_num_replicas:
+      type: integer
+PlacementCloudInfo:
+  title: Placement Cloud Info
+  description: Placement Cloud Info
+  type: object
+  properties:
+    placement_cloud:
+      type: string
+    placement_region:
+      type: string
+    placement_zone:
+      type: string
 VersionInfo:
   title: YugabyteDB Version Info
   description: YugabyteDB version info

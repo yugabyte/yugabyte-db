@@ -175,6 +175,29 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+/table:
+  get:
+    description: Get info on a single table, given table uuid
+    operationId: getTableInfo
+    summary: Get info on a single table, given table uuid
+    tags:
+      - cluster-info
+    parameters:
+      - name: id
+        in: query
+        description: UUID of the table
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/TableInfoResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 /health-check:
   get:
     description: Get health information about the cluster

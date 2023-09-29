@@ -208,6 +208,9 @@ func main() {
         // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
         e.GET("/api/is_load_balancer_idle", c.GetIsLoadBalancerIdle)
 
+        // GetTableInfo - Get info on a single table, given table uuid
+        e.GET("/api/table", c.GetTableInfo)
+
         render_htmls := templates.NewTemplate()
 
         // Code for rendering UI Without embedding the files

@@ -209,6 +209,29 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /table:
+    get:
+      description: Get info on a single table, given table uuid
+      operationId: getTableInfo
+      summary: Get info on a single table, given table uuid
+      tags:
+        - cluster-info
+      parameters:
+        - name: id
+          in: query
+          description: UUID of the table
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/TableInfoResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /health-check:
     get:
       description: Get health information about the cluster
@@ -374,6 +397,7 @@ components:
       required:
         - num_nodes
         - fault_tolerance
+        - replication_factor
         - node_info
         - cluster_tier
         - is_production
@@ -864,6 +888,132 @@ components:
       nullable: false
       items:
         $ref: '#/components/schemas/ClusterTable'
+    PlacementCloudInfo:
+      title: Placement Cloud Info
+      description: Placement Cloud Info
+      type: object
+      properties:
+        placement_cloud:
+          type: string
+        placement_region:
+          type: string
+        placement_zone:
+          type: string
+    PlacementBlock:
+      title: Placement Block
+      description: Placement Block
+      type: object
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/PlacementCloudInfo'
+        min_num_replicas:
+          type: integer
+    TableReplicationInfo:
+      title: TableReplicationInfo
+      description: TableReplicationInfo
+      type: object
+      properties:
+        num_replicas:
+          type: integer
+        placement_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlacementBlock'
+        placement_uuid:
+          type: string
+          format: uuid
+    ColumnInfo:
+      title: Column Info
+      description: Column Info
+      type: object
+      properties:
+        column:
+          type: string
+        id:
+          type: string
+        type:
+          type: string
+    RaftConfig:
+      title: Raft Config
+      description: Raft Config
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        role:
+          type: string
+        location:
+          type: string
+    TabletInfo:
+      title: Tablet Info
+      description: Tablet Info
+      type: object
+      properties:
+        tablet_id:
+          type: string
+          format: uuid
+        partition:
+          type: string
+        split_depth:
+          type: integer
+        state:
+          type: string
+        hidden:
+          type: boolean
+        message:
+          type: string
+        raft_config:
+          type: array
+          items:
+            $ref: '#/components/schemas/RaftConfig'
+    TableInfo:
+      title: Table Info
+      description: Table Info
+      type: object
+      properties:
+        table_name:
+          type: string
+        table_id:
+          type: string
+          format: uuid
+        table_version:
+          type: integer
+        table_type:
+          type: string
+        table_state:
+          type: string
+        table_state_message:
+          type: string
+        table_tablespace_oid:
+          type: string
+        table_replication_info:
+          type: object
+          properties:
+            live_replicas:
+              $ref: '#/components/schemas/TableReplicationInfo'
+            read_replicas:
+              type: array
+              items:
+                $ref: '#/components/schemas/TableReplicationInfo'
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        tablets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TabletInfo'
+      required:
+        - table_name
+        - table_id
+        - table_version
+        - table_type
+        - table_state
+        - table_state_message
+        - table_replication_info
+        - columns
+        - tablets
     HealthCheckInfo:
       title: Health Check Info
       type: object
@@ -921,7 +1071,7 @@ components:
     ClusterTabletData:
       title: Cluster Tablet Data
       description: List of cluster tablets
-      type: array
+      type: object
       additionalProperties:
         $ref: '#/components/schemas/ClusterTablet'
     VersionInfo:
@@ -1018,6 +1168,12 @@ components:
                 $ref: '#/components/schemas/ClusterTableData'
             required:
               - data
+    TableInfoResponse:
+      description: Information for a single table
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TableInfo'
     HealthCheckResponse:
       description: Successful health check response
       content:

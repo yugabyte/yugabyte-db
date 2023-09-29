@@ -810,35 +810,39 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
                 Data: []models.ClusterTable{},
         }
         tablesFuture := make(chan helpers.TablesFuture)
-        go helpers.GetTablesFuture(helpers.HOST, tablesFuture)
-        tablesList := <-tablesFuture
-        if tablesList.Error != nil {
-                return ctx.String(http.StatusInternalServerError, tablesList.Error.Error())
+        go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
+        tablesListStruct := <-tablesFuture
+        if tablesListStruct.Error != nil {
+                return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
         }
+        // For now, we only show user and index tables.
+        tablesList := append(tablesListStruct.Tables.User, tablesListStruct.Tables.Index...)
         api := ctx.QueryParam("api")
         switch api {
         case "YSQL":
-                for _, table := range tablesList.Tables {
-                        if table.IsYsql {
+                for _, table := range tablesList {
+                        if table.YsqlOid != "" {
                                 tableListResponse.Data = append(tableListResponse.Data,
                                     models.ClusterTable{
-                                        Name:      table.Name,
+                                        Name:      table.TableName,
                                         Keyspace:  table.Keyspace,
                                         Type:      models.YBAPIENUM_YSQL,
-                                        SizeBytes: table.SizeBytes,
+                                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                                   table.OnDiskSize.SstFilesSizeBytes,
                                 })
                         }
                 }
         case "YCQL":
-                for _, table := range tablesList.Tables {
-                        if !table.IsYsql {
+                    for _, table := range tablesList {
+                        if table.YsqlOid == "" {
                                 tableListResponse.Data = append(tableListResponse.Data,
                                     models.ClusterTable{
-                                        Name:      table.Name,
+                                        Name:      table.TableName,
                                         Keyspace:  table.Keyspace,
                                         Type:      models.YBAPIENUM_YCQL,
-                                        SizeBytes: table.SizeBytes,
-                                })
+                                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                                   table.OnDiskSize.SstFilesSizeBytes,
+                                    })
                         }
                 }
         }
@@ -1099,4 +1103,110 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
     return ctx.JSON(http.StatusOK, models.IsLoadBalancerIdle{
         IsIdle: isLoadBalancerIdle,
     })
+}
+
+// GetTableInfo - Get info on a single table, given table uuid
+func (c *Container) GetTableInfo(ctx echo.Context) error {
+
+    id := ctx.QueryParam("id")
+    nodeHost := ctx.QueryParam("node_address")
+
+    if id == "" {
+        return ctx.String(http.StatusBadRequest, "Missing table id query parameter")
+    }
+
+    tableInfoFuture := make(chan helpers.TableInfoFuture)
+    go helpers.GetTableInfoFuture(nodeHost, id, tableInfoFuture)
+
+    tableInfo := <- tableInfoFuture
+    if tableInfo.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tableInfo.Error.Error())
+    }
+
+    // Get placement blocks for live replicas
+    liveReplicaPlacementBlocks := []models.PlacementBlock{}
+    for _, placementBlock :=
+        range tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.PlacementBlocks {
+            liveReplicaPlacementBlocks = append(liveReplicaPlacementBlocks, models.PlacementBlock{
+                CloudInfo: models.PlacementCloudInfo{
+                    PlacementCloud: placementBlock.CloudInfo.PlacementCloud,
+                    PlacementRegion: placementBlock.CloudInfo.PlacementRegion,
+                    PlacementZone: placementBlock.CloudInfo.PlacementZone,
+                },
+                MinNumReplicas: int32(placementBlock.MinNumReplicas),
+            })
+    }
+
+    // Get read replicas
+    readReplicas := []models.TableReplicationInfo{}
+    for _, readReplica :=
+        range tableInfo.TableInfo.TableReplicationInfo.ReadReplicas {
+            readReplicaInfo := models.TableReplicationInfo{}
+            readReplicaInfo.NumReplicas = int32(readReplica.NumReplicas)
+            for _, placementBlock := range readReplica.PlacementBlocks {
+                readReplicaInfo.PlacementBlocks = append(readReplicaInfo.PlacementBlocks,
+                    models.PlacementBlock{
+                        CloudInfo: models.PlacementCloudInfo{
+                            PlacementCloud: placementBlock.CloudInfo.PlacementCloud,
+                            PlacementRegion: placementBlock.CloudInfo.PlacementRegion,
+                            PlacementZone: placementBlock.CloudInfo.PlacementZone,
+                        },
+                        MinNumReplicas: int32(placementBlock.MinNumReplicas),
+                    })
+            }
+            readReplicaInfo.PlacementUuid = readReplica.PlacementUuid
+            readReplicas = append(readReplicas, readReplicaInfo)
+    }
+
+    // Get columns
+    columns := []models.ColumnInfo{}
+    for _, column := range tableInfo.TableInfo.Columns {
+        columns = append(columns, models.ColumnInfo(column))
+    }
+
+    // Get tablets
+    tablets := []models.TabletInfo{}
+    for _, tablet := range tableInfo.TableInfo.Tablets {
+        hidden, err := strconv.ParseBool(tablet.Hidden)
+        // If parsebool fails, assume tablet is not hidden
+        if err != nil {
+            hidden = false
+        }
+        // Get Raft Config info
+        raftConfig := []models.RaftConfig{}
+        for _, location := range tablet.Locations {
+            raftConfig = append(raftConfig, models.RaftConfig(location))
+        }
+        tablets = append(tablets, models.TabletInfo{
+            TabletId: tablet.TabletId,
+            Partition: tablet.Partition,
+            SplitDepth: tablet.SplitDepth,
+            State: tablet.State,
+            Hidden: hidden,
+            Message: tablet.Message,
+            RaftConfig: raftConfig,
+        })
+    }
+
+    return ctx.JSON(http.StatusOK, models.TableInfo{
+        TableName: tableInfo.TableInfo.TableName,
+        TableId: tableInfo.TableInfo.TableId,
+        TableVersion: tableInfo.TableInfo.TableVersion,
+        TableType: tableInfo.TableInfo.TableType,
+        TableState: tableInfo.TableInfo.TableState,
+        TableStateMessage: tableInfo.TableInfo.TableStateMessage,
+        TableTablespaceOid: tableInfo.TableInfo.TableTablespaceOid,
+        TableReplicationInfo: models.TableInfoTableReplicationInfo{
+            LiveReplicas: models.TableReplicationInfo{
+                NumReplicas:
+                    int32(tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.NumReplicas),
+                PlacementBlocks: liveReplicaPlacementBlocks,
+                PlacementUuid: tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.PlacementUuid,
+            },
+            ReadReplicas: readReplicas,
+        },
+        Columns: columns,
+        Tablets: tablets,
+    })
+
 }
