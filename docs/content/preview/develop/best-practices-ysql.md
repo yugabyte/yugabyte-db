@@ -151,7 +151,16 @@ For more details, see [Distributed parallel queries](../../api/ysql/exprs/func_y
 {{</tip>}}
 
 ## Single availability zone (AZ) deployments
+
 In single AZ deployments, you need to set the [yb-tserver](../../reference/configuration/yb-tserver) flag `--durable_wal_write=true` to not lose data if the whole datacenter goes down (For example, power failure).
+
+## Row size limit
+
+Big columns add up when you select full or multiple rows. For consistent latency or performance, it is recommended keeping the size under 10MB or less, and a maximum of 32MB. 
+
+## Column size limit
+
+For consistent latency or performance, it is recommended to size columns in the 2MB range or less even though an individual column or row limit is supported till `32MB`.
 
 ## TRUNCATE tables instead of DELETE
 
