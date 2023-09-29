@@ -1652,6 +1652,11 @@
     "AuditLoggingConfig" : {
       "description" : "Audit Logging Configuration",
       "properties" : {
+        "fileNamePrefix" : {
+          "description" : "WARNING: This is a preview API that could change. Audit log file name prefix. Defaults to \"\". For example, setting this to \"yb-platform-\" will generate audit log files as \"yb-platform-audit.log\" instead of \"audit.log\".",
+          "example" : "yb-platform-",
+          "type" : "string"
+        },
         "maxHistory" : {
           "description" : "Max number of days up till which logs are kept",
           "example" : 30,
@@ -8373,6 +8378,11 @@
     },
     "PlatformLoggingConfig" : {
       "properties" : {
+        "fileNamePrefix" : {
+          "description" : "WARNING: This is a preview API that could change. Application log file name prefix. Defaults to \"\". For example, setting this to \"yb-platform-\" will generate application log files as \"yb-platform-application.log\" instead of \"application.log\".",
+          "example" : "yb-platform-",
+          "type" : "string"
+        },
         "level" : {
           "enum" : [ "ERROR", "WARN", "INFO", "DEBUG", "TRACE" ],
           "type" : "string"
