@@ -91,7 +91,7 @@ class XClusterConsumer {
   void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB* consumer_registry,
                                         int32_t cluster_config_version);
 
-  std::vector<std::string> TEST_producer_tablets_running();
+  std::vector<TabletId> TEST_producer_tablets_running();
 
   std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers();
 
@@ -103,12 +103,10 @@ class XClusterConsumer {
   // we don't need to hold the mutex.
   int32_t cluster_config_version() const NO_THREAD_SAFETY_ANALYSIS;
 
-  void IncrementNumSuccessfulWriteRpcs() {
-    TEST_num_successful_write_rpcs++;
-  }
+  void TEST_IncrementNumSuccessfulWriteRpcs() { TEST_num_successful_write_rpcs_++; }
 
-  uint32_t GetNumSuccessfulWriteRpcs() {
-    return TEST_num_successful_write_rpcs.load(std::memory_order_acquire);
+  uint32_t TEST_GetNumSuccessfulWriteRpcs() {
+    return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
   Status ReloadCertificates();
@@ -165,7 +163,7 @@ class XClusterConsumer {
   rw_spinlock master_data_mutex_;
 
   // Mutex for producer_pollers_map_.
-  mutable rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
+  mutable rw_spinlock pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
   std::function<int64_t(const TabletId&)> get_leader_term_;
@@ -194,7 +192,10 @@ class XClusterConsumer {
 
   std::unordered_set<xrepl::StreamId> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<xrepl::StreamId, cdc::SchemaVersionMapping> stream_to_schema_version_
+
+  // Pair of validated_schema_version and last_compatible_consumer_schema_version.
+  using SchemaVersionMapping = std::pair<uint32_t, uint32_t>;
+  std::unordered_map<xrepl::StreamId, SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   cdc::StreamSchemaVersionMap stream_schema_version_map_ GUARDED_BY(master_data_mutex_);
@@ -206,7 +207,7 @@ class XClusterConsumer {
 
   std::unordered_map<
       cdc::ProducerTabletInfo, std::shared_ptr<XClusterPoller>, cdc::ProducerTabletInfo::Hash>
-      producer_pollers_map_ GUARDED_BY(producer_pollers_map_mutex_);
+      pollers_map_ GUARDED_BY(pollers_map_mutex_);
 
   std::unique_ptr<ThreadPool> thread_pool_;
   std::unique_ptr<rpc::Rpcs> rpcs_;
@@ -216,7 +217,7 @@ class XClusterConsumer {
 
   // map: {replication_group_id : ...}.
   std::unordered_map<cdc::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
-      GUARDED_BY(producer_pollers_map_mutex_);
+      GUARDED_BY(pollers_map_mutex_);
   std::unordered_map<cdc::ReplicationGroupId, std::string> uuid_master_addrs_
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<cdc::ReplicationGroupId> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
@@ -228,7 +229,7 @@ class XClusterConsumer {
   // were notified of any changes
   std::atomic<int32_t> last_polled_at_cluster_config_version_ = {-1};
 
-  std::atomic<uint32_t> TEST_num_successful_write_rpcs{0};
+  std::atomic<uint32_t> TEST_num_successful_write_rpcs_{0};
 
   std::mutex safe_time_update_mutex_;
   MonoTime last_safe_time_published_at_ GUARDED_BY(safe_time_update_mutex_);
