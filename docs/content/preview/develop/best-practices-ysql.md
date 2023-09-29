@@ -143,7 +143,7 @@ We're actively working on [#1317](https://github.com/yugabyte/yugabyte-db/issues
 
 There are different ways to reduce number of tablets:
 
-1. Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
+- Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
 2. Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver#ysql_num_shards_per_tserver) gflag.
 3. Use [`SPLIT INTO`](../api/ysql/commands/ddl_create_table.md#split-into) clause when creating the table.
 4. Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/)
