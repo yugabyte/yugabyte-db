@@ -851,6 +851,24 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB` (256 MB/second)
 
+##### --remote_bootstrap_from_leader_only
+
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max_remote_bootstrap_attempts_from_non_leader).
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
+
+{{< /note >}}
+
+##### --max_remote_bootstrap_attempts_from_non_leader
+
+When the flag [remote_bootstrap_from_leader_only](#remote_bootstrap_from_leader_only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+
+Default: `5`
+
 ## Network compression flags
 
 Use the following two flags to configure RPC compression:
