@@ -11072,7 +11072,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   if (IsTableXClusterConsumer(*table)) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
+    RETURN_NOT_OK(ResumeXClusterConsumerAfterNewSchema(*table, version));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);

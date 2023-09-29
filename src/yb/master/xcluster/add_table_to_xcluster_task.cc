@@ -77,7 +77,7 @@ void AddTableToXClusterTask::RunInternal() {
             table_info_->ToString()));
   }
 
-  auto stream_ids = catalog_manager_->GetXClusterStreamInfoForConsumerTable(table_info_->id());
+  auto stream_ids = catalog_manager_->GetXClusterConsumerStreamIdsForTable(table_info_->id());
   if (!stream_ids.empty()) {
     LOG_WITH_PREFIX(INFO) << "Table is already part of xcluster replication "
                           << yb::ToString(stream_ids);
