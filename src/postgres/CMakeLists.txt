@@ -87,13 +87,7 @@ endif()
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 message("OPENSSL_LIB_DIR=${OPENSSL_LIB_DIR}")
 
-set(POSTGRES_PKG_CONFIG_PATH "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib/pkgconfig")
-
-set(build_postgres_args
-    "${CMAKE_COMMAND}"
-    -E
-    env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
-    env "PKG_CONFIG_PATH=${POSTGRES_PKG_CONFIG_PATH}")
+set(build_postgres_args "")
 
 if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
@@ -121,8 +115,15 @@ if(NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
   endif()
 endif()
 
-set(PG_INCLUDE_DIRS "${YB_PREFIX_COMMON}/include")
-set(PG_LIB_DIRS "${YB_PREFIX_COMMON}/lib")
+concat_thirdparty_prefix_dirs_with_suffix(PG_INCLUDE_DIRS " " "/include")
+concat_thirdparty_prefix_dirs_with_suffix(PG_LIB_DIRS " " "/lib")
+
+# We only use YB_ADD_LIB_DIR("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}/lib") in the top-level
+# CMakeLists because the corresponding RPATH ends up on the linker command line in some other way,
+# presumably, due to library dependencies. However, for Postgres, we have to add this RPATH
+# explicitly.
+add_pg_ld_flags("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_RPATH_ARG}")
+
 if(APPLE AND NOT IS_APPLE_CLANG)
   add_pg_ld_flags("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   add_pg_c_cxx_flags("-isysroot ${CMAKE_OSX_SYSROOT}")
