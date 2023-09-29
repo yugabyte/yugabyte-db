@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py

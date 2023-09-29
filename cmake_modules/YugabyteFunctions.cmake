@@ -23,6 +23,8 @@ macro(set_in_current_and_parent_scope var_name var_value)
   endif()
 endmacro()
 
+# Attempts to set a variable to a value at global scope. However, this will only work if the macro
+# is executed either from the global scope or a function called from the global scope.
 macro(set_in_global_scope var_name var_value)
   if("${CMAKE_CURRENT_FUNCTION}" STREQUAL "")
     set(${var_name} "${var_value}")
@@ -71,6 +73,20 @@ macro(yb_put_string_vars_into_cache)
   unset(_var_name_tmp)
 endmacro()
 
+# Concatenate third-party prefix directories (YB_THIRDPARTY_COMMON_DIR and
+# YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR) into the given target variable with the given separator
+# and suffix.
+function(concat_thirdparty_prefix_dirs_with_suffix target_var separator suffix)
+  set(result "")
+  foreach(thirdparty_prefix_var_name YB_THIRDPARTY_COMMON_DIR YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR)
+    if(NOT "${result}" STREQUAL "")
+      string(APPEND result "${separator}")
+    endif()
+    string(APPEND result "${${thirdparty_prefix_var_name}}${suffix}")
+  endforeach()
+  set("${target_var}" "${result}" PARENT_SCOPE)
+endfunction()
+
 # -------------------------------------------------------------------------------------------------
 # Macros and functions for adding and manipulating compiler and linker flags.
 # -------------------------------------------------------------------------------------------------
@@ -112,10 +128,19 @@ function(ADD_LINKER_FLAGS FLAGS)
   _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
 endfunction()
 
+macro(_ADD_RPATH_ENTRY_MACRO RPATH_ENTRY)
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+endmacro()
+
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
   _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+  _ADD_RPATH_ENTRY_MACRO("${RPATH_ENTRY}")
+endfunction()
+
+function(YB_ADD_LIB_DIR DIR_PATH)
+  _CHECK_LIB_DIR("${DIR_PATH}" "library directory")
+  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
 endfunction()
 
 # This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
@@ -123,7 +148,7 @@ function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
   _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
   message("Adding a library directory and global rpath entry: ${DIR_PATH}")
   _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
-  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
+  _ADD_RPATH_ENTRY_MACRO("${DIR_PATH}")
 endfunction()
 
 # Checks for redundant compiler or linker arguments in the given variable. Removes duplicate
@@ -458,8 +483,7 @@ macro(YB_SETUP_CLANG)
     if(NOT EXISTS "${LIBCXX_DIR}/lib")
       message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
     endif()
-    ADD_LINKER_FLAGS("-L${LIBCXX_DIR}/lib")
-    ADD_GLOBAL_RPATH_ENTRY("${LIBCXX_DIR}/lib")
+    ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LIBCXX_DIR}/lib")
 
     # This needs to appear before adding third-party dependencies that have their headers in the
     # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
@@ -1010,7 +1034,14 @@ macro(yb_setup_odyssey)
   set(od_binary "odyssey")
   set(OD_EXTRA_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY})
   set(od_extra_dependencies "postgres")
+
   set(OD_EXTRA_EXE_LINKER_FLAGS "-L${YB_BUILD_ROOT}/lib")
+
+  # We only use YB_ADD_LIB_DIR("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}/lib") in the top-level
+  # CMakeLists because the corresponding RPATH ends up on the linker command line in some other way,
+  # presumably, due to library dependencies. However, for Odyssey, we have to add this RPATH
+  # explicitly.
+  string(APPEND OD_EXTRA_EXE_LINKER_FLAGS " ${YB_THIRDPARTY_MAYBE_INSTRUMENTED_RPATH_ARG}")
 
   add_subdirectory(src/odyssey/third_party/machinarium)
   add_subdirectory(src/odyssey/third_party/kiwi)
