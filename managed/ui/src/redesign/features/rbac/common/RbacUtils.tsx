@@ -11,6 +11,7 @@ import { FC } from 'react';
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core';
 import { Role } from '../roles';
+import { Resource } from '../permission';
 
 const useStyles = makeStyles((theme) => ({
   roleType: {
@@ -28,8 +29,26 @@ const useStyles = makeStyles((theme) => ({
 export const RoleTypeComp: FC<{ role: Role }> = ({ role }) => {
   const classes = useStyles();
   return (
-    <span className={clsx(classes.roleType, role.roleType === 'Custom' && 'custom')}>
+    <span
+      className={clsx(classes.roleType, role.roleType === 'Custom' && 'custom')}
+      data-testid="rbac-role-type"
+    >
       {role.roleType}
     </span>
   );
 };
+
+export const isRbacEnabled = () => {
+  return Array.isArray((window as any).rbac_permissions);
+};
+
+export const clearRbacCreds = () => {
+  delete (window as any).rbac_permissions;
+};
+
+export const resourceOrderByRelevance = [
+  Resource.UNIVERSE,
+  Resource.USER,
+  Resource.ROLE,
+  Resource.DEFAULT
+];

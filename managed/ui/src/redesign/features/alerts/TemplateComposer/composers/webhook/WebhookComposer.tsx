@@ -43,6 +43,8 @@ import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { Info } from '@material-ui/icons';
+import { RbacValidator } from '../../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../../rbac/UserPermPathMapping';
 
 const useStyles = makeStyles((theme) => ({
   composers: {
@@ -242,15 +244,20 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
             alignItems="center"
             justifyContent="space-between"
           >
-            <YBButton
-              variant="secondary"
-              onClick={() => {
-                setShowPreviewModal(true);
-              }}
-              data-testid="preview-webhook-button"
+            <RbacValidator
+              accessRequiredOn={UserPermissionMap.editAlertsConfig}
+              isControl
             >
-              {t('alertCustomTemplates.composer.previewTemplateButton')}
-            </YBButton>
+              <YBButton
+                variant="secondary"
+                onClick={() => {
+                  setShowPreviewModal(true);
+                }}
+                data-testid="preview-webhook-button"
+              >
+                {t('alertCustomTemplates.composer.previewTemplateButton')}
+              </YBButton>
+            </RbacValidator>
             <div>
               <YBButton
                 variant="secondary"
@@ -261,25 +268,32 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
               >
                 {t('common.cancel')}
               </YBButton>
-              <YBButton
-                variant="primary"
-                type="submit"
-                disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
-                autoFocus
-                className={composerStyles.submitButton}
-                onClick={() => {
-                  if (bodyEditorRef.current) {
-                    const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
-
-                    createTemplate.mutate({
-                      textTemplate: convertHTMLToText(bodyText)
-                    });
-                  }
+              <RbacValidator
+                accessRequiredOn={{
+                  ...UserPermissionMap.createAlertsConfig
                 }}
-                data-testid="save-webhook-button"
+                isControl
               >
-                {t('common.save')}
-              </YBButton>
+                <YBButton
+                  variant="primary"
+                  type="submit"
+                  disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
+                  autoFocus
+                  className={composerStyles.submitButton}
+                  onClick={() => {
+                    if (bodyEditorRef.current) {
+                      const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
+
+                      createTemplate.mutate({
+                        textTemplate: convertHTMLToText(bodyText)
+                      });
+                    }
+                  }}
+                  data-testid="save-webhook-button"
+                >
+                  {t('common.save')}
+                </YBButton>
+              </RbacValidator>
             </div>
           </Grid>
         </Grid>

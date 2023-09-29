@@ -5,6 +5,8 @@ import { getSeverityLabel } from './AlertUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
+import {  hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './AlertDetails.scss';
 
 const findValueforlabel = (labels, labelToFind) => {
@@ -136,19 +138,27 @@ export default class AlertDetails extends Component {
                 </Col>
                 {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                   <Col lg={6} className="no-padding">
-                    <ButtonGroup>
-                      <DropdownButton id="alert-mark-as-button" title="Mark as">
-                        <MenuItem
-                          eventKey="1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAcknowledge();
-                          }}
-                        >
-                          Acknowledged
-                        </MenuItem>
-                      </DropdownButton>
-                    </ButtonGroup>
+                      <ButtonGroup>
+                        <DropdownButton id="alert-mark-as-button" title="Mark as">
+                          <MenuItem
+                            eventKey="1"
+                            disabled={!hasNecessaryPerm({
+                              ...UserPermissionMap.acknowledgeAlert
+                            })}
+                            onClick={(e) => {
+                              if(!hasNecessaryPerm({
+                                ...UserPermissionMap.acknowledgeAlert
+                              })){
+                                return;
+                              }
+                              e.stopPropagation();
+                              onAcknowledge();
+                            }}
+                          >
+                            Acknowledged
+                          </MenuItem>
+                        </DropdownButton>
+                      </ButtonGroup>
                   </Col>
                 )}
               </Row>

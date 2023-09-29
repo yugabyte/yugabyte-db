@@ -7,16 +7,20 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useRef } from 'react';
+import { useMutation, useQueryClient } from 'react-query';
+import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { Box, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
 import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBInputField, YBPasswordField } from '../../../../components';
+import { createUser } from '../../api';
 import { RbacUserWithResources } from '../interface/Users';
 import { Resource } from '../../permission';
 import { UserContextMethods, UserViewContext } from './UserContext';
+import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -45,7 +49,8 @@ const useStyles = makeStyles((theme) => ({
 export const initialMappingValue: RbacUserWithResources = {
   roleResourceDefinitions: [
     {
-      roleUUID: '',
+      roleType: 'System',
+      role: null,
       resourceGroup: {
         resourceDefinitionSet: [
           {
@@ -64,16 +69,42 @@ const initialFormValues: RbacUserWithResources = {
   password: '',
   confirmPassword: '',
   roleResourceDefinitions: initialMappingValue.roleResourceDefinitions
-  // mappings: [initialMappingValue]
 };
 
 // eslint-disable-next-line react/display-name
-const CreateUsersForm = forwardRef(() => {
+const CreateUsersForm = forwardRef((_, forwardRef) => {
   const classes = useStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: 'rbac.users.create'
   });
+  const queryClient = useQueryClient();
+
   const methods = useForm<RbacUserWithResources>({ defaultValues: initialFormValues });
+  const doCreateUser = useMutation(
+    () => {
+      return createUser(methods.getValues());
+    },
+    {
+      onSuccess: () => {
+        toast.success(t('form.successMsg', { user_email: methods.getValues().email }));
+        queryClient.invalidateQueries('users');
+      },
+      onError: (err) => {
+        toast.error(createErrorMessage(err));
+      }
+    }
+  );
+  const onSave = () => {
+    doCreateUser.mutate();
+  };
+
+  useImperativeHandle(
+    forwardRef,
+    () => ({
+      onSave
+    }),
+    [onSave]
+  );
 
   return (
     <FormProvider {...methods}>
@@ -115,16 +146,22 @@ export const CreateUsers = () => {
   const [, { setCurrentPage, setCurrentUser }] = (useContext(
     UserViewContext
   ) as unknown) as UserContextMethods;
+
+  const createUserRef = useRef<any>(null);
+
   return (
     <Container
       onCancel={() => {
         setCurrentUser(null);
         setCurrentPage('LIST_USER');
       }}
-      onSave={() => {}}
+      onSave={() => {
+        createUserRef.current?.onSave();
+        setCurrentPage('LIST_USER');
+      }}
       saveLabel={t('title')}
     >
-      <CreateUsersForm />
+      <CreateUsersForm ref={createUserRef} />
     </Container>
   );
 };

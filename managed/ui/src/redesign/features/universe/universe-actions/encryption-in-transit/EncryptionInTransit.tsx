@@ -28,6 +28,8 @@ import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
 import { YBLoading } from '../../../../../components/common/indicators';
+import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
 import { createErrorMessage } from '../../universe-form/utils/helpers';
 
 //EAR Component
@@ -205,6 +207,9 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     }
   });
 
+  const canEditEAT = hasNecessaryPerm({
+    ...UserPermissionMap.editEncryptionInTransit
+  });
   useEffect(() => {
     if (disableServerCertRotation) setTab(EitTabs.CACert);
   }, [setTab, disableServerCertRotation]);
@@ -226,8 +231,14 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       title={t('universeActions.encryptionInTransit.title')}
       onClose={onClose}
       onSubmit={handleFormSubmit}
-      submitTestId="EncryptionInTransit-Submit"
-      cancelTestId="EncryptionInTransit-Close"
+      submitTestId="EncryptionAtRest-Submit"
+      cancelTestId="EncryptionAtRest-Close"
+      buttonProps={{
+        primary: {
+          disabled: !canEditEAT
+        }
+      }}
+      submitButtonTooltip={!canEditEAT ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       {isLoading ? (
         <YBLoading text={' '} />

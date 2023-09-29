@@ -44,6 +44,8 @@ import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './BackupList.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -244,6 +246,27 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     );
   };
 
+
+  const canCreateBackup = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...UserPermissionMap.createBackup
+  });
+
+  const canDeleteBackup = hasNecessaryPerm({
+    onResource: "CUSTOMER_ID",
+    ...UserPermissionMap.deleteBackup
+  });
+
+  const canRestoreBackup = hasNecessaryPerm({
+    onResource: "CUSTOMER_ID",
+    ...UserPermissionMap.restoreBackup
+  });
+
+  const canChangeRetentionPeriod = hasNecessaryPerm({
+    onResource: "CUSTOMER_ID",
+    ...UserPermissionMap.changeRetentionPeriod
+  });
+
   const getActions = (row: IBackup) => {
     if (row.commonBackupInfo.state === Backup_States.DELETED) {
       return '';
@@ -260,6 +283,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         />
       );
     }
+
     return (
       <DropdownButton
         className="actions-btn"
@@ -271,13 +295,13 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
       >
         <MenuItem
           disabled={
-            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent
+            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent || !canRestoreBackup
           }
           onClick={(e) => {
             e.stopPropagation();
             if (
               row.commonBackupInfo.state !== Backup_States.COMPLETED ||
-              !row.isStorageConfigPresent
+              !row.isStorageConfigPresent || !canRestoreBackup
             ) {
               return;
             }
@@ -291,11 +315,11 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <MenuItem
           onClick={(e) => {
             e.stopPropagation();
-            if (!row.isStorageConfigPresent) return;
+            if (!row.isStorageConfigPresent || !canDeleteBackup) return;
             setSelectedBackups([row]);
             setShowDeleteModal(true);
           }}
-          disabled={!row.isStorageConfigPresent}
+          disabled={!row.isStorageConfigPresent || !canDeleteBackup}
           className="action-danger"
         >
           Delete Backup
@@ -305,7 +329,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             e.stopPropagation();
             if (
               row.commonBackupInfo.state !== Backup_States.COMPLETED ||
-              !row.isStorageConfigPresent
+              !row.isStorageConfigPresent || !canChangeRetentionPeriod
             ) {
               return;
             }
@@ -314,7 +338,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             setShowEditBackupModal(true);
           }}
           disabled={
-            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent
+            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent || !canChangeRetentionPeriod
           }
         >
           Change Retention Period
@@ -337,7 +361,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           disabled={
             tablesInUniverse?.data.length === 0 ||
             currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
-            currentUniverse?.data?.universeDetails?.universePaused
+            currentUniverse?.data?.universeDetails?.universePaused ||
+            !canCreateBackup
           }
         />
         <BackupCreateModal
@@ -451,28 +476,42 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
             maxMenuHeight={300}
           ></Select>
-          <YBButton
-            btnText="Delete"
-            btnIcon="fa fa-trash-o"
-            onClick={() => setShowDeleteModal(true)}
-            disabled={selectedBackups.length === 0}
-          />
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: universeUUID,
+              ...UserPermissionMap.createBackup
+            }}
+            isControl>
+            <YBButton
+              btnText="Delete"
+              btnIcon="fa fa-trash-o"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={selectedBackups.length === 0}
+            />
+          </RbacValidator>
           {allowTakingBackup && (
             <>
-              <YBButton
-                loading={isTableListLoading}
-                btnText="Backup now"
-                onClick={() => {
-                  setShowBackupCreateModal(true);
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: universeUUID,
+                  ...UserPermissionMap.createBackup
                 }}
-                btnClass="btn btn-orange backup-now-button"
-                btnIcon="fa fa-upload"
-                disabled={
-                  tablesInUniverse?.data.length === 0 ||
-                  currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
-                  currentUniverse?.data?.universeDetails?.universePaused
-                }
-              />
+                isControl>
+                <YBButton
+                  loading={isTableListLoading}
+                  btnText="Backup now"
+                  onClick={() => {
+                    setShowBackupCreateModal(true);
+                  }}
+                  btnClass="btn btn-orange backup-now-button"
+                  btnIcon="fa fa-upload"
+                  disabled={
+                    tablesInUniverse?.data.length === 0 ||
+                    currentUniverse?.data?.universeConfig?.takeBackups === 'false' ||
+                    currentUniverse?.data?.universeDetails?.universePaused
+                  }
+                />
+              </RbacValidator>
             </>
           )}
         </div>

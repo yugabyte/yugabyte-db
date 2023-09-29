@@ -988,7 +988,8 @@
             "selectPermissions": "Select Permissions",
             "selectPermissionSubText": "Select the permissions you want to include in this role.",
             "permissions": "Permissions",
-            "editSelection": "Edit Selection"
+            "editSelection": "Edit Permissions",
+            "permissionsCount": "{{count}} Permissions"
           },
           "successMsg": "\"{{role_name}}\" role was created successfully",
           "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
@@ -1025,15 +1026,23 @@
         }
       },
       "permissions": {
-        "title": "Select a role and define its scope by mapping it to applicable Universes.",
+        "title": "User Roles",
         "connectOnly": "<b>'Connect Only'</b> role is automatically assigned to users without a role, restricting access to login and view their own profile page.",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
-        "assignNewRole": "Assign Role",
+        "builtInRoleTab": "Built-in Role",
+        "assignNewRole": "Assign new role",
+        "customRoleTab": "Custom Role",
+        "assignNewBuiltInRole": "Assign New Built-In Role",
+        "assignNewCustomRole": "Assign New Custom Role",
         "userAssignedRole": "User’s assigned roles",
         "selectPermissionModal": {
-          "title": "Select Permissions"
+          "title": "Select Permissions",
+          "resourceManagement": "{{resource}} Management",
+          "selectAllPermissions": "Select All {{resource}} Management Permissions",
+          "selectionCount": "{{count}} / {{total}} Selected",
+          "universePrimaryAndReplica": "(Primary Uninverse and Read Replica)"
         }
       },
       "users": {
@@ -1043,12 +1052,18 @@
             "email": "User Email",
             "emailPlaceholder": "Add email",
             "password": "Password",
-            "confirmPassword": "Confirm Password"
+            "confirmPassword": "Confirm Password",
+            "successMsg": "\"{{user_email}}\" user created successfully"
           }
         },
         "edit": {
           "title": "Edit User",
           "delete": "Delete User"
+        },
+        "delete": {
+          "title": "Delete User",
+          "errMsg": "This operation will delete the following user:<br/><bold>“{{user_email}}”</bold><br/>Enter the user email to continue.",
+          "successMsg": "\"{{user_email}}\" user was deleted successfully"
         },
         "list": {
           "rowsCount": "{{count}} Users",
@@ -1068,6 +1083,7 @@
       "policy": {
         "universeSelection": {
           "noRole": "Once you select the role, you can select the Universes here.",
+          "noUniversePermInRole": "No universe permissions found",
           "editSelection": "Edit Selection",
           "allFutureUniverses": "All present and future Universes.",
           "universes": "Universes",

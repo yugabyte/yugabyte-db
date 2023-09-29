@@ -40,10 +40,10 @@ export const AlertConfiguration = (props) => {
     if (!getPromiseState(universes).isSuccess()) {
       props.fetchUniverseList().then((data) => {
         setAlertUniverseList([
-          ...data.map((universe) => ({
+          ...data?.map((universe) => ({
             label: universe.name,
             value: universe.universeUUID
-          }))
+          })) ?? []
         ]);
       });
     }

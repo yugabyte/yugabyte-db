@@ -10,14 +10,16 @@ import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useMutation, useQuery } from 'react-query';
+import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
 
 import { Box, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
+import { DeleteUserModal } from './DeleteUserModal';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBButton, YBInputField } from '../../../../components';
-import { editUsersRoles, getRoleBindingsForUser } from '../../api';
+import { editUsersRolesBindings, getRoleBindingsForUser } from '../../api';
 import { convertRbacBindingsToUISchema } from './UserUtils';
 
 import { RbacUserWithResources } from '../interface/Users';
@@ -25,6 +27,7 @@ import { UserContextMethods, UserViewContext } from './UserContext';
 
 import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
+import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -72,12 +75,20 @@ export const EditUser = () => {
     defaultValues: currentUser ?? {}
   });
 
-  const editUser = useMutation(() => editUsersRoles(currentUser!.uuid!, methods.getValues()), {
-    onSuccess() {
-      toast.success('Done');
-      setCurrentPage('LIST_USER');
+  const [showDeleteModal, toggleDeleteModal] = useToggle(false);
+
+  const editUser = useMutation(
+    () => editUsersRolesBindings(currentUser!.uuid!, methods.getValues()),
+    {
+      onSuccess() {
+        toast.success('Done');
+        setCurrentPage('LIST_USER');
+      },
+      onError: (err) => {
+        toast.error(createErrorMessage(err));
+      }
     }
-  });
+  );
 
   const { isLoading } = useQuery(
     ['role_binding', currentUser?.uuid],
@@ -114,10 +125,19 @@ export const EditUser = () => {
                 setCurrentPage('LIST_USER');
                 setCurrentUser(null);
               }}
+              data-testid={`rbac-resource-back-to-users`}
             />
             {t('title')}
           </div>
-          <YBButton variant="secondary" size="large" startIcon={<Delete />} onClick={() => {}}>
+          <YBButton
+            variant="secondary"
+            size="large"
+            startIcon={<Delete />}
+            onClick={() => {
+              toggleDeleteModal(true);
+            }}
+            data-testid={`rbac-resource-delete-user`}
+          >
             {t('delete')}
           </YBButton>
         </div>
@@ -135,6 +155,12 @@ export const EditUser = () => {
             <RolesAndResourceMapping />
           </form>
         </FormProvider>
+        <DeleteUserModal
+          open={showDeleteModal}
+          onHide={() => {
+            toggleDeleteModal(false);
+          }}
+        />
       </Box>
     </Container>
   );
