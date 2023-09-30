@@ -766,8 +766,14 @@ class PgClientServiceImpl::Impl {
   Status ActiveUniverseHistory(
       const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
       rpc::RpcContext* context) {
+    // Should we have the freeze/unfreeze move to the inner loop in GetRPCsWaitStates?
+    // For now, doing so may violate our assumption that freezes only happen rarely. We will
+    // need to add some kind of a generation/number to track the number of freezes to support
+    // this.
+    WaitStateInfo::freeze();
     GetRPCsWaitStates(resp, util::MessengerType::kTserver);
     GetRPCsWaitStates(resp, util::MessengerType::kCQLServer);
+    WaitStateInfo::unfreeze();
 
     auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
     auto top_level_node_id = VERIFY_RESULT(client().GetTServerUUID());

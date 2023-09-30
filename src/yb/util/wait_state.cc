@@ -70,7 +70,9 @@ simple_spinlock* WaitStateInfo::get_mutex() {
 };
 
 void WaitStateInfo::freeze() {
-  freeze_ = true;
+  if (&GetAtomicFlag(FLAGS_freeze_wait_states)) {
+    freeze_ = true;
+  }
 }
 
 void WaitStateInfo::unfreeze() {
@@ -78,10 +80,7 @@ void WaitStateInfo::unfreeze() {
 }
 
 WaitStateCode WaitStateInfo::get_frozen_state() const {
-  if (frozen_state_code_ != WaitStateCode::Unused) {
-    return frozen_state_code_;
-  }
-  return code_;
+  return frozen_state_code_;
 }
 
 void WaitStateInfo::push_state(WaitStateCode c) {
@@ -181,10 +180,11 @@ void WaitStateInfo::set_state(WaitStateCode c) {
 }
 
 WaitStateCode WaitStateInfo::get_state() const {
-  if (GetAtomicFlag(&FLAGS_freeze_wait_states)) {
-    return get_frozen_state();
+  auto ret =  get_frozen_state();
+  if (ret == WaitStateCode::Unused) {
+    ret = code_;
   }
-  return code_;
+  return ret;
 }
 
 std::string WaitStateInfo::ToString() const {
