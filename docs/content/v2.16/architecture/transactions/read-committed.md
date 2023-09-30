@@ -329,7 +329,7 @@ As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency 
 
 However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
 
-* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](../read-committed/#performance-tuning).
+* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](#performance-tuning).
 * The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
