@@ -68,7 +68,7 @@ Do the following:
     For example:
 
     ```sh
-    ./ysql_dump -h 172.151.36.174 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
+    ./ysql_dump -h 172.16.0.0 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
     ```
 
 ### Drop the table from the source
@@ -80,7 +80,7 @@ Do the following to drop a table from the source database source_db:
 1. Connect to one of the nodes of the universe with the source database (that is, the universe with source_db) and start ysqlsh. For example:
 
     ```sh
-    ./tserver/bin/ysqlsh -h 172.151.36.174
+    ./tserver/bin/ysqlsh -h 172.16.0.0
     ```
 
 1. Connect to the source_db database:
