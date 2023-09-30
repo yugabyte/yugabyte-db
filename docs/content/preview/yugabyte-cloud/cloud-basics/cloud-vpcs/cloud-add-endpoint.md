@@ -26,7 +26,7 @@ While cloud providers refer to the components of a private link service in diffe
 | PSE | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | [Private Link service](https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview) | The endpoints on your cluster that you make available to the private link. |
 | Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) | The endpoints on the application VPC corresponding to the PSEs on your cluster.
 | Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) | Cloud provider account with permissions to manage endpoints. |
-| Service name | Service name | Alias | Identifies the PSE to the application VPC endpoint. You provide this when creating the application VPC endpoint. |
+| Service name | Service name | Alias | Identifies the PSE to the application VPC endpoint. You provide the service name when creating the application VPC endpoint. |
 
 Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 

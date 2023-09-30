@@ -21,7 +21,7 @@ You can add IP addresses using any combination of the following options.
 
 For clusters in AWS and Azure, you can connect your cluster to your application VPC using a private link. To do this, you add a private service endpoint (PSE) to each region in your cluster.
 
-You can also add PSEs after your cluster is created.
+You can also [add PSEs](../../cloud-vpcs/cloud-add-endpoint/) after your cluster is created.
 
 ![Add Cluster Wizard - Network Access PSE](/images/yb-cloud/cloud-addcluster-networkaccess-pse.png)
 

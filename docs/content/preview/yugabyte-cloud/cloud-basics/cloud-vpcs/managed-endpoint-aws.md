@@ -68,7 +68,7 @@ The endpoints are displayed with the following values:
 - **Host** - The host name of the PSE. You use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`.
 - **Service Name** - You use this service name when creating the private endpoint in AWS.
 
-You can also create the PSEs during cluster creation.
+You can also create the PSEs during [cluster creation](../../create-clusters/).
 
 ### Use ybm CLI
 
