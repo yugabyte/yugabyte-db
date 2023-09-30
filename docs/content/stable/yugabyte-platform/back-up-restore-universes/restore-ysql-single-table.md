@@ -49,13 +49,13 @@ Do the following:
 1. Connect to one of the nodes of the universe where you restored the backup (that is, the universe with restored_db) and change to the directory where ysql_dump is located. For example:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ cd /home/yugabyte/tserver/postgres/bin
+    cd /home/yugabyte/tserver/postgres/bin
     ```
 
 1. Use ysql_dump to export the table to a SQL script file. The syntax for dumping a single table is as follows:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ ./ysql_dump -h <host> -t <table-name> <database-name> > <file-path>
+    ./ysql_dump -h <host> -t <table-name> <database-name> > <file-path>
     ```
 
     Replace values as follows:
@@ -68,7 +68,7 @@ Do the following:
     For example:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ ./ysql_dump -h 172.151.36.174 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
+    ./ysql_dump -h 172.151.36.174 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
     ```
 
 ### Drop the table from the source
@@ -80,7 +80,7 @@ Do the following to drop a table from the source database source_db:
 1. Connect to one of the nodes of the universe with the source database (that is, the universe with source_db) and start ysqlsh. For example:
 
     ```sh
-    [yugabyte@ip-172-151-36-174 ~]$ ./tserver/bin/ysqlsh -h 172.151.36.174
+    ./tserver/bin/ysqlsh -h 172.151.36.174
     ```
 
 1. Connect to the source_db database:
