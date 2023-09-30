@@ -67,6 +67,8 @@ class PgBackendsTest : public LibPqTestBase {
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(
           options->extra_master_flags.end(),

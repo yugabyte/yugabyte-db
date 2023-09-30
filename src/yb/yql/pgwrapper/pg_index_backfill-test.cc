@@ -622,7 +622,20 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
   return Status::OK();
 }
 
-TEST_F(PgIndexBackfillTest, InsertsWhileCreatingIndex) {
+class PgIndexBackfillTestEnableWait : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
+  }
+};
+
+TEST_F_EX(PgIndexBackfillTest, InsertsWhileCreatingIndexEnableWait, PgIndexBackfillTestEnableWait) {
   ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
 }
 
@@ -630,8 +643,12 @@ class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=true",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
   }
 };
 
