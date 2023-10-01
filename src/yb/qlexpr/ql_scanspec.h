@@ -57,11 +57,6 @@ class QLScanRange {
     bool operator<(const QLBound& other) const;
     bool operator>(const QLBound& other) const;
     bool operator==(const QLBound& other) const;
-    // operator== check ensures that lower bound is compared to lower bound only, where as this
-    // function doesn't have that check.
-    bool Matches(const QLBound& other) const;
-
-    std::string ToString() const;
 
    protected:
     QLBound(const QLValuePB& value, bool is_inclusive, bool is_lower_bound);
@@ -220,12 +215,6 @@ class YQLScanSpec {
 
   // RocksDB file filter to use for this scan.
   virtual std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const = 0;
-
-  bool is_condition_encoded_in_bounds() const { return condition_encoded_in_bounds_; }
-
- protected:
-  // Set to true when ScanSpec conditions are encoded in lower/upper bound.
-  bool condition_encoded_in_bounds_ = false;
 
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
