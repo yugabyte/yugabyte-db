@@ -413,10 +413,6 @@ QLScanRange::QLBound::QLBound(const LWQLValuePB &value, bool is_inclusive, bool 
       is_inclusive_(is_inclusive),
       is_lower_bound_(is_lower_bound) {}
 
-std::string QLScanRange::QLBound::ToString() const {
-  return YB_CLASS_TO_STRING(value, is_inclusive, is_lower_bound);
-}
-
 bool QLScanRange::QLBound::operator<(const QLBound &other) const {
   CHECK_EQ(is_lower_bound_, other.is_lower_bound_);
   if (value_ == other.value_) {
@@ -441,10 +437,6 @@ bool QLScanRange::QLBound::operator>(const QLBound &other) const {
 
 bool QLScanRange::QLBound::operator==(const QLBound &other) const {
   CHECK_EQ(is_lower_bound_, other.is_lower_bound_);
-  return value_ == other.value_ && is_inclusive_ == other.is_inclusive_;
-}
-
-bool QLScanRange::QLBound::Matches(const QLBound& other) const {
   return value_ == other.value_ && is_inclusive_ == other.is_inclusive_;
 }
 
