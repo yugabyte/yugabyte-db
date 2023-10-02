@@ -127,7 +127,7 @@ You can use jsonb to group less interesting / lesser accessed columns of a table
 YSQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the json entries.
 
 {{< note title="Use jsonb columns only when necessary" >}}
-- A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you put everything, but a `only_dynamic_data jsonb` column and other ones being 
+- A good schema design is to keep most columns as regular ones and only using `jsonb` for truly dynamic schema. Don't create a `data jsonb` column where you put everything, but a `only_dynamic_data jsonb` column and other ones being 
 primitive columns.
 - `jsonb` columns are slower to read/write compared to normal columns.
 - `jsonb` values take more space because they need to store keys in strings and make keeping data consistency harder and needing complex queries to get/set jsonb values.
