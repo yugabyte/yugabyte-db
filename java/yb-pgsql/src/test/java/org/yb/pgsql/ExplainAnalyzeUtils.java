@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
+import java.math.BigDecimal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,6 +102,20 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder actualTotalTime(Checker checker);
   }
 
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimitBytes)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %d B", rowLimit, sizeLimitBytes));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimitBytes));
+  }
+
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, String sizeLimit)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %s", rowLimit, sizeLimit));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = '%s'", sizeLimit));
+  }
+
   private static void testExplain(
       Statement stmt, String query, Checker checker, boolean timing, boolean debug)
       throws Exception {
@@ -160,16 +175,28 @@ public class ExplainAnalyzeUtils {
   // to compare costs in tests and not read into potentially finnicky cost
   // values.
   public static class Cost implements Comparable<Cost> {
-    public Cost(double value) {
-      this.value = value;
+    public Cost(String value) {
+      this.value = new BigDecimal(value);
     }
 
     @Override
     public int compareTo(Cost otherCost) {
-      return Double.compare(this.value, otherCost.value);
+      return this.value.compareTo(otherCost.value);
     }
 
-    private double value;
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+
+      if (other == null || this.getClass() != other.getClass())
+        return false;
+
+      Cost otherCost = (Cost) other;
+      return this.value.equals(otherCost.value);
+    }
+
+    private BigDecimal value;
   }
 
   public static Cost getExplainTotalCost(Statement stmt, String query)
@@ -181,8 +208,7 @@ public class ExplainAnalyzeUtils {
     JsonArray rootArray = json.getAsJsonArray();
     if (!rootArray.isEmpty()) {
       JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
-      double total_cost = plan.get(TOTAL_COST).getAsDouble();
-      return new Cost(total_cost);
+      return new Cost(plan.get(TOTAL_COST).getAsString());
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }
