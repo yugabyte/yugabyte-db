@@ -1,0 +1,41 @@
+# /etc/systemd/system/yugabyte-tserver.service
+[Unit]
+Wants=network-online.target
+After=network-online.target
+Description=yugabyte-tserver
+
+[Service]
+RestartForceExitStatus=SIGPIPE
+EnvironmentFile=/etc/sysconfig/mycompany_env
+StartLimitInterval=0
+ExecStart=/bin/bash -c '/opt/misc/yugabyte/bin/yb-tserver \
+--tserver_master_addrs=n1.node.gce-us-east1.mycompany:7100,n2.node.gce-us-central1.mycompany:7100,n3.node.gce-us-west1.mycompany:7100 \
+--fs_data_dirs=/opt/data/1/yugabyte \
+--rpc_bind_addresses=n1.node.gce-us-east1.mycompany:9200 \
+--server_broadcast_addresses=n1.node.gce-us-east1.mycompany:9200 \
+--webserver_interface=n1.node.gce-us-east1.mycompany \
+--webserver_port=9000 \
+--cql_proxy_bind_address=0.0.0.0:9042 \
+--use_private_ip=never \
+--placement_cloud=gce \
+--placement_region=gce-us-east1 \
+--placement_zone=us-east1-c \
+--start_redis_proxy=false \
+--use_cassandra_authentication=true \
+--max_stale_read_bound_time_ms=60000 \
+--logtostderr --placement_uuid=live'
+
+LimitCORE=infinity
+TimeoutStartSec=30
+WorkingDirectory=/opt/data/1/yugabyte
+LimitNOFILE=1048576
+LimitNPROC=12000
+RestartSec=5
+ExecStartPre=/usr/bin/su -c "mkdir -p /opt/data/1/yugabyte && chown yugabyte:yugabyte /opt/data/1/yugabyte"
+PermissionsStartOnly=True
+User=yugabyte
+TimeoutStopSec=300
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
