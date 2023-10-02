@@ -51,6 +51,8 @@ public class KubernetesOperator {
 
   @Inject private SupportBundleUtil supportBundleUtil;
 
+  @Inject KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+
   public MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
       ybUniverseClient;
 
@@ -214,7 +216,8 @@ public class KubernetesOperator {
                           namespace,
                           universeCRUDHandler,
                           upgradeUniverseHandler,
-                          cloudProviderHandler);
+                          cloudProviderHandler,
+                          kubernetesStatusUpdater);
 
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
