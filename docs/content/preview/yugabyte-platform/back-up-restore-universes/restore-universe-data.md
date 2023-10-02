@@ -35,7 +35,7 @@ You can restore YugabyteDB universe data from a backup as follows:
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
-    If you are restoring a backup to a universe with a existing databases with the same name, you must rename the database.
+    If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
 
 1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
 
