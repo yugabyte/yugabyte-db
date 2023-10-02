@@ -73,13 +73,14 @@ public class KubernetesOperatorStatusUpdater {
   /*
    * Universe Status Updates
    */
-  public void createYBUniverseEventStatus(Universe universe, String taskName, UUID taskUUID) {
+  public void createYBUniverseEventStatus(
+      Universe universe, KubernetesResourceDetails universeName, String taskName, UUID taskUUID) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
         String eventStr =
             String.format(
                 "Starting task %s (%s) on universe %s", taskName, taskUUID, universe.getName());
-        this.updateUniverseStatus(universe, eventStr);
+        this.updateUniverseStatus(universe, universeName, eventStr);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
@@ -127,7 +128,11 @@ public class KubernetesOperatorStatusUpdater {
   }
 
   public void updateYBUniverseStatus(
-      Universe universe, String taskName, UUID taskUUID, Throwable t) {
+      Universe universe,
+      KubernetesResourceDetails universeName,
+      String taskName,
+      UUID taskUUID,
+      Throwable t) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
         // Updating Kubernetes Custom Resource (if done through operator).
@@ -136,20 +141,20 @@ public class KubernetesOperatorStatusUpdater {
         String statusStr =
             String.format(
                 "Task %s (%s) on universe %s %s", taskName, taskUUID, universe.getName(), status);
-        updateUniverseStatus(universe, statusStr);
+        updateUniverseStatus(universe, universeName, statusStr);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
     }
   }
 
-  private void updateUniverseStatus(Universe u, String status) {
+  private void updateUniverseStatus(
+      Universe u, KubernetesResourceDetails universeName, String status) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
-      String universeName = u.getName();
-      YBUniverse ybUniverse = getYBUniverseByname(kubernetesClient, universeName);
+      YBUniverse ybUniverse = getYBUniverse(kubernetesClient, universeName);
       if (ybUniverse == null) {
-        log.info("YBUniverse {} is not found", universeName);
+        log.info("YBUniverse {}/{} is not found", universeName.namespace, universeName.name);
         return;
       }
 
@@ -188,11 +193,12 @@ public class KubernetesOperatorStatusUpdater {
    * SupportBundle Status Updates
    */
   public void markSupportBundleFinished(
-      com.yugabyte.yw.models.SupportBundle supportBundle, Path localPath) {
+      com.yugabyte.yw.models.SupportBundle supportBundle,
+      KubernetesResourceDetails bundleName,
+      Path localPath) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
-      SupportBundle bundle =
-          getSupportBundleByUUID(kubernetesClient, supportBundle.getBundleUUID());
+      SupportBundle bundle = getSupportBundle(kubernetesClient, bundleName);
       if (bundle == null) {
         log.debug(
             "could not find support bundle {} in kubernetes",
@@ -216,7 +222,7 @@ public class KubernetesOperatorStatusUpdater {
       bundle.setStatus(bundleStatus);
       kubernetesClient
           .resources(SupportBundle.class)
-          .inNamespace(namespace)
+          .inNamespace(bundleName.namespace)
           .resource(bundle)
           .replaceStatus();
     } catch (Exception e) {
@@ -224,11 +230,11 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
-  public void markSupportBundleFailed(com.yugabyte.yw.models.SupportBundle supportBundle) {
+  public void markSupportBundleFailed(
+      com.yugabyte.yw.models.SupportBundle supportBundle, KubernetesResourceDetails bundleName) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
-      SupportBundle bundle =
-          getSupportBundleByUUID(kubernetesClient, supportBundle.getBundleUUID());
+      SupportBundle bundle = getSupportBundle(kubernetesClient, bundleName);
       if (bundle == null) {
         log.debug("could not find support bundle {} in kubernetes", supportBundle.getBundleUUID());
         return;
@@ -238,7 +244,7 @@ public class KubernetesOperatorStatusUpdater {
       bundle.setStatus(bundleStatus);
       kubernetesClient
           .resources(SupportBundle.class)
-          .inNamespace(namespace)
+          .inNamespace(bundleName.namespace)
           .resource(bundle)
           .replaceStatus();
     } catch (Exception e) {
@@ -278,10 +284,10 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
-  public void doKubernetesEventUpdate(String universeName, String status) {
+  public void doKubernetesEventUpdate(KubernetesResourceDetails universeName, String status) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
-      YBUniverse ybUniverse = getYBUniverseByname(kubernetesClient, universeName);
+      YBUniverse ybUniverse = getYBUniverse(kubernetesClient, universeName);
       if (ybUniverse == null) {
         log.error("YBUniverse {} no longer exists", universeName);
         return;
@@ -313,12 +319,24 @@ public class KubernetesOperatorStatusUpdater {
     }
   }
 
-  private YBUniverse getYBUniverseByname(KubernetesClient kubernetesClient, String name) {
+  private YBUniverse getYBUniverse(
+      KubernetesClient kubernetesClient, KubernetesResourceDetails name) {
+    log.debug("lookup ybuniverse {}/{}", name.namespace, name.name);
     return kubernetesClient
         .resources(YBUniverse.class)
-        .inNamespace(namespace)
-        .withName(name)
-        .item();
+        .inNamespace(name.namespace)
+        .withName(name.name)
+        .get();
+  }
+
+  private SupportBundle getSupportBundle(
+      KubernetesClient kubernetesClient, KubernetesResourceDetails name) {
+    log.debug("lookup support bundle {}/{}", name.namespace, name.name);
+    return kubernetesClient
+        .resources(SupportBundle.class)
+        .inNamespace(name.namespace)
+        .withName(name.name)
+        .get();
   }
 
   private Backup getBackupByUUID(KubernetesClient kubernetesClient, UUID uuid) {
