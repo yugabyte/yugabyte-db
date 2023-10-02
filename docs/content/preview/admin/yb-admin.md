@@ -619,7 +619,6 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table*: <namespace> <table_name> | tableid.<table_id>
 * *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table_name*: The name of the table to flush.
