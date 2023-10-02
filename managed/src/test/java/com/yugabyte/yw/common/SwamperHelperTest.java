@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -45,7 +46,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
@@ -69,8 +70,14 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     Environment env = new Environment(new File("."), classLoader, Mode.TEST);
+    AlertTemplateService alertTemplateService =
+        app.injector().instanceOf(AlertTemplateService.class);
     swamperHelper =
-        new SwamperHelper(new DummyRuntimeConfigFactoryImpl(appConfig), env, mockConfGetter);
+        new SwamperHelper(
+            new DummyRuntimeConfigFactoryImpl(appConfig),
+            env,
+            mockConfGetter,
+            alertTemplateService);
   }
 
   @After
@@ -206,7 +213,6 @@ public class SwamperHelperTest extends FakeDBApplication {
     configuration.setName("[Possibly] wrong \"name\"");
     AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, configuration);
     AlertTemplateSettings templateSettings = ModelFactory.createTemplateSettings(defaultCustomer);
-    definition.setQuery("query{label=\"value\"} {{ query_condition }} {{ query_threshold }}");
     definition.save();
 
     swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
@@ -217,12 +223,13 @@ public class SwamperHelperTest extends FakeDBApplication {
 
     String expectedContent = TestUtils.readResource("alert/test_alert_definition.yml");
     expectedContent =
-        expectedContent.replace("<configuration_uuid>", configuration.getUuid().toString());
-    expectedContent = expectedContent.replace("<definition_uuid>", definition.getUuid().toString());
+        expectedContent.replaceAll("<configuration_uuid>", configuration.getUuid().toString());
     expectedContent =
-        expectedContent.replace("<customer_uuid>", defaultCustomer.getUuid().toString());
+        expectedContent.replaceAll("<definition_uuid>", definition.getUuid().toString());
     expectedContent =
-        expectedContent.replace("<universe_uuid>", universe.getUniverseUUID().toString());
+        expectedContent.replaceAll("<customer_uuid>", defaultCustomer.getUuid().toString());
+    expectedContent =
+        expectedContent.replaceAll("<universe_uuid>", universe.getUniverseUUID().toString());
 
     assertThat(fileContent, equalTo(expectedContent));
   }
@@ -273,6 +280,23 @@ public class SwamperHelperTest extends FakeDBApplication {
     assertThat(configUuids, containsInAnyOrder(universeUuid1, universeUuid2));
   }
 
+  @Test
+  public void testGetTargetNodeAgentUuids() throws IOException {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    UUID nodeAgentUuid = UUID.randomUUID();
+    UUID nodeAgentUuid2 = UUID.randomUUID();
+    String configFilePath = generateNodeAgentFileName(nodeAgentUuid.toString());
+    String configFilePath2 = generateNodeAgentFileName(nodeAgentUuid2.toString());
+    String wrongFilePath = generateNodeAgentFileName("blablabla");
+
+    new File(configFilePath).createNewFile();
+    new File(configFilePath2).createNewFile();
+    new File(wrongFilePath).createNewFile();
+
+    List<UUID> nodeUUids = swamperHelper.getTargetNodeAgentUuids();
+    assertThat(nodeUUids, containsInAnyOrder(nodeAgentUuid, nodeAgentUuid2));
+  }
+
   private String generateRulesFileName(String definitionUuid) {
     return SWAMPER_TMP_PATH + SwamperHelper.ALERT_CONFIG_FILE_PREFIX + definitionUuid + ".yml";
   }
@@ -283,5 +307,9 @@ public class SwamperHelperTest extends FakeDBApplication {
 
   private String generateYugabyteFileName(String universeUuid) {
     return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_YUGABYTE_PREFIX + universeUuid + ".json";
+  }
+
+  private String generateNodeAgentFileName(String nodeAgentUuid) {
+    return SWAMPER_TMP_PATH + SwamperHelper.TARGET_FILE_NODE_AGENT_PREFIX + nodeAgentUuid + ".json";
   }
 }

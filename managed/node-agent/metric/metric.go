@@ -4,7 +4,6 @@ package metric
 
 import (
 	"net/http"
-	"node-agent/util"
 	"sync"
 	"time"
 
@@ -41,18 +40,18 @@ func newMetrics() *Metrics {
 			prometheus.CounterOpts{
 				Name: "nodeagent_uptime_total",
 				Help: "Total number of uptime heartbeats.",
-			}, []string{"host", "uuid"}),
+			}, []string{}),
 		invocationCounter: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "nodeagent_rpc_total",
 				Help: "Total number of rpc invocations.",
-			}, []string{"host", "uuid", "service", "method", "response_code"}),
+			}, []string{"service", "method", "response_code"}),
 		// The default buckets are in seconds.
 		responseHistogram: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "nodeagent_response_seconds",
 			Help:    "Histogram of response time of RPC methods.",
 			Buckets: prometheus.DefBuckets,
-		}, []string{"host", "uuid", "service", "method"}),
+		}, []string{"service", "method"}),
 		// End of all metrics.
 	}
 	// Register this collector.
@@ -67,7 +66,7 @@ func (metrics *Metrics) HTTPHandler() http.Handler {
 
 // PrepopulateMetrics prepopulates metrics.
 func (metrics *Metrics) PrepopulateMetrics(server *grpc.Server) {
-	sLabelValues := metrics.serverLabelValues()
+	sLabelValues := []string{}
 	metrics.prepopulateServerMetrics(sLabelValues...)
 	serviceInfo := server.GetServiceInfo()
 	for sName, info := range serviceInfo {
@@ -77,11 +76,6 @@ func (metrics *Metrics) PrepopulateMetrics(server *grpc.Server) {
 			metrics.prepopulateMethodMetrics(labelValues...)
 		}
 	}
-}
-
-func (metrics *Metrics) serverLabelValues() []string {
-	config := util.CurrentConfig()
-	return []string{config.String(util.NodeIpKey), config.String(util.NodeAgentIdKey)}
 }
 
 // initServerMetrics allows the metrics to be prepopulated.
@@ -120,9 +114,7 @@ func (metrics *Metrics) incrementCounter(
 	counter *prometheus.CounterVec,
 	labelValues ...string,
 ) {
-	lVals := metrics.serverLabelValues()
-	lVals = append(lVals, labelValues...)
-	counter.WithLabelValues(lVals...).Inc()
+	counter.WithLabelValues(labelValues...).Inc()
 }
 
 // observeHistogram updates the given histogram.
@@ -131,9 +123,7 @@ func (metrics *Metrics) observeHistogram(
 	value float64,
 	labelValues ...string,
 ) {
-	lVals := metrics.serverLabelValues()
-	lVals = append(lVals, labelValues...)
-	histogram.WithLabelValues(lVals...).Observe(value)
+	histogram.WithLabelValues(labelValues...).Observe(value)
 }
 
 // PublishServerMethodStats publishes RPC server related metrics.

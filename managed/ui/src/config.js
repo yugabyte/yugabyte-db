@@ -27,6 +27,12 @@ export const isSSOEnabled = () => _.get(window, 'YB_Platform_Config.use_oauth', 
 
 export const setSSO = (value) => _.set(window, 'YB_Platform_Config.use_oauth', value);
 
+export const setShowJWTTokenInfo = (value) =>
+  _.set(window, 'YB_Platform_Config.show_jwt_token_info', value);
+
+export const shouldShowJWTTokenInfo = () =>
+  _.get(window, 'YB_Platform_Config.show_jwt_token_info', false);
+
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [
   { code: 'aws', name: 'Amazon', label: 'Amazon Web Services' },
@@ -39,6 +45,12 @@ export const PROVIDER_TYPES = [
   { code: 'other', name: 'Other', label: 'Custom Datacenter' }
 ];
 
+// The following region array is used in the old kubernetes provider form.
+// Please also add any new K8s regions and zones to:
+// src/components/configRedesign/providerRedesign/providerRegionsData.ts
+// so that the new kubernetes provider UI stays in sync.
+// The old provider UI and its related components/constants/types will be removed once
+// it is no longer used as a fallback option.
 export const REGION_METADATA = [
   { code: 'us-west-1', name: 'US West (N. California)', latitude: 37, longitude: -121 },
   { code: 'us-west-2', name: 'US West (Oregon)', latitude: 44, longitude: -121 },

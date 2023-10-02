@@ -68,8 +68,8 @@ Even though the `create_keyspace_snapshot` and `create_snapshot` commands exit i
 The preceding command lists the snapshots in the cluster, along with their states. You can find the ID of the new snapshot and make sure it has been completed, as shown in the following  sample output:
 
 ```output
-Snapshot UUID                         State
-6e7e85b0-13ef-4073-9ab7-224cb77f22ef  COMPLETE
+Snapshot UUID                           State       Creation Time
+6e7e85b0-13ef-4073-9ab7-224cb77f22ef    COMPLETE    2023-04-20 00:20:38.214201
 ```
 
 ## Delete a snapshot

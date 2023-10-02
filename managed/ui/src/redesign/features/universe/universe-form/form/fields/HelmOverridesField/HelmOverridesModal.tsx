@@ -1,4 +1,4 @@
-import React, { ReactElement, useState } from 'react';
+import { ReactElement, useState } from 'react';
 import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, FieldArrayPath, useForm } from 'react-hook-form';
@@ -179,7 +179,7 @@ export const HelmOverridesModal = ({
       onClose={onClose}
       titleSeparator
       onSubmit={handleSave}
-      actionsInfo={
+      footerAccessory={
         <YBCheckbox
           checked={forceConfirm}
           onChange={() => setForceConfirm(!forceConfirm)}

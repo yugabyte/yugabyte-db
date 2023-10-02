@@ -25,11 +25,12 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.ScheduleUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -61,18 +63,21 @@ public class CreateBackup extends UniverseTaskBase {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
-  private final BackupUtil backupUtil;
+  private final StorageUtilFactory storageUtilFactory;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
-      BackupUtil backupUtil) {
+      StorageUtilFactory storageUtilFactory,
+      KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
-    this.backupUtil = backupUtil;
+    this.storageUtilFactory = storageUtilFactory;
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   protected BackupRequestParams params() {
@@ -91,10 +96,12 @@ public class CreateBackup extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder = MetricLabelsBuilder.create().appendSource(universe);
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
+    boolean isAbort = false;
     boolean ybcBackup =
         !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
             && universe.isYbcEnabled()
             && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    Backup backup = null;
     try {
       checkUniverseVersion();
 
@@ -113,7 +120,8 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        StorageUtil.getStorageUtil(customerConfig.getName())
+        storageUtilFactory
+            .getStorageUtil(customerConfig.getName())
             .validateStorageConfigOnUniverse(customerConfig, universe);
 
         if (ybcBackup
@@ -137,12 +145,12 @@ public class CreateBackup extends UniverseTaskBase {
           }
         }
 
-        Backup backup =
+        backup =
             createAllBackupSubtasks(
                 params(),
                 UserTaskDetails.SubTaskGroupType.CreatingTableBackup,
-                tablesToBackup,
-                ybcBackup);
+                ybcBackup,
+                tablesToBackup);
         log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
@@ -154,59 +162,28 @@ public class CreateBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-
-        Backup currentBackup =
-            Backup.getOrBadRequest(params().customerUUID, backup.getBackupUUID());
-        if (ybcBackup) {
-          if (!currentBackup.getBaseBackupUUID().equals(currentBackup.getBackupUUID())) {
-            Backup baseBackup =
-                Backup.getOrBadRequest(params().customerUUID, currentBackup.getBaseBackupUUID());
-            currentBackup.onCompletion();
-            baseBackup.onIncrementCompletion(currentBackup.getCreateTime());
-          } else {
-            currentBackup.onCompletion();
-          }
-        }
         BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
-
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
             .forEach(
-                backup -> {
-                  backup.transitionState(BackupState.Stopped);
-                  backup.setCompletionTime(new Date());
-                  backup.save();
+                bkp -> {
+                  bkp.transitionState(BackupState.Stopped);
+                  bkp.setCompletionTime(new Date());
+                  bkp.save();
                 });
         unlockUniverseForUpdate(false);
         isUniverseLocked = false;
+        isAbort = true;
         throw ce;
-      } catch (Throwable t) {
-        if (params().alterLoadBalancer) {
-          // If the task failed, we don't want the loadbalancer to be
-          // disabled, so we enable it again in case of errors.
-          setTaskQueueAndRun(
-              () ->
-                  createLoadBalancerStateChangeTask(true)
-                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
-        }
-        throw t;
       }
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-        // Ensures that backup reaches a final state
-        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach(
-                backup -> {
-                  if (backup.getState().equals(BackupState.InProgress)) {
-                    backup.transitionState(BackupState.Failed);
-                    backup.setCompletionTime(new Date());
-                    backup.save();
-                  }
-                });
+        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+        handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
@@ -218,8 +195,14 @@ public class CreateBackup extends UniverseTaskBase {
         }
       }
       throw t;
+    } finally {
+      if (backup != null) {
+        backup.refresh();
+      }
+      log.info("Checking to see if we need to update the status of custom resource");
+      kubernetesStatus.updateBackupStatus(backup, getName(), getUserTaskUUID());
+      log.info("Finished task name {}, taskUUID {}", getName(), getUserTaskUUID().toString());
     }
-    log.info("Finished {} task.", getName());
   }
 
   public void runScheduledBackup(
@@ -250,11 +233,13 @@ public class CreateBackup extends UniverseTaskBase {
     if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
         if (baseBackupUUID == null) {
-          // Update backlog status only for full backup as we don't store expected task time
-          // for incremental backups and check its requirement in every 2 minutes.
           schedule.updateBacklogStatus(true);
+          log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
+        } else {
+          schedule.updateIncrementBacklogStatus(true);
+          log.debug(
+              "Schedule {} increment backlog status is set to true", schedule.getScheduleUUID());
         }
-        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -268,9 +253,14 @@ public class CreateBackup extends UniverseTaskBase {
     }
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
-    if (schedule.isBacklogStatus()) {
+    if (schedule.isBacklogStatus() && baseBackupUUID == null) {
       schedule.updateBacklogStatus(false);
+      schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
+    } else if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())
+        && schedule.isIncrementBacklogStatus()) {
+      schedule.updateIncrementBacklogStatus(false);
+      log.debug("Schedule {} increment backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.",
@@ -282,7 +272,9 @@ public class CreateBackup extends UniverseTaskBase {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.getName());
+        universe.getName(),
+        null,
+        schedule.getScheduleName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,

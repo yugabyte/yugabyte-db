@@ -15,8 +15,11 @@
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_value.h"
 #include "yb/gutil/walltime.h"
 #include "yb/master/master_defaults.h"
+#include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::chrono_literals;
 
@@ -29,33 +32,19 @@ TestEchoService::TestEchoService(
     : StatefulRpcServiceBase(StatefulServiceKind::TEST_ECHO, metric_entity, client_future),
       node_uuid_(node_uuid) {}
 
-void TestEchoService::Activate(const int64_t leader_term) {
-  LOG(INFO) << "Test Echo service activated on term: " << leader_term;
+void TestEchoService::Activate() {
+  LOG(INFO) << "Test Echo service activated";
+  WARN_NOT_OK(ReloadEchoCountFromTable(), "Failed to record to table");
 }
 
-void TestEchoService::Deactivate() { LOG(INFO) << "Test Echo service de-activated"; }
+void TestEchoService::Deactivate() {
+  echo_count_ = 0;
+  LOG(INFO) << "Test Echo service de-activated";
+}
 
 Result<bool> TestEchoService::RunPeriodicTask() {
   LOG(INFO) << "Test Echo service Running";
   return true;
-}
-
-Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponsePB* resp) {
-  std::string echo = req.message();
-
-  RETURN_NOT_OK(RecordRequestInTable(echo));
-
-  // For a string to bounce back and make an echo, there has to be a lot of latency between the
-  // string source and the thing (wall or mountain or service) that it hits and bounces back. Since
-  // latency in Yugabyte is very low we need to do some string manipulation instead.
-  auto loc = echo.find_last_of(' ') + 1;
-  auto last_word = " " + echo.substr(loc, echo.size() - loc);
-  echo.append(last_word).append(last_word);
-
-  resp->set_message(std::move(echo));
-  resp->set_node_id(node_uuid_);
-
-  return Status::OK();
 }
 
 Status TestEchoService::RecordRequestInTable(const std::string& message) {
@@ -67,9 +56,65 @@ Status TestEchoService::RecordRequestInTable(const std::string& message) {
   table->AddStringColumnValue(req, master::kTestEchoNodeId, node_uuid_);
   table->AddStringColumnValue(req, master::kTestEchoMessage, message);
 
-  std::shared_ptr<client::YBSession> session = GetYBSession();
-  session->SetTimeout(30s);
-  return session->TEST_ApplyAndFlush(op);
+  auto session = VERIFY_RESULT(GetYBSession(30s));
+
+  TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply1");
+  TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply2");
+
+  return session->TEST_ApplyAndFlush(std::move(op));
+}
+
+Status TestEchoService::ReloadEchoCountFromTable() {
+  auto* table = VERIFY_RESULT(GetServiceTable());
+
+  Status table_scan_status;
+  client::TableIteratorOptions options;
+  options.error_handler = [&table_scan_status](const Status& status) {
+    table_scan_status = status;
+  };
+
+  uint32 count = 0;
+  Timestamp max_timestamp;
+  for (const auto& row : client::TableRange(*table, options)) {
+    auto timestamp = row.column(master::kTestEchoTimestampIdx).timestamp_value();
+    if (timestamp > max_timestamp) {
+      max_timestamp = timestamp;
+    }
+    count++;
+  }
+  RETURN_NOT_OK(table_scan_status);
+
+  LOG(INFO) << "Echo count: " << count << ", max timestamp: " << max_timestamp.ToFormattedString();
+  echo_count_ = count;
+
+  return Status::OK();
+}
+
+Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponsePB* resp) {
+  std::string echo = req.message();
+
+  auto status = RecordRequestInTable(echo);
+  TEST_SYNC_POINT_CALLBACK("TestEchoService::GetEchoImpl::RecordRequestInTable", &status);
+  RETURN_NOT_OK(status);
+  echo_count_++;
+
+  // For a string to bounce back and make an echo, there has to be a lot of latency between the
+  // string source and the thing (wall or mountain or service) that it hits and bounces back.
+  // Since latency in Yugabyte is very low we need to do some string manipulation instead.
+  auto loc = echo.find_last_of(' ') + 1;
+  auto last_word = " " + echo.substr(loc, echo.size() - loc);
+  echo.append(last_word).append(last_word);
+
+  resp->set_message(std::move(echo));
+  resp->set_node_id(node_uuid_);
+
+  return Status::OK();
+}
+
+Status TestEchoService::GetEchoCountImpl(
+    const GetEchoCountRequestPB& req, GetEchoCountResponsePB* resp) {
+  resp->set_count(echo_count_);
+  return Status::OK();
 }
 
 }  // namespace stateful_service

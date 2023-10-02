@@ -37,7 +37,7 @@
 
 // CDC Tablet metrics.
 // Todo(Rahul): Figure out appropriate aggregation functions for these metrics.
-METRIC_DEFINE_coarse_histogram(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
+METRIC_DEFINE_event_stats(cdc, rpc_payload_bytes_responded, "CDC Bytes Responded",
     yb::MetricUnit::kBytes,
     "Payload size of responses to CDC GetChanges requests (only when records are included)",
     {0, yb::AggregationFunction::kSum, yb::AggregationMetricLevel::kStream} /* optional_args */);
@@ -152,6 +152,22 @@ CDCTabletMetrics::CDCTabletMetrics(const scoped_refptr<MetricEntity>& entity)
       GINIT(time_since_last_getchanges),
       GINIT(last_caughtup_physicaltime),
       entity_(entity) {}
+
+void CDCTabletMetrics::ClearMetrics() {
+  last_read_opid_term->set_value(0);
+  last_read_opid_index->set_value(0);
+  last_checkpoint_opid_index->set_value(0);
+  last_read_hybridtime->set_value(0);
+  last_read_physicaltime->set_value(0);
+  last_checkpoint_physicaltime->set_value(0);
+  last_readable_opid_index->set_value(0);
+  async_replication_sent_lag_micros->set_value(0);
+  async_replication_committed_lag_micros->set_value(0);
+  is_bootstrap_required->set_value(false);
+  last_getchanges_time->set_value(0);
+  time_since_last_getchanges->set_value(0);
+  last_caughtup_physicaltime->set_value(0);
+}
 
 CDCSDKTabletMetrics::CDCSDKTabletMetrics(const scoped_refptr<MetricEntity>& entity)
     : GINIT(cdcsdk_sent_lag_micros),

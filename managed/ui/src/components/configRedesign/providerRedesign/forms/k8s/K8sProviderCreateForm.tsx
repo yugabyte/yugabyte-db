@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import JsYaml from 'js-yaml';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -15,7 +15,7 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { KubernetesProviderType, ProviderCode } from '../../constants';
+import { KubernetesProvider, KubernetesProviderType, ProviderCode } from '../../constants';
 import { CreateInfraProvider } from '../../InfraProvider';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
@@ -41,7 +41,6 @@ import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from
 import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { adaptSuggestedKubernetesConfig } from './utils';
-import { KUBERNETES_REGIONS } from '../../providerRegionsData';
 
 import {
   K8sAvailabilityZoneMutation,
@@ -60,7 +59,7 @@ export interface K8sProviderCreateFormFieldValues {
   dbNodePublicInternetAccess: boolean;
   kubeConfigName: string;
   kubernetesImageRegistry: string;
-  kubernetesProvider: { value: string; label: string };
+  kubernetesProvider: { value: KubernetesProvider; label: string };
   providerName: string;
   regions: K8sRegionField[];
 
@@ -68,10 +67,6 @@ export interface K8sProviderCreateFormFieldValues {
   kubernetesPullSecretContent?: File;
   kubernetesPullSecretName?: string;
 }
-
-export const DEFAULT_FORM_VALUES: Partial<K8sProviderCreateFormFieldValues> = {
-  regions: [] as K8sRegionField[]
-} as const;
 
 const VALIDATION_SCHEMA = object().shape({
   providerName: string()
@@ -100,8 +95,9 @@ export const K8sProviderCreateForm = ({
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
   const featureFlags = useSelector((state: any) => state.featureFlags);
 
+  const defaultValues = constructDefaultFormValues(kubernetesProviderType);
   const formMethods = useForm<K8sProviderCreateFormFieldValues>({
-    defaultValues: DEFAULT_FORM_VALUES,
+    defaultValues: defaultValues,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
 
@@ -116,7 +112,10 @@ export const K8sProviderCreateForm = ({
     }
   );
 
-  if (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle) {
+  if (
+    enableSuggestedConfigFeature &&
+    (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)
+  ) {
     return <YBLoading />;
   }
 
@@ -224,8 +223,6 @@ export const K8sProviderCreateForm = ({
             const newRegion: K8sRegionMutation = {
               code: regionField.regionData.value.code,
               name: regionField.regionData.label,
-              longitude: KUBERNETES_REGIONS[regionField.regionData.value.code]?.longitude,
-              latitude: KUBERNETES_REGIONS[regionField.regionData.value.code]?.latitude,
               zones: preprocessedZones,
               details: {
                 cloudInfo: { [ProviderCode.KUBERNETES]: {} }
@@ -263,7 +260,7 @@ export const K8sProviderCreateForm = ({
     formMethods.setValue('regions', regions, { shouldValidate: true });
   };
 
-  const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
+  const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: K8sRegionField[]) =>
     formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: K8sRegionField) => {
@@ -273,6 +270,8 @@ export const K8sProviderCreateForm = ({
   };
   const onDeleteRegionSubmit = (currentRegion: K8sRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
+
+  const kubernetesProvider = formMethods.watch('kubernetesProvider');
   const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
@@ -380,6 +379,7 @@ export const K8sProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message && (
                 <FormHelperText error={true}>
@@ -414,6 +414,8 @@ export const K8sProviderCreateForm = ({
       {isRegionFormModalOpen && (
         <ConfigureK8sRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
+          kubernetesProvider={kubernetesProvider.value}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -430,3 +432,10 @@ export const K8sProviderCreateForm = ({
     </Box>
   );
 };
+
+const constructDefaultFormValues = (
+  kubernetesProviderType: KubernetesProviderType
+): Partial<K8sProviderCreateFormFieldValues> => ({
+  kubernetesProvider: KUBERNETES_PROVIDER_OPTIONS[kubernetesProviderType][0],
+  regions: [] as K8sRegionField[]
+});

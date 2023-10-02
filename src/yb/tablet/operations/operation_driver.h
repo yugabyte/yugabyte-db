@@ -169,7 +169,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return replication_state_ == ReplicationState::NOT_REPLICATING;
   }
 

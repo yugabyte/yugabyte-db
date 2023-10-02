@@ -22,6 +22,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.SQLException;
+import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -29,6 +30,16 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunner.class)
 public class TestOneOrTwoAdmins extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestOneOrTwoAdmins.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // This test expects one of two conflicting transactions to be killed immediately in each
+    // iteration. Therefore, we run it in fail-on-conflict concurrency control.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    flagMap.put("enable_wait_queues", "false");
+    return flagMap;
+  }
 
   private String executeOneOrTwoAdminsAssertion(
       Statement statement, boolean useCount) throws SQLException {

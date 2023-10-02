@@ -10,25 +10,174 @@ CREATE TABLE ybaggtest (
     float_4    float4,
     float_8    float8
 );
+CREATE INDEX NONCONCURRENTLY ybaggtestindex ON ybaggtest (
+    (int_8, int_2) HASH,
+    float_4 DESC,
+    int_4 ASC
+) INCLUDE (float_8);
+CREATE INDEX NONCONCURRENTLY ybaggtestindexsimple ON ybaggtest (
+    int_4 ASC
+);
 -- Insert maximum integer values multiple times to force overflow on SUM (both in DocDB and PG).
 INSERT INTO ybaggtest VALUES (1, 32767, 2147483647, 9223372036854775807, 1.1, 2.2);
 INSERT INTO ybaggtest
     SELECT series, t.int_2, t.int_4, t.int_8, t.float_4, t.float_8
     FROM ybaggtest as t CROSS JOIN generate_series(2, 100) as series;
 -- Verify COUNT(...) returns proper value.
-SELECT COUNT(*) FROM ybaggtest;
+\set explain 'EXPLAIN (COSTS OFF)'
+\set ss '/*+SeqScan(ybaggtest)*/'
+\set ios '/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/'
+\set is '/*+IndexScan(ybaggtest ybaggtestindexsimple)*/'
+\set query 'SELECT COUNT(*) FROM ybaggtest'
+\set isquery ':query WHERE int_4 > 0'
+\set run ':explain :query; :explain :ss :query; :explain :ios :query; :explain :is :isquery; :query; :ss :query; :ios :query; :is :isquery'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
  count
 -------
    100
 (1 row)
 
-SELECT COUNT(0) FROM ybaggtest;
  count
 -------
    100
 (1 row)
 
-SELECT COUNT(NULL) FROM ybaggtest;
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+\set query 'SELECT COUNT(0) FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+\set query 'SELECT COUNT(NULL) FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     0
+(1 row)
+
+ count
+-------
+     0
+(1 row)
+
+ count
+-------
+     0
+(1 row)
+
  count
 -------
      0
@@ -42,6 +191,20 @@ SELECT COUNT(*) FROM ybaggtest;
     99
 (1 row)
 
+/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/
+SELECT COUNT(*) FROM ybaggtest;
+ count
+-------
+    99
+(1 row)
+
+SELECT COUNT(0) FROM ybaggtest;
+ count
+-------
+    99
+(1 row)
+
+/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/
 SELECT COUNT(0) FROM ybaggtest;
  count
 -------
@@ -49,251 +212,478 @@ SELECT COUNT(0) FROM ybaggtest;
 (1 row)
 
 -- Verify selecting different aggs for same column works.
-SELECT SUM(int_4), MAX(int_4), MIN(int_4), SUM(int_2), MAX(int_2), MIN(int_2) FROM ybaggtest;
-     sum      |    max     |    min     |   sum   |  max  |  min
---------------+------------+------------+---------+-------+-------
- 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
-(1 row)
-
--- Verify SUMs are correct for all fields and do not overflow.
-SELECT SUM(int_2), SUM(int_4), SUM(int_8), SUM(float_4), SUM(float_8) FROM ybaggtest;
-   sum   |     sum      |          sum          |  sum  |  sum
----------+--------------+-----------------------+-------+-------
- 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
-(1 row)
-
--- Verify shared aggregates work as expected.
-SELECT SUM(int_4), SUM(int_4) + 1 FROM ybaggtest;
-     sum      |   ?column?
---------------+--------------
- 212600881053 | 212600881054
-(1 row)
-
--- Verify NaN float values are respected by aggregates.
-INSERT INTO ybaggtest (id, float_4, float_8) VALUES (101, 'NaN', 'NaN');
-SELECT COUNT(float_4), SUM(float_4), MAX(float_4), MIN(float_4) FROM ybaggtest;
- count | sum | max | min
--------+-----+-----+-----
-   100 | NaN | NaN | 1.1
-(1 row)
-
-SELECT COUNT(float_8), SUM(float_8), MAX(float_8), MIN(float_8) FROM ybaggtest;
- count | sum | max | min
--------+-----+-----+-----
-   100 | NaN | NaN | 2.2
-(1 row)
-
---
--- Test NULL rows are handled properly by COUNT.
---
--- Create table without primary key.
-CREATE TABLE ybaggtest2 (
-    a int
-);
--- Insert NULL rows.
-INSERT INTO ybaggtest2 VALUES (NULL), (NULL), (NULL);
--- Insert regular rows.
-INSERT INTO ybaggtest2 VALUES (1), (2), (3);
--- Verify NULL rows are included in COUNT(*) but not in COUNT(row).
-SELECT COUNT(*) FROM ybaggtest2;
- count
--------
-     6
-(1 row)
-
-SELECT COUNT(a) FROM ybaggtest2;
- count
--------
-     3
-(1 row)
-
-SELECT COUNT(*), COUNT(a) FROM ybaggtest2;
- count | count
--------+-------
-     6 |     3
-(1 row)
-
--- Verify MAX/MIN respect NULL values.
-SELECT MAX(a), MIN(a) FROM ybaggtest2;
- max | min
------+-----
-   3 |   1
-(1 row)
-
--- Verify SUM/MAX/MIN work as expected with constant arguments.
-SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2;
- sum | max | min
------+-----+-----
-  12 |   2 |   2
-(1 row)
-
-SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2;
- sum | max | min
------+-----+-----
-     |     |
-(1 row)
-
-CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
-INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'), (6, 'six');
-CREATE TABLE test(k INT PRIMARY KEY);
-ALTER TABLE test ADD v1 int DEFAULT 5;
-ALTER TABLE test ADD v2 int DEFAULT 10;
-INSERT INTO test VALUES(1), (2), (3);
-SELECT COUNT(*) FROM test;
- count
--------
-     3
-(1 row)
-
-SELECT COUNT(k) FROM test;
- count
--------
-     3
-(1 row)
-
-SELECT COUNT(v1) FROM test;
- count
--------
-     3
-(1 row)
-
-SELECT COUNT(v2) FROM test;
- count
--------
-     3
-(1 row)
-
-SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v2) AS count FROM test) AS c ON (d.k = c.count);
- k |   v   | count
----+-------+-------
- 3 | three |     3
-(1 row)
-
-INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
-SELECT COUNT(*) FROM test;
- count
--------
-     6
-(1 row)
-
-SELECT COUNT(k) FROM test;
- count
--------
-     6
-(1 row)
-
-SELECT COUNT(v1) FROM test;
- count
--------
-     5
-(1 row)
-
-SELECT COUNT(v2) FROM test;
- count
--------
-     4
-(1 row)
-
-SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(*) AS count FROM test) AS c ON (d.k = c.count);
- k |  v  | count
----+-----+-------
- 6 | six |     6
-(1 row)
-
-SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(k) AS count FROM test) AS c ON (d.k = c.count);
- k |  v  | count
----+-----+-------
- 6 | six |     6
-(1 row)
-
-SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v1) AS count FROM test) AS c ON (d.k = c.count);
- k |  v   | count
----+------+-------
- 5 | five |     5
-(1 row)
-
-SELECT * FROM digit AS d INNER JOIN (SELECT COUNT(v2) AS count FROM test) AS c ON (d.k = c.count);
- k |  v   | count
----+------+-------
- 4 | four |     4
-(1 row)
-
-DROP TABLE test;
-DROP TABLE digit;
-CREATE TABLE test(K INT PRIMARY KEY, v1 INT NOT NULL, v2 INT NOT NULL);
-INSERT INTO test VALUES(1, 1, 1), (2, 2, 2), (3, 3, 3);
-AlTER TABLE test DROP v1;
-SELECT MIN(v2) FROM test;
- min
------
-   1
-(1 row)
-
-SELECT MAX(v2) FROM test;
- max
------
-   3
-(1 row)
-
-SELECT SUM(v2) FROM test;
- sum
------
-   6
-(1 row)
-
-SELECT COUNT(v2) FROM test;
- count
--------
-     3
-(1 row)
-
--- For https://github.com/YugaByte/yugabyte-db/issues/10085
--- Original test case that had postgres FATAL:
-CREATE TABLE t1(c0 DECIMAL );
-INSERT INTO t1(c0) VALUES(0.4632167437031089463062016875483095645904541015625), (0.82173140818865475498711248292238451540470123291015625), (0.69990454445895500246166420765803195536136627197265625), (0.7554730989898816861938257716246880590915679931640625);
-ALTER TABLE  ONLY t1 FORCE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY;
-INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625), (0.13653666831997435249235195442452095448970794677734375), (0.3359001510719556993223022800520993769168853759765625), (0.312027233370160583802999099134467542171478271484375);
-SELECT SUM(count) FROM (SELECT (CAST((((('[-1962327130,2000870418)'::int4range)*('(-1293215916,183586536]'::int4range)))-((('[-545024026,526859443]'::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1) as res;
- sum
------
-
-(1 row)
-
--- Simplified test case that had postgres FATAL:
-CREATE TABLE t2(c0 DECIMAL );
-INSERT INTO t2 VALUES(1), (2), (3);
-SELECT SUM(r) < 6 from (SELECT random() as r from t2) as res;
- ?column?
-----------
- t
-(1 row)
-
--- Simplified test case that had postgres FATAL:
-CREATE TABLE t3(c0 DECIMAL );
-INSERT INTO t3 VALUES(1), (2), (3);
-SELECT SUM(r) from (SELECT (NULL=random())::int as r from t3) as res;
- sum
------
-
-(1 row)
-
--- Test case that did not have postgres FATAL but showed wrong result 't':
-CREATE TABLE t4(c0 FLOAT8);
-INSERT INTO t4 VALUES(1), (2), (3);
-SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res;
- ?column?
-----------
- f
-(1 row)
-
--- Test EXPLAIN with aggregate pushdown
-EXPLAIN (COSTS OFF) SELECT COUNT(*), SUM(int_4) FROM ybaggtest;
+\set query 'SELECT SUM(int_4), MAX(int_4), MIN(int_4), SUM(int_2), MAX(int_2), MIN(int_2) FROM ybaggtest'
+:run;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
    ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+     sum      |    max     |    min     |   sum   |  max  |  min
+--------------+------------+------------+---------+-------+-------
+ 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
+(1 row)
+
+     sum      |    max     |    min     |   sum   |  max  |  min
+--------------+------------+------------+---------+-------+-------
+ 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
+(1 row)
+
+     sum      |    max     |    min     |   sum   |  max  |  min
+--------------+------------+------------+---------+-------+-------
+ 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
+(1 row)
+
+     sum      |    max     |    min     |   sum   |  max  |  min
+--------------+------------+------------+---------+-------+-------
+ 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
+(1 row)
+
+-- Verify SUMs are correct for all fields and do not overflow.
+\set query 'SELECT SUM(int_2), SUM(int_4), SUM(int_8), SUM(float_4), SUM(float_8) FROM ybaggtest'
+:run;
+         QUERY PLAN
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)
+
+         QUERY PLAN
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+(2 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+(3 rows)
+
+   sum   |     sum      |          sum          |  sum  |  sum
+---------+--------------+-----------------------+-------+-------
+ 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |          sum          |  sum  |  sum
+---------+--------------+-----------------------+-------+-------
+ 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |          sum          |  sum  |  sum
+---------+--------------+-----------------------+-------+-------
+ 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |          sum          |  sum  |  sum
+---------+--------------+-----------------------+-------+-------
+ 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
+(1 row)
+
+-- ...and do the same query excluding the int_8 column to test agg pushdown.
+-- TODO(#16289): remove this.
+\set query 'SELECT SUM(int_2), SUM(int_4), SUM(float_4), SUM(float_8) FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+   sum   |     sum      |  sum  |  sum
+---------+--------------+-------+-------
+ 3243933 | 212600881053 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |  sum  |  sum
+---------+--------------+-------+-------
+ 3243933 | 212600881053 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |  sum  |  sum
+---------+--------------+-------+-------
+ 3243933 | 212600881053 | 108.9 | 217.8
+(1 row)
+
+   sum   |     sum      |  sum  |  sum
+---------+--------------+-------+-------
+ 3243933 | 212600881053 | 108.9 | 217.8
+(1 row)
+
+-- Verify shared aggregates work as expected.
+\set query 'SELECT SUM(int_4), SUM(int_4) + 1 FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+     sum      |   ?column?
+--------------+--------------
+ 212600881053 | 212600881054
+(1 row)
+
+     sum      |   ?column?
+--------------+--------------
+ 212600881053 | 212600881054
+(1 row)
+
+     sum      |   ?column?
+--------------+--------------
+ 212600881053 | 212600881054
+(1 row)
+
+     sum      |   ?column?
+--------------+--------------
+ 212600881053 | 212600881054
+(1 row)
+
+-- Verify NaN float values are respected by aggregates.
+INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN');
+\set query 'SELECT COUNT(float_4), SUM(float_4), MAX(float_4), MIN(float_4) FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 1.1
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 1.1
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 1.1
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 1.1
+(1 row)
+
+\set query 'SELECT COUNT(float_8), SUM(float_8), MAX(float_8), MIN(float_8) FROM ybaggtest'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 2.2
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 2.2
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 2.2
+(1 row)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 2.2
+(1 row)
+
+-- In case indexquals are planned to be rechecked, pushdown should be avoided.
+\set runnois ':explain :query; :explain :ss :query; :explain :ios :query; :query; :ss :query; :ios :query;'
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
+:runnois;
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (float_4 > '0'::double precision)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (float_4 > '0'::double precision)
+         Partial Aggregate: true
+(4 rows)
+
+                       QUERY PLAN
+---------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (float_4 > '0'::double precision)
+(3 rows)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
+:runnois;
+                        QUERY PLAN
+----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ybaggtestindexsimple on ybaggtest
+         Index Cond: (int_4 > 0)
+         Remote Filter: (float_8 > '0'::double precision)
+         Partial Aggregate: true
+(5 rows)
+
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+----------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (int_4 > 0)
+         Remote Filter: (float_8 > '0'::double precision)
+(4 rows)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+ count
+-------
+   100
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
+:runnois;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+                           QUERY PLAN
+----------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: (int_8 = '9223372036854775807'::bigint)
+         Partial Aggregate: true
+(4 rows)
+
+                         QUERY PLAN
+-------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: (int_8 = '9223372036854775807'::bigint)
+(3 rows)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
+:runnois;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Remote Filter: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtestindex on ybaggtest
+         Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
+
+ count
+-------
+    99
+(1 row)
 
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
@@ -304,13 +694,14 @@ EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY i
    ->  Seq Scan on ybaggtest
 (3 rows)
 
-EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
-         QUERY PLAN
------------------------------
+EXPLAIN (COSTS OFF) SELECT DISTINCT int_8 FROM ybaggtest;
+                            QUERY PLAN
+------------------------------------------------------------------
  HashAggregate
-   Group Key: int_4
-   ->  Seq Scan on ybaggtest
-(3 rows)
+   Group Key: int_8
+   ->  Distinct Index Only Scan using ybaggtestindex on ybaggtest
+         Distinct Prefix: 2
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
          QUERY PLAN
@@ -318,3 +709,2020 @@ EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
  Aggregate
    ->  Seq Scan on ybaggtest
 (2 rows)
+
+--
+-- Test NULL rows are handled properly by COUNT.
+--
+-- Create table without primary key.
+CREATE TABLE ybaggtest2 (
+    a int
+);
+-- Create index where column a is not part of the key.
+CREATE INDEX NONCONCURRENTLY ybaggtest2index ON ybaggtest2 ((1)) INCLUDE (a);
+-- Insert NULL rows.
+INSERT INTO ybaggtest2 VALUES (NULL), (NULL);
+-- Insert regular rows.
+INSERT INTO ybaggtest2 VALUES (1), (2), (3);
+-- Verify NULL rows are included in COUNT(*) but not in COUNT(row).
+\set ss '/*+SeqScan(ybaggtest2)*/'
+\set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
+\set query 'SELECT COUNT(*) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ count
+-------
+     5
+(1 row)
+
+ count
+-------
+     5
+(1 row)
+
+ count
+-------
+     5
+(1 row)
+
+\set query 'SELECT COUNT(a) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+\set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ count | count
+-------+-------
+     5 |     3
+(1 row)
+
+ count | count
+-------+-------
+     5 |     3
+(1 row)
+
+ count | count
+-------+-------
+     5 |     3
+(1 row)
+
+-- Verify MAX/MIN respect NULL values.
+\set query 'SELECT MAX(a), MIN(a) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ max | min
+-----+-----
+   3 |   1
+(1 row)
+
+ max | min
+-----+-----
+   3 |   1
+(1 row)
+
+ max | min
+-----+-----
+   3 |   1
+(1 row)
+
+-- Verify SUM/MAX/MIN work as expected with constant arguments.
+\set query 'SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ sum | max | min
+-----+-----+-----
+  10 |   2 |   2
+(1 row)
+
+ sum | max | min
+-----+-----+-----
+  10 |   2 |   2
+(1 row)
+
+ sum | max | min
+-----+-----+-----
+  10 |   2 |   2
+(1 row)
+
+\set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
+:runnois;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Partial Aggregate: true
+(3 rows)
+
+ sum | max | min
+-----+-----+-----
+     |     |
+(1 row)
+
+ sum | max | min
+-----+-----+-----
+     |     |
+(1 row)
+
+ sum | max | min
+-----+-----+-----
+     |     |
+(1 row)
+
+-- Verify IS NULL, IS NOT NULL quals.
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
+:runnois;
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Remote Filter: (a IS NULL)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     2
+(1 row)
+
+ count
+-------
+     2
+(1 row)
+
+ count
+-------
+     2
+(1 row)
+
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
+:runnois;
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+               QUERY PLAN
+----------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ybaggtest2index on ybaggtest2
+         Remote Filter: (a IS NOT NULL)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+--
+-- Test column created with default value.
+--
+CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
+INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'), (6, 'six');
+CREATE TABLE test(k INT PRIMARY KEY);
+ALTER TABLE test ADD v1 int DEFAULT 5;
+ALTER TABLE test ADD v2 int DEFAULT 10;
+CREATE INDEX NONCONCURRENTLY testindex ON test (k ASC) INCLUDE (v1, v2);
+INSERT INTO test VALUES(1), (2), (3);
+\set ss '/*+SeqScan(test)*/'
+\set ios '/*+IndexOnlyScan(test testindex)*/'
+\set is '/*+IndexScan(test testindex)*/'
+\set query 'SELECT COUNT(*) FROM test'
+\set isquery ':query WHERE k > 0'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+\set query 'SELECT COUNT(k) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+\set query 'SELECT COUNT(v1) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+\set query 'SELECT COUNT(v2) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+\set outerquery1 'SELECT * FROM digit AS d INNER JOIN'
+\set innerquery 'SELECT COUNT(v2) AS count FROM test'
+\set outerquery2 'AS c ON (d.k = c.count)'
+\set query ':outerquery1 (:innerquery) :outerquery2'
+\set isquery ':outerquery1 (:innerquery WHERE k > 0) :outerquery2'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Only Scan using testindex on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                   QUERY PLAN
+------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Scan using testindex on test
+               Index Cond: (k > 0)
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(7 rows)
+
+ k |   v   | count
+---+-------+-------
+ 3 | three |     3
+(1 row)
+
+ k |   v   | count
+---+-------+-------
+ 3 | three |     3
+(1 row)
+
+ k |   v   | count
+---+-------+-------
+ 3 | three |     3
+(1 row)
+
+ k |   v   | count
+---+-------+-------
+ 3 | three |     3
+(1 row)
+
+INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
+\set query 'SELECT COUNT(*) FROM test'
+\set isquery ':query WHERE k > 0'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+\set query 'SELECT COUNT(k) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+ count
+-------
+     6
+(1 row)
+
+\set query 'SELECT COUNT(v1) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     5
+(1 row)
+
+ count
+-------
+     5
+(1 row)
+
+ count
+-------
+     5
+(1 row)
+
+ count
+-------
+     5
+(1 row)
+
+\set query 'SELECT COUNT(v2) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     4
+(1 row)
+
+ count
+-------
+     4
+(1 row)
+
+ count
+-------
+     4
+(1 row)
+
+ count
+-------
+     4
+(1 row)
+
+\set innerquery 'SELECT COUNT(*) AS count FROM test'
+\set query ':outerquery1 (:innerquery) :outerquery2'
+\set isquery ':outerquery1 (:innerquery WHERE k > 0) :outerquery2'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(*)))
+(6 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(*)))
+(6 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Only Scan using testindex on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(*)))
+(6 rows)
+
+                   QUERY PLAN
+------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Scan using testindex on test
+               Index Cond: (k > 0)
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(*)))
+(7 rows)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+\set innerquery 'SELECT COUNT(k) AS count FROM test'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.k)))
+(6 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.k)))
+(6 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Only Scan using testindex on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.k)))
+(6 rows)
+
+                   QUERY PLAN
+------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Scan using testindex on test
+               Index Cond: (k > 0)
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.k)))
+(7 rows)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
+\set innerquery 'SELECT COUNT(v1) AS count FROM test'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v1)))
+(6 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v1)))
+(6 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Only Scan using testindex on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v1)))
+(6 rows)
+
+                   QUERY PLAN
+------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Scan using testindex on test
+               Index Cond: (k > 0)
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v1)))
+(7 rows)
+
+ k |  v   | count
+---+------+-------
+ 5 | five |     5
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 5 | five |     5
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 5 | five |     5
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 5 | five |     5
+(1 row)
+
+\set innerquery 'SELECT COUNT(v2) AS count FROM test'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Seq Scan on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Only Scan using testindex on test
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(6 rows)
+
+                   QUERY PLAN
+------------------------------------------------
+ Nested Loop
+   ->  Finalize Aggregate
+         ->  Index Scan using testindex on test
+               Index Cond: (k > 0)
+               Partial Aggregate: true
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = (count(test.v2)))
+(7 rows)
+
+ k |  v   | count
+---+------+-------
+ 4 | four |     4
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 4 | four |     4
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 4 | four |     4
+(1 row)
+
+ k |  v   | count
+---+------+-------
+ 4 | four |     4
+(1 row)
+
+DROP TABLE test;
+DROP TABLE digit;
+--
+-- Test dropped column.
+--
+CREATE TABLE test(K INT PRIMARY KEY, v1 INT NOT NULL, v2 INT NOT NULL);
+CREATE INDEX NONCONCURRENTLY testindex ON test (K ASC) INCLUDE (v2);
+INSERT INTO test VALUES(1, 1, 1), (2, 2, 2), (3, 3, 3);
+AlTER TABLE test DROP v1;
+\set query 'SELECT MIN(v2) FROM test'
+\set isquery ':query WHERE K > 0'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ min
+-----
+   1
+(1 row)
+
+ min
+-----
+   1
+(1 row)
+
+ min
+-----
+   1
+(1 row)
+
+ min
+-----
+   1
+(1 row)
+
+\set query 'SELECT MAX(v2) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ max
+-----
+   3
+(1 row)
+
+ max
+-----
+   3
+(1 row)
+
+ max
+-----
+   3
+(1 row)
+
+ max
+-----
+   3
+(1 row)
+
+\set query 'SELECT SUM(v2) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   6
+(1 row)
+
+ sum
+-----
+   6
+(1 row)
+
+ sum
+-----
+   6
+(1 row)
+
+ sum
+-----
+   6
+(1 row)
+
+\set query 'SELECT COUNT(v2) FROM test'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on test
+         Partial Aggregate: true
+(3 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using testindex on test
+         Partial Aggregate: true
+(3 rows)
+
+                QUERY PLAN
+------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using testindex on test
+         Index Cond: (k > 0)
+         Partial Aggregate: true
+(4 rows)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+ count
+-------
+     3
+(1 row)
+
+--
+-- Test https://github.com/yugabyte/yugabyte-db/issues/10085: avoid pushdown
+-- for certain cases.
+--
+-- Original test case that had postgres FATAL:
+CREATE TABLE t1(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t1index ON t1 (c0 ASC);
+INSERT INTO t1(c0) VALUES(0.4632167437031089463062016875483095645904541015625), (0.82173140818865475498711248292238451540470123291015625), (0.69990454445895500246166420765803195536136627197265625), (0.7554730989898816861938257716246880590915679931640625);
+ALTER TABLE  ONLY t1 FORCE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY;
+INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625), (0.13653666831997435249235195442452095448970794677734375), (0.3359001510719556993223022800520993769168853759765625), (0.312027233370160583802999099134467542171478271484375);
+\set ss '/*+SeqScan(t1)*/'
+\set ios '/*+IndexOnlyScan(t1 t1index)*/'
+\set is '/*+IndexScan(t1 t1index)*/'
+\set outerquery1 'SELECT SUM(count) FROM'
+\set innerquery 'SELECT (CAST(((((''[-1962327130,2000870418)''::int4range)*(''(-1293215916,183586536]''::int4range)))-(((''[-545024026,526859443]''::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1'
+\set outerquery2 'as res'
+\set query ':outerquery1 (:innerquery) :outerquery2'
+\set isquery ':outerquery1 (:innerquery WHERE c0 > 0) :outerquery2'
+:run;
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t1
+(2 rows)
+
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t1
+(2 rows)
+
+                QUERY PLAN
+-------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t1index on t1
+(2 rows)
+
+               QUERY PLAN
+-----------------------------------------
+ Aggregate
+   ->  Index Scan using t1index on t1
+         Index Cond: (c0 > '0'::numeric)
+(3 rows)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+-- Simplified test case that had postgres FATAL:
+CREATE TABLE t2(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t2index ON t2 (c0 ASC);
+INSERT INTO t2 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t2)*/'
+\set ios '/*+IndexOnlyScan(t2 t2index)*/'
+\set is '/*+IndexScan(t2 t2index)*/'
+\set outerquery1 'SELECT SUM(r) < 6 from'
+\set innerquery 'SELECT random() as r from t2'
+:run;
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t2
+(2 rows)
+
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t2
+(2 rows)
+
+                QUERY PLAN
+-------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t2index on t2
+(2 rows)
+
+               QUERY PLAN
+-----------------------------------------
+ Aggregate
+   ->  Index Scan using t2index on t2
+         Index Cond: (c0 > '0'::numeric)
+(3 rows)
+
+ ?column?
+----------
+ t
+(1 row)
+
+ ?column?
+----------
+ t
+(1 row)
+
+ ?column?
+----------
+ t
+(1 row)
+
+ ?column?
+----------
+ t
+(1 row)
+
+-- Simplified test case that had postgres FATAL:
+CREATE TABLE t3(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t3index ON t3 (c0 ASC);
+INSERT INTO t3 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t3)*/'
+\set ios '/*+IndexOnlyScan(t3 t3index)*/'
+\set is '/*+IndexScan(t3 t3index)*/'
+\set outerquery1 'SELECT SUM(r) from'
+\set innerquery 'SELECT (NULL=random())::int as r from t3'
+:run;
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t3
+(2 rows)
+
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t3
+(2 rows)
+
+                QUERY PLAN
+-------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t3index on t3
+(2 rows)
+
+               QUERY PLAN
+-----------------------------------------
+ Aggregate
+   ->  Index Scan using t3index on t3
+         Index Cond: (c0 > '0'::numeric)
+(3 rows)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+
+(1 row)
+
+-- Test case that did not have postgres FATAL but showed wrong result 't':
+CREATE TABLE t4(c0 FLOAT8);
+CREATE INDEX NONCONCURRENTLY t4index ON t4 (c0 ASC);
+INSERT INTO t4 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t4)*/'
+\set ios '/*+IndexOnlyScan(t4 t4index)*/'
+\set is '/*+IndexScan(t4 t4index)*/'
+\set outerquery1 'SELECT SUM(r) = 6 from'
+\set innerquery 'SELECT random() as r from t4'
+:run;
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t4
+(2 rows)
+
+      QUERY PLAN
+----------------------
+ Aggregate
+   ->  Seq Scan on t4
+(2 rows)
+
+                QUERY PLAN
+-------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t4index on t4
+(2 rows)
+
+                    QUERY PLAN
+--------------------------------------------------
+ Aggregate
+   ->  Index Scan using t4index on t4
+         Index Cond: (c0 > '0'::double precision)
+(3 rows)
+
+ ?column?
+----------
+ f
+(1 row)
+
+ ?column?
+----------
+ f
+(1 row)
+
+ ?column?
+----------
+ f
+(1 row)
+
+ ?column?
+----------
+ f
+(1 row)
+
+---
+--- SPLIT
+---
+CREATE TABLE rsplit (i int, PRIMARY KEY (i ASC)) SPLIT AT VALUES ((2));
+CREATE INDEX ON rsplit (i ASC) SPLIT AT VALUES ((3));
+INSERT INTO rsplit VALUES (1), (2), (3);
+\set ss '/*+SeqScan(rsplit)*/'
+\set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
+\set is '/*+IndexScan(rsplit rsplit_i_idx)*/'
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
+\set isquery ':query'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using rsplit_pkey on rsplit
+         Index Cond: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on rsplit
+         Remote Filter: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   2
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 3'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using rsplit_pkey on rsplit
+         Index Cond: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on rsplit
+         Remote Filter: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+                  QUERY PLAN
+-----------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   3
+(1 row)
+
+--
+-- System tables.
+--
+\set ss '/*+SeqScan(pg_type)*/'
+\set ios '/*+IndexOnlyScan(pg_type pg_type_typname_nsp_index)*/'
+\set is '/*+IndexScan(pg_type pg_type_typname_nsp_index)*/'
+\set query 'SELECT MIN(typnamespace) FROM pg_type'
+\set isquery ':query WHERE typname > '''''
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on pg_type
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on pg_type
+         Partial Aggregate: true
+(3 rows)
+
+                            QUERY PLAN
+------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using pg_type_typname_nsp_index on pg_type
+         Partial Aggregate: true
+(3 rows)
+
+                         QUERY PLAN
+-------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using pg_type_typname_nsp_index on pg_type
+         Index Cond: (typname > ''::name)
+         Partial Aggregate: true
+(4 rows)
+
+ min
+-----
+  11
+(1 row)
+
+ min
+-----
+  11
+(1 row)
+
+ min
+-----
+  11
+(1 row)
+
+ min
+-----
+  11
+(1 row)
+
+--
+-- Temp tables.
+--
+CREATE TEMP TABLE tmp (i int, j int);
+CREATE INDEX ON tmp (j ASC);
+INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
+\set ss '/*+SeqScan(tmp)*/'
+\set ios '/*+IndexOnlyScan(tmp tmp_j_idx)*/'
+\set is '/*+IndexScan(tmp tmp_j_idx)*/'
+\set query 'SELECT SUM(j), AVG(j), COUNT(*), MAX(j) FROM tmp'
+\set isquery ':query WHERE j < 0'
+-- TODO(#18619): change the following to :run;
+:runnois;
+      QUERY PLAN
+-----------------------
+ Aggregate
+   ->  Seq Scan on tmp
+(2 rows)
+
+      QUERY PLAN
+-----------------------
+ Aggregate
+   ->  Seq Scan on tmp
+(2 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Aggregate
+   ->  Index Only Scan using tmp_j_idx on tmp
+(2 rows)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+--
+-- Prepared statements.
+--
+CREATE TABLE ptest(k int, i int, v int, primary key(k asc));
+CREATE INDEX NONCONCURRENTLY ptestindex on ptest(i asc);
+INSERT INTO ptest select i, i + 1, i + 2 from generate_series(1, 10) i;
+PREPARE iss as select sum(k) from ptest where k = ANY($1);
+PREPARE ioss as select sum(i) from ptest where i = ANY($1);
+\set prm 'ARRAY[1, 2]'
+\set issexec 'EXECUTE iss(:prm)'
+\set iossexec 'EXECUTE ioss(:prm)'
+\set exec ':explain :issexec; :explain :iossexec; :issexec; :iossexec;'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{1,2}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{1,2}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+-- repeat multiple times to make sure the statements are not replanned and cached plan is used
+\set prm 'ARRAY[3, 4]'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{3,4}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{3,4}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   7
+(1 row)
+
+ sum
+-----
+   7
+(1 row)
+
+\set prm 'ARRAY[5, 6]'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{5,6}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{5,6}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  11
+(1 row)
+
+ sum
+-----
+  11
+(1 row)
+
+\set prm 'ARRAY[7, 8]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  15
+(1 row)
+
+ sum
+-----
+  15
+(1 row)
+
+\set prm 'ARRAY[9, 10]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  19
+(1 row)
+
+ sum
+-----
+  19
+(1 row)
+
+\set prm 'ARRAY[11, 12]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+  11
+(1 row)
+
+DEALLOCATE iss;
+DEALLOCATE ioss;
+-- Internal parameters test
+CREATE TABLE nlptest (v1 int, v2 int);
+INSERT INTO nlptest SELECT i*2-1, i*2 FROM generate_series(1,6) i;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(k) FROM ptest t2 WHERE k = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+ v1 | v2 | sum
+----+----+-----
+  1 |  2 |   3
+  3 |  4 |   7
+  5 |  6 |  11
+  7 |  8 |  15
+  9 | 10 |  19
+ 11 | 12 |
+(6 rows)
+
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(i) FROM ptest t2 WHERE i = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+ v1 | v2 | sum
+----+----+-----
+  1 |  2 |   2
+  3 |  4 |   7
+  5 |  6 |  11
+  7 |  8 |  15
+  9 | 10 |  19
+ 11 | 12 |  11
+(6 rows)
+
+DROP TABLE ptest;
+DROP TABLE nlptest;
+--
+-- Colocation.
+--
+CREATE DATABASE co COLOCATION TRUE;
+\c co
+CREATE TABLE t (i int, j int, k int);
+CREATE INDEX NONCONCURRENTLY i ON t (j, k DESC, i);
+INSERT INTO t VALUES (1, 2, 3), (4, 2, 6);
+\set ss '/*+SeqScan(t)*/'
+\set ios '/*+IndexOnlyScan(t i)*/'
+\set is '/*+IndexScan(t i)*/'
+\set query 'SELECT MAX(k), AVG(i), COUNT(*), SUM(j) FROM t'
+\set isquery ':query WHERE j = 2'
+:run;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on t
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on t
+         Partial Aggregate: true
+(3 rows)
+
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using i on t
+         Partial Aggregate: true
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Index Scan using i on t
+         Index Cond: (j = 2)
+         Partial Aggregate: true
+(4 rows)
+
+ max |        avg         | count | sum
+-----+--------------------+-------+-----
+   6 | 2.5000000000000000 |     2 |   4
+(1 row)
+
+ max |        avg         | count | sum
+-----+--------------------+-------+-----
+   6 | 2.5000000000000000 |     2 |   4
+(1 row)
+
+ max |        avg         | count | sum
+-----+--------------------+-------+-----
+   6 | 2.5000000000000000 |     2 |   4
+(1 row)
+
+ max |        avg         | count | sum
+-----+--------------------+-------+-----
+   6 | 2.5000000000000000 |     2 |   4
+(1 row)

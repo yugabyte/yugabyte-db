@@ -1,15 +1,19 @@
 // Copyright (c) YugaByte, Inc.
+import { Component, Suspense, lazy } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
 
-import React, { Component } from 'react';
-
-import { YugawareLogsContainer } from '../components/yugaware_logs';
+const YugawareLogsContainer = lazy(() =>
+  import('../components/yugaware_logs/YugawareLogsContainer')
+);
 
 class YugawareLogs extends Component {
   render() {
     return (
-      <div className="dashboard-container">
-        <YugawareLogsContainer />
-      </div>
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <div className="dashboard-container">
+          <YugawareLogsContainer />
+        </div>
+      </Suspense>
     );
   }
 }

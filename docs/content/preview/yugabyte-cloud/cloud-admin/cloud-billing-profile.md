@@ -12,23 +12,21 @@ menu:
 type: docs
 ---
 
-Review your charges and manage your billing profile and payment methods using the **Billing** tab.
-
-You must be signed in as an Admin user; Developer users cannot view the billing profile.
+Review your charges and manage your billing profile and payment methods using the **Billing** page.
 
 Yugabyte bills for its services as follows:
 
 - Charges by the minute for your YugabyteDB Managed clusters.
 - Tabulates costs daily.
-- Displays your current monthly costs under **Invoices** on the **Billing** tab.
+- Displays your current monthly costs under **Invoices** on the **Billing** page.
 
-**Invoices are sent to the email provided in the billing profile**.
+**Invoices are sent to the email provided in the Billing Profile**.
 
 For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
 
-![Admin Billing tab](/images/yb-cloud/cloud-admin-billing.png)
+![Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
-The **Billing** tab has the following sections: **Profile and Payment Methods**, and **Invoices**.
+The **Billing** page has the following tabs: **Profile and Payment Methods**, and **Invoices**.
 
 ## Profile and Payment Methods
 
@@ -42,7 +40,7 @@ If you want to switch from paying by credit card to another method, contact {{% 
 
 To add or change your billing profile:
 
-1. On the **Billing** tab, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
+1. On the **Billing** page, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
 1. Edit your contact information.
 1. If you are creating your billing profile, enter your credit card details. For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.
 1. Click **Save**.
@@ -51,7 +49,7 @@ To add or change your billing profile:
 
 To add a credit card:
 
-1. On the **Billing** tab, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
+1. On the **Billing** page, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
 1. Enter your credit card details.
 1. To use the card as the default for payment, choose **Set as default credit card**.
 1. Click **Save**.
@@ -77,7 +75,7 @@ Shows the billing details for the current billing cycle, including:
 - Billing period - the start and end date of the current billing period. Your first billing period starts the day you created your billing profile and ends on the last day of the month; subsequent periods start on the first day of the month and end on the last.
 - Previous invoice - the amount of the previous invoice.
 - Last billed on - the date of the previous invoice.
-- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
+- This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month).
 
 Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for the active invoice.
 
@@ -89,6 +87,7 @@ Shows a breakdown of costs for the current billing cycle. YugabyteDB Managed bil
 - Disk Storage
 - Backup Storage
 - Data Transfer
+- Disk IOPS
 
 ### Invoice History
 

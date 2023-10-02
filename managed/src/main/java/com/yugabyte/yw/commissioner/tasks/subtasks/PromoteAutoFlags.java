@@ -18,7 +18,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 @Slf4j
 public class PromoteAutoFlags extends ServerSubTaskBase {
 
-  private final String MAX_AUTO_FLAG_CLASS = "kExternal";
   private final boolean PROMOTE_NON_RUNTIME_FLAG = true;
 
   @Inject
@@ -26,7 +25,12 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends ServerSubTaskParams {}
+  public static class Params extends ServerSubTaskParams {
+    // Whether to ignore errors during subtask execution. It will be used when the parent task is
+    // forced.
+    public boolean ignoreErrors;
+    public String maxClass;
+  }
 
   @Override
   protected Params taskParams() {
@@ -34,12 +38,21 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
   }
 
   @Override
+  public String getName() {
+    return String.format(
+        "%s (universeUuid=%s, ignoreErrors=%s)",
+        super.getName(), taskParams().getUniverseUUID(), taskParams().ignoreErrors);
+  }
+
+  @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    log.info("Running {}", getName());
+
     try (YBClient client = getClient()) {
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       PromoteAutoFlagsResponse resp =
           client.promoteAutoFlags(
-              MAX_AUTO_FLAG_CLASS,
+              taskParams().maxClass,
               PROMOTE_NON_RUNTIME_FLAG,
               confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlagsForceFully));
       if (resp.hasError()) {
@@ -54,10 +67,20 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
       }
     } catch (PlatformServiceException pe) {
       log.error("Promote auto flags task failed: ", pe);
-      throw pe;
+      if (!taskParams().ignoreErrors) {
+        throw pe;
+      }
+      log.warn(
+          "Promote auto flags task failed, but the error is ignored because "
+              + "taskParams().ignoreErrors is true");
     } catch (Exception e) {
       log.error("Promote AutoFlag task failed: ", e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      if (!taskParams().ignoreErrors) {
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      }
+      log.warn(
+          "Promote auto flags task failed, but the error is ignored because "
+              + "taskParams().ignoreErrors is true");
     }
     log.info("Completed {}", getName());
   }

@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
@@ -22,8 +23,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -37,16 +40,17 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -87,6 +92,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.AnsibleConfigureServers,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -120,6 +126,15 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   public void setUp() {
     super.setUp();
     gFlagsUpgrade.setUserTaskUUID(UUID.randomUUID());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    try {
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private UUID addReadReplica() {
@@ -419,7 +434,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(39, position);
+    assertEquals(42, position);
   }
 
   @Test
@@ -441,7 +456,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE);
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(66, position);
+    assertEquals(69, position);
   }
 
   @Test
@@ -491,7 +506,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(39, position);
+    assertEquals(42, position);
   }
 
   @Test
@@ -582,7 +597,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
                   ? UpgradeType.ROLLING_UPGRADE_MASTER_ONLY
                   : UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY,
               true);
-      assertEquals(serverType == MASTER ? 29 : 39, position);
+      assertEquals(serverType == MASTER ? 29 : 42, position);
     }
   }
 
@@ -712,6 +727,12 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             .get(0)
             .userIntent
             .specificGFlags);
+    assertEquals(
+        roGFlags.getGFlags(null, MASTER),
+        defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.masterGFlags);
+    assertEquals(
+        roGFlags.getGFlags(null, TSERVER),
+        defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.tserverGFlags);
   }
 
   @Test
@@ -776,6 +797,24 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .get(0)
               .userIntent
               .specificGFlags);
+      SpecificGFlags primarySpecificGFlags =
+          defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags;
+      assertEquals(
+          primarySpecificGFlags.getGFlags(null, MASTER),
+          defaultUniverse
+              .getUniverseDetails()
+              .getReadOnlyClusters()
+              .get(0)
+              .userIntent
+              .masterGFlags);
+      assertEquals(
+          primarySpecificGFlags.getGFlags(null, TSERVER),
+          defaultUniverse
+              .getUniverseDetails()
+              .getReadOnlyClusters()
+              .get(0)
+              .userIntent
+              .tserverGFlags);
     } catch (Exception e) {
       log.error("", e);
       throw e;
@@ -815,6 +854,12 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         specificGFlags,
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, MASTER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, TSERVER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
   }
 
   @Test
@@ -888,7 +933,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testPerAZGflags() {
-    Map<String, UUID> nodeToAzUUID = new HashMap<>();
+    List<UUID> azList = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
+    AtomicInteger idx = new AtomicInteger();
     Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -898,13 +944,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .nodeDetailsSet
               .forEach(
                   node -> {
-                    AvailabilityZone az =
-                        AvailabilityZone.createOrThrow(
-                            region, node.cloudInfo.az, node.cloudInfo.az, "subnet-1");
-                    node.azUuid = az.getUuid();
-                    nodeToAzUUID.put(node.nodeName, az.getUuid());
+                    node.azUuid = azList.get(idx.getAndIncrement());
                   });
         });
+    addReadReplica();
     expectedUniverseVersion++;
 
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
@@ -913,51 +956,127 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             ImmutableMap.of("master-flag", "m1"), ImmutableMap.of("tserver-flag", "t1"));
     Map<UUID, SpecificGFlags.PerProcessFlags> perAZ = new HashMap<>();
     specificGFlags.setPerAZ(perAZ);
-    List<String> nodeNames = new ArrayList<>(nodeToAzUUID.keySet());
+
     // First -> redefining existing
-    String first = nodeNames.get(0);
+    UUID firstAZ = azList.get(0);
     SpecificGFlags.PerProcessFlags firstPerProcessFlags = new SpecificGFlags.PerProcessFlags();
     firstPerProcessFlags.value =
         ImmutableMap.of(
             MASTER, ImmutableMap.of("master-flag", "m2"),
             TSERVER, ImmutableMap.of("tserver-flag", "t2"));
-    perAZ.put(nodeToAzUUID.get(first), firstPerProcessFlags);
+    perAZ.put(firstAZ, firstPerProcessFlags);
 
     // Second -> adding new
-    String second = nodeNames.get(1);
+    UUID secondAZ = azList.get(1);
     SpecificGFlags.PerProcessFlags secondPerProcessFlags = new SpecificGFlags.PerProcessFlags();
     secondPerProcessFlags.value =
         ImmutableMap.of(
             MASTER, ImmutableMap.of("master-flag2", "m2"),
             TSERVER, ImmutableMap.of("tserver-flag2", "t2"));
-    perAZ.put(nodeToAzUUID.get(second), secondPerProcessFlags);
+    perAZ.put(secondAZ, secondPerProcessFlags);
+
     // Third -> no changes
-    String third = nodeNames.get(2);
+    UUID thirdAZ = azList.get(2);
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.getReadOnlyClusters().get(0).userIntent.specificGFlags =
+        SpecificGFlags.constructInherited();
 
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(Success, taskInfo.getTaskState());
 
+    Multimap<UUID, String> nodeNamesByUUID = ArrayListMultimap.create();
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      nodeNamesByUUID.put(nodeDetails.getAzUuid(), nodeDetails.nodeName);
+    }
+    assertEquals(6, nodeNamesByUUID.size());
+    assertEquals(3, nodeNamesByUUID.keySet().size());
+
+    for (String first : nodeNamesByUUID.get(firstAZ)) {
+      assertEquals(
+          new HashMap<>(Collections.singletonMap("tserver-flag", "t2")),
+          getGflagsForNode(subTasks, first, TSERVER));
+      if (defaultUniverse.getNode(first).isMaster) {
+        assertEquals(
+            new HashMap<>(Collections.singletonMap("master-flag", "m2")),
+            getGflagsForNode(subTasks, first, MASTER));
+      }
+    }
+    for (String second : nodeNamesByUUID.get(secondAZ)) {
+      assertEquals(
+          new HashMap<>(ImmutableMap.of("tserver-flag", "t1", "tserver-flag2", "t2")),
+          getGflagsForNode(subTasks, second, TSERVER));
+      if (defaultUniverse.getNode(second).isMaster) {
+        assertEquals(
+            new HashMap<>(ImmutableMap.of("master-flag", "m1", "master-flag2", "m2")),
+            getGflagsForNode(subTasks, second, MASTER));
+      }
+    }
+    for (String third : nodeNamesByUUID.get(thirdAZ)) {
+      assertEquals(
+          new HashMap<>(Collections.singletonMap("tserver-flag", "t1")),
+          getGflagsForNode(subTasks, third, TSERVER));
+      if (defaultUniverse.getNode(third).isMaster) {
+        assertEquals(
+            new HashMap<>(Collections.singletonMap("master-flag", "m1")),
+            getGflagsForNode(subTasks, third, MASTER));
+      }
+    }
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    SpecificGFlags readonlyGflags =
+        defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.specificGFlags;
+    assertEquals(specificGFlags.getPerProcessFlags(), readonlyGflags.getPerProcessFlags());
+    assertEquals(specificGFlags.getPerAZ(), readonlyGflags.getPerAZ());
+  }
+
+  @Test
+  public void testSpecificGflagChangingIntent() {
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // Verify enabled by default.
+    assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, true);
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of(GFlagsUtil.ENABLE_YSQL, "false"), Collections.emptyMap());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(mockNodeManager, times(18)).nodeCommand(any(), any());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    int position = 0;
+    position =
+        assertSequence(
+            subTasksByPosition,
+            MASTER,
+            position,
+            UpgradeOption.ROLLING_UPGRADE,
+            false,
+            specificGFlags.getGFlags(null, MASTER));
+    position =
+        assertCommonTasks(
+            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
+    position =
+        assertSequence(
+            subTasksByPosition,
+            TSERVER,
+            position,
+            UpgradeOption.ROLLING_UPGRADE,
+            false,
+            Collections.emptyMap());
+    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
+
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // Verify changed to false.
+    assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
     assertEquals(
-        new HashMap<>(Collections.singletonMap("tserver-flag", "t2")),
-        getGflagsForNode(subTasks, first, TSERVER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("master-flag", "m2")),
-        getGflagsForNode(subTasks, first, MASTER));
-    assertEquals(
-        new HashMap<>(ImmutableMap.of("tserver-flag", "t1", "tserver-flag2", "t2")),
-        getGflagsForNode(subTasks, second, TSERVER));
-    assertEquals(
-        new HashMap<>(ImmutableMap.of("master-flag", "m1", "master-flag2", "m2")),
-        getGflagsForNode(subTasks, second, MASTER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("tserver-flag", "t1")),
-        getGflagsForNode(subTasks, third, TSERVER));
-    assertEquals(
-        new HashMap<>(Collections.singletonMap("master-flag", "m1")),
-        getGflagsForNode(subTasks, third, MASTER));
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags,
+        specificGFlags);
   }
 
   @Test
@@ -970,6 +1089,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               SpecificGFlags.construct(ImmutableMap.of("master-flag", "m1"), ImmutableMap.of());
           universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
               specificGFlags;
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.18.2.0-b65";
         });
     expectedUniverseVersion++;
 
@@ -999,7 +1120,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer2 =
           new GFlagsValidation.AutoFlagsPerServer();
       autoFlagsPerServer2.autoFlagDetails = Collections.singletonList(flag2);
-      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), (ServerType) any()))
           .thenReturn(autoFlagsPerServer)
           .thenReturn(autoFlagsPerServer2);
     } catch (IOException e) {
@@ -1026,6 +1147,47 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestart() {
+    addReadReplica();
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"), ImmutableMap.of("tserver-flag", "t1111"));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    subTasks.stream()
+        .filter(t -> t.getTaskType() == TaskType.SetFlagInMemory)
+        .forEach(
+            task -> {
+              ServerType process = ServerType.valueOf(task.getDetails().get("serverType").asText());
+              Map<String, String> gflags =
+                  Json.fromJson(task.getDetails().get("gflags"), Map.class);
+              if (process == MASTER) {
+                assertEquals(specificGFlags.getGFlags(null, MASTER), gflags);
+              } else {
+                assertEquals(specificGFlags.getGFlags(null, TSERVER), gflags);
+              }
+            });
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        specificGFlags,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, MASTER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, TSERVER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
   }
 
   private Map<String, String> getGflagsForNode(

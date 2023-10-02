@@ -2,7 +2,7 @@
 title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
+description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.  
 menu:
   preview:
     identifier: checklist
@@ -139,7 +139,7 @@ For YugabyteDB to preserve data consistency, the clock drift and clock skew acro
 
 Set a safe value for the maximum clock skew flag (`--max_clock_skew_usec`) for YB-TServers and YB-Masters when starting the YugabyteDB servers. The recommended value is two times the expected maximum clock skew between any two nodes in your deployment.
 
-For example, if the maximum clock skew across nodes is expected to be no more than 250 microseconds, then set the parameter to 500 microseconds (`--max_clock_skew_usec=500000`).
+For example, if the maximum clock skew across nodes is expected to be no more than 250 milliseconds, then set the parameter to 500000 (`--max_clock_skew_usec=500000`).
 
 ### Clock drift
 
@@ -158,7 +158,7 @@ YugabyteDB can run on a number of public clouds.
 ### Amazon Web Services (AWS)
 
 - Use the C5 or I3 instance families.
-- Recommended types are i3.4xlarge, i3.8xlarge, c5.4xlarge, and c5.8xlarge. Use the higher CPU instance types especially for large YSQL workloads.
+- Recommended types are i3.4xlarge, i3.8xlarge, c5.4xlarge, c5.8xlarge, and c6g.4xlarge/8xlarge. Use the higher CPU instance types especially for large YSQL workloads.
 - For the C5 instance family, use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed:
   - Scale up the IOPS as you scale up the size of the disk.
   - In YugabyteDB testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.

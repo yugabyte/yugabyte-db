@@ -30,8 +30,8 @@
 namespace yb {
 namespace tablet {
 
-class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<INT32>> {
-  typedef TabletTestBase<IntKeyTestSetup<INT32>> superclass;
+class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<DataType::INT32>> {
+  typedef TabletTestBase<IntKeyTestSetup<DataType::INT32>> superclass;
  public:
   void SetUp() override {
     superclass::SetUp();

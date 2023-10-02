@@ -4,12 +4,13 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React from 'react';
 import clsx from 'clsx';
 
 import { YBButton } from '../../../redesign/components';
 
 import styles from './EmptyListPlaceholder.module.scss';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 interface EmptyListPlaceholderProps {
   actionButtonText: string;
@@ -29,17 +30,26 @@ export const EmptyListPlaceholder = ({
   dataTestIdPrefix,
   onActionButtonClick
 }: EmptyListPlaceholderProps) => (
+
   <div className={clsx(styles.emptyListContainer, className)}>
     {PLUS_ICON}
-    <YBButton
-      style={{ minWidth: '200px' }}
-      variant="primary"
-      onClick={onActionButtonClick}
-      data-testid={`${dataTestIdPrefix ?? 'EmptyListPlaceholder'}-PrimaryAction`}
+    <RbacValidator
+      accessRequiredOn={{
+        onResource: "CUSTOMER_ID",
+        ...UserPermissionMap.createProvider
+      }}
+      isControl
     >
-      <i className="fa fa-plus" />
-      {actionButtonText}
-    </YBButton>
+      <YBButton
+        style={{ minWidth: '200px' }}
+        variant="primary"
+        onClick={onActionButtonClick}
+        data-testid={`${dataTestIdPrefix ?? 'EmptyListPlaceholder'}-PrimaryAction`}
+      >
+        <i className="fa fa-plus" />
+        {actionButtonText}
+      </YBButton>
+    </RbacValidator>
     <div>{descriptionText}</div>
   </div>
 );

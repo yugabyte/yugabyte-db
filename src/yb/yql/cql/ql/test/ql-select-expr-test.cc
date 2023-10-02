@@ -32,7 +32,7 @@ using std::vector;
 using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
-using yb::util::VarInt;
+using yb::VarInt;
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -926,17 +926,49 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
   EXPECT_EQ("{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}",
             to_json_str(row_block->row(0).column(0)));
 
-  // Feature Not Supported: UDT field types cannot refer to other user-defined types.
-  // https://github.com/YugaByte/yugabyte-db/issues/1630
-  CHECK_INVALID_STMT("CREATE TYPE udt8(i1 int, u1 udt)");
-  // CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
-  // CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
-  // Apply ToJson() to the UDT<UDT> column.
-  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
-  // row_block = processor->row_block();
-  // CHECK_EQ(row_block->row_count(), 1);
-  // EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
-  //           to_json_str(row_block->row(0).column(0)));
+  // Test UDT field which refers to another user-defined type.
+  CHECK_VALID_STMT("CREATE TYPE udt8(i1 int, u1 frozen<udt>)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
+  CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+  // Apply ToJson() to the UDT< FROZEN<UDT> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<LIST>.
+  CHECK_VALID_STMT("CREATE TYPE udt9(i1 int, l1 frozen<list<int>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_list_in_udt (h int PRIMARY KEY, u udt9)");
+  CHECK_VALID_STMT("INSERT INTO test_list_in_udt (h, u) values (1, {i1:77,l1:[4,5,6]})");
+  // Apply ToJson() to the UDT< FROZEN<LIST> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_list_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":77,\"l1\":[4,5,6]}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<SET>.
+  CHECK_VALID_STMT("CREATE TYPE udt10(i1 int, s1 frozen<set<int>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_set_in_udt (h int PRIMARY KEY, u udt10)");
+  CHECK_VALID_STMT("INSERT INTO test_set_in_udt (h, u) values (1, {i1:66,s1:{3,2,1}})");
+  // Apply ToJson() to the UDT< FROZEN<SET> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_set_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":66,\"s1\":[1,2,3]}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT field which refers to a FROZEN<MAP>.
+  CHECK_VALID_STMT("CREATE TYPE udt11(i1 int, m1 frozen<map<int, text>>)");
+  CHECK_VALID_STMT("CREATE TABLE test_map_in_udt (h int PRIMARY KEY, u udt11)");
+  CHECK_VALID_STMT("INSERT INTO test_map_in_udt (h, u) values (1, {i1:88,m1:{99:'t1',11:'t2'}})");
+  // Apply ToJson() to the UDT< FROZEN<MAP> > column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_map_in_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"i1\":88,\"m1\":{\"11\":\"t2\",\"99\":\"t1\"}}",
+            to_json_str(row_block->row(0).column(0)));
 }
 
 TEST_F(QLTestSelectedExpr, TestCastDecimal) {
@@ -1471,7 +1503,7 @@ TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
   // Make sure a select statement works.
   CHECK_VALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
   // Set a flag to simulate tserver timeout and now check that select produces an error.
-  FLAGS_TEST_tserver_timeout = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
   CHECK_INVALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
 }
 
@@ -1826,9 +1858,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vm_binds = result->bind_variable_schemas();
   EXPECT_EQ(vm_binds.size(), 3);
-  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL VALUE]");
   EXPECT_EQ(vm_binds[2].type()->ToString(), "map<int, text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1892,9 +1924,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vs_binds = result->bind_variable_schemas();
   EXPECT_EQ(vs_binds.size(), 3);
-  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL VALUE]");
   EXPECT_EQ(vs_binds[2].type()->ToString(), "set<int>");
 
   // Bind and execute the prepared statement with correct values.
@@ -1937,9 +1969,9 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 3);
-  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[2].type()->ToString(), "list<text>");
 
   // Bind and execute the prepared statement with correct values.
@@ -2484,8 +2516,8 @@ TEST_F(QLTestSelectedExpr, BindVarsMultiColumnInTest) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto vl_binds = result->bind_variable_schemas();
   EXPECT_EQ(vl_binds.size(), 2);
-  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[0].ToString(), "tup1[tuple NOT NULL VALUE]");
+  EXPECT_EQ(vl_binds[1].ToString(), "tup2[tuple NOT NULL VALUE]");
   EXPECT_EQ(vl_binds[1].type()->ToString(), "tuple<int, text>");
 }
 
@@ -2508,10 +2540,10 @@ TEST_F(QLTestSelectedExpr, TestPreparedStatementWithEmbeddedNull) {
       &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   auto binds = result->bind_variable_schemas();
   EXPECT_EQ(binds.size(), 4);
-  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL NOT A PARTITION KEY]");
-  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(binds[0].ToString(), "h[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[1].ToString(), "r[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[2].ToString(), "v1[string NOT NULL VALUE]");
+  EXPECT_EQ(binds[3].ToString(), "v2[int32 NOT NULL VALUE]");
 
   // Bind and execute the prepared statement with values where the text column value
   // embedded null byte.

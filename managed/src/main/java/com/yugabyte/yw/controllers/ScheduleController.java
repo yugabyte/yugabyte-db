@@ -3,10 +3,13 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -22,6 +25,11 @@ import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.Model;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -43,11 +51,11 @@ import play.mvc.Result;
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
 
   @Inject
-  public ScheduleController(BackupUtil backupUtil) {
-    this.backupUtil = backupUtil;
+  public ScheduleController(BackupHelper backupHelper) {
+    this.backupHelper = backupHelper;
   }
 
   @ApiOperation(
@@ -55,6 +63,12 @@ public class ScheduleController extends AuthenticatedController {
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -72,6 +86,12 @@ public class ScheduleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.SchedulePagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageScheduleList(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     SchedulePagedApiQuery apiQuery = parseJsonAndValidate(request, SchedulePagedApiQuery.class);
@@ -83,10 +103,16 @@ public class ScheduleController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get Schedule", response = Schedule.class, nickname = "getSchedule")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     return PlatformResults.withData(schedule);
   }
 
@@ -94,10 +120,22 @@ public class ScheduleController extends AuthenticatedController {
       value = "Delete a schedule",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
+  })
   public Result delete(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
 
     schedule.stopSchedule();
 
@@ -117,8 +155,20 @@ public class ScheduleController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.EditBackupScheduleParams",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
+  })
   public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     EditBackupScheduleParams params = parseJsonAndValidate(request, EditBackupScheduleParams.class);
     if (params.status.equals(State.Paused)) {
@@ -175,12 +225,14 @@ public class ScheduleController extends AuthenticatedController {
               (StringUtils.isEmpty(params.cronExpression))
                   ? params.frequency
                   : BackupUtil.getCronExpressionTimeInterval(params.cronExpression);
-          backupUtil.validateIncrementalScheduleFrequency(
+          backupHelper.validateIncrementalScheduleFrequency(
               params.incrementalBackupFrequency,
               schedulingFrequency,
-              Universe.getOrBadRequest(schedule.getOwnerUUID()));
+              Universe.getOrBadRequest(schedule.getOwnerUUID(), customer));
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
+          schedule.updateNextIncrementScheduleTaskTime(
+              ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
         } else {
           throw new PlatformServiceException(
               BAD_REQUEST,
@@ -198,9 +250,21 @@ public class ScheduleController extends AuthenticatedController {
       value = "Delete a schedule V2",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteScheduleV2")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
+  })
   public Result deleteYb(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     if (schedule.getStatus().equals(State.Active) && schedule.isRunningState()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete schedule as it is running.");
     }

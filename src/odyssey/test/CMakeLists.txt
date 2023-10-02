@@ -88,7 +88,7 @@ include_directories("${PROJECT_SOURCE_DIR}/test")
 include_directories("${PROJECT_BINARY_DIR}/test")
 
 add_executable(${od_test_binary} ${od_test_src})
-add_dependencies(${od_test_binary} build_libs odyssey)
+add_dependencies(${od_test_binary} build_libs ${od_binary})
 
 if(THREADS_HAVE_PTHREAD_ARG)
     set_property(TARGET ${od_test_binary} PROPERTY COMPILE_OPTIONS "-pthread")

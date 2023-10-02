@@ -71,19 +71,19 @@ struct LockHoldersCount {
   }
 
   void AdjustReaders(int delta) {
-    std::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard l(lock);
     num_readers += delta;
     CheckInvariants();
   }
 
   void AdjustWriters(int delta) {
-    std::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard l(lock);
     num_writers += delta;
     CheckInvariants();
   }
 
   void AdjustCommitters(int delta) {
-    std::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard l(lock);
     num_committers += delta;
     CheckInvariants();
   }

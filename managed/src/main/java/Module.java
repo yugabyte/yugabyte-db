@@ -1,8 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.oauth2.sdk.http.HTTPRequest;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -23,6 +28,8 @@ import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
@@ -30,6 +37,9 @@ import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
+import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -44,9 +54,11 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -59,6 +71,10 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.rbac.PermissionUtil;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -73,7 +89,13 @@ import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import de.dentrassi.crypto.pem.PemKeyStoreProvider;
 import io.prometheus.client.CollectorRegistry;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.security.Security;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.validator.routines.DomainValidator;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
@@ -94,13 +116,10 @@ import play.Environment;
  */
 @Slf4j
 public class Module extends AbstractModule {
-
-  private final Environment environment;
   private final Config config;
   private final String[] TLD_OVERRIDE = {"local"};
 
   public Module(Environment environment, Config config) {
-    this.environment = environment;
     this.config = config;
   }
 
@@ -126,6 +145,7 @@ public class Module extends AbstractModule {
     install(new ProviderConfKeys());
     install(new GlobalConfKeys());
     install(new UniverseConfKeys());
+    bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
     CollectorRegistry.defaultRegistry.clear();
@@ -193,24 +213,48 @@ public class Module extends AbstractModule {
       bind(GcpEARServiceUtil.class).asEagerSingleton();
       bind(YbcUpgrade.class).asEagerSingleton();
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
+      bind(PermissionUtil.class).asEagerSingleton();
+      bind(RoleUtil.class).asEagerSingleton();
+      bind(RoleBindingUtil.class).asEagerSingleton();
+      bind(PrometheusConfigManager.class).asEagerSingleton();
+      bind(PrometheusConfigHelper.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
+      requestStaticInjection(AppConfigHelper.class);
     }
 
     bind(YbClientConfigFactory.class).asEagerSingleton();
+    bind(KubernetesOperatorStatusUpdater.class).asEagerSingleton();
   }
 
   @Provides
   protected OidcClient<OidcConfiguration> provideOidcClient(
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfigFactory runtimeConfigFactory, CustomCAStoreManager customCAStoreManager) {
     com.typesafe.config.Config config = runtimeConfigFactory.globalRuntimeConf();
     String securityType = config.getString("yb.security.type");
     if (securityType.equals("OIDC")) {
+      if (customCAStoreManager.isEnabled()) {
+        KeyStore ybaAndJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+        try {
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaAndJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          SecureRandom secureRandom = new SecureRandom();
+          SSLContext sslContext = SSLContext.getInstance("TLS");
+          sslContext.init(null, ybaJavaTrustManagers, secureRandom);
+          HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+          HTTPRequest.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error occurred when building SSL context" + e.getMessage());
+        }
+      }
       OidcConfiguration oidcConfiguration = new OidcConfiguration();
       oidcConfiguration.setClientId(config.getString("yb.security.clientID"));
       oidcConfiguration.setSecret(config.getString("yb.security.secret"));
       oidcConfiguration.setScope(config.getString("yb.security.oidcScope"));
-      oidcConfiguration.setDiscoveryURI(config.getString("yb.security.discoveryURI"));
+      setProviderMetadata(config, oidcConfiguration);
       oidcConfiguration.setMaxClockSkew(3600);
       oidcConfiguration.setResponseType("code");
       return new OidcClient<>(oidcConfiguration);
@@ -218,6 +262,26 @@ public class Module extends AbstractModule {
       log.warn("Client with empty OIDC configuration because yb.security.type={}", securityType);
       // todo: fail fast instead of relying on log?
       return new OidcClient<>();
+    }
+  }
+
+  private void setProviderMetadata(Config config, OidcConfiguration oidcConfiguration) {
+    String providerMetadata = config.getString("yb.security.oidcProviderMetadata");
+    if (providerMetadata.isEmpty()) {
+      String discoveryURI = config.getString("yb.security.discoveryURI");
+      if (discoveryURI.isEmpty()) {
+        log.error("OIDC setup error: Both discoveryURL and provider metadata is empty");
+        // TODO(sbapat) throw. Though rest of the method is written to fail silently so do not
+        //  want to change that in this diff.
+      } else {
+        oidcConfiguration.setDiscoveryURI(discoveryURI);
+      }
+    } else {
+      try {
+        oidcConfiguration.setProviderMetadata(OIDCProviderMetadata.parse(providerMetadata));
+      } catch (ParseException e) {
+        log.error("Provider metadata invalid", e);
+      }
     }
   }
 

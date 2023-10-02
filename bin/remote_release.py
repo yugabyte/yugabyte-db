@@ -23,7 +23,7 @@ import shlex
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'python'))  # noqa
 
-from yb import remote
+from yugabyte import remote
 
 
 def main() -> None:

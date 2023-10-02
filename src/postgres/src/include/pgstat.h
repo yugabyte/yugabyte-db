@@ -1130,6 +1130,10 @@ typedef struct PgBackendStatus
 
 	/* YB catalog version */
 	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
+
+	/* YB (pg_client <--> tserver) Session ID */
+	uint64_t yb_session_id;
+
 } PgBackendStatus;
 
 /*
@@ -1513,5 +1517,6 @@ extern uint64_t *yb_new_conn;
 extern void yb_pgstat_report_allocated_mem_bytes(void);
 extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
 extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
+extern void yb_pgstat_add_session_info(uint64_t session_id);
 
 #endif							/* PGSTAT_H */

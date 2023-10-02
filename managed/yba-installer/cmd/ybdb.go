@@ -10,11 +10,10 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 type ybdbDirectories struct {
@@ -71,7 +70,7 @@ func (ybdb Ybdb) TemplateFile() string {
 	return ybdb.templateFileName
 }
 
-//YBDB service name
+// YBDB service name
 func (ybdb Ybdb) Name() string {
 	return ybdb.name
 }
@@ -113,7 +112,7 @@ func (ybdb Ybdb) Status() (common.Status, error) {
 	return status, nil
 }
 
-//Stops YBDB service
+// Stops YBDB service
 func (ybdb Ybdb) Stop() error {
 	status, err := ybdb.Status()
 	if err != nil {
@@ -137,7 +136,7 @@ func (ybdb Ybdb) Stop() error {
 	return nil
 }
 
-//Uninstalls YBDB service (Also removes data).
+// Uninstalls YBDB service (Also removes data).
 func (ybdb Ybdb) Uninstall(removeData bool) error {
 	log.Info("Uninstalling ybdb")
 	if err := ybdb.Stop(); err != nil {
@@ -176,7 +175,7 @@ func (ybdb Ybdb) Uninstall(removeData bool) error {
 	return nil
 }
 
-//Starts YBDB service.
+// Starts YBDB service.
 func (ybdb Ybdb) Start() error {
 	if common.HasSudoAccess() {
 
@@ -206,7 +205,7 @@ func (ybdb Ybdb) Start() error {
 	return nil
 }
 
-//Restarts YBDB service.
+// Restarts YBDB service.
 func (ybdb Ybdb) Restart() error {
 	log.Info("Restarting ybdb..")
 
@@ -231,7 +230,7 @@ func (ybdb Ybdb) getYbdbUsername() string {
 	return "yugabyte"
 }
 
-//TODO: Implement YBDB Upgrade
+// TODO: Implement YBDB Upgrade
 func (ybdb Ybdb) Upgrade() error {
 	//TODO: Implement upgrade
 	return nil
@@ -239,19 +238,29 @@ func (ybdb Ybdb) Upgrade() error {
 
 // Install ybdb and create the yugaware DB for YBA.
 func (ybdb Ybdb) Install() error {
-	config.GenerateTemplate(ybdb)
-	ybdb.extractYbdbPackage()
-	ybdb.Start()
+	//config.GenerateTemplate(ybdb)
+
+	if err := ybdb.extractYbdbPackage(); err != nil {
+		return err
+	}
+	if err := ybdb.Start(); err != nil {
+		return err
+	}
 	ybdb.WaitForYbdbReadyOrFatal(5)
-	ybdb.createYugawareDatabase()
+
+	if err := ybdb.createYugawareDatabase(); err != nil {
+		return err
+	}
 	if !common.HasSudoAccess() {
-		ybdb.CreateCronJob()
+		if err := ybdb.CreateCronJob(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // Install ybdb and create the yugaware DB for YBA.
-func (ybdb Ybdb) createYugawareDatabase() {
+func (ybdb Ybdb) createYugawareDatabase() error {
 	cmd := ybdb.ysqlBin
 	args := []string{
 		"-U", ybdb.getYbdbUsername(),
@@ -269,13 +278,14 @@ func (ybdb Ybdb) createYugawareDatabase() {
 	if !out.Succeeded() {
 		if strings.Contains(out.Error.Error(), "already exists") {
 			// db already existing is fine because this may be a resumed failed install
-			return
+			return nil
 		}
 		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
 	}
+	return nil
 }
 
-func (ybdb Ybdb) extractYbdbPackage() {
+func (ybdb Ybdb) extractYbdbPackage() error {
 	// Download stable YBDB version from download.yugabyte.com
 	// when it doesn't come packaged with yba-installer.
 	ybdbPackagePath := common.MaybeGetYbdbPackagePath()
@@ -290,10 +300,11 @@ func (ybdb Ybdb) extractYbdbPackage() {
 		}
 	}
 
-	common.MkdirAllOrFail(ybdb.ybdbInstallDir, os.ModePerm)
+	common.MkdirAllOrFail(ybdb.ybdbInstallDir, common.DirMode)
 	userName := viper.GetString("service_username")
 	shell.Run("tar", "-zxf", ybdbPackagePath, "-C", ybdb.ybdbInstallDir, "--strip-components", "1")
 	common.Chown(ybdb.ybdbInstallDir, userName, userName, true)
+	return nil
 }
 
 func (ybdb Ybdb) WaitForYbdbReadyOrFatal(retryCount int) {
@@ -343,11 +354,11 @@ func (ybdb Ybdb) queryYsql(query string) (string, error) {
 
 }
 
-//TODO: Create Cron Job for non-sudo sceanrios.
-func (ybdb Ybdb) CreateCronJob() {
+// TODO: Create Cron Job for non-sudo sceanrios.
+func (ybdb Ybdb) CreateCronJob() error {
 	// TODO: Handle non-sudo case
 	log.Fatal("Cannot create cron job for YBDB.")
-	return
+	return nil
 }
 
 func (ybdb Ybdb) CreateBackup(backupPath ...string) {

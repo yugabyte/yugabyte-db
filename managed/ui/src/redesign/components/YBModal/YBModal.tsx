@@ -21,6 +21,8 @@ export interface OverrideButtonProps {
 }
 
 export interface YBModalProps extends DialogProps {
+  onClose: () => void;
+
   title?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   overrideHeight?: string | number;
@@ -28,8 +30,7 @@ export interface YBModalProps extends DialogProps {
   isSidePanel?: boolean;
   titleSeparator?: boolean;
   titleIcon?: React.ReactNode;
-  actionsInfo?: React.ReactNode;
-  onClose?: () => void;
+  footerAccessory?: React.ReactNode;
   onSubmit?: () => void;
   enableBackdropDismiss?: boolean;
   submitLabel?: string;
@@ -42,6 +43,7 @@ export interface YBModalProps extends DialogProps {
   customTitle?: React.ReactNode;
   hideCloseBtn?: boolean;
   dialogContentProps?: DialogContentProps;
+  titleContentProps?: string;
   isSubmitting?: boolean;
 }
 
@@ -68,9 +70,13 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     width: ({ overrideWidth }) => overrideWidth ?? 480,
     height: ({ overrideHeight }) => overrideHeight ?? 272
   },
-  dialogXl: {
+  dialogLg: {
     width: ({ overrideWidth }) => overrideWidth ?? 800,
     height: ({ overrideHeight }) => overrideHeight ?? 800
+  },
+  dialogXl: {
+    width: ({ overrideWidth }) => overrideWidth ?? 1125,
+    height: ({ overrideHeight }) => overrideHeight ?? 900
   },
   form: {
     display: 'flex',
@@ -104,7 +110,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     fontSize: theme.spacing(3),
     lineHeight: '26px'
   },
-  actionsInfo: {
+  footerAccessory: {
     marginRight: 'auto'
   },
   title: {
@@ -128,7 +134,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     title,
     titleSeparator,
     titleIcon,
-    actionsInfo,
+    footerAccessory,
     onClose,
     onSubmit,
     children,
@@ -146,6 +152,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     cancelButtonTooltip,
     isSubmitting,
     dialogContentProps = {},
+    titleContentProps,
     ...dialogProps
   } = props;
   const classes = useStyles(props);
@@ -179,6 +186,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       dialogClasses = classes.dialogXs;
       dialogTitle = classes.dialogTitleXs;
       break;
+    case 'lg':
+      dialogClasses = classes.dialogLg;
+      break;
     case 'xl':
       dialogClasses = classes.dialogXl;
       break;
@@ -199,7 +209,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       paper: dialogClasses
     };
     dialogProps.fullWidth = true;
-    dialogProps.maxWidth = size;
+    dialogProps.maxWidth = false;
   }
 
   const getCancelButton = (): ReactElement | undefined => {
@@ -258,20 +268,20 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     >
       <form className={classes.form}>
         {customTitle ? (
-          <div className={classes.modalTitle}>{customTitle}</div>
+          <div className={clsx(classes.modalTitle, titleContentProps)}>{customTitle}</div>
         ) : (
           title && (
             <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
               <Typography className={classes.title} variant="h4">
                 {titleIcon ? (
-                  <div className={classes.modalTitle}>
+                  <div className={clsx(classes.modalTitle, titleContentProps)}>
                     {titleIcon}
                     <span className={classes.text} data-testid="YBModal-Title">
                       {title}
                     </span>
                   </div>
                 ) : (
-                  <div className={classes.modalTitle}>{title}</div>
+                  <div className={clsx(classes.modalTitle, titleContentProps)}>{title}</div>
                 )}
                 {!hideCloseBtn && (
                   <YBButton
@@ -289,7 +299,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         <DialogContent {...dialogContentProps}>{children}</DialogContent>
         {showDialogActions && (
           <DialogActions>
-            {actionsInfo && <div className={classes.actionsInfo}>{actionsInfo}</div>}
+            {footerAccessory && <div className={classes.footerAccessory}>{footerAccessory}</div>}
             {getCancelButton()}
             {getSubmitButton()}
           </DialogActions>

@@ -35,7 +35,7 @@
 #
 # Environment variables may be used to customize operation:
 #   BUILD_TYPE: Default: debug
-#     Maybe be one of asan|tsan|debug|release|coverage|lint
+#     May be one of asan|tsan|debug|fastdebug|release|coverage|lint
 #
 #   YB_BUILD_CPP
 #   Default: 1
@@ -49,6 +49,10 @@
 #   YB_BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
+#
+#   YB_BUILD_OPTS
+#   Default:
+#     Flags to pass to yb_build.sh
 #
 #   DONT_DELETE_BUILD_ROOT
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
@@ -110,8 +114,11 @@ build_cpp_code() {
   # We're explicitly disabling third-party rebuilding here as we've already built third-party
   # dependencies (or downloaded them, or picked an existing third-party directory) above.
 
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2206,SC2086
   local yb_build_args=(
     "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
+    ${YB_BUILD_OPTS:-}
     "${BUILD_TYPE}"
   )
 
@@ -126,6 +133,8 @@ build_cpp_code() {
         "${yb_build_args[@]}"
     )
   fi
+
+  log "Building cpp code with options: ${yb_build_args[*]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
@@ -158,15 +167,19 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
-# shellcheck source=build-support/jenkins/common-lto.sh
-. "${BASH_SOURCE%/*}/common-lto.sh"
-
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
-
+log "BUILD_TYPE: ${BUILD_TYPE}"
+log "YB_BUILD_OPTS: ${YB_BUILD_OPTS:-}"
+log "Setting Link Type"
+# shellcheck source=build-support/jenkins/common-lto.sh
+. "${BASH_SOURCE%/*}/common-lto.sh"
+log "Setting build_root"
 # shellcheck disable=SC2119
 set_build_root
+
+log "BUILD_ROOT: ${BUILD_ROOT}"
 
 set_common_test_paths
 
@@ -430,9 +443,11 @@ current_git_commit=$(git rev-parse HEAD)
 
 export YB_SKIP_FINAL_LTO_LINK=0
 if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2206,SC2086
   yb_build_cmd_line_for_lto=(
     "${YB_SRC_ROOT}/yb_build.sh"
-    "${BUILD_TYPE}" --skip-java --force-run-cmake
+    "${BUILD_TYPE}" --skip-java --force-run-cmake ${YB_BUILD_OPTS:-}
   )
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
@@ -565,39 +580,28 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Digest the package.
   digest_package "${YB_PACKAGE_PATH}"
 
-  if grep -q "CentOS Linux 7" /etc/os-release; then
-    log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
-
-    # Have to export this for the script inside Docker to see it.
-    export YB_PACKAGE_PATH
-
-    # Do a quick sanity test on the release package. This verifies that we can at least start the
-    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
-    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
-    docker run -i \
-      -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=${YB_SRC_ROOT}/build,target=/mnt/dir_with_package" centos:7 \
-      bash -c '
-        set -euo pipefail -x
-        yum install -y libatomic
-        package_name=${YB_PACKAGE_PATH##*/}
-        package_path=/mnt/dir_with_package/$package_name
-        set +e
-        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
-        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
-        set -e
-        # Remove the trailing slash.
-        dir_name_inside_archive=${dir_name_inside_archive%/}
-        cd /tmp
-        tar xzf "${package_path}"
-        cd "${dir_name_inside_archive}"
-        bin/post_install.sh
-        bin/yb-ctl create
-        bin/ysqlsh -c "create table t (k int primary key, v int);
-                       insert into t values (1, 2);
-                       select * from t;"'
+  if grep -q "CentOS Linux 7" /etc/os-release || (
+      # We only do this test with AlmaLinux 8 for the Linuxbrew-enabled Clang-based build, because
+      # we still need to set up Docker properly on aarch64 VM images, and the AlmaLinux 8 based test
+      # for the GCC fastdebug build requires locale setup inside the Docker image.
+      grep -Eq "AlmaLinux 8[.]" /etc/os-release &&
+      using_linuxbrew &&
+      [[ $YB_COMPILER_TYPE == clang* ]]
+    ); then
+    "$YB_SRC_ROOT/bin/release_package_docker_test.sh" --package-path "${YB_PACKAGE_PATH}"
   else
-    log "Not doing a quick sanity-check of the release package. OS: ${OSTYPE}."
+    log "Not doing a quick sanity-check of the release package. Details:"
+    log "  OS type: ${OSTYPE}"
+    log "  YB_COMPILER_TYPE: ${YB_COMPILER_TYPE}"
+    if using_linuxbrew; then
+      log "  Using Linuxbrew."
+    else
+      log "  Not using Linuxbrew."
+    fi
+    if [[ -f /etc/os-release ]]; then
+      log "  Contents of /etc/os-release:"
+      cat /etc/os-release >&2
+    fi
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \
@@ -606,7 +610,10 @@ else
   # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
   # building package.
   log "Building yugabyted-ui"
-  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java
+  # Need no quotes to allow for multiple options to be passed via YB_BUILD_OPTS.
+  # shellcheck disable=SC2086
+  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java \
+    ${YB_BUILD_OPTS:-}
 fi
 
 exit ${EXIT_STATUS}

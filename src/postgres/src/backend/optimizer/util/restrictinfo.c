@@ -215,13 +215,14 @@ make_restrictinfo_internal(Expr *clause,
  *	an inner variable from inner_relids and its outer batched variables from
  *	outer_batched_relids.
  */
-bool can_batch_rinfo(RestrictInfo *rinfo,
-					 Relids outer_batched_relids,
-					 Relids inner_relids)
+bool yb_can_batch_rinfo(RestrictInfo *rinfo,
+							Relids outer_batched_relids,
+							Relids inner_relids)
 {
-	RestrictInfo *batched_rinfo = get_batched_restrictinfo(rinfo,
-														   outer_batched_relids,
-														   inner_relids);
+	RestrictInfo *batched_rinfo =
+		yb_get_batched_restrictinfo(rinfo,
+											 outer_batched_relids,
+											 inner_relids);
 	return batched_rinfo != NULL;
 }
 
@@ -231,9 +232,9 @@ bool can_batch_rinfo(RestrictInfo *rinfo,
  * similarly for the right/outer side and outer_batched_relids.
  */
 RestrictInfo *
-get_batched_restrictinfo(RestrictInfo *rinfo,
-						 Relids outer_batched_relids,
-						 Relids inner_relids)
+yb_get_batched_restrictinfo(RestrictInfo *rinfo,
+									 Relids outer_batched_relids,
+									 Relids inner_relids)
 {
 	if (list_length(rinfo->yb_batched_rinfo) == 0)
 		return NULL;

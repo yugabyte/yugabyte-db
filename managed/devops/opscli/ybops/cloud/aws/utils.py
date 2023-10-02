@@ -993,8 +993,12 @@ def create_instance(args):
     ebs = {
         "DeleteOnTermination": args.auto_delete_boot_disk,
         "VolumeSize": root_volume_size,
-        "VolumeType": "gp2"
+        "VolumeType": args.volume_type
     }
+    if args.volume_type == "io1" or args.volume_type == "gp3":
+        ebs["Iops"] = args.disk_iops
+    if args.volume_type == "gp3":
+        ebs["Throughput"] = args.disk_throughput
 
     if args.cmk_res_name is not None:
         ebs["Encrypted"] = True
@@ -1076,8 +1080,11 @@ def create_instance(args):
 
     if args.use_spot_instance:
         options = {"MarketType": "spot"}
+        spotOptions = {"SpotInstanceType": "persistent",
+                       "InstanceInterruptionBehavior": "stop"}
         if args.spot_price is not None:
-            options["SpotOptions"] = {"MaxPrice": args.spot_price}
+            spotOptions["MaxPrice"] = args.spot_price
+        options["SpotOptions"] = spotOptions
         vars["InstanceMarketOptions"] = options
         logging.info(f"[app] Using AWS spot instances with {options} options")
 
@@ -1134,6 +1141,12 @@ def create_instance(args):
         logging.info("[app] Created Elastic IP address at {} in region {} for AWS VM {}"
                      .format(eip["PublicIp"], args.region, args.search_pattern))
 
+    if args.use_spot_instance:
+        logging.info(f"spot instance request id = {instance.spot_instance_request_id}")
+        client.create_tags(
+            Resources=[instance.spot_instance_request_id],
+            Tags=user_tags
+        )
     return instance.id
 
 
@@ -1206,12 +1219,12 @@ def update_disk(args, instance_id):
         _wait_for_disk_modifications(ec2_client, vol_ids)
 
 
-def change_instance_type(region, instance_id, new_instance_type):
+def change_instance_type(region, instance_id, instance_type):
     instance = get_client(region).Instance(instance_id)
 
     try:
         # Change instance type
-        instance.modify_attribute(Attribute='instanceType', Value=new_instance_type)
+        instance.modify_attribute(Attribute='instanceType', Value=instance_type)
     except Exception as e:
         raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 

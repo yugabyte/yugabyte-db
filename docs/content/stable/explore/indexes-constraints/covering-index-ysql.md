@@ -1,7 +1,9 @@
 ---
-title: Covering indexes
+title: Covering indexes in YugabyteDB YSQL
+headerTitle: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
+headContent: Explore covering indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -16,6 +18,12 @@ type: docs
     <a href="../covering-index-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
+    </a>
+  </li>
+    <li >
+    <a href="../covering-index-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 </ul>

@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -103,24 +102,27 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
+                  updateUniverseNodesAndSettings(u, taskParams(), false);
+                  for (Cluster cluster : taskParams().clusters) {
+                    u.getUniverseDetails()
+                        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                  }
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
                   updateTaskDetailsInDB(taskParams());
                 }
               });
-
-      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+      boolean cacheYCQLAuthPass =
+          primaryCluster.userIntent.enableYCQL
+              && primaryCluster.userIntent.enableYCQLAuth
+              && !primaryCluster.userIntent.defaultYcqlPassword;
+      boolean cacheYSQLAuthPass =
+          primaryCluster.userIntent.enableYSQL
+              && primaryCluster.userIntent.enableYSQLAuth
+              && !primaryCluster.userIntent.defaultYsqlPassword;
+      if (cacheYCQLAuthPass || cacheYSQLAuthPass) {
         if (isFirstTry()) {
-          if (isYCQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-                RedactingService.redactString(ycqlPassword);
-          }
-          if (isYSQLAuthEnabled) {
-            taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-                RedactingService.redactString(ysqlPassword);
-          }
           log.debug("Storing passwords in memory");
           passwordStore.put(
               universe.getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
@@ -153,6 +155,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           false /* ignoreUseCustomImageConfig */);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);

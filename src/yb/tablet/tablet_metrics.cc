@@ -31,7 +31,12 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+
+#include "yb/yql/pggate/pg_metrics_list.h"
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",
@@ -48,27 +53,31 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
                       yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 
-METRIC_DEFINE_coarse_histogram(table, ql_write_latency, "Write latency at tserver layer",
+METRIC_DEFINE_event_stats(table, ql_write_latency, "Write latency at tserver layer",
   yb::MetricUnit::kMicroseconds,
   "Time taken to handle a batch of writes at tserver layer");
 
-METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
+METRIC_DEFINE_event_stats(table, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
   yb::MetricUnit::kMicroseconds,
   "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, ql_read_latency, "Handle ReadRequest latency at tserver layer",
     yb::MetricUnit::kMicroseconds,
     "Time taken to handle the read request at the tserver layer.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
     "Time taken to acquire key locks for a write operation");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, read_time_wait, "Read Time Wait", yb::MetricUnit::kMicroseconds,
     "Number of microseconds read queries spend waiting for safe time");
+
+METRIC_DEFINE_event_stats(
+    table, total_wait_queue_time, "Wait Queue Time", yb::MetricUnit::kMicroseconds,
+    "Number of microseconds spent in the wait queue for requests which enter the wait queue");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
@@ -120,6 +129,12 @@ METRIC_DEFINE_counter(tablet, consistent_prefix_read_requests,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix read requests");
 
+METRIC_DEFINE_counter(tablet, picked_read_time_on_docdb,
+    "Picked read time on docdb",
+    yb::MetricUnit::kRequests,
+    "Number of times, a read time was picked on docdb instead of the query layer for read/write "
+    "requests");
+
 METRIC_DEFINE_counter(tablet, pgsql_consistent_prefix_read_rows,
                       "Consistent Prefix Read Requests",
                       yb::MetricUnit::kRequests,
@@ -148,39 +163,305 @@ METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
     yb::MetricUnit::kKeys,
     "Number of obsolete keys found in RocksDB searches that were past history cutoff");
 
+METRIC_DEFINE_gauge_int64(tablet, active_write_query_objects,
+    "Active WriteQuery Objects",
+    yb::MetricUnit::kOperations,
+    "Number of active WriteQuery objects associated with the current tablet");
+
 namespace yb {
 namespace tablet {
 
-#define MINIT(entity, x) x(METRIC_##x.Instantiate(entity))
-TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
-                             const scoped_refptr<MetricEntity>& tablet_entity)
-  : MINIT(table_entity, snapshot_read_inflight_wait_duration),
-    MINIT(table_entity, ql_read_latency),
-    MINIT(table_entity, write_lock_latency),
-    MINIT(table_entity, ql_write_latency),
-    MINIT(table_entity, read_time_wait),
-    MINIT(tablet_entity, not_leader_rejections),
-    MINIT(tablet_entity, leader_memory_pressure_rejections),
-    MINIT(tablet_entity, majority_sst_files_rejections),
-    MINIT(tablet_entity, transaction_conflicts),
-    MINIT(tablet_entity, expired_transactions),
-    MINIT(tablet_entity, restart_read_requests),
-    MINIT(tablet_entity, consistent_prefix_read_requests),
-    MINIT(tablet_entity, pgsql_consistent_prefix_read_rows),
-    MINIT(tablet_entity, tablet_data_corruptions),
-    MINIT(tablet_entity, rows_inserted),
-    MINIT(tablet_entity, failed_batch_lock),
-    MINIT(tablet_entity, docdb_keys_found),
-    MINIT(tablet_entity, docdb_obsolete_keys_found),
-    MINIT(tablet_entity, docdb_obsolete_keys_found_past_cutoff) {
+namespace {
+
+// Keeps track of the number of TabletMetrics instances that have been created for the purpose
+// of assigning an instance identifier.
+std::atomic<uint64_t> tablet_metrics_instance_counter;
+
+struct CounterEntry {
+  uint32_t pggate_index;
+  TabletCounters counter;
+  CounterPrototype* prototype;
+};
+
+struct GaugeEntry {
+  uint32_t pggate_index;
+  TabletGauges gauge;
+  GaugePrototype<int64_t>* prototype;
+};
+
+struct EventStatsEntry {
+  TabletEventStats event_stat;
+  EventStatsPrototype* prototype;
+};
+
+const CounterEntry kCounters[] = {
+  {pggate::YB_ANALYZE_METRIC_NOT_LEADER_REJECTIONS,
+      TabletCounters::kNotLeaderRejections,
+      &METRIC_not_leader_rejections},
+  {pggate::YB_ANALYZE_METRIC_LEADER_MEMORY_PRESSURE_REJECTIONS,
+      TabletCounters::kLeaderMemoryPressureRejections,
+      &METRIC_leader_memory_pressure_rejections},
+  {pggate::YB_ANALYZE_METRIC_MAJORITY_SST_FILES_REJECTIONS,
+      TabletCounters::kMajoritySstFilesRejections,
+      &METRIC_majority_sst_files_rejections},
+  {pggate::YB_ANALYZE_METRIC_TRANSACTION_CONFLICTS,
+      TabletCounters::kTransactionConflicts,
+      &METRIC_transaction_conflicts},
+  {pggate::YB_ANALYZE_METRIC_EXPIRED_TRANSACTIONS,
+      TabletCounters::kExpiredTransactions,
+      &METRIC_expired_transactions},
+  {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS,
+      TabletCounters::kRestartReadRequests,
+      &METRIC_restart_read_requests},
+  {pggate::YB_ANALYZE_METRIC_CONSISTENT_PREFIX_READ_REQUESTS,
+      TabletCounters::kConsistentPrefixReadRequests,
+      &METRIC_consistent_prefix_read_requests},
+  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB,
+      TabletCounters::kPickReadTimeOnDocDB,
+      &METRIC_picked_read_time_on_docdb},
+  {pggate::YB_ANALYZE_METRIC_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
+      TabletCounters::kPgsqlConsistentPrefixReadRows,
+      &METRIC_pgsql_consistent_prefix_read_rows},
+  {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS,
+      TabletCounters::kTabletDataCorruptions,
+      &METRIC_tablet_data_corruptions},
+  {pggate::YB_ANALYZE_METRIC_ROWS_INSERTED,
+      TabletCounters::kRowsInserted,
+      &METRIC_rows_inserted},
+  {pggate::YB_ANALYZE_METRIC_FAILED_BATCH_LOCK,
+      TabletCounters::kFailedBatchLock,
+      &METRIC_failed_batch_lock},
+  {pggate::YB_ANALYZE_METRIC_DOCDB_KEYS_FOUND,
+      TabletCounters::kDocDBKeysFound,
+      &METRIC_docdb_keys_found},
+  {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND,
+      TabletCounters::kDocDBObsoleteKeysFound,
+      &METRIC_docdb_obsolete_keys_found},
+  {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
+      TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
+      &METRIC_docdb_obsolete_keys_found_past_cutoff},
+};
+
+const GaugeEntry kGauges[] = {
+  {pggate::YB_ANALYZE_METRIC_ACTIVE_WRITE_QUERY_OBJECTS,
+      TabletGauges::kActiveWriteQueryObjects,
+      &METRIC_active_write_query_objects},
+};
+
+const EventStatsEntry kEventStats[] = {
+  {TabletEventStats::kSnapshotReadInflightWaitDuration,
+      &METRIC_snapshot_read_inflight_wait_duration},
+  {TabletEventStats::kQlReadLatency,
+      &METRIC_ql_read_latency},
+  {TabletEventStats::kWriteLockLatency,
+      &METRIC_write_lock_latency},
+  {TabletEventStats::kQlWriteLatency,
+      &METRIC_ql_write_latency},
+  {TabletEventStats::kReadTimeWait,
+      &METRIC_read_time_wait},
+  {TabletEventStats::kTotalWaitQueueTime,
+      &METRIC_total_wait_queue_time},
+};
+
+class TabletMetricsImpl final : public TabletMetrics {
+ public:
+  TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_metric_entity,
+                    const scoped_refptr<MetricEntity>& tablet_metric_entity);
+  ~TabletMetricsImpl() {}
+
+  uint64_t Get(TabletCounters counter) const override;
+
+  int64_t Get(TabletGauges gauge) const override;
+
+  void IncrementBy(TabletCounters counter, uint64_t amount) override;
+
+  void IncrementBy(TabletGauges gauge, int64_t amount) override;
+
+  void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
+
+ private:
+  std::vector<scoped_refptr<EventStats>> event_stats_;
+  std::vector<scoped_refptr<Counter>> counters_;
+  std::vector<scoped_refptr<AtomicGauge<int64_t>>> gauges_;
+};
+
+TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_entity,
+                                     const scoped_refptr<MetricEntity>& tablet_entity)
+  : event_stats_(kElementsInTabletEventStats),
+    counters_(kElementsInTabletCounters),
+    gauges_(kElementsInTabletGauges) {
+
+  for (const auto& stat : kEventStats) {
+    event_stats_[to_underlying(stat.event_stat)] = stat.prototype->Instantiate(table_entity);
+  }
+
+  for (const auto& counter : kCounters) {
+    counters_[to_underlying(counter.counter)] = counter.prototype->Instantiate(tablet_entity);
+  }
+
+  for (const auto& gauge : kGauges) {
+    gauges_[to_underlying(gauge.gauge)] = gauge.prototype->Instantiate(tablet_entity, 0);
+  }
 }
-#undef MINIT
 
-ScopedTabletMetricsTracker::ScopedTabletMetricsTracker(scoped_refptr<Histogram> latency)
-    : latency_(latency), start_time_(MonoTime::Now()) {}
+uint64_t TabletMetricsImpl::Get(TabletCounters counter) const {
+  return counters_[to_underlying(counter)]->value();
+}
 
-ScopedTabletMetricsTracker::~ScopedTabletMetricsTracker() {
-  latency_->Increment(MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
+int64_t TabletMetricsImpl::Get(TabletGauges gauge) const {
+  return gauges_[to_underlying(gauge)]->value();
+}
+
+void TabletMetricsImpl::IncrementBy(TabletCounters counter, uint64_t amount) {
+  counters_[to_underlying(counter)]->IncrementBy(amount);
+}
+
+void TabletMetricsImpl::IncrementBy(TabletGauges gauge, int64_t amount) {
+  gauges_[to_underlying(gauge)]->IncrementBy(amount);
+}
+
+void TabletMetricsImpl::IncrementBy(
+    TabletEventStats event_stats, uint64_t value, uint64_t amount) {
+  event_stats_[to_underlying(event_stats)]->IncrementBy(value, amount);
+}
+
+} // namespace
+
+TabletMetrics::TabletMetrics()
+    : instance_id_(tablet_metrics_instance_counter.fetch_add(1, std::memory_order_relaxed)) {}
+
+ScopedTabletMetrics::ScopedTabletMetrics()
+    : counters_(kElementsInTabletCounters, 0),
+      gauges_(kElementsInTabletGauges, 0) {}
+
+ScopedTabletMetrics::~ScopedTabletMetrics() { }
+
+#if DCHECK_IS_ON()
+#define DCHECK_IN_USE() DCHECK(in_use_)
+#else
+#define DCHECK_IN_USE()
+#endif
+
+uint64_t ScopedTabletMetrics::Get(TabletCounters counter) const {
+  DCHECK_IN_USE();
+  return counters_[to_underlying(counter)];
+}
+
+int64_t ScopedTabletMetrics::Get(TabletGauges gauge) const {
+  DCHECK_IN_USE();
+  return gauges_[to_underlying(gauge)];
+}
+
+void ScopedTabletMetrics::IncrementBy(TabletCounters counter, uint64_t amount) {
+  DCHECK_IN_USE();
+  counters_[to_underlying(counter)] += amount;
+}
+
+void ScopedTabletMetrics::IncrementBy(TabletGauges gauge, int64_t amount) {
+  DCHECK_IN_USE();
+  gauges_[to_underlying(gauge)] += amount;
+}
+
+void ScopedTabletMetrics::IncrementBy(
+    TabletEventStats event_stats, uint64_t value, uint64_t amount) {
+  DCHECK_IN_USE();
+  histogram_context_->IncrementBy(event_stats, value, amount);
+}
+
+void ScopedTabletMetrics::Prepare() {
+#if DCHECK_IS_ON()
+  DCHECK(!in_use_);
+  in_use_ = true;
+#endif
+}
+
+void ScopedTabletMetrics::SetHistogramContext(TabletMetrics* histogram_context) {
+  histogram_context_ = histogram_context;
+}
+
+void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
+  DCHECK_IN_USE();
+  auto* metrics = response->mutable_metrics();
+  for (const auto& counter : kCounters) {
+    auto value = counters_[to_underlying(counter.counter)];
+    // Don't send unchanged statistics.
+    if (value == 0) {
+      continue;
+    }
+    auto* metric = metrics->add_gauge_metrics();
+    metric->set_metric(counter.pggate_index);
+    metric->set_value(value);
+  }
+  for (const auto& gauge : kGauges) {
+    auto value = gauges_[to_underlying(gauge.gauge)];
+    if (value != 0) {
+      auto* metric = metrics->add_gauge_metrics();
+      metric->set_metric(gauge.pggate_index);
+      metric->set_value(value);
+    }
+  }
+}
+
+size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
+  DCHECK_IN_USE();
+  size_t dumped = 0;
+  for (const auto& counter : kCounters) {
+    auto value = counters_[to_underlying(counter.counter)];
+    // Don't dump unchanged statistics.
+    if (value == 0) {
+      continue;
+    }
+    const auto* name = counter.prototype->name();
+    (*out) << name << ": " << value << '\n';
+    ++dumped;
+  }
+  for (const auto& gauge : kGauges) {
+    auto value = gauges_[to_underlying(gauge.gauge)];
+    if (value != 0) {
+      const auto* name = gauge.prototype->name();
+      (*out) << name << ": " << value << '\n';
+      ++dumped;
+    }
+  }
+  return dumped;
+}
+
+void ScopedTabletMetrics::MergeAndClear(TabletMetrics* target) {
+  DCHECK_IN_USE();
+
+  for (size_t i = 0; i < counters_.size(); ++i) {
+    if (counters_[i] > 0) {
+      target->IncrementBy(static_cast<TabletCounters>(i), counters_[i]);
+      counters_[i] = 0;
+    }
+  }
+  for (size_t i = 0; i < gauges_.size(); ++i) {
+    if (gauges_[i] != 0) {
+      target->IncrementBy(static_cast<TabletGauges>(i), gauges_[i]);
+      gauges_[i] = 0;
+    }
+  }
+
+#if DCHECK_IS_ON()
+  in_use_ = false;
+#endif
+  histogram_context_ = nullptr;
+}
+
+std::unique_ptr<TabletMetrics> CreateTabletMetrics(
+    const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity) {
+  return std::make_unique<TabletMetricsImpl>(table_metric_entity, tablet_metric_entity);
+}
+
+ScopedTabletMetricsLatencyTracker::ScopedTabletMetricsLatencyTracker(
+    TabletMetrics* tablet_metrics, TabletEventStats event_stats)
+    : metrics_(tablet_metrics), event_stats_(event_stats), start_time_(MonoTime::Now()) {}
+
+ScopedTabletMetricsLatencyTracker::~ScopedTabletMetricsLatencyTracker() {
+  metrics_->Increment(
+      event_stats_,
+      MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
 }
 } // namespace tablet
 } // namespace yb

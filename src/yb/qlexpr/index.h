@@ -132,6 +132,8 @@ class IndexInfo {
   // Should account for every field in IndexInfo.
   static bool TEST_Equals(const IndexInfo& lhs, const IndexInfo& rhs);
 
+  size_t DynamicMemoryUsage() const;
+
  private:
   const TableId table_id_;            // Index table id.
   const TableId indexed_table_id_;    // Indexed table id.
@@ -171,6 +173,8 @@ class IndexMap : public std::unordered_map<TableId, IndexInfo> {
   void ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) const;
 
   Result<const IndexInfo*> FindIndex(const TableId& index_id) const;
+
+  size_t DynamicMemoryUsage() const;
 
   // Has to be custom because IndexInfo does not define ==.
   static bool TEST_Equals(const IndexMap& lhs, const IndexMap& rhs);

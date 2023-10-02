@@ -20,8 +20,8 @@ resources:
     url: /preview/yugabyte-cloud/release-notes/
   - title: YugabyteDB Managed FAQ
     url: /preview/faq/yugabytedb-managed-faq/
-  - title: Build applications
-    url: /preview/develop/build-apps/
+  - title: Video Tutorials
+    url: https://www.youtube.com/playlist?list=PL8Z3vt4qJTkIAYWaUOE_CIntxTHho_pBh
 cascade:
   unversioned: true
 ---
@@ -40,7 +40,7 @@ cascade:
 
   {{< sections/bottom-image-box
     title="Deploy dedicated clusters"
-    description="Deploy single- and multi-region production clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS)."
+    description="Deploy single- and multi-region production clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
@@ -92,7 +92,7 @@ cascade:
   {{< sections/3-box-card
   title="Manage your account"
   linkText1="Add Users to your account"
-  linkUrl1="cloud-admin/manage-access/"
+  linkUrl1="managed-security/manage-access/"
   linkText2="Manage billing"
   linkUrl2="cloud-admin/cloud-billing-profile/"
   linkText3="Automation"
@@ -147,10 +147,10 @@ cascade:
   >}}
 
   {{< sections/3-box-card
-  title="Yugabyte Channel"
-  description="Learn how to create a cluster, use distributed SQL, build a sample application, and scale clusters."
+  title="YouTube Channel"
+  description="Learn how to use YugabyteDB Managed with this series of short tutorials."
   buttonText="Watch"
-  buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc"
+  buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkIAYWaUOE_CIntxTHho_pBh"
   buttonTarget="_blank"
   >}}
 {{< /sections/3-boxes >}}

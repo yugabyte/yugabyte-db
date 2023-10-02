@@ -16,8 +16,10 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/gutil/bits.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/memory_monitor.h"
@@ -72,15 +74,17 @@ DEFINE_UNKNOWN_int32(db_block_cache_size_percentage, kDbCacheSizeUseDefault,
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes. "
              "Defaults to -3 (use default percentage as defined by master or tserver).");
 
-DEFINE_UNKNOWN_int32(db_block_cache_num_shard_bits, 4,
-             "Number of bits to use for sharding the block cache (defaults to 4 bits)");
+DEFINE_RUNTIME_int32(db_block_cache_num_shard_bits, -1,
+             "-1 indicates a dynamic scheme that evaluates to 4 if number of cores is less than "
+             "or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on. If the value is "
+             "overridden, that value would be used in favor of the dynamic scheme. "
+             "The maximum permissible value is 19.");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                   "Always pretend memory has been exceeded to enforce background flush.");
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 using strings::Substitute;
 
@@ -90,11 +94,9 @@ class FunctorGC : public GarbageCollector {
  public:
   explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
 
-  void CollectGarbage(size_t required) {
+  void CollectGarbage(size_t required) override {
     impl_(required);
   }
-
-  virtual ~FunctorGC() = default;
 
  private:
   std::function<void(size_t)> impl_;
@@ -104,7 +106,7 @@ class LRUCacheGC : public GarbageCollector {
  public:
   explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
 
-  void CollectGarbage(size_t required) {
+  void CollectGarbage(size_t required) override {
     if (!FLAGS_enable_block_based_table_cache_gc) {
       return;
     }
@@ -114,8 +116,6 @@ class LRUCacheGC : public GarbageCollector {
               << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
               << ", required: " << HumanReadableNumBytes::ToString(required);
   }
-
-  virtual ~LRUCacheGC() = default;
 
  private:
   std::shared_ptr<rocksdb::Cache> cache_;
@@ -147,7 +147,11 @@ int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentag
 }
 
 size_t GetLogCacheSize(tablet::TabletPeer* peer) {
-  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
+  auto consensus_result = peer->GetRaftConsensus();
+  if (!consensus_result) {
+    return 0;
+  }
+  return consensus_result.get()->LogCacheSize();
 }
 
 }  // namespace
@@ -197,7 +201,7 @@ void TabletMemoryManager::InitBlockCache(
 
   if (block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     options->block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
-                                                FLAGS_db_block_cache_num_shard_bits);
+                                                GetDbBlockCacheNumShardBits());
     options->block_cache->SetMetrics(metrics);
     block_based_table_gc_ = std::make_shared<LRUCacheGC>(options->block_cache);
     block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
@@ -266,11 +270,15 @@ void TabletMemoryManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t b
 
   size_t total_evicted = 0;
   for (const auto& peer : peers) {
+    auto consensus_result = peer->GetRaftConsensus();
+    if (!consensus_result) {
+      VLOG_WITH_FUNC(3) << "Skipping Peer " << peer->permanent_uuid() << consensus_result.status();
+      continue;
+    }
     if (GetLogCacheSize(peer.get()) <= 0) {
       continue;
     }
-    size_t evicted = down_cast<consensus::RaftConsensus*>(
-        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
+    size_t evicted = consensus_result.get()->EvictLogCache(bytes_to_evict - total_evicted);
     total_evicted += evicted;
     if (total_evicted >= bytes_to_evict) {
       break;
@@ -342,5 +350,23 @@ std::string TabletMemoryManager::LogPrefix(const tablet::TabletPeerPtr& peer) co
       peer->permanent_uuid());
 }
 
-}  // namespace tserver
-}  // namespace yb
+int32_t GetDbBlockCacheNumShardBits() {
+  auto num_cache_shard_bits = FLAGS_db_block_cache_num_shard_bits;
+  if (num_cache_shard_bits < 0) {
+    const auto num_cores = base::NumCPUs();
+    if (num_cores <= 16) {
+      return rocksdb::kSharedLRUCacheDefaultNumShardBits;
+    }
+    num_cache_shard_bits = Bits::Log2Ceiling(num_cores);
+  }
+  if (num_cache_shard_bits > rocksdb::kSharedLRUCacheMaxNumShardBits) {
+    LOG(INFO) << Format(
+        "The value of db_block_cache_num_shard_bits is higher than the "
+        "maximum permissible value of $0. The value used will be $0.",
+        rocksdb::kSharedLRUCacheMaxNumShardBits);
+    return rocksdb::kSharedLRUCacheMaxNumShardBits;
+  }
+  return num_cache_shard_bits;
+}
+
+}  // namespace yb::tserver

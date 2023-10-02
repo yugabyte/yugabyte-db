@@ -10,15 +10,16 @@ menu:
     parent: api-ysql-datatypes-datetime
     weight: 90
 type: indexpage
+showRightNav: true
 ---
 
 This page lists all of the general-purpose _date-time_ functions. They are classified into groups according to the purpose.
 
-- [Creating date-time values](#functions-for-creating-date-time-values-creating-date-time-values)
-- [Manipulating date-time values](#functions-for-manipulating-date-time-values-manipulating-date-time-values)
-- [Current date-time moment](#functions-that-return-the-current-date-time-moment-current-date-time-moment)
-- [Delaying execution](#functions-for-delaying-execution-delaying-execution)
-- [Miscellaneous](#miscellaneous-functions-miscellaneous)
+- [Creating date-time values](#functions-for-creating-date-time-values)
+- [Manipulating date-time values](#functions-for-manipulating-date-time-values)
+- [Current date-time moment](#functions-that-return-the-current-date-time-moment)
+- [Delaying execution](#functions-for-delaying-execution)
+- [Miscellaneous](#miscellaneous-functions)
 
 <a name="functions-without-trailing-parentheses"></a>Notice that the so-called _date-time_ formatting functions, like:
 
@@ -33,7 +34,7 @@ Normally in PostgreSQL, and therefore in YSQL, a function invocation must be wri
 
 - _current_date_, _current_time_, _current_timestamp_, _localtime_, and _localtimestamp_.
 
-Notice that the \\_df_ metacommand produces no output for each of these five functions.
+Notice that the \\_df_ meta-command produces no output for each of these five functions.
 
 Each of these is in the group [functions that return the current date-time moment](#functions-that-return-the-current-date-time-moment-current-date-time-moment). If you invoke one of these using empty trailing parentheses, then you get the generic _42601_ syntax error. Each of these five names is reserved in SQL. For example, if you try to create a table with a column whose name is one of these five (without trailing parentheses in this case, of course), then you get the same _42601_ error. Notice that within this set of five exceptional functions that must not be invoked with empty trailing parentheses, these four have a variant that has a single _precision_ parameter: _current_time(precision)_, _current_timestamp(precision)_, _localtime(precision)_, and _localtimestamp(precision)_. This specifies the precision of the seconds value. (This explains why _current_date_ has no _precision_ variant.)
 
@@ -46,7 +47,9 @@ You should regard the exceptional status of the _current_date_, _current_time_, 
 
 The following tables list all of the general purpose _date_time_ built-in functions, classified by purpose.
 
-## [Functions for creating date-time values](./creating-date-time-values)
+## Functions for creating date-time values
+
+**[Here](./creating-date-time-values)**.
 
 |                                                                                                 | **return data type** |
 | ----------------------------------------------------------------------------------------------- | -------------------- |
@@ -57,14 +60,18 @@ The following tables list all of the general purpose _date_time_ built-in functi
 | [to_timestamp()](./creating-date-time-values#function-to-timestamp-returns-timestamptz)         | timestamptz          |
 | [make_interval()](./creating-date-time-values#function-make-interval-returns-interval)          | interval             |
 
-## [Functions for manipulating date-time values](./manipulating-date-time-values)
+## Functions for manipulating date-time values
+
+**[Here](./manipulating-date-time-values)**.
 
 |                                                                                                                                                                  | **return data type**                       |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | [date_trunc()](./manipulating-date-time-values#function-date-trunc-returns-plain-timestamp-timestamptz-interval)                                                 | plain timestamp \| timestamptz \| interval |
 | [justify_days() \| justify_hours() \| justify_interval()](./manipulating-date-time-values#function-justify-days-justify-hours-justify-interval-returns-interval) | interval                                   |
 
-## [Functions that return the current date-time moment](./current-date-time-moment)
+## Functions that return the current date-time moment
+
+**[Here](./current-date-time-moment)**.
 
 There are several built-in SQL functions for returning the current date-time moment because there are different notions of currency:
 
@@ -127,7 +134,9 @@ Using _clock_timestamp()_, and formatting the result to _text_, can bring the id
 For this reason, this section won't say any more about the _timeofday()_ builtin function.
 {{< /tip >}}
 
-## [Functions for delaying execution](./delaying-execution)
+## Functions for delaying execution
+
+**[Here](./delaying-execution)**.
 
 |                                                                               | **return data type** |
 | ----------------------------------------------------------------------------- | -------------------- |
@@ -135,7 +144,9 @@ For this reason, this section won't say any more about the _timeofday()_ builtin
 | [pg_sleep_for()](./delaying-execution#function-pg-sleep-for-returns-void)     | void                 |
 | [pg_sleep_until()](./delaying-execution#function-pg-sleep-until-returns-void) | void                 |
 
-## [Miscellaneous functions](./miscellaneous/)
+## Miscellaneous functions
+
+**[Here](./miscellaneous/)**.
 
 |                                                                                                                              | **return data type**                       |
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |

@@ -36,18 +36,18 @@ class channel {
   void operator=(const channel&) = delete;
 
   void sendEof() {
-    std::lock_guard<std::mutex> lk(lock_);
+    std::lock_guard lk(lock_);
     eof_ = true;
     cv_.notify_all();
   }
 
   bool eof() {
-    std::lock_guard<std::mutex> lk(lock_);
+    std::lock_guard lk(lock_);
     return buffer_.empty() && eof_;
   }
 
   size_t size() const {
-    std::lock_guard<std::mutex> lk(lock_);
+    std::lock_guard lk(lock_);
     return buffer_.size();
   }
 

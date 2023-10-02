@@ -67,7 +67,7 @@ WHERE user_id = 17
   AND message_id < 100;
 ```
 
-Or, in the context of a time-series application:
+Or, in the context of a time series application:
 
 ```sql
 SELECT metric_value

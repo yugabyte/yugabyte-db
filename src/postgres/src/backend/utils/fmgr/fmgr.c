@@ -15,11 +15,14 @@
 
 #include "postgres.h"
 
+#include <pthread.h>
+
 #include "access/tuptoaster.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_proc.h"
 #include "executor/functions.h"
 #include "lib/stringinfo.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "pgstat.h"
@@ -66,6 +69,31 @@ static void record_C_func(HeapTuple procedureTuple,
 /* extern so it's callable via JIT */
 extern Datum fmgr_security_definer(PG_FUNCTION_ARGS);
 
+extern void int2send_direct(StringInfo buf, Datum value);
+extern void int4send_direct(StringInfo buf, Datum value);
+extern void int8send_direct(StringInfo buf, Datum value);
+
+typedef void (*SendDirectFn)(StringInfo, Datum);
+
+/*
+ * Initialize direct send function with specified oid with specified func.
+ */
+static void
+fmgr_init_direct_send_func(Oid oid, SendDirectFn func)
+{
+	fmgr_builtins[fmgr_builtin_oid_index[oid]].alt_func = func;
+}
+
+/*
+ * Initialize all direct send functions.
+ */
+static void
+fmgr_init_direct_send()
+{
+	fmgr_init_direct_send_func(PG_PROC_INT2SEND_OID, int2send_direct);
+	fmgr_init_direct_send_func(PG_PROC_INT4SEND_OID, int4send_direct);
+	fmgr_init_direct_send_func(PG_PROC_INT8SEND_OID, int8send_direct);
+}
 
 /*
  * Lookup routines for builtin-function table.  We can search by either Oid
@@ -80,6 +108,9 @@ fmgr_isbuiltin(Oid id)
 	/* fast lookup only possible if original oid still assigned */
 	if (id >= FirstBootstrapObjectId)
 		return NULL;
+
+	static pthread_once_t initialized = PTHREAD_ONCE_INIT;
+	pthread_once(&initialized, &fmgr_init_direct_send);
 
 	/*
 	 * Lookup function data. If there's a miss in that range it's likely a
@@ -169,6 +200,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	finfo->fn_extra = NULL;
 	finfo->fn_mcxt = mcxt;
 	finfo->fn_expr = NULL;		/* caller may set this later */
+	finfo->fn_alt = NULL;
 
 	if ((fbp = fmgr_isbuiltin(functionId)) != NULL)
 	{
@@ -181,6 +213,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 		finfo->fn_stats = TRACK_FUNC_ALL;	/* ie, never track */
 		finfo->fn_addr = fbp->func;
 		finfo->fn_oid = functionId;
+		finfo->fn_alt = fbp->alt_func;
 		return;
 	}
 
@@ -1826,6 +1859,29 @@ bytea *
 SendFunctionCall(FmgrInfo *flinfo, Datum val)
 {
 	return DatumGetByteaP(FunctionCall1(flinfo, val));
+}
+
+/*
+ * Call a previously-looked-up datatype binary-output function.
+ *
+ * Putting output to specified StringInfo buffer.
+ */
+void
+StringInfoSendFunctionCall(StringInfo buf, FmgrInfo *flinfo, Datum val)
+{
+	void (*alt)(StringInfo, Datum) = flinfo->fn_alt;
+	if (alt) {
+		// There is function to send value directly to buf, w/o intermediate
+		// conversion to bytea.
+		alt(buf, val);
+		return;
+	}
+
+	bytea *outputbytes = SendFunctionCall(flinfo, val);
+	uint32 size = VARSIZE(outputbytes) - VARHDRSZ;
+	pq_sendint32(buf, size);
+	pq_sendbytes(buf, VARDATA(outputbytes), size);
+	pfree(outputbytes);
 }
 
 /*

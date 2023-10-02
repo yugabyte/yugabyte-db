@@ -15,7 +15,7 @@ import com.yugabyte.yw.models.migrations.V230_5.TmpAccessKeyDto;
 import com.yugabyte.yw.models.migrations.V230_5.TmpCustomer;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProvider;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProviderDetails;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
@@ -27,7 +27,7 @@ public class V230_5__AccessKeyCleanup extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V230_5__AccessKeyCleanup::migrateAllAccessKeys);
+    DB.execute(V230_5__AccessKeyCleanup::migrateAllAccessKeys);
   }
 
   public static void migrateAllAccessKeys() {

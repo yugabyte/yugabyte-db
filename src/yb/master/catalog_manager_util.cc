@@ -78,8 +78,11 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     auto table_lock = table->LockForRead();
     // Check that the replication info is present and is valid (could be set to invalid null value
     // due to restore issue, see #15698).
-    if (IsReplicationInfoSet(table_lock->pb.replication_info())) {
-      return table_lock->pb.replication_info();
+    auto replication_info = table_lock->pb.replication_info();
+    if (IsReplicationInfoSet(replication_info)) {
+      VLOG(3) << "Returning table replication info obtained from SysTablesEntryPB: "
+              << replication_info.ShortDebugString() << " for table " << table->id();
+      return replication_info;
     }
   }
 
@@ -87,14 +90,15 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     auto result = tablespace_manager->GetTableReplicationInfo(table);
     if (!result.ok()) {
       LOG(WARNING) << result.status();
-      return cluster_replication_info;
-    }
-
-    if (*result) {
+    } else if (*result) {
+      VLOG(3) << "Returning table replication info obtained from pg_tablespace: "
+              << (*result)->ShortDebugString() << " for table " << table->id();
       return **result;
     }
   }
 
+  VLOG(3) << "Returning table replication info obtained from cluster config: "
+          << cluster_replication_info.ShortDebugString() << " for table " << table->id();
   return cluster_replication_info;
 }
 
@@ -343,8 +347,8 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
       cloud_info_string.insert(ci_string);
     } else {
       return STATUS(IllegalState,
-                    Substitute("Placement information specified should not contain duplicates."
-                    "Given placement block: $0 isn't a prefix", ci.ShortDebugString()));
+                    Substitute("Placement information specified should not contain duplicates. "
+                    "Given placement block: $0 is a duplicate", ci.ShortDebugString()));
     }
   }
 
@@ -400,6 +404,17 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
       }
     }
   }
+
+  int total_min_replica_count = 0;
+  for (auto& placement_block : placement_info.placement_blocks()) {
+    total_min_replica_count += placement_block.min_num_replicas();
+  }
+  if (total_min_replica_count > placement_info.num_replicas()) {
+    return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
+        "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
+        total_min_replica_count);
+  }
+
   return Status::OK();
 }
 
@@ -513,6 +528,25 @@ void CatalogManagerUtil::FillTableInfoPB(
   SchemaToPB(schema, pb->mutable_schema());
   pb->set_schema_version(schema_version);
   partition_schema.ToPB(pb->mutable_partition_schema());
+}
+
+bool CatalogManagerUtil::RetainTablet(
+    const google::protobuf::RepeatedPtrField<std::string>& retaininng_snapshot_schedules,
+    const ScheduleMinRestoreTime& schedule_to_min_restore_time,
+    HybridTime hide_hybrid_time, const TabletId& tablet_id) {
+  for (const auto& schedule_id_str : retaininng_snapshot_schedules) {
+    auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+    auto it = schedule_to_min_restore_time.find(schedule_id);
+    // If schedule is not present in schedule_min_restore_time then it means that schedule
+    // was deleted, so it should not retain the tablet.
+    if (it != schedule_to_min_restore_time.end() && it->second <= hide_hybrid_time) {
+      VLOG(1) << "Retaining tablet: " << tablet_id << ", hide hybrid time: "
+              << hide_hybrid_time << ", because of schedule: " << schedule_id
+              << ", min restore time: " << it->second;
+      return true;
+    }
+  }
+  return false;
 }
 
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(

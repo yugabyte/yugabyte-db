@@ -176,7 +176,7 @@ TEST_F(DecimalTest, TestDoubleConversions) {
   EXPECT_EQ("1.2368642260000000385e-33", Decimal(*dbl).ToString());
 
   // Exponent too large
-  EXPECT_NOT_OK(Decimal("1.236864226e-782323").ToDouble());
+  EXPECT_NOK(Decimal("1.236864226e-782323").ToDouble());
 
   Decimal decimal;
 

@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -237,5 +238,31 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
             NodeState.Removed,
             NodeState.Terminating);
     assertEquals(expectedStates, allowedStates);
+  }
+
+  @Test
+  public void testReleaseInstanceRetries() {
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(3);
+    GetMasterClusterConfigResponse mockConfigResponse =
+        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+    } catch (Exception e) {
+    }
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+
+    NodeTaskParams taskParams = new NodeTaskParams();
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeName = DEFAULT_NODE_NAME;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Release,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ReleaseInstanceFromUniverse,
+        taskParams);
   }
 }

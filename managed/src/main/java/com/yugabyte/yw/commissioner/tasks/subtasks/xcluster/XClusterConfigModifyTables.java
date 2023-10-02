@@ -151,14 +151,13 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                     xClusterConfig.getUuid(), resp.errorMessage());
             throw new RuntimeException(errMsg);
           }
-          waitForXClusterOperation(client::isAlterUniverseReplicationDone);
+          waitForXClusterOperation(xClusterConfig, client::isAlterUniverseReplicationDone);
 
           // Get the stream ids from the target universe and put it in the Platform DB for the
           // added tables to the xCluster config.
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
               getClusterConfig(client, targetUniverse.getUniverseUUID());
-          syncXClusterConfigWithReplicationGroup(
-              clusterConfig, xClusterConfig, tableIdsToAdd, true /* skipSyncTxnTable */);
+          syncXClusterConfigWithReplicationGroup(clusterConfig, xClusterConfig, tableIdsToAdd);
 
           if (HighAvailabilityConfig.get().isPresent()) {
             // Note: We increment version twice for adding tables: once for setting up the .ALTER

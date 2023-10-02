@@ -1,33 +1,35 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { MetricConsts, NodeType } from '../../metrics/constants';
-import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
 
-interface NodeSelectorData {
-  nodeItemChanged: (nodeName: string, zoneName: string | null) => void;
-  nodeItemChangedOld: (nodeName: string) => void;
+interface NodeSelectorProps {
+  nodeItemChanged: (nodeName: string, zoneName: string | null, nodeItems?: any) => void;
   currentSelectedNodeType?: string;
   isDedicatedNodes: boolean;
-  isTopKMetricsEnabled: boolean;
   selectedNode: string;
-  selectedRegionCode: string;
+  selectedRegion?: string | null;
+  selectedRegionCode: string | null;
   selectedRegionClusterUUID: string | null;
   selectedZoneName: string | null;
   selectedUniverse: any | null;
+  filterRegionsByUniverse?: boolean;
+  selectedProvider?: any | null;
 }
 
-export const NodeSelector: FC<NodeSelectorData> = ({
+export const NodeSelector: FC<NodeSelectorProps> = ({
   selectedUniverse,
   nodeItemChanged,
-  nodeItemChangedOld,
   selectedNode,
   selectedRegionClusterUUID,
   selectedZoneName,
   isDedicatedNodes,
-  isTopKMetricsEnabled,
+  selectedRegion,
   selectedRegionCode,
-  currentSelectedNodeType
+  currentSelectedNodeType,
+  filterRegionsByUniverse = true,
+  selectedProvider
 }) => {
   let nodeItems: any[] = [];
   let nodeItemsElement: any = [];
@@ -35,31 +37,34 @@ export const NodeSelector: FC<NodeSelectorData> = ({
   let renderItem = null;
   let nodeData = null;
   let hasSelectedReadReplica = false;
-  const isDisabled = selectedUniverse === MetricConsts.ALL;
 
-  if (
-    isNonEmptyObject(selectedUniverse) &&
-    selectedUniverse !== MetricConsts.ALL &&
-    selectedUniverse.universeDetails.nodeDetailsSet
-  ) {
-    nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
-      if (a.cloudInfo.az === null) {
-        return -1;
-      } else if (b.cloudInfo.az === null) {
-        return 1;
-      } else {
-        return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
-      }
-    });
-  }
+  const isDisabled = filterRegionsByUniverse
+    ? selectedUniverse === MetricConsts.ALL
+    : selectedProvider === MetricConsts.ALL;
 
-  if (isTopKMetricsEnabled) {
-    const readReplicaCluster = getReadOnlyCluster(selectedUniverse.universeDetails.clusters);
-    const readReplicaClusterUUID = readReplicaCluster?.uuid;
-    hasSelectedReadReplica = selectedRegionClusterUUID === readReplicaClusterUUID;
+  if (filterRegionsByUniverse) {
+    if (
+      isNonEmptyObject(selectedUniverse) &&
+      selectedUniverse !== MetricConsts.ALL &&
+      selectedUniverse.universeDetails.nodeDetailsSet
+    ) {
+      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a: any, b: any) => {
+        if (a.cloudInfo.az === null) {
+          return -1;
+        } else if (b.cloudInfo.az === null) {
+          return 1;
+        } else {
+          return a.cloudInfo.az.toLowerCase() < b.cloudInfo.az.toLowerCase() ? -1 : 1;
+        }
+      });
+    }
 
     // Show nodes based on the region selected (we filter this by cluster id)
     if (selectedRegionClusterUUID) {
+      const readReplicaCluster = getReadOnlyCluster(selectedUniverse.universeDetails.clusters);
+      const readReplicaClusterUUID = readReplicaCluster?.uuid;
+      hasSelectedReadReplica = selectedRegionClusterUUID === readReplicaClusterUUID;
+
       nodeItems = nodeItems.filter((nodeItem: any) =>
         selectedRegionCode
           ? selectedRegionClusterUUID === nodeItem.placementUuid &&
@@ -88,7 +93,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         zoneDividerElement = <div id="zone-divider" className="divider" />;
         zoneNameElement = (
           <MenuItem
-            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az)}
+            onSelect={() => nodeItemChanged(MetricConsts.ALL, nodeItem.cloudInfo.az, nodeItems)}
             key={zoneKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
@@ -110,7 +115,7 @@ export const NodeSelector: FC<NodeSelectorData> = ({
           {zoneDividerElement}
           {zoneNameElement}
           <MenuItem
-            onSelect={() => nodeItemChanged(nodeItem.nodeName, null)}
+            onSelect={() => nodeItemChanged(nodeItem.nodeName, null, nodeItems)}
             key={nodeKey}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
@@ -135,103 +140,83 @@ export const NodeSelector: FC<NodeSelectorData> = ({
         </>
       );
     });
-
-    // By default we need to have 'All nodes' populated
-    const defaultMenuItem = (
-      <MenuItem
-        onSelect={() => nodeItemChanged(MetricConsts.ALL, null)}
-        key={MetricConsts.ALL}
-        // Added this line due to the issue that dropdown does not close
-        // when a menu item is selected
-        active={selectedNode === MetricConsts.ALL && !selectedZoneName}
-        onClick={() => {
-          document.body.click();
-        }}
-        eventKey={MetricConsts.ALL}
-      >
-        {'All AZs & nodes'}
-      </MenuItem>
-    );
-    nodeItemsElement.splice(0, 0, defaultMenuItem);
-
-    if (selectedZoneName) {
-      renderItem = selectedZoneName;
-    } else if (selectedNode && selectedNode !== MetricConsts.ALL) {
-      renderItem = selectedNode;
-    } else {
-      renderItem = nodeItemsElement[0];
-    }
-
-    nodeData = (
-      <div className="node-picker-container">
-        <Dropdown
-          id="nodeFilterDropdown"
-          className="node-filter-dropdown"
-          disabled={isDisabled}
-          title={isDisabled ? 'Select a specific universe to view the zones and nodes' : ''}
-        >
-          <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border-topk">
-            <span className="default-value">{renderItem}</span>
-          </Dropdown.Toggle>
-          <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
-        </Dropdown>
-      </div>
-    );
   } else {
-    // eslint-disable-next-line react/display-name
-    nodeItemsElement = nodeItems?.map((nodeItem: any, nodeIdx: number) => {
-      return (
-        <MenuItem
-          onSelect={() => nodeItemChangedOld(nodeItem.nodeName)}
-          key={nodeIdx}
-          // Added this line due to the issue that dropdown does not close
-          // when a menu item is selected
-          onClick={() => {
-            document.body.click();
-          }}
-          eventKey={nodeIdx}
-          active={selectedNode === nodeItem.nodeName}
-        >
-          <span className={'node-name'}>{nodeItem.nodeName}</span>
-          &nbsp;&nbsp;
-          <span className={'node-ip-address'}>{nodeItem.cloudInfo.private_ip}</span>
-        </MenuItem>
+    // eslint-disable-next-line no-lonely-if
+    if (isNonEmptyObject(selectedProvider) && selectedProvider !== MetricConsts.ALL) {
+      const filteredProvidersByRegion =
+        selectedRegion !== MetricConsts.ALL
+          ? selectedProvider.filter(
+              (providerNode: any) => providerNode.details.region === selectedRegion
+            )
+          : selectedProvider;
+      nodeItemsElement = filteredProvidersByRegion?.map(
+        // eslint-disable-next-line react/display-name
+        (providerNode: any, providerNodeIdx: number) => {
+          const nodeIP = providerNode.details.ip;
+          const nodeName = providerNode.details.nodeName;
+          const nodeKey = `${nodeName.nodeName}-node-${providerNodeIdx}`;
+          return (
+            <MenuItem
+              onSelect={() => nodeItemChanged(nodeIP, null, filteredProvidersByRegion)}
+              key={nodeKey}
+              eventKey={providerNodeIdx}
+              active={selectedNode === nodeIP}
+            >
+              <span className={'node-name'}>
+                {isNonEmptyString(nodeName) ? nodeName : nodeIP}
+                &nbsp;
+              </span>
+              &nbsp;&nbsp;
+              {isNonEmptyString(nodeName) && <span className={'node-ip-address'}>{nodeIP}</span>}
+            </MenuItem>
+          );
+        }
       );
-    });
-    // By default we need to have 'All nodes' populated
-    const defaultMenuOldItem = (
-      <MenuItem
-        onSelect={() => nodeItemChangedOld(MetricConsts.ALL)}
-        key={MetricConsts.ALL}
-        // Added this line due to the issue that dropdown does not close
-        // when a menu item is selected
-        active={selectedNode === MetricConsts.ALL}
-        onClick={() => {
-          document.body.click();
-        }}
-        eventKey={MetricConsts.ALL}
-      >
-        {'All'}
-      </MenuItem>
-    );
-    nodeItemsElement.splice(0, 0, defaultMenuOldItem);
-
-    if (selectedNode && selectedNode !== MetricConsts.ALL) {
-      renderItem = selectedNode;
-    } else {
-      renderItem = nodeItemsElement[0];
     }
-
-    nodeData = (
-      <div className="node-picker">
-        <Dropdown id="nodeFilterDropdown" className="node-filter-dropdown">
-          <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border">
-            <span className="default-value">{renderItem}</span>
-          </Dropdown.Toggle>
-          <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
-        </Dropdown>
-      </div>
-    );
   }
+
+  // By default we need to have 'All nodes' populated
+  const defaultMenuItem = (
+    <MenuItem
+      onSelect={() =>
+        nodeItemChanged(
+          MetricConsts.ALL,
+          null,
+          filterRegionsByUniverse ? nodeItems : selectedProvider
+        )
+      }
+      key={MetricConsts.ALL}
+      active={selectedNode === MetricConsts.ALL && !selectedZoneName}
+      eventKey={MetricConsts.ALL}
+    >
+      {'All AZs & nodes'}
+    </MenuItem>
+  );
+  nodeItemsElement.splice(0, 0, defaultMenuItem);
+
+  if (selectedZoneName) {
+    renderItem = selectedZoneName;
+  } else if (selectedNode && selectedNode !== MetricConsts.ALL) {
+    renderItem = selectedNode;
+  } else {
+    renderItem = nodeItemsElement[0];
+  }
+
+  nodeData = (
+    <div className="node-picker-container">
+      <Dropdown
+        id="nodeFilterDropdown"
+        className="node-filter-dropdown"
+        disabled={isDisabled}
+        title={isDisabled ? 'Select a specific universe to view the zones and nodes' : ''}
+      >
+        <Dropdown.Toggle className="dropdown-toggle-button node-filter-dropdown__border-topk">
+          <span className="default-value">{renderItem}</span>
+        </Dropdown.Toggle>
+        <Dropdown.Menu>{nodeItemsElement.length > 1 && nodeItemsElement}</Dropdown.Menu>
+      </Dropdown>
+    </div>
+  );
+
   return nodeData;
 };

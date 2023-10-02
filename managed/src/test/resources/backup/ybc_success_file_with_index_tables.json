@@ -1,0 +1,87 @@
+{
+    "version": "1.0",
+    "dbtype": "ycql",
+    "backup_spec": "'ybdemo_keyspace' 'batch_ts_metrics_raw' 'ybdemo_keyspace' 'cassandrasecondaryindex'",
+    "backup_size": "145964142823",
+    "snapshot_details": [
+      {
+        "type": "NAMESPACE",
+        "id": "f56f21e4af5e43438391e0b27fa42725",
+        "data": {
+          "name": "ybdemo_keyspace",
+          "database_type": "YQL_DATABASE_CQL",
+          "colocated": "false",
+          "state": "RUNNING"
+        }
+      },
+      {
+        "type": "TABLE",
+        "id": "b92aeebc78c84455b2f5e339a8a7137d",
+        "data": {
+          "name": "cassandrasecondaryindex",
+          "version": "4",
+          "state": "RUNNING",
+          "state_msg": "Current schema version=4",
+          "next_column_id": "2",
+          "table_type": "YQL_TABLE_TYPE",
+          "namespace_id": "f56f21e4af5e43438391e0b27fa42725",
+          "partition_list_version": "42",
+          "namespace_name": "ybdemo_keyspace",
+          "updates_only_index_permissions": "true"
+        }
+      },
+      {
+        "type": "TABLE",
+        "id": "ac6a0d15a2e54815900bf0bb792c0432",
+        "data": {
+          "name": "cassandrasecondaryindexbyvalue",
+          "version": "0",
+          "state": "RUNNING",
+          "next_column_id": "2",
+          "table_type": "YQL_TABLE_TYPE",
+          "namespace_id": "f56f21e4af5e43438391e0b27fa42725",
+          "indexed_table_id": "b92aeebc78c84455b2f5e339a8a7137d",
+          "is_local_index": "false",
+          "is_unique_index": "false",
+          "partition_list_version": "42",
+          "namespace_name": "ybdemo_keyspace"
+        }
+      },
+      {
+        "type": "TABLE",
+        "id": "d486070ce27b408799a81ff11924e762",
+        "data": {
+          "name": "batch_ts_metrics_raw",
+          "version": "0",
+          "state": "RUNNING",
+          "next_column_id": "3",
+          "table_type": "YQL_TABLE_TYPE",
+          "namespace_id": "f56f21e4af5e43438391e0b27fa42725",
+          "partition_list_version": "42",
+          "namespace_name": "ybdemo_keyspace"
+        }
+      }
+    ],
+    "tablet_regions": {
+      "eced050856414e96849128762b7f5d6b": "us-west",
+      "e45d2671058440c98727ea2f1a547aa9": "us-west",
+      "5f0c143a43a245b9ad4a7fa0c377bbb8": "us-west",
+      "acdfa0f5546d4524ab7fe88d5481bb8a": "us-west",
+      "8e7e1bd5930843aeae9fbf3bed2e9559": "us-west",
+      "5d4be087e6564d938f0514059e149ee6": "us-west",
+      "6b4f204eeb0f4969a39505780332ca0a": "us-west",
+      "7c78f66ba65d4a34bffade33f0f75a99": "us-west",
+      "ce26405267fe4b46a0bfd77e83676588": "us-west",
+      "858b289ed0cc43b1b7349f5c0dd50e50": "us-west",
+      "c69dd8bab31045719084c428bf81d88a": "us-west",
+      "bb92594d2c554292b0bee04a341daf5d": "us-west"
+    },
+    "cloud_store_spec": {
+      "default_backup_location": {
+        "bucket": "backups.yugabyte.com",
+        "cloud_dir": "s3Backup/univ-3fbbe62a/ybc_backup-01400731/multi-table-ybdemo_keyspace/",
+        "prev_cloud_dir": ""
+      }
+    },
+    "backup_config_data": "{\"universe_keys\":[{\"key_ref\":\"gIckPZycbAgEQgDscqTH\",\"key_provider\":\"AWS\",\"db_key_id\":\"vUlSIb3DQExwUDwU3CEamtNwnEFI4\"}],\"master_key_metadata\":{\"AWS_REGION\":\"us-west-2\",\"cmk_id\":\"28ae18c69011\",\"key_provider\":\"AWS\"}}"
+  }

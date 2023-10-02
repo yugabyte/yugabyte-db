@@ -196,8 +196,8 @@ class KVTableSingleTabletTest : public KVTableTest {
   }
 
   void SetUp() override {
-    FLAGS_global_log_cache_size_limit_mb = 1;
-    FLAGS_log_cache_size_limit_mb = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
     KVTableTest::SetUp();
   }
 };

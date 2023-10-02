@@ -1,8 +1,9 @@
 ---
 title: Prepare the Kubernetes environment
-headerTitle: Prepare the Kubernetes environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites
+linkTitle: Cloud prerequisites
 description: Prepare the Kubernetes environment for YugabyteDB Anywhere.
+headContent: Prepare Kubernetes for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -57,13 +58,13 @@ type: docs
 
 </ul>
 
-Preparing the environment involves a number of steps. Before you start, consult [Prerequisites for Kubernetes-based installations](../../prerequisites/#kubernetes-based-installations-1). 
+Preparing the environment involves a number of steps. Before you start, consult [Prerequisites for Kubernetes-based installations](../../prerequisites/kubernetes).
 
 ## Install kube-state-metrics
 
-To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 1.9 add-on in your Kubernetes cluster.
+To be able to make use of the YugabyteDB Anywhere [node metrics](../../../troubleshoot/universe-issues/#node), specifically the ones related to CPU, you need to install the [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics) version 2.5 or later (2.8.1 is recommended) in your Kubernetes cluster.
 
-Since this add-on might already be installed and running, you should perform a check by executing the following command:
+The kube-state-metrics might already be installed and running. You should perform a check by executing the following command:
 
 ```sh
 kubectl get svc kube-state-metrics -n kube-system
@@ -76,16 +77,16 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 ```
 
 ```sh
-helm install -n kube-system --version 2.13.2 kube-state-metrics prometheus-community/kube-state-metrics
+helm install -n kube-system --version 5.0.0 kube-state-metrics prometheus-community/kube-state-metrics
 ```
 
-## Storage class considerations
+## Configure storage class
 
-The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on the Kubernetes storage class being used. Consider following points when choosing or creating a storage class:
+The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on the Kubernetes storage class being used. Consider the following recommendations when selecting or creating a storage class:
 
-1. It is recommended to set volume binding mode on a storage class to `WaitForFirstConsumer` for dynamically-provisioned volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
+1. Set volume binding mode on a storage class to `WaitForFirstConsumer` for dynamically-provisioned volumes. This delays provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints are respected.
 
-   However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments. The volume may be created in a location or zone that is not accessible to the pod causing the failure.
+   Scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments. The volume may be created in a location or zone that is not accessible to the pod, causing the failure.
 
    For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
 
@@ -96,7 +97,7 @@ The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on
 
 1. Use an SSD-based storage class and an extent-based file system (XFS), as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
 
-1. Set the `allowVolumeExpansion` to `true`. This allows you to expand the volumes later by performing additional steps if you run out of disk space. Note that some storage providers might not support this setting. For more information, see [Expanding Persistent Volumes Claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims).
+1. Set the `allowVolumeExpansion` to `true`. This enables you to expand the volumes later by performing additional steps if you run out of disk space. Note that some storage providers might not support this setting. For more information, see [Expanding persistent volumes claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims).
 
 The following is a sample storage class YAML file for Google Kubernetes Engine (GKE). You are expected to modify it to suit your Kubernetes cluster:
 
@@ -117,7 +118,7 @@ parameters:
 
 The core dump collection in Kubernetes requires special care due to the fact that `core_pattern` is not isolated in cgroup drivers.
 
-You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps). 
+You need to ensure that core dumps are enabled on the underlying Kubernetes node. Running the `ulimit -c` command within a Kubernetes pod or node must produce a large non-zero value or the `unlimited` value as an output. For more information, see [How to enable core dumps](https://www.ibm.com/support/pages/how-do-i-enable-core-dumps).
 
 To be able to locate your core dumps, you should be aware of the fact that the location to which core dumps are written depends on the sysctl `kernel.core_pattern` setting. For more information, see [Linux manual: core dump file](https://man7.org/linux/man-pages/man5/core.5.html#:~:text=Naming).
 
@@ -129,12 +130,12 @@ cat /proc/sys/kernel/core_pattern
 
 If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E` ), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. To be able to retrieve core dump files in case of a crash within the Kubernetes pod, it is important that you understand where these files are written.
 
-If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis. 
+If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, no action is required on your part, as core dumps will be copied by the YugabyteDB node to the persistent volume directory `/mnt/disk0/cores` for future analysis.
 
 Note the following:
 
-- ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod. 
-- New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node. 
+- ulimits and sysctl are inherited from Kubernetes nodes and cannot be changed for an individual pod.
+- New Kubernetes nodes might be using [systemd-coredump](https://www.freedesktop.org/software/systemd/man/systemd-coredump.html) to manage core dumps on the node.
 
 ## Pull and push YugabyteDB Docker images to private container registry
 
@@ -154,7 +155,7 @@ Before proceeding, ensure that you have the following:
 Generally, the process involves the following:
 
 - Fetching the correct version of the YugabyteDB Helm chart whose `values.yaml` file describes all the image locations.
-- Retagging images. 
+- Retagging images.
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
@@ -162,250 +163,117 @@ Generally, the process involves the following:
 
 You need to perform the following steps:
 
-1. Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+- Log in to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
-   ```sh
-   docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.io
-   
-   docker search yugabytedb # You should see images
-   ```
+  ```sh
+  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
+  docker search quay.io/yugabyte
+  ```
 
-1. Fetch the YugabyteDB Helm chart on your desktop (install Helm on your desktop). Since the images in the `values.yaml` file may vary depending on the version, you need to specify the version you want to pull and push, as follows:
+- Install Helm to fetch the YugabyteDB Anywhere Helm chart on your machine. For more information, refer to [Installing Helm](https://helm.sh/docs/intro/install/).
 
-   ```sh
-   helm repo add yugabytedb https://charts.yugabyte.com 
-   helm repo update 
-   helm fetch yugabytedb/yugaware - - version= {{ version }}
-   tar zxvf yugaware-{{ version }}.tgz
-   cd yugaware
-   cat values.yaml
-   ```
+- Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/).
 
-   ```properties
-   image:
-   commonRegistry: ""
-    	repository: **quay.io/yugabyte/yugaware**
-    	tag: **{{ version.build }}**
-   pullPolicy: IfNotPresent
-   pullSecret: yugabyte-k8s-pull-secret
-   thirdparty-deps:
-   	registry: quay.io
-   	tag: **latest**
-   	name: **yugabyte/thirdparty-deps** 
-   prometheus:
-   	registry: ""
-   	tag:  **{{ version.prometheus }}**
-   	name: **prom/prometheus**
-   nginx:
-   	registry: ""
-   	tag: **{{ version.nginx }}**
-   	name: nginx
-   ```
+  ```sh
+  helm repo add yugabytedb https://charts.yugabyte.com
+  helm repo update
+  ```
 
-1. Pull images to your Docker Desktop, as follows:
+- Run the following command to search for the version.
 
-   ```sh
-   docker pull quay.io/yugabyte/yugaware:{{ version.build }}
-   ```
+  ```sh
+  helm search repo yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
+  ```
 
-   ```output
-   xxxxxxxxx: Pulling from yugabyte/yugaware
-   c87736221ed0: Pull complete
-   4d33fcf3ee85: Pull complete
-   60cbb698a409: Pull complete
-   daaf3bdf903e: Pull complete
-   eb7b573327ce: Pull complete
-   94aa28231788: Pull complete
-   16c067af0934: Pull complete
-   8ab1e7f695af: Pull complete
-   6153ecb58755: Pull complete
-   c0f981bfb844: Pull complete
-   6485543159a8: Pull complete
-   811ba76b1d72: Pull complete
-   e325b2ff3e2a: Pull complete
-   c351a0ce1ccf: Pull complete
-   73765723160d: Pull complete
-   588cb609ac0b: Pull complete
-   af3ae7e64e48: Pull complete
-   17fb23853f77: Pull complete
-   cb799d679e2f: Pull complete
-   Digest: sha256:0f1cb1fdc1bd4c17699507ffa5a04d3fe5f267049e0675d5d78d77fa632b330c
-   Status: Downloaded newer image for quay.io/yugabyte/yugaware:xxxxxx
-   quay.io/yugabyte/yugaware:xxxxxxx
-   ```
+  You should see output similar to the following:
 
-   ```sh
-   docker pull quay.io/yugabyte/thirdparty-deps:latest
-   ```
+  ```output
+  NAME                            CHART VERSION   APP VERSION     DESCRIPTION
+  yugabytedb/yugaware             {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}    YugaWare is YugaByte Database's Orchestration a...
+  ```
 
-   ```output
-   latest: Pulling from yugabyte/thirdparty-deps
-   c87736221ed0: Already exists
-   4d33fcf3ee85: Already exists
-   60cbb698a409: Already exists
-   d90c5841d133: Pull complete
-   8084187ca761: Pull complete
-   47e3b9f5c7f5: Pull complete
-   64430b56cbd6: Pull complete
-   27b03c6bcdda: Pull complete
-   ae35ebe6caa1: Pull complete
-   9a655eedc488: Pull complete
-   Digest: sha256:286a13eb113398e1c4e63066267db4921c7644dac783836515a783cbd25b2c2a
-   Status: Downloaded newer image for quay.io/yugabyte/thirdparty-deps:latest
-   quay.io/yugabyte/thirdparty-deps:latest
-   ```
+- Fetch images tag from `values.yaml` as tags may vary depending on the version.
 
-   ```sh
-   docker pull postgres:11.5
-   ```
+  ```sh
+  helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}
+  ```
 
-   ```output
-   xxxxxx: Pulling from library/postgres
-   80369df48736: Pull complete
-   b18dd0a6efec: Pull complete
-   5c20c5b8227d: Pull complete
-   c5a7f905c8ec: Pull complete
-   5a3f55930dd8: Pull complete
-   ffc097878b09: Pull complete
-   3106d02490d4: Pull complete
-   88d1fc513b8f: Pull complete
-   f7d9cc27056d: Pull complete
-   afe180d8d5fd: Pull complete
-   b73e04acbb5f: Pull complete
-   1dba81bb6cfd: Pull complete
-   26bf23ba2b27: Pull complete
-   09ead80f0070: Pull complete
-   Digest: sha256:b3770d9c4ef11eba1ff5893e28049e98e2b70083e519e0b2bce0a20e7aa832fe
-   Status: Downloaded newer image for postgres:11.5
-   docker.io/library/postgres: 
-   ```
+  You should see output similar to the following:
 
-   ```sh
-   docker pull prom/prometheus:v2.2.1
-   ```
+  ```properties
+  image:
+    commonRegistry: ""
 
-   ```output
-   Image docker.io/prom/prometheus:v2.2.1 uses outdated schema1 manifest format. Please upgrade to a schema2 image for better future compatibility. More information at https://docs.docker.com/registry/spec/deprecated-schema-v1/
-   aab39f0bc16d: Pull complete
-   a3ed95caeb02: Pull complete
-   2cd9e239cea6: Pull complete
-   0266ca3d0dd9: Pull complete
-   341681dba10c: Pull complete
-   8f6074d68b9e: Pull complete
-   2fa612efb95d: Pull complete
-   151829c004a9: Pull complete
-   75e765061965: Pull complete
-   b5a15632e9ab: Pull complete
-   Digest: sha256:129e16b08818a47259d972767fd834d84fb70ca11b423cc9976c9bce9b40c58f
-   Status: Downloaded newer image for prom/prometheus:
-   docker.io/prom/prometheus:
-   ```
+    repository: quay.io/yugabyte/yugaware
+    tag: 2.16.1.0-b50
+    pullPolicy: IfNotPresent
+    pullSecret: yugabyte-k8s-pull-secret
 
-   ```sh
-   docker pull nginx:1.17.4
-   ```
+    thirdparty-deps:
+      registry: quay.io
+      tag: latest
+      name: yugabyte/thirdparty-deps
 
-   ```output
-   1.17.4: Pulling from library/nginx
-   8d691f585fa8: Pull complete
-   047cb16c0ff6: Pull complete
-   b0bbed1a78ca: Pull complete
-   Digest: sha256:77ebc94e0cec30b20f9056bac1066b09fbdc049401b71850922c63fc0cc1762e
-   Status: Downloaded newer image for nginx:1.17.4
-   docker.io/library/nginx:1.17.4
-   ```
+    postgres:
+      registry: ""
+      tag: '14.4'
+      name: postgres
 
-   ```sh
-   docker pull janeczku/go-dnsmasq:release-1.0.7
-   ```
+    postgres-upgrade:
+      registry: ""
+      tag: "11-to-14"
+      name: tianon/postgres-upgrade
 
-   ```output
-   release-1.0.7: Pulling from janeczku/go-dnsmasq
-   117f30b7ae3d: Pull complete
-   504f1e14d6cc: Pull complete
-   98e84d0ba41a: Pull complete
-   Digest: sha256:3a99ad92353b55e97863812470e4f7403b47180f06845fdd06060773fe04184f
-   Status: Downloaded newer image for janeczku/go-dnsmasq:release-1.0.7
-   docker.io/janeczku/go-dnsmasq:release-1.0.7
-   ```
+    prometheus:
+      registry: ""
+      tag: v2.41.0
+      name: prom/prometheus
 
-1. Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
+    nginx:
+      registry: ""
+      tag: 1.23.3
+      name: nginxinc/nginx-unprivileged
+  ...
+  ```
 
-   ```sh
-   docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
-   ```
+- Pull images to your machine, as follows:
 
-1. Tag the local images to your target registry, as follows:
+  **Note**: These image tags will vary based on the version.
 
-   ```sh
-   docker images 
-   ```
+  ```sh
+  docker pull quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
+  docker pull postgres:14.4
+  docker pull prom/prometheus:v2.41.0
+  docker pull tianon/postgres-upgrade:11-to-14
+  docker pull nginxinc/nginx-unprivileged:1.23.3
+  ```
 
-   ```output
-   REPOSITORY              TAG                           IMAGE ID    CREATED     SIZE
-   quay.io/yugabyte/yugaware      2.5.1.0-b153               **a04fef023c7c**  6 weeks ago   2.54GB
-   quay.io/yugabyte/thirdparty-deps   latest                   **721453480a0f**  2 months ago  447MB
-   nginx                1.17.4                          **5a9061639d0a**  15 months ago  126MB
-   postgres               11.5                          **5f1485c70c9a**  15 months ago  293MB
-   prom/prometheus           v2.2.1                         **cc866859f8df**  2 years ago   113MB
-   janeczku/go-dnsmasq         release-1.0.7                      **caef6233eac4**  4 years ago   7.38MB
-   ```
+- Log in to your target container registry, as per the following example that uses Google Container Registry (GCR):
 
-   ```sh
-   docker tag a04fef023c7c gcr.io/dataengineeringdemos/yugabyte/yugaware:2.5.1.0-b153
-   docker tag 721453480a0f gcr.io/dataengineeringdemos/yugabyte/thirdparty-deps:latest
-   docker tag 5a9061639d0a gcr.io/dataengineeringdemos/yugabyte/nginx:1.17.4
-   docker tag 5f1485c70c9a gcr.io/dataengineeringdemos/yugabyte/postgres:11.5
-   docker tag cc866859f8df gcr.io/dataengineeringdemos/prom/prometheus:v2.2.1
-   docker tag caef6233eac4 gcr.io/dataengineeringdemos/janeczku/go-dnsmasq:release-1.0.7
-   ```
+  ```sh
+  docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
+  ```
 
-1. Push images to the private container registry, as follows:
+- Tag the local images to your target registry, as follows:
 
-   ```sh
-   docker push a04fef023c7c 
-   docker push 721453480a0f 
-   docker push 5a9061639d0a 
-   docker push 5f1485c70c9a
-   docker push cc866859f8df 
-   docker push caef6233eac4 
-   ```
+  ```sh
+  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}} gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
+  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
+  docker tag postgres:14.4 gcr.io/dataengineeringdemos/postgres:14.4
+  docker tag tianon/postgres-upgrade:11-to-14 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
+  docker tag prom/prometheus:v2.41.0 gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  ```
 
-   ![img](/images/yp/docker-image.png)
+- Push images to the private container registry, as follows:
 
-1. Modify the Helm chart `values.yaml` file. You can map your private internal repository URI to `commonRegistry` and use the folder or `project/image_name` and tags similar to the following:
+  ```sh
+  docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
+  docker push gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
+  docker push gcr.io/dataengineeringdemos/postgres:14.4
+  docker push gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
+  docker push gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  ```
 
-   ```properties
-   image:
-      commonRegistry: "**gcr.io/dataengineeringdemos**"
-      repository: **""**
-      tag: **2.5.1.0-b153**
-      pullPolicy: IfNotPresent
-      pullSecret: yugabyte-k8s-pull-secret
-      thirdparty-deps:
-      		registry: /yugabyte/thhirdparty-deps
-   			tag: **latest**
-   			name: **yugabyte/thirdparty-deps**
-      postgres:
-   			registry: "yugabyte/postgres"
-   			tag: 11.5
-   			name: **postgres**
-      prometheus:
-   			registry: "prom/prometheus"
-   			tag: **v2.2.1**
-   			name: **prom/prometheus**
-      nginx:
-   			registry: "yugabyte/nginx"
-   			tag: **1.17.4**
-   			name: nginx
-      dnsmasq:
-   			registry: "janeczku/go-dnsmasq/"
-   			tag: **release-1.0.7**
-   			name: **janeczku/go-dnsmasq
-   ```
+  ![img](/images/yp/docker-image.png)
 
-1. Install Helm chart or specify the container registry in YugabyteDB Anywhere cloud provider, as follows:
-
-   ```sh
-   helm install yugaware **.** -f values.yaml
-   ```
+- Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.

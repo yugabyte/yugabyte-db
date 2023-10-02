@@ -33,48 +33,7 @@ namespace docdb {
 
 const int kDefaultGroupNo = 0;
 
-class IntentAwareIterator;
-
-// See to a rocksdb point that is at least sub_doc_key.
-// If the iterator is already positioned far enough, does not perform a seek.
-void SeekForward(const Slice& slice, rocksdb::Iterator *iter);
-
-void SeekForward(const dockv::KeyBytes& key_bytes, rocksdb::Iterator *iter);
-
-struct SeekStats {
-  int next = 0;
-  int seek = 0;
-};
-
-// Seek forward using Next call.
-SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key);
-
-// When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
-// this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
-// enough, does not perform a seek.
-void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
-
-// Seek out of the given SubDocKey. For efficiency, the method that takes a non-const KeyBytes
-// pointer avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to by
-// appending an extra byte. The appended byte is removed when the method returns.
-void SeekOutOfSubKey(dockv::KeyBytes* key_bytes, rocksdb::Iterator* iter);
-
-dockv::KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
-
-// A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
-// times to avoid invalidating iterator state. In debug mode it also allows printing detailed
-// information about RocksDB seeks.
-void PerformRocksDBSeek(
-    rocksdb::Iterator *iter,
-    const rocksdb::Slice &seek_key,
-    const char* file_name,
-    int line);
-
-// TODO: is there too much overhead in passing file name and line here in release mode?
-#define ROCKSDB_SEEK(iter, key) \
-  do { \
-    PerformRocksDBSeek((iter), (key), __FILE__, __LINE__); \
-  } while (0)
+dockv::KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht);
 
 enum class BloomFilterMode {
   USE_BLOOM_FILTER,
@@ -105,8 +64,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& transaction_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
     const DocDBStatistics* statistics = nullptr);
@@ -164,7 +122,7 @@ class RocksDBPatcher {
   Status Load();
 
   // Set hybrid time filter for DB.
-  Status SetHybridTimeFilter(HybridTime value);
+  Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value);
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
   Status ModifyFlushedFrontier(const ConsensusFrontier& frontier);
@@ -173,6 +131,10 @@ class RocksDBPatcher {
   // with .sst files.
   // Like all other methods in this class it updates manifest file.
   Status UpdateFileSizes();
+
+  // Returns true if at least one sst file contains a valid hybrid time filter
+  // in its largest frontier.
+  bool TEST_ContainsHybridTimeFilter();
 
  private:
   class Impl;

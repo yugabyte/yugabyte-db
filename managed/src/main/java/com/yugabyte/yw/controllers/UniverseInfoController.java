@@ -12,27 +12,41 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.UniverseInterruptionResult;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
+import com.yugabyte.yw.models.MasterInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.DetailsExt;
 import com.yugabyte.yw.models.extended.NodeDataExt;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -44,6 +58,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -79,14 +94,46 @@ public class UniverseInfoController extends AuthenticatedController {
       notes = "This will return a Map of node name to its status in json format",
       responseContainer = "Map",
       response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   // TODO API document error case.
   public Result universeStatus(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     // Get alive status
     JsonNode result = universeInfoHandler.status(universe);
     return PlatformResults.withRawData(result);
+  }
+
+  @ApiOperation(
+      value = "Get a universe's spot instances' status",
+      hidden = true,
+      notes = "This will return a Map of node name to its interruption status in json format",
+      response = UniverseInterruptionResult.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result spotInstanceStatus(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    Set<CloudType> validClouds = ImmutableSet.of(CloudType.aws, CloudType.azu, CloudType.gcp);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (!userIntent.useSpotInstance || !validClouds.contains(userIntent.providerType)) {
+      throw new PlatformServiceException(BAD_REQUEST, "The universe doesn't use spot instances.");
+    }
+
+    UniverseInterruptionResult result = universeInfoHandler.spotUniverseStatus(universe);
+    return PlatformResults.withData(result);
   }
 
   @ApiOperation(
@@ -96,9 +143,15 @@ public class UniverseInfoController extends AuthenticatedController {
           "Expects UniverseDefinitionTaskParams in request body and calculates the resource "
               + "estimate for NodeDetailsSet in that.",
       response = UniverseResourceDetails.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails()));
   }
@@ -107,9 +160,15 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Get a cost estimate for a universe",
       nickname = "getUniverseCost",
       response = UniverseResourceDetails.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result universeCost(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     Context context =
         new Context(
@@ -123,6 +182,12 @@ public class UniverseInfoController extends AuthenticatedController {
       nickname = "getUniverseCostForAll",
       responseContainer = "List",
       response = UniverseResourceDetails.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result universeListCost(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(universeInfoHandler.universeListCost(customer));
@@ -139,9 +204,15 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Get IP address of a universe's master leader",
       nickname = "getMasterLeaderIP",
       response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getMasterLeaderIP(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     HostAndPort leaderMasterHostAndPort = universeInfoHandler.getMasterLeaderIP(universe);
     ObjectNode result = Json.newObject().put("privateIP", leaderMasterHostAndPort.getHost());
@@ -152,9 +223,15 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Get live queries for a universe",
       nickname = "getLiveQueries",
       response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get live queries for a paused universe");
@@ -171,10 +248,16 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Get slow queries for a universe",
       nickname = "getSlowQueries",
       response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getSlowQueries(UUID customerUUID, UUID universeUUID) {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get slow queries for a paused universe");
@@ -187,10 +270,16 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     if (universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't reset slow queries for a paused universe");
@@ -214,12 +303,21 @@ public class UniverseInfoController extends AuthenticatedController {
   @ApiOperation(
       value = "Run a universe health check",
       notes =
-          "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+          "Checks the health of all tablet servers and masters in the universe, as well as certain"
+              + " conditions on the machines themselves, including disk utilization, presence of"
+              + " FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
+      responseContainer = "List",
       response = Details.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe.getOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
     return PlatformResults.withData(convertDetails(detailsList));
@@ -229,9 +327,15 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Trigger a universe health check",
       notes = "Trigger a universe health check and return the trigger time.",
       response = TriggerHealthCheckResult.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result triggerHealthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(
@@ -262,10 +366,16 @@ public class UniverseInfoController extends AuthenticatedController {
       nickname = "downloadNodeLogs",
       response = String.class,
       produces = "application/x-compressed")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     log.debug("Retrieving logs for " + nodeName);
     NodeDetails node =
         universe
@@ -273,8 +383,7 @@ public class UniverseInfoController extends AuthenticatedController {
             .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
     return CompletableFuture.supplyAsync(
         () -> {
-          String storagePath =
-              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+          String storagePath = AppConfigHelper.getStoragePath();
           String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
@@ -285,6 +394,25 @@ public class UniverseInfoController extends AuthenticatedController {
               .withHeader("Content-Disposition", "attachment; filename=" + file.getName());
         },
         ec.current());
+  }
+
+  @ApiOperation(
+      value = "Get master information list",
+      nickname = "getMasterInfos",
+      response = MasterInfo.class,
+      responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result getMasterInfos(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    List<MasterInfo> masterInfos = universeInfoHandler.getMasterInfos(universe);
+    return PlatformResults.withData(masterInfos);
   }
 
   private List<DetailsExt> convertDetails(List<Details> details) {

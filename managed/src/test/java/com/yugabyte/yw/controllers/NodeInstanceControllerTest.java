@@ -17,8 +17,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -336,6 +336,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNotOk(r, error);
     assertAuditEntry(0, customer.getUuid());
   }
+
   // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS
   // provider as well
   @Test
@@ -368,7 +369,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testDeleteInstanceWithInvalidCustomerUUID() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     Result r = deleteInstance(invalidCustomerUUID, provider.getUuid(), "random_ip");
-    assertEquals(FORBIDDEN, r.status());
+    assertEquals(UNAUTHORIZED, r.status());
 
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");

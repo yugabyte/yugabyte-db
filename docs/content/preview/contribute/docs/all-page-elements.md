@@ -310,30 +310,12 @@ This is a paragraph.
 
 {{% includeMarkdown "include-markdown.md" %}}
 
-## API Syntax
+## API diagrams
 
-API docs have Grammar/Diagram pairs. They use includeMarkdown codes to fetch the contents from a markdown file in another location.
+[API docs](../../../api/ysql/the-sql-language/statements/) have Grammar/Diagram pairs. They use a special code (`ebnf`) to display the appropriate grammar and diagrams.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../api/ysql/syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../api/ysql/syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  copy_from,
+  copy_to,
+  copy_option
+{{%/ebnf%}}

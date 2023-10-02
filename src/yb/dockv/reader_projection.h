@@ -33,12 +33,18 @@ inline ColumnId GetColumnId(const PB& pb) {
 struct ProjectedColumn {
   ColumnId id;
   KeyEntryValue subkey; // id converted to KeyEntryValue
-  QLTypePtr type;
+  DataType data_type;
 
   std::string ToString() const;
 };
 
+inline bool operator==(const ProjectedColumn& lhs, const ProjectedColumn& rhs) {
+  return YB_STRUCT_EQUALS(id, data_type);
+}
+
 struct ReaderProjection {
+  static constexpr size_t kNotFoundIndex = std::numeric_limits<size_t>::max();
+
   size_t num_key_columns = 0;
   // Columns are ordered by id and do not contain duplicates.
   // It is guaranteed by our system that key columns have smaller ids than value columns.
@@ -106,6 +112,8 @@ struct ReaderProjection {
     CompleteInit(DoAddColumns(schema, std::forward<ColumnIds>(column_refs)...));
   }
 
+  size_t ColumnIdxById(ColumnId column_id) const;
+
   std::string ToString() const;
 
  private:
@@ -149,5 +157,13 @@ struct ReaderProjection {
 
   void AddColumn(const Schema& schema, ColumnId column_id, ColumnId* first_non_key_column);
 };
+
+inline bool operator==(const ReaderProjection& lhs, const ReaderProjection& rhs) {
+  return YB_STRUCT_EQUALS(columns);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const ReaderProjection& value) {
+  return out << value.ToString();
+}
 
 }  // namespace yb::dockv

@@ -4,70 +4,27 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { ProviderCode } from '../../constants';
-import {
-  AWS_REGIONS,
-  AZURE_REGIONS,
-  GCP_REGIONS,
-  KUBERNETES_REGIONS,
-  ON_PREM_LOCATIONS,
-  ON_PREM_UNLISTED_LOCATION
-} from '../../providerRegionsData';
+import { ON_PREM_LOCATIONS, ON_PREM_CUSTOM_LOCATION } from '../../providerRegionsData';
+import { RegionMetadataResponse } from '../../types';
 
-export const getRegionOptions = (providerCode: ProviderCode) => {
-  switch (providerCode) {
-    case ProviderCode.AWS:
-      return Object.entries(AWS_REGIONS).map(([regionCode, regionDetails]) => ({
-        value: { code: regionCode, zoneOptions: regionDetails.zones },
-        label: getRegionlabel(providerCode, regionCode)
-      }));
-    case ProviderCode.AZU:
-      return Object.entries(AZURE_REGIONS).map(([regionCode, regionDetails]) => ({
-        value: { code: regionCode, zoneOptions: regionDetails.zones },
-        label: getRegionlabel(providerCode, regionCode)
-      }));
-    case ProviderCode.GCP:
-      return Object.entries(GCP_REGIONS).map(([regionCode, regionDetails]) => ({
-        value: { code: regionCode, zoneOptions: regionDetails.zones },
-        label: getRegionlabel(providerCode, regionCode)
-      }));
-    case ProviderCode.KUBERNETES:
-      return Object.entries(KUBERNETES_REGIONS).map(([regionCode]) => ({
-        value: { code: regionCode, zoneOptions: [] },
-        label: getRegionlabel(providerCode, regionCode)
-      }));
-    default:
-      return [];
-  }
+export const getRegionOption = (
+  regionCode: string,
+  regionMetadataResponse: RegionMetadataResponse
+) => {
+  const regionDetails = regionMetadataResponse.regionMetadata[regionCode];
+  return {
+    value: { code: regionCode, zoneOptions: regionDetails?.availabilityZones ?? [] },
+    label: regionDetails?.name ?? regionCode
+  };
 };
 
-export const getRegionlabel = (providerCode: ProviderCode, regionCode: string) => {
-  switch (providerCode) {
-    case ProviderCode.AWS:
-      return regionCode;
-    case ProviderCode.AZU:
-      return AZURE_REGIONS[regionCode]?.name ?? regionCode;
-    case ProviderCode.GCP:
-      return regionCode;
-    case ProviderCode.KUBERNETES:
-      return KUBERNETES_REGIONS[regionCode]?.name ?? regionCode;
-    default:
-      return regionCode;
-  }
-};
-
-export const getZoneOptions = (providerCode: ProviderCode, regionCode: string) => {
-  switch (providerCode) {
-    case ProviderCode.AWS:
-      return AWS_REGIONS[regionCode]?.zones ?? [];
-    case ProviderCode.AZU:
-      return AZURE_REGIONS[regionCode]?.zones ?? [];
-    case ProviderCode.GCP:
-      return GCP_REGIONS[regionCode]?.zones ?? [];
-    default:
-      return [];
-  }
-};
+export const getRegionOptions = (regionMetadataResponse: RegionMetadataResponse) =>
+  regionMetadataResponse.regionMetadata
+    ? Object.entries(regionMetadataResponse.regionMetadata).map(([regionCode, regionDetails]) => ({
+        value: { code: regionCode, zoneOptions: regionDetails.availabilityZones ?? [] },
+        label: regionDetails.name ?? regionCode
+      }))
+    : [];
 
 export const getOnPremLocationOption = (latitude: number, longitude: number) => {
   const locationName =
@@ -75,6 +32,6 @@ export const getOnPremLocationOption = (latitude: number, longitude: number) => 
       (name) =>
         ON_PREM_LOCATIONS[name].latitude === latitude &&
         ON_PREM_LOCATIONS[name].longitude === longitude
-    ) ?? ON_PREM_UNLISTED_LOCATION;
-  return { label: locationName, value: ON_PREM_LOCATIONS[locationName] };
+    ) ?? ON_PREM_CUSTOM_LOCATION;
+  return { label: locationName, value: locationName };
 };

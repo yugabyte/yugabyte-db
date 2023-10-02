@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static java.util.Map.entry;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -36,21 +38,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -69,10 +58,10 @@ import play.libs.Json;
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
-  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
-      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
+      Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.+)?$");
 
   public static final String maskRegex = "(?<!^.?).(?!.?$)";
 
@@ -108,7 +97,74 @@ public class CommonUtils {
           "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
-          "KEYSPACE");
+          "KEYSPACE",
+          "APITOKENVERSION");
+
+  public static final Map<Character, Character> CHAR_MAP =
+      Map.ofEntries(
+          entry('A', '#'),
+          entry('B', '@'),
+          entry('C', '*'),
+          entry('D', '$'),
+          entry('E', '%'),
+          entry('F', '^'),
+          entry('G', '&'),
+          entry('H', '!'),
+          entry('I', '~'),
+          entry('J', '+'),
+          entry('K', '-'),
+          entry('L', '='),
+          entry('M', ':'),
+          entry('N', ';'),
+          entry('O', '?'),
+          entry('P', '<'),
+          entry('Q', '>'),
+          entry('R', '('),
+          entry('S', ')'),
+          entry('T', '{'),
+          entry('U', '}'),
+          entry('V', '['),
+          entry('W', ']'),
+          entry('X', '/'),
+          entry('Y', '|'),
+          entry('Z', '.'),
+          entry('a', '#'),
+          entry('b', '@'),
+          entry('c', '*'),
+          entry('d', '$'),
+          entry('e', '%'),
+          entry('f', '^'),
+          entry('g', '&'),
+          entry('h', '!'),
+          entry('i', '~'),
+          entry('j', '+'),
+          entry('k', '-'),
+          entry('l', '='),
+          entry('m', ':'),
+          entry('n', ';'),
+          entry('o', '?'),
+          entry('p', '<'),
+          entry('q', '>'),
+          entry('r', '('),
+          entry('s', ')'),
+          entry('t', '{'),
+          entry('u', '}'),
+          entry('v', '['),
+          entry('w', ']'),
+          entry('x', '/'),
+          entry('y', '|'),
+          entry('z', '.'),
+          entry('0', '\''),
+          entry('1', '\''),
+          entry('2', '\''),
+          entry('3', '\''),
+          entry('4', '\''),
+          entry('5', '\''),
+          entry('6', '\''),
+          entry('7', '\''),
+          entry('8', '\''),
+          entry('9', '\''),
+          entry(' ', '\''));
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -178,6 +234,13 @@ public class CommonUtils {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");
+  }
+
+  public static String getEmptiableMaskedValue(String key, String value) {
+    if (StringUtils.isBlank(value)) {
+      return "";
+    }
+    return getMaskedValue(key, value);
   }
 
   public static JsonNode getMaskedValue(JsonNode value, List<String> toMaskKeys) {
@@ -629,9 +692,16 @@ public class CommonUtils {
           actualRelease);
       return afterMatches;
     }
-    for (int i = 1; i < 5; i++) {
-      int thresholdPart = Integer.parseInt(thresholdMatcher.group(i));
-      int actualPart = Integer.parseInt(actualMatcher.group(i));
+    for (int i = 1; i < 6; i++) {
+      String thresholdPartStr = thresholdMatcher.group(i);
+      String actualPartStr = actualMatcher.group(i);
+      if (i == 5) {
+        // Build number.
+        thresholdPartStr = String.valueOf(convertBuildNumberForComparison(thresholdPartStr, true));
+        actualPartStr = String.valueOf(convertBuildNumberForComparison(actualPartStr, false));
+      }
+      int thresholdPart = Integer.parseInt(thresholdPartStr);
+      int actualPart = Integer.parseInt(actualPartStr);
       if (actualPart > thresholdPart) {
         return afterMatches;
       }
@@ -641,6 +711,20 @@ public class CommonUtils {
     }
     // Equal releases.
     return equalMatches;
+  }
+
+  private static int convertBuildNumberForComparison(String buildNumberStr, boolean threshold) {
+    if (StringUtils.isEmpty(buildNumberStr) || !buildNumberStr.startsWith("-b")) {
+      // Threshold without a build or with invalid build is treated as -b0,
+      // while actual build is custom build and is always treated as later build.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
+    try {
+      return Integer.parseInt(buildNumberStr.substring(2));
+    } catch (Exception e) {
+      // Same logic as above.
+      return threshold ? 0 : Integer.MAX_VALUE;
+    }
   }
 
   @FunctionalInterface
@@ -690,6 +774,18 @@ public class CommonUtils {
       nodeToUse = getARandomLiveTServer(universe);
     }
     return nodeToUse;
+  }
+
+  public static String logTableName(String tableName) {
+    if (StringUtils.isBlank(tableName)) {
+      return "";
+    }
+    char[] logTableName = new char[tableName.length() * 2];
+    for (int i = 0; i < tableName.length(); i++) {
+      logTableName[2 * i] = tableName.charAt(i);
+      logTableName[2 * i + 1] = CHAR_MAP.getOrDefault(tableName.charAt(i), tableName.charAt(i));
+    }
+    return new String(logTableName).trim();
   }
 
   /**
@@ -742,9 +838,18 @@ public class CommonUtils {
     return stateLogMsg;
   }
 
-  /** Get the user sending the API request from the HTTP context. */
+  /**
+   * Get the user sending the API request from the HTTP context. It throws exception if the context
+   * is not set.
+   */
   public static Users getUserFromContext() {
     return RequestContext.get(TokenAuthenticator.USER).getUser();
+  }
+
+  /** Get the user sending the API request from the HTTP context if present. */
+  public static Optional<Users> maybeGetUserFromContext() {
+    UserWithFeatures value = RequestContext.getIfPresent(TokenAuthenticator.USER);
+    return value == null ? Optional.empty() : Optional.ofNullable(value.getUser());
   }
 
   public static boolean isAutoFlagSupported(String dbVersion) {

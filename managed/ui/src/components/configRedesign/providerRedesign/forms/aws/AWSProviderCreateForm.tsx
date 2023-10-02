@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AxiosError } from 'axios';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -39,7 +39,14 @@ import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { NTPConfigField } from '../../components/NTPConfigField';
-import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
+import {
+  addItem,
+  constructAccessKeysCreatePayload,
+  deleteItem,
+  editItem,
+  getIsFormDisabled,
+  readFileAsText
+} from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -77,6 +84,7 @@ export interface AWSProviderCreateFormFieldValues {
   providerName: string;
   regions: CloudVendorRegionField[];
   secretAccessKey: string;
+  skipKeyValidateAndUpload: boolean;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
@@ -169,6 +177,7 @@ export const AWSProviderCreateForm = ({
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
     regions: [] as CloudVendorRegionField[],
+    skipKeyValidateAndUpload: false,
     sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
     sshPort: DEFAULT_SSH_PORT,
     vpcSetupType: VPCSetupType.EXISTING,
@@ -435,6 +444,7 @@ export const AWSProviderCreateForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={false}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -478,6 +488,14 @@ export const AWSProviderCreateForm = ({
               </FormField>
               {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
                 <>
+                  <FormField>
+                    <FieldLabel>Skip KeyPair Validate</FieldLabel>
+                    <YBToggleField
+                      name="skipKeyValidateAndUpload"
+                      control={formMethods.control}
+                      disabled={isFormDisabled}
+                    />
+                  </FormField>
                   <FormField>
                     <FieldLabel>SSH Keypair Name</FieldLabel>
                     <YBInputField
@@ -583,6 +601,7 @@ export const AWSProviderCreateForm = ({
         <ConfigureRegionModal
           configuredRegions={regions}
           isEditProvider={false}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -616,22 +635,16 @@ const constructProviderPayload = async (
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
-
+  const allAccessKeysPayload = constructAccessKeysCreatePayload(
+    formValues.sshKeypairManagement,
+    formValues.sshKeypairName,
+    sshPrivateKeyContent,
+    formValues.skipKeyValidateAndUpload
+  );
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
-    ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-      allAccessKeys: [
-        {
-          keyInfo: {
-            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-            ...(formValues.sshPrivateKeyContent && {
-              sshPrivateKeyContent: sshPrivateKeyContent
-            })
-          }
-        }
-      ]
-    }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {

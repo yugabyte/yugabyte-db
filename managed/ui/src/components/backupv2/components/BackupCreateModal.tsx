@@ -21,7 +21,13 @@ import {
   YBFormToggle,
   YBNumericInput
 } from '../../common/forms/fields';
-import { BACKUP_API_TYPES, Backup_Options_Type, IBackupEditParams, IStorageConfig, ITable } from '../common/IBackup';
+import {
+  BACKUP_API_TYPES,
+  Backup_Options_Type,
+  IBackupEditParams,
+  IStorageConfig,
+  ITable
+} from '../common/IBackup';
 import { useDispatch, useSelector } from 'react-redux';
 import { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -38,13 +44,16 @@ import { IBackupSchedule } from '../common/IBackupSchedule';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { components } from 'react-select';
 
-import Close from '../../universes/images/close.svg';
 
-import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
+import { ParallelThreads } from '../common/BackupUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+import { QUERY_KEY, api } from '../../../redesign/features/universe/universe-form/utils/api';
+import { RunTimeConfigEntry } from '../../../redesign/features/universe/universe-form/utils/dto';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupCreateModal.scss';
+import Close from '../../universes/images/close.svg';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -60,6 +69,8 @@ interface BackupCreateModalProps {
 type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
 
 const DURATIONS = ['Days', 'Months', 'Years'];
+
+const DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL = 1800; //in secs
 
 const TABLES_NOT_PRESENT_MSG = (api: string) => (
   <span className="alert-message warning">
@@ -108,9 +119,14 @@ const TABLE_BACKUP_OPTIONS = [
 
 const STEPS = [
   {
-    title: (isScheduledBackup: boolean, isEditMode: boolean, isIncrementalBackup = false, isEditBackupMode: boolean) => {
-      if(isEditBackupMode) {
-        return 'Edit Backup';
+    title: (
+      isScheduledBackup: boolean,
+      isEditMode: boolean,
+      isIncrementalBackup = false,
+      isEditBackupMode: boolean
+    ) => {
+      if (isEditBackupMode) {
+        return 'Change Retention Period';
       }
       if (isScheduledBackup) {
         return `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`;
@@ -121,11 +137,10 @@ const STEPS = [
       return 'Backup Now';
     },
     submitLabel: (isScheduledBackup: boolean, isEditMode: boolean, isEditBackupMode: boolean) => {
-      if(isScheduledBackup) {
-        return (isEditMode ? 'Apply Changes' : 'Create');
-      }
-      else {
-        return (isEditBackupMode ? 'Apply Changes' : 'Backup');
+      if (isScheduledBackup) {
+        return isEditMode ? 'Apply Changes' : 'Create';
+      } else {
+        return isEditBackupMode ? 'Apply Changes' : 'Backup';
       }
     },
     component: BackupConfigurationForm,
@@ -146,11 +161,13 @@ const initialValues = {
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
-  parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+  parallel_threads: ParallelThreads.MIN,
   storage_config: null as any,
   is_incremental_backup_enabled: false,
   incremental_backup_frequency: 1,
-  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1]
+  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1],
+  isTableByTableBackup: false,
+  useTablespaces: true
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -173,6 +190,14 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     }
   );
 
+  const { data: runtimeConfigs } = useQuery(
+    [QUERY_KEY.fetchCustomerRunTimeConfigs],
+    () => api.fetchRunTimeConfigs(true, currentUniverseUUID!),
+    {
+      enabled: visible
+    }
+  );
+
   const universeDetails = useSelector(
     (state: any) => state.universe?.currentUniverse?.data?.universeDetails
   );
@@ -183,15 +208,26 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
 
+  const minIncrementalScheduleFrequencyInSecs = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.minIncrementalScheduleFrequencyInSecs'
+  );
+
   initialValues['parallel_threads'] =
-    Math.min(primaryCluster?.userIntent?.numNodes, PARALLEL_THREADS_RANGE.MAX) ||
-    PARALLEL_THREADS_RANGE.MIN;
+    Math.min(primaryCluster?.userIntent?.numNodes, ParallelThreads.MAX) || ParallelThreads.MIN;
 
   let isYbcEnabledinCurrentUniverse = false;
 
   if (isDefinedNotNull(currentUniverseUUID)) {
     isYbcEnabledinCurrentUniverse = isYbcEnabledUniverse(universeDetails);
   }
+
+  const allowTableByTableBackup = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.allow_table_by_table_backup_ycql'
+  );
+
+  const showTakeTablespaceOption = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.always_backup_tablespaces'
+  );
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
@@ -226,7 +262,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -242,7 +278,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -271,7 +307,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err?.response?.data?.error ?? 'An Error occurred');
+        !handleCACertErrMsg(err) && toast.error(err?.response?.data?.error ?? 'An Error occurred');
       }
     }
   );
@@ -292,7 +328,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (resp: any) => {
         onHide();
-        toast.error(resp?.response?.data?.error ?? 'An error occurred');
+        !handleCACertErrMsg(resp) && toast.error(resp?.response?.data?.error ?? 'An error occurred');
       }
     }
   );
@@ -359,38 +395,65 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       is: !isYbcEnabledinCurrentUniverse,
       then: Yup.number()
         .min(
-          PARALLEL_THREADS_RANGE.MIN,
-          `Parallel threads should be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`
+          ParallelThreads.MIN,
+          `Parallel threads should be greater than or equal to ${ParallelThreads.MIN}`
         )
         .max(
-          PARALLEL_THREADS_RANGE.MAX,
-          `Parallel threads should be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`
+          ParallelThreads.MAX,
+          `Parallel threads should be less than or equal to ${ParallelThreads.MAX}`
         )
     }),
-    incremental_backup_frequency: Yup.number().test({
-      message: 'Incremental backup interval must be less than full backup',
-      test: function (value) {
-        if (
-          !isScheduledBackup ||
-          !this.parent.is_incremental_backup_enabled ||
-          this.parent.use_cron_expression
-        )
-          return true;
+    incremental_backup_frequency: Yup.number()
+      .test({
+        message: 'Incremental backup interval must be less than full backup',
+        test: function (value) {
+          if (
+            !isScheduledBackup ||
+            !this.parent.is_incremental_backup_enabled ||
+            this.parent.use_cron_expression
+          )
+            return true;
 
-        return (
-          value *
+          return (
+            value *
             MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
-          this.parent.policy_interval *
+            this.parent.policy_interval *
             MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
-        );
-      }
-    })
+          );
+        }
+      })
+      .test({
+        message: `Incremental backup should be greater than ${Number(
+          minIncrementalScheduleFrequencyInSecs?.value ?? DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL
+        ) / 60
+          } minutes`,
+        test: function (value) {
+          if (minIncrementalScheduleFrequencyInSecs) {
+            if (
+              value *
+              MILLISECONDS_IN[
+              this.parent.incremental_backup_frequency_type.value.toUpperCase()
+              ] >=
+              parseInt(minIncrementalScheduleFrequencyInSecs.value) * 1000
+            ) {
+              return true;
+            }
+            return false;
+          }
+          return true;
+        }
+      })
   });
 
   return (
     <YBModalForm
       size="large"
-      title={STEPS[currentStep].title(isScheduledBackup, isEditMode, isIncrementalBackup, isEditBackupMode)}
+      title={STEPS[currentStep].title(
+        isScheduledBackup,
+        isEditMode,
+        isIncrementalBackup,
+        isEditBackupMode
+      )}
       className="backup-modal"
       visible={visible}
       validationSchema={validationSchema}
@@ -405,21 +468,24 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           return;
         }
 
-        if(isEditBackupMode) {
+        if (isEditBackupMode) {
           const backup = values.backupObj;
           const currentTime = Date.now();
-          const lastBackedUpTime = backup.hasIncrementalBackups ? Date.parse(backup.lastIncrementalBackupTime) : Date.parse(backup.commonBackupInfo.createTime);
+          const lastBackedUpTime = backup.hasIncrementalBackups
+            ? Date.parse(backup.lastIncrementalBackupTime)
+            : Date.parse(backup.commonBackupInfo.createTime);
           const retentionTimeUnit = values['retention_interval_type'].value.toUpperCase();
-          const newExpirationTime = lastBackedUpTime + (values['retention_interval'] * MILLISECONDS_IN[retentionTimeUnit]);
+          const newExpirationTime =
+            lastBackedUpTime + values['retention_interval'] * MILLISECONDS_IN[retentionTimeUnit];
           doEditBackup.mutateAsync({
             backupUUID: backup.backupUUID,
-            timeBeforeDeleteFromPresentInMillis: values['keep_indefinitely'] ? 
-            0 : (newExpirationTime - currentTime),
+            timeBeforeDeleteFromPresentInMillis: values['keep_indefinitely']
+              ? 0
+              : newExpirationTime - currentTime,
             storageConfigUUID: '',
             expiryTimeUnit: retentionTimeUnit
           });
-        }
-        else if (isScheduledBackup) {
+        } else if (isScheduledBackup) {
           if (isEditMode) {
             const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
@@ -483,7 +549,9 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               nodesInRegionsList,
               isYbcEnabledinCurrentUniverse,
               isIncrementalBackup,
-              isEditBackupMode
+              isEditBackupMode,
+              allowTableByTableBackup,
+              showTakeTablespaceOption
             })}
           </>
         )
@@ -504,7 +572,9 @@ function BackupConfigurationForm({
   nodesInRegionsList,
   isYbcEnabledinCurrentUniverse,
   isIncrementalBackup,
-  isEditBackupMode
+  isEditBackupMode,
+  allowTableByTableBackup,
+  showTakeTablespaceOption
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -524,6 +594,8 @@ function BackupConfigurationForm({
   isYbcEnabledinCurrentUniverse: boolean;
   isIncrementalBackup: boolean;
   isEditBackupMode: boolean;
+  allowTableByTableBackup: RunTimeConfigEntry;
+  showTakeTablespaceOption: RunTimeConfigEntry;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -547,7 +619,7 @@ function BackupConfigurationForm({
   let regions_satisfied_by_config = true;
 
   if (values['storage_config']?.regions?.length > 0) {
-  regions_satisfied_by_config = nodesInRegionsList.every((e) =>
+    regions_satisfied_by_config = nodesInRegionsList.every((e) =>
       find(values['storage_config'].regions, { REGION: e })
     );
   }
@@ -609,9 +681,8 @@ function BackupConfigurationForm({
                   <components.Option {...props}>
                     <div className="storage-cfg-select-label">{props.data.label}</div>
                     <div className="storage-cfg-select-meta">
-                      <span>{`${props.data.name}${
-                        props.data.regions?.length > 0 ? ',' : ''
-                      }`}</span>
+                      <span>{`${props.data.name}${props.data.regions?.length > 0 ? ',' : ''
+                        }`}</span>
                       {props.data.regions?.length > 0 && <span>Multi-region support</span>}
                     </div>
                   </components.Option>
@@ -638,6 +709,7 @@ function BackupConfigurationForm({
             options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
+              setFieldValue('backup_tables', Backup_Options_Type.ALL);
               if (
                 values['api_type'].value === BACKUP_API_TYPES.YCQL ||
                 values['api_type'].value === BACKUP_API_TYPES.YEDIS
@@ -655,59 +727,93 @@ function BackupConfigurationForm({
       </Row>
       {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
         values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
-        <Row>
-          <Col lg={12} className="no-padding">
-            {TABLE_BACKUP_OPTIONS.map((target) => (
-              <>
-                <label className="btn-group btn-group-radio" key={target.value}>
-                  <Field
-                    name="backup_tables"
-                    component="input"
-                    defaultChecked={values['backup_tables'] === target.value}
-                    disabled={
-                      values['db_to_backup'] === null ||
-                      values['db_to_backup']?.value === null ||
-                      isEditMode ||
-                      isIncrementalBackup ||
-                      isEditBackupMode
-                    }
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setFieldValue('backup_tables', e.target.value, false);
-                      if (
-                        e.target.value === Backup_Options_Type.CUSTOM &&
-                        values['selected_ycql_tables'].length === 0
-                      ) {
-                        setFieldValue('show_select_ycql_table', true);
+          <Row>
+            <Col lg={12} className="no-padding">
+              {TABLE_BACKUP_OPTIONS.map((target) => (
+                <>
+                  <label className="btn-group btn-group-radio" key={target.value}>
+                    <Field
+                      name="backup_tables"
+                      component="input"
+                      defaultChecked={values['backup_tables'] === target.value}
+                      disabled={
+                        values['db_to_backup'] === null ||
+                        values['db_to_backup']?.value === null ||
+                        isEditMode ||
+                        isIncrementalBackup ||
+                        isEditBackupMode
                       }
-                    }}
-                    checked={values['backup_tables'] === target.value}
-                    type="radio"
-                    value={target.value}
-                  />
-                  {target.label}
-                  {target.value === Backup_Options_Type.CUSTOM &&
-                    values['backup_tables'] === Backup_Options_Type.CUSTOM && (
-                      <span className="tables-count">
-                        <span>{values['selected_ycql_tables'].length} tables selected</span>
-                        <span
-                          className="edit-selection"
-                          onClick={() => {
-                            setFieldValue('show_select_ycql_table', true);
-                          }}
-                        >
-                          <i className="fa fa-pencil" />
-                          &nbsp;
-                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setFieldValue('backup_tables', e.target.value, false);
+                        if (
+                          e.target.value === Backup_Options_Type.CUSTOM &&
+                          values['selected_ycql_tables'].length === 0
+                        ) {
+                          setFieldValue('show_select_ycql_table', true);
+                        }
+                      }}
+                      checked={values['backup_tables'] === target.value}
+                      type="radio"
+                      value={target.value}
+                    />
+                    {target.label}
+                    {target.value === Backup_Options_Type.CUSTOM &&
+                      values['backup_tables'] === Backup_Options_Type.CUSTOM && (
+                        <span className="tables-count">
+                          <span>{values['selected_ycql_tables'].length} tables selected</span>
+                          <span
+                            className="edit-selection"
+                            onClick={() => {
+                              setFieldValue('show_select_ycql_table', true);
+                            }}
+                          >
+                            <i className="fa fa-pencil" />
+                            &nbsp;
+                            {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
+                          </span>
                         </span>
-                      </span>
-                    )}
-                </label>
-                <br />
-              </>
-            ))}
+                      )}
+                  </label>
+                  <br />
+                </>
+              ))}
+            </Col>
+          </Row>
+        )}
+      {allowTableByTableBackup?.value === 'true' && values['api_type'].value === BACKUP_API_TYPES.YCQL && (
+        <Row>
+          <Col>
+            <Field
+              name="isTableByTableBackup"
+              component={YBCheckBox}
+              disabled={isEditMode}
+              checkState={values['isTableByTableBackup']}
+            />
+            Take table by table backup
           </Col>
         </Row>
       )}
+
+      {
+        showTakeTablespaceOption?.value === 'false' && (
+          <Row>
+            <Col lg={8} className='no-padding tablespaces'>
+              <div>
+                <Field
+                  name="useTablespaces"
+                  component={YBCheckBox}
+                  disabled={isEditMode && !isEditBackupMode}
+                  checkState={values['useTablespaces']}
+                />
+                Backup tablespaces information
+              </div>
+              <div className='tablespaces-subText'>
+                In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)
+              </div>
+            </Col>
+          </Row>
+        )
+      }
 
       <Row>
         <div>Select backup retention period</div>
@@ -1003,26 +1109,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-                return (
-                  <div className="selected-table-item" key={t.tableUUID}>
-                    {t.tableName}
-                    <span
-                      className="remove-selected-table"
-                      onClick={() => {
-                        if (isEditMode) return;
-                        setFieldValue(
-                          'selected_ycql_tables',
-                          values['selected_ycql_tables'].filter(
-                            (f: ITable) => f.tableUUID !== t.tableUUID
-                          )
-                        );
-                      }}
-                    >
-                      <img alt="Remove" src={Close} width="22" />
-                    </span>
-                  </div>
-                );
-              })}
+              return (
+                <div className="selected-table-item" key={t.tableUUID}>
+                  {t.tableName}
+                  <span
+                    className="remove-selected-table"
+                    onClick={() => {
+                      if (isEditMode) return;
+                      setFieldValue(
+                        'selected_ycql_tables',
+                        values['selected_ycql_tables'].filter(
+                          (f: ITable) => f.tableUUID !== t.tableUUID
+                        )
+                      );
+                    }}
+                  >
+                    <img alt="Remove" src={Close} width="22" />
+                  </span>
+                </div>
+              );
+            })}
         </Col>
       </Row>
     </YBModalForm>

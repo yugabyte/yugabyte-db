@@ -369,7 +369,8 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
-  FLAGS_replication_factor = narrow_cast<int>(opts_.num_masters);
+  FLAGS_replication_factor =
+    opts_.replication_factor > 0 ? opts_.replication_factor : narrow_cast<int>(opts_.num_masters);
 
   if (messenger == nullptr) {
     rpc::MessengerBuilder builder("minicluster-messenger");
@@ -410,19 +411,19 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   return Status::OK();
 }
 
-void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
+void ExternalMiniCluster::Shutdown(NodeSelectionMode mode, RequireExitCode0 require_exit_code_0) {
   // TODO: in the regular MiniCluster Shutdown is a no-op if running_ is false.
   // Therefore, in case of an error during cluster startup behavior might be different.
   if (mode == ALL) {
     for (const scoped_refptr<ExternalMaster>& master : masters_) {
       if (master) {
-        master->Shutdown(SafeShutdown::kTrue);
+        master->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
       }
     }
   }
 
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
-    ts->Shutdown(SafeShutdown::kTrue);
+    ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
   }
   running_ = false;
 }
@@ -445,6 +446,10 @@ Status ExternalMiniCluster::Restart() {
 
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
+  // Give some more time for the cluster to be ready. If we proceed to run the
+  // unit test prematurely before the master/tserver are fully ready, deadlock
+  // can happen which leads to test flakiness.
+  SleepFor(2s);
   running_ = true;
   return Status::OK();
 }
@@ -1228,6 +1233,9 @@ Status ExternalMiniCluster::StartMasters() {
   // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");
+  if (opts_.replication_factor > 0) {
+    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
+  }
   // Limit number of transaction table tablets to help avoid timeouts.
   int num_transaction_table_tablets = NumTabletsPerTransactionTable(opts_);
   flags.push_back(Format("--transaction_table_num_tablets=$0", num_transaction_table_tablets));
@@ -1297,6 +1305,10 @@ Status ExternalMiniCluster::WaitForInitDb() {
           return status;
         }
         continue;
+      }
+      LOG_IF(INFO, !status.ok()) << "IsInitDbDone failed: " << status;
+      if (!opts_.allow_crashes_during_init_db && !status.ok() && !masters_[i]->IsProcessAlive()) {
+        return STATUS_FORMAT(RuntimeError, "Master $0 crashed during initdb", i);
       }
       if (resp.has_error() &&
           resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
@@ -1654,6 +1666,14 @@ Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTable
   return result;
 }
 
+Result<size_t> ExternalMiniCluster::GetSegmentCounts(ExternalTabletServer* ts) {
+  auto tablets = VERIFY_RESULT(GetTablets(ts));
+  size_t result = 0;
+  for (const auto& tablet : tablets) {
+    result += tablet.num_log_segments();
+  }
+  return result;
+}
 Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
                                                   const MonoDelta& timeout) {
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
@@ -2324,13 +2344,19 @@ bool ExternalDaemon::IsShutdown() const {
 
 bool ExternalDaemon::WasUnsafeShutdown() const { return sigkill_used_for_shutdown_; }
 
-bool ExternalDaemon::IsProcessAlive() const {
+bool ExternalDaemon::IsProcessAlive(RequireExitCode0 require_exit_code_0) const {
   if (IsShutdown()) {
     return false;
   }
 
   int rc = 0;
   Status s = process_->WaitNoBlock(&rc);
+
+  // Return code will be non-zero if the process crashed.
+  if (require_exit_code_0 && rc != 0) {
+    LOG(DFATAL) << "Non-zero return code " << rc << " for WaitNoBlock for daemon " << daemon_id_;
+  }
+
   // If the non-blocking Wait "times out", that means the process
   // is running.
   return s.IsTimedOut();
@@ -2345,7 +2371,7 @@ pid_t ExternalDaemon::pid() const {
   return process_->pid();
 }
 
-void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
+void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
   if (!process_) {
     return;
   }
@@ -2359,7 +2385,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;
-  if (IsProcessAlive()) {
+  if (IsProcessAlive(require_exit_code_0)) {
     process_name_and_pid = ProcessNameAndPidStr();
     // In coverage builds, ask the process nicely to flush coverage info
     // before we kill -9 it. Otherwise, we never get any coverage from
@@ -2384,7 +2410,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
       WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
       CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 100ms);
-      while (IsProcessAlive()) {
+      while (IsProcessAlive(require_exit_code_0)) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << LogPrefix() << "Waiting for process termination: " << process_name_and_pid;
         if (!waiter.Wait()) {
@@ -2392,14 +2418,14 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
         }
       }
 
-      if (IsProcessAlive()) {
+      if (IsProcessAlive(require_exit_code_0)) {
         LOG_WITH_PREFIX(INFO) << "The process " << process_name_and_pid
                               << " is still running after " << CoarseMonoClock::Now() - start_time
                               << " ms, will send SIGKILL";
       }
     }
 
-    if (IsProcessAlive()) {
+    if (IsProcessAlive(require_exit_code_0)) {
       LOG_WITH_PREFIX(INFO) << "Killing " << process_name_and_pid << " with SIGKILL";
       sigkill_used_for_shutdown_ = true;
       WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");

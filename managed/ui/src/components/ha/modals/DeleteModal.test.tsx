@@ -1,4 +1,3 @@
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'react-toastify';
 import { render, waitFor } from '../../../test-utils';
@@ -12,12 +11,7 @@ const fakeConfigId = 'aaa-111';
 const setup = (instanceId?: string) => {
   const onClose = jest.fn();
   const component = render(
-    <DeleteModal
-      visible
-      onClose={onClose}
-      configId={fakeConfigId}
-      instanceId={instanceId}
-    />
+    <DeleteModal visible onClose={onClose} configId={fakeConfigId} instanceId={instanceId} />
   );
   return { component, onClose };
 };

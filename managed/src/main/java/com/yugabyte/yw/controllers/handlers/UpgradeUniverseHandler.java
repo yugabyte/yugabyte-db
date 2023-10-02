@@ -13,16 +13,18 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -41,6 +43,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -51,6 +54,7 @@ import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -63,6 +67,7 @@ public class UpgradeUniverseHandler {
   private final GFlagsValidationHandler gFlagsValidationHandler;
   private final YbcManager ybcManager;
   private final RuntimeConfGetter confGetter;
+  private final CertificateHelper certificateHelper;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -71,13 +76,15 @@ public class UpgradeUniverseHandler {
       RuntimeConfigFactory runtimeConfigFactory,
       GFlagsValidationHandler gFlagsValidationHandler,
       YbcManager ybcManager,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      CertificateHelper certificateHelper) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.gFlagsValidationHandler = gFlagsValidationHandler;
     this.ybcManager = ybcManager;
     this.confGetter = confGetter;
+    this.certificateHelper = certificateHelper;
   }
 
   public UUID restartUniverse(
@@ -131,7 +138,9 @@ public class UpgradeUniverseHandler {
         requestParams.installYbc = false;
       }
     } else if (Util.compareYbVersions(
-                requestParams.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+                requestParams.ybSoftwareVersion,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
+                true)
             > 0
         && !universe.isYbcEnabled()
         && requestParams.isEnableYbc()) {
@@ -144,11 +153,31 @@ public class UpgradeUniverseHandler {
     }
     requestParams.setYbcInstalled(universe.isYbcEnabled());
 
-    return submitUpgradeTask(
+    TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.SoftwareKubernetesUpgrade
-            : TaskType.SoftwareUpgrade,
-        CustomerTask.TaskType.SoftwareUpgrade,
+            : TaskType.SoftwareUpgrade;
+
+    String currentVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
+        && taskType.equals(TaskType.SoftwareUpgrade)
+        && CommonUtils.isReleaseEqualOrAfter(
+            Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
+        && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
+      taskType = TaskType.SoftwareUpgradeYB;
+    }
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
+  }
+
+  public UUID finalizeUpgrade(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+    // TODO(vbansal): Add validations for finalize based on universe state.
+    // Will add them in subsequent diffs.
+    return submitUpgradeTask(
+        TaskType.FinalizeUpgrade,
+        CustomerTask.TaskType.FinalizeUpgrade,
         requestParams,
         customer,
         universe);
@@ -157,8 +186,8 @@ public class UpgradeUniverseHandler {
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
-    if (requestParams.masterGFlags.isEmpty()
-        && requestParams.tserverGFlags.isEmpty()
+    if (MapUtils.isEmpty(requestParams.masterGFlags)
+        && MapUtils.isEmpty(requestParams.masterGFlags)
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
@@ -358,7 +387,7 @@ public class UpgradeUniverseHandler {
         // Create self-signed rootCA in case it is not provided by the user
         if (requestParams.rootCA == null) {
           requestParams.rootCA =
-              CertificateHelper.createRootCA(
+              certificateHelper.createRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   universeDetails.nodePrefix,
                   customer.getUuid());
@@ -382,7 +411,7 @@ public class UpgradeUniverseHandler {
             // Create self-signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
             requestParams.setClientRootCA(
-                CertificateHelper.createClientRootCA(
+                certificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
                     customer.getUuid()));

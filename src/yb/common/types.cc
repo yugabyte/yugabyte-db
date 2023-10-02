@@ -49,47 +49,46 @@ namespace yb {
 class TypeInfoResolver {
  public:
   const TypeInfo* GetTypeInfo(DataType t) {
-    const TypeInfo *type_info = mapping_[t].get();
-    CHECK(type_info != nullptr) <<
-      "Bad type: " << t;
+    const TypeInfo *type_info = mapping_[to_underlying(t)].get();
+    CHECK(type_info != nullptr) << "Bad type: " << t;
     return type_info;
   }
 
  private:
   TypeInfoResolver() {
-    AddMapping<UINT8>();
-    AddMapping<INT8>();
-    AddMapping<UINT16>();
-    AddMapping<INT16>();
-    AddMapping<UINT32>();
-    AddMapping<INT32>();
-    AddMapping<UINT64>();
-    AddMapping<INT64>();
-    AddMapping<VARINT>();
-    AddMapping<TIMESTAMP>();
-    AddMapping<DATE>();
-    AddMapping<TIME>();
-    AddMapping<STRING>();
-    AddMapping<BOOL>();
-    AddMapping<FLOAT>();
-    AddMapping<DOUBLE>();
-    AddMapping<BINARY>();
-    AddMapping<INET>();
-    AddMapping<JSONB>();
-    AddMapping<MAP>();
-    AddMapping<SET>();
-    AddMapping<LIST>();
-    AddMapping<DECIMAL>();
-    AddMapping<UUID>();
-    AddMapping<TIMEUUID>();
-    AddMapping<USER_DEFINED_TYPE>();
-    AddMapping<FROZEN>();
-    AddMapping<TUPLE>();
+    AddMapping<DataType::UINT8>();
+    AddMapping<DataType::INT8>();
+    AddMapping<DataType::UINT16>();
+    AddMapping<DataType::INT16>();
+    AddMapping<DataType::UINT32>();
+    AddMapping<DataType::INT32>();
+    AddMapping<DataType::UINT64>();
+    AddMapping<DataType::INT64>();
+    AddMapping<DataType::VARINT>();
+    AddMapping<DataType::TIMESTAMP>();
+    AddMapping<DataType::DATE>();
+    AddMapping<DataType::TIME>();
+    AddMapping<DataType::STRING>();
+    AddMapping<DataType::BOOL>();
+    AddMapping<DataType::FLOAT>();
+    AddMapping<DataType::DOUBLE>();
+    AddMapping<DataType::BINARY>();
+    AddMapping<DataType::INET>();
+    AddMapping<DataType::JSONB>();
+    AddMapping<DataType::MAP>();
+    AddMapping<DataType::SET>();
+    AddMapping<DataType::LIST>();
+    AddMapping<DataType::DECIMAL>();
+    AddMapping<DataType::UUID>();
+    AddMapping<DataType::TIMEUUID>();
+    AddMapping<DataType::USER_DEFINED_TYPE>();
+    AddMapping<DataType::FROZEN>();
+    AddMapping<DataType::TUPLE>();
   }
 
   template<DataType type> void AddMapping() {
     using TypeTraitsClass = TypeTraits<type>;
-    mapping_.emplace(type, std::make_shared<TypeInfo>(TypeInfo {
+    mapping_[to_underlying(type)] = std::make_shared<TypeInfo>(TypeInfo {
       .type = TypeTraitsClass::type,
       .physical_type = TypeTraitsClass::physical_type,
       .name = TypeTraitsClass::name(),
@@ -97,12 +96,10 @@ class TypeInfoResolver {
       .min_value = TypeTraitsClass::min_value(),
       .append_func = TypeTraitsClass::AppendDebugStringForValue,
       .compare_func = TypeTraitsClass::Compare,
-    }));
+    });
   }
 
-  unordered_map<DataType,
-                shared_ptr<const TypeInfo>,
-                std::hash<size_t> > mapping_;
+  std::array<std::shared_ptr<const TypeInfo>, kDataTypeMapSize> mapping_;
 
   friend class Singleton<TypeInfoResolver>;
   DISALLOW_COPY_AND_ASSIGN(TypeInfoResolver);
@@ -112,19 +109,20 @@ const TypeInfo* GetTypeInfo(DataType type) {
   return Singleton<TypeInfoResolver>::get()->GetTypeInfo(type);
 }
 
-void DataTypeTraits<INET>::AppendDebugStringForValue(const void *val, std::string *str) {
+void DataTypeTraits<DataType::INET>::AppendDebugStringForValue(const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
   InetAddress addr;
   DCHECK(addr.FromSlice(*s).ok());
   str->append(addr.ToString());
 }
 
-void DataTypeTraits<UUID>::AppendDebugStringForValue(const void *val, std::string *str) {
+void DataTypeTraits<DataType::UUID>::AppendDebugStringForValue(const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
   str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
 }
 
-void DataTypeTraits<TIMEUUID>::AppendDebugStringForValue(const void *val, std::string *str) {
+void DataTypeTraits<DataType::TIMEUUID>::AppendDebugStringForValue(
+    const void *val, std::string *str) {
   const Slice *s = reinterpret_cast<const Slice *>(val);
   str->append(CHECK_RESULT(Uuid::FromSlice(*s)).ToString());
 }

@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: SQLAlchemy ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: SQLAlchemy ORM support for YugabyteDB
+description: Python SQLAlchemy ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:

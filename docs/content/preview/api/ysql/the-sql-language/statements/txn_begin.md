@@ -2,7 +2,7 @@
 title: BEGIN statement [YSQL]
 headerTitle: BEGIN
 linkTitle: BEGIN
-description: Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
+description: Use the `BEGIN` statement to start a transaction with the default (or specified) isolation level.
 menu:
   preview:
     identifier: txn_begin
@@ -12,33 +12,13 @@ type: docs
 
 ## Synopsis
 
-Use the `BEGIN` statement to start a transaction with the default (or given) isolation level.
+Use the `BEGIN` statement to start a transaction with the default (or specified) isolation level.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/begin.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/begin.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  begin
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -165,3 +145,5 @@ yugabyte=# SELECT * FROM sample; -- run in second shell.
 - [`END`](../txn_end)
 - [`ROLLBACK`](../txn_rollback)
 - [`SET TRANSACTION`](../txn_set)
+- [`START TRANSACTION`](../txn_start)
+

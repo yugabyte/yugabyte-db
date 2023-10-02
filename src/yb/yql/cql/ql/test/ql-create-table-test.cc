@@ -171,7 +171,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
 // sleeping and the table is in a ready state. Without the fix, the INSERT statement always fails
 // with a "Table Not Found" error.
 TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableAndCreateTableIfNotExistsStmts) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -207,7 +207,7 @@ TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableAndCreateTableIfNotExistsSt
 // that whenever a CREATE TABLE statement returns "Duplicate Table. Already present", the table
 // is ready to accept write requests.
 TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableStmt) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -335,14 +335,15 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
 
 // Check for presence of rows in system.metrics table.
 TEST_F(TestQLCreateTable, TestMetrics) {
-  FLAGS_metrics_snapshotter_interval_ms = 1000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_interval_ms) = 1000 * kTimeMultiplier;
 
-  FLAGS_master_enable_metrics_snapshotter = true;
-  FLAGS_tserver_enable_metrics_snapshotter = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_metrics_snapshotter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_enable_metrics_snapshotter) = true;
 
   std::vector<std::string> table_metrics =
   {"rocksdb_bytes_per_read_sum", "rocksdb_bytes_per_read_count"};
-  FLAGS_metrics_snapshotter_table_metrics_whitelist = boost::algorithm::join(table_metrics, ",");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_table_metrics_whitelist) =
+      boost::algorithm::join(table_metrics, ",");
 
   std::vector<std::string> tserver_metrics = {
     "handler_latency_yb_tserver_TabletServerService_ListTablets_sum",

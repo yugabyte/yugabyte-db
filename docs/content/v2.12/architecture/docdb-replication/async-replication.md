@@ -58,7 +58,7 @@ This topology involves 1 source cluster sending data to many sink clusters. This
 This topology involves many source clusters sending data to one central sink cluster. This is currently not officially supported [#11535](https://github.com/yugabyte/yugabyte-db/issues/11535).
 
 ### More complex topologies
-Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to setup this replication feature with. However, none of these are currently officially supported. Some examples
+Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to use this replication feature with. However, none of these are currently officially supported. Some examples
 - Daisy chaining -- connecting a series of clusters, as both source and target, eg: `A<>B<>C`
 - Ring -- connecting a series of clusters, in a loop, eg: `A<>B<>C<>A`
 

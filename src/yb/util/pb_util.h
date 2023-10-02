@@ -69,6 +69,8 @@ namespace pb_util {
 
 using google::protobuf::MessageLite;
 
+static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
+
 enum SyncMode {
   SYNC,
   NO_SYNC
@@ -115,6 +117,16 @@ Status WritePBToPath(Env* env, const std::string& path, const MessageLite& msg, 
 // Truncate any 'bytes' or 'string' fields of this message to max_len.
 // The text "<truncated>" is appended to any such truncated fields.
 void TruncateFields(google::protobuf::Message* message, int max_len);
+
+// Form a path ends with kTmpTemplateSuffix.
+inline std::string MakeTempPath(const std::string& path) {
+  return path + kTmpTemplateSuffix;
+}
+
+// Is the file ends with kTmpTemplateSuffix.
+inline bool IsTempFile(const std::string& path) {
+  return path.ends_with(kTmpTemplateSuffix);
+}
 
 // A protobuf "container" has the following format (all integers in
 // little-endian byte order):

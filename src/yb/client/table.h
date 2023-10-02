@@ -139,6 +139,8 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // Asynchronously refreshes table partitions.
   void RefreshPartitions(YBClient* client, StdStatusCallback callback);
 
+  size_t DynamicMemoryUsage() const;
+
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;

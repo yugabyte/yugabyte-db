@@ -1,0 +1,53 @@
+{{/* trim the data */}}
+{{- $origdata := trim .Inner " \n\t\r" -}}
+{{- $newdata := "" -}}
+{{/* replace | within ``` with ;-vert-;  \x01 is used for matching blocks */}}
+{{- $origdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```" "```$1;-vert-;$3```\x01" $origdata -}}
+{{- range seq 1000 -}}
+    {{- $newdata := replaceRE "```([^`\x01]*)(\\|)([^`]*)```\x01" "```$1;-vert-;$3```\x01" $origdata -}}
+    {{- if (eq $origdata $newdata) -}} {{- break -}} {{- end -}}
+    {{- $origdata = $newdata -}}
+{{- end -}}
+{{- $origdata := replace $origdata "\x01" "" -}}
+{{/* fetch the header row to calculate no.of columns */}}
+{{- $header := index (findRE `[^|]*\|[^\n]*` $origdata 1) 0 -}}
+{{/* NOTE: numcols is no.of real columns + 1 -- because of split */}}
+{{- $numcols := sub (len (split $header "|")) 1 -}}
+{{/* process only if there are columns in the table */}}
+{{- if ge $numcols 2 -}}
+    {{- $cells := split $origdata "|" -}}
+    {{/* check for proper table structure */}}
+    {{- if ne (mod (sub (len $cells) 1) $numcols) 0 -}}
+        {{- $totalcells := len $cells -}}
+        {{- warnf "incomplete table: cols:%d pipes[total:%d expected:%d] in [%q]"
+                    (sub $numcols 1) (sub $totalcells 1) 
+                    (mul $numcols (div $totalcells $numcols)) $.Page.Permalink -}}
+    {{- end -}}
+    {{- $table := "" -}}
+    {{- $row := "" -}}
+    {{- $startclean := mul 2 $numcols -}}
+    {{- range $index, $cell := $cells -}}
+        {{/* No operations on the header and alignment rows */}}
+        {{- if ge $index $startclean -}}
+            {{/* markdown each cell & convert into single line */}}
+            {{- $cell = replace (markdownify $cell) "\n" "\x01" -}}
+        {{- end -}}
+        {{- if (eq (mod $index $numcols) 0) -}}
+            {{/* first column of the row (empty(or whitespace) because of split) */}}
+            {{- $row = "" -}}
+            {{- continue -}}
+        {{- else if (eq (mod $index $numcols) (sub $numcols 1)) -}}
+            {{/* last column */}}
+            {{- $row = print $row "|" $cell "|" -}}
+            {{- /*print "{" $row "}"*/ -}}
+            {{- $table = print $table "\n" $row -}}
+        {{- else -}}
+            {{/* other columns */}}
+            {{- $row = print $row "|" $cell -}}
+        {{- end -}}
+    {{- end -}}
+    {{- replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify  -}}
+    {{- /* warnf "%s" (replace (replace (markdownify $table) ";-vert-;" "|") "\x01" "\n" | markdownify ) */ -}}
+{{- else -}}
+    {{- warnf "empty table in [%q]" $.Page.Permalink -}}
+{{- end -}}

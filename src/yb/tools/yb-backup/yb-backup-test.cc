@@ -664,6 +664,81 @@ TEST_F(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(BackupRaceWithDropTable)) {
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
+       "--TEST_drop_table_before_upload", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Check that the restored database has the new table with data.
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM mytbl WHERE k <= 5 ORDER BY k ASC",
+      R"#(
+         k
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(BackupRaceWithDropColocatedTable)) {
+  const string table_name = "mytbl";
+  // Create colocated database.
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE demo WITH colocation=true"));
+
+  // Create table.
+  SetDbName("demo");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo",
+       "--TEST_drop_table_before_upload", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo_new", "restore"}));
+
+  // Check that the restored database has the new table with data.
+  SetDbName("demo_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM mytbl WHERE k <= 5 ORDER BY k ASC",
+      R"#(
+         k
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 // When trying to run yb_admin with a command that is not supported, we should get a
 // YbAdminOpNotSupportedException.
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBAdminUnsupportedCommands)) {
@@ -876,6 +951,48 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithPartialDele
          public | mytbl | table | yugabyte
         (1 row)
       )#"));
+}
+
+// Test restore_snapshot operation, where one of the tablets involved in the restore snapshot
+// operation is already deleted (For example: due to drop table command).
+// 1. Create 2 tables (t1,t2) each with 3 pre-split tablets.
+// 2. Insert 100 rows in each table.
+// 3. Create a database snapshot.
+// 4- DROP TABLE t1 (which deletes its tablets).
+// 5- Restore the database to 3.
+// 6- Assert that the restoration failes.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreSnapshotWithDeletedTablets)) {
+  const string default_db = "yugabyte";
+  const string table_name = "mytbl1";
+  const string table_name2 = "mytbl2";
+  // Step 1
+  LOG(INFO) << Format("Create table '$0'", table_name);
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT)", table_name)));
+  LOG(INFO) << Format("Create table '$0'", table_name2);
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT)", table_name2)));
+  LOG(INFO) << "Insert values";
+  // Step 2
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 (k,v) SELECT i,i FROM generate_series(1,100) AS i", table_name), 100));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 (k,v) SELECT i,i FROM generate_series(1,100) AS i", table_name2),
+      100));
+  // Step 3
+  auto table1_id = ASSERT_RESULT(client_->ListTables(table_name))[0].table_id();
+  auto table2_id = ASSERT_RESULT(client_->ListTables(table_name2))[0].table_id();
+  std::vector<TableId> table_ids = {table1_id, table2_id};
+  LOG(INFO) << "Create snapshot";
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_ids));
+  // Step 4
+  LOG(INFO) << Format("Drop Table: $0", table_name);
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+  // Restore the snapshot after mytbl1 has been deleted
+  LOG(INFO) << "Start Restore snapshot";
+  auto restoration_id = ASSERT_RESULT(snapshot_util_->StartRestoration(snapshot_id));
+  // Make sure the restoration process fails
+  LOG(INFO) << "Wait restoration to fail";
+  ASSERT_OK(
+      snapshot_util_->WaitRestorationInState(restoration_id, master::SysSnapshotEntryPB::RESTORED));
 }
 
 TEST_F(YBBackupTest,

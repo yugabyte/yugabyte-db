@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
@@ -23,10 +24,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import io.ebean.annotation.EnumValue;
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -316,7 +321,7 @@ public class EncryptionAtRestUtil {
 
   public static File getUniverseBackupKeysFile(String storageLocation) {
     Config appConfig = StaticInjectorHolder.injector().instanceOf(Config.class);
-    File backupKeysDir = new File(appConfig.getString("yb.storage.path"), "backupKeys");
+    File backupKeysDir = new File(AppConfigHelper.getStoragePath(), "backupKeys");
 
     String[] dirParts = storageLocation.split("/");
 
@@ -329,6 +334,77 @@ public class EncryptionAtRestUtil {
                     Arrays.copyOfRange(dirParts, dirParts.length - 3, dirParts.length - 1))));
 
     return new File(storageLocationDir.getAbsolutePath(), BACKUP_KEYS_FILE_NAME);
+  }
+
+  public static void updateUniverseEARState(
+      UUID universeUUID, EncryptionAtRestConfig encryptionAtRestConfig) {
+    UniverseUpdater updater =
+        new UniverseUpdater() {
+          @Override
+          public void run(Universe universe) {
+            LOG.info(
+                "Setting EAR status to {} for universe {} in the universe details.",
+                encryptionAtRestConfig.opType.name(),
+                universe.getUniverseUUID());
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.encryptionAtRestConfig = encryptionAtRestConfig;
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
+                encryptionAtRestConfig.opType.equals(OpType.ENABLE);
+            // Add the correct kms config UUID to universe details.
+            UUID universeDetailsKmsConfigUUID =
+                universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
+            KmsHistory lastActiveKmsHistory = getActiveKey(universeUUID);
+            if (universeDetailsKmsConfigUUID != null) {
+              LOG.info(
+                  "Setting kmsConfigUUID {} for universe {} in the "
+                      + "universe details from previous universe details.",
+                  universeDetailsKmsConfigUUID,
+                  universeUUID);
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID = universeDetailsKmsConfigUUID;
+            } else if (lastActiveKmsHistory != null) {
+              // This is a failsafe mechanism if by any chance if was not populated before due to
+              // some error.
+              LOG.info(
+                  "Setting kmsConfigUUID {} for universe {} in the "
+                      + "universe details from last active key.",
+                  lastActiveKmsHistory.getConfigUuid(),
+                  universeUUID);
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID =
+                  lastActiveKmsHistory.getConfigUuid();
+            }
+            universe.setUniverseDetails(universeDetails);
+            LOG.info(
+                "Successfully set EAR status {} for universe {} in the universe details.",
+                encryptionAtRestConfig.opType.name(),
+                universeUUID);
+          }
+        };
+    Universe.saveDetails(universeUUID, updater, false);
+  }
+
+  public static void updateUniverseKMSConfigIfNotExists(UUID universeUUID, UUID kmsConfigUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID == null) {
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              LOG.info(
+                  "Found KMS config UUID {} for universe {} in the universe details.",
+                  universeDetails.encryptionAtRestConfig.kmsConfigUUID,
+                  universe.getUniverseUUID());
+              // Add the kms config UUID to universe details.
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID = kmsConfigUUID;
+              universe.setUniverseDetails(universeDetails);
+              LOG.info(
+                  "Successfully set KMS config {} for universe {} in the universe details.",
+                  kmsConfigUUID,
+                  universeUUID);
+            }
+          };
+      Universe.saveDetails(universeUUID, updater, false);
+    }
   }
 
   public static class BackupEntry {

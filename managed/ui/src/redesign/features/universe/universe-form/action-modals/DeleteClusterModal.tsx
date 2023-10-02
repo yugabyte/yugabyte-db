@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography } from '@material-ui/core';
@@ -78,7 +78,7 @@ export const DeleteClusterModal: FC<DeleteClusterModalProps> = ({
       submitLabel={t('common.yes')}
       size="sm"
       title={t('universeForm.deleteClusterModal.modalTitle', { universeName })}
-      actionsInfo={forceDeleteCheckBox()}
+      footerAccessory={forceDeleteCheckBox()}
       onClose={onClose}
       onSubmit={handleFormSubmit}
       buttonProps={{

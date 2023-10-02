@@ -229,7 +229,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "<th>key</th>");
-  ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE NOT A PARTITION KEY</td>");
+  ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE VALUE</td>");
 
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet-consensus-status?id=$1",
                        addr, kTabletId), &buf));
@@ -241,7 +241,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // metrics was accidentally un-referenced too early, we'd cause it to get retired.
   // If the metrics survive several passes of fetching, then we are pretty sure they will
   // stick around properly for the whole lifetime of the server.
-  FLAGS_metrics_retirement_age_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
   for (int i = 0; i < 3; i++) {
     SCOPED_TRACE(i);
     ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz", addr, kTabletId),
@@ -258,7 +258,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // bugs in the past.
     ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_hybrid_time");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
     ASSERT_STR_CONTAINS(buf.ToString(), "tcmalloc_max_total_thread_cache_bytes");
 #endif
     ASSERT_STR_CONTAINS(buf.ToString(), "glog_info_messages");
@@ -565,7 +565,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 // throws an exception.
 TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
   SchemaBuilder schema_builder(schema_);
-  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", INT32));
+  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", DataType::INT32));
   Schema bad_schema_with_ids = schema_builder.Build();
   Schema bad_schema = schema_builder.BuildWithoutIds();
 
@@ -734,12 +734,13 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_coarse_histogram(test, insert_latency,
+  METRIC_DEFINE_event_stats(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
                           "TabletServer single threaded insert latency.");
 
-  scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
+  scoped_refptr<EventStats> stats =
+      METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
   auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
@@ -758,7 +759,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
     InsertTestRowsRemote(0, i, 1);
     MonoTime after = MonoTime::Now();
     MonoDelta delta = after.GetDeltaSince(before);
-    histogram->Increment(delta.ToMicroseconds());
+    stats->Increment(delta.ToMicroseconds());
   }
 
   MonoTime end = MonoTime::Now();
@@ -767,7 +768,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(histogram->WriteAsJson(&writer, MetricJsonOptions()));
+  ASSERT_OK(stats->WriteAsJson(&writer, MetricJsonOptions()));
 
   LOG(INFO) << "Throughput: " << throughput << " rows/sec.";
   LOG(INFO) << out.str();
@@ -794,7 +795,7 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
 
 // Simple test to ensure we can create RpcServer with different bind address options.
 TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
-  FLAGS_rpc_bind_addresses = "0.0.0.0:2000";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "0.0.0.0:2000";
   server::RpcServerOptions opts;
   ServerRegistrationPB reg;
   auto tbo = ASSERT_RESULT(TabletServerOptions::CreateTabletServerOptions());
@@ -805,13 +806,13 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
       "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
   ASSERT_OK(server1.Init(messenger.get()));
 
-  FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "0.0.0.0:2000,0.0.0.1:2001";
   server::RpcServerOptions opts2;
   server::RpcServer server2(
       "server2", opts2, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
   ASSERT_OK(server2.Init(messenger.get()));
 
-  FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "10.20.30.40:2017";
   server::RpcServerOptions opts3;
   server::RpcServer server3(
       "server3", opts3, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
@@ -830,7 +831,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_EQ(2017, reg.private_rpc_addresses(0).port());
 
   reg.Clear();
-  FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "10.20.30.40:2017,20.30.40.50:2018";
   server::RpcServerOptions opts4;
   tbo.rpc_opts = opts4;
   TabletServer tserver2(tbo);

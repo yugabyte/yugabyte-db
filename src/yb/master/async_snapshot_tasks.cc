@@ -20,6 +20,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
@@ -29,6 +30,11 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+
+DEFINE_test_flag(
+    bool, simulate_long_restore, false,
+    "Simulate a long restore failing to transition task to completion state if successful, thereby "
+    "constantly retrying the RESTORE_ON_TABLET operation.");
 
 namespace yb {
 namespace master {
@@ -49,18 +55,20 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
 
 }
 
-AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
-                                             ThreadPool* callback_pool,
-                                             const scoped_refptr<TabletInfo>& tablet,
-                                             const string& snapshot_id,
-                                             tserver::TabletSnapshotOpRequestPB::Operation op)
-  : RetryingTSRpcTask(
-        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
-        /* async_task_throttler */ nullptr),
-    tablet_(tablet),
-    snapshot_id_(snapshot_id),
-    operation_(op) {
-}
+AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(
+    Master* master,
+    ThreadPool* callback_pool,
+    const scoped_refptr<TabletInfo>& tablet,
+    const string& snapshot_id,
+    tserver::TabletSnapshotOpRequestPB::Operation op,
+    LeaderEpoch epoch)
+    : RetryingTSRpcTask(
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
+          std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      tablet_(tablet),
+      snapshot_id_(snapshot_id),
+      operation_(op) {}
 
 string AsyncTabletSnapshotOp::description() const {
   return Format("$0 Tablet Snapshot Operation $1 RPC $2",
@@ -83,6 +91,22 @@ bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const S
     case TabletServerErrorPB::INVALID_SNAPSHOT:
       return operation_ != tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET;
     default:
+      if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+        // First check if the restore is in a FAILED state.
+        ListSnapshotRestorationsRequestPB req;
+        ListSnapshotRestorationsResponsePB resp;
+        req.set_restoration_id(restoration_id_.data(), restoration_id_.size());
+
+        auto s = master_->catalog_manager()->ListSnapshotRestorations(&req, &resp);
+        if (s.ok() && resp.restorations_size() == 1) {
+          auto restoration = *resp.restorations().begin();
+          if (restoration.entry().state() == SysSnapshotEntryPB::FAILED) {
+            return false;
+          }
+        }
+      }
+
+      // Otherwise check status errors;
       return TransactionError(status) != TransactionErrorCode::kSnapshotTooOld &&
              consensus::ConsensusError(status) != consensus::ConsensusErrorPB::TABLET_SPLIT;
   }
@@ -101,7 +125,11 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
       LOG_WITH_PREFIX(WARNING) << "Failed, will be retried: " << status;
     }
   } else {
-    TransitionToCompleteState();
+    auto transit = !FLAGS_TEST_simulate_long_restore ||
+                   operation_ != tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET;
+    if (transit) {
+      TransitionToCompleteState();
+    }
     VLOG_WITH_PREFIX(1) << "Complete";
   }
 

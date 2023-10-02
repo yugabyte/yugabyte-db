@@ -58,9 +58,19 @@ public class AssertHelper {
     assertErrorResponse(result, errorStr);
   }
 
+  public static void assertUnauthorizedNoException(Result result, String errorStr) {
+    assertEquals(UNAUTHORIZED, result.status());
+    assertEquals(errorStr, contentAsString(result));
+  }
+
   public static void assertForbidden(Result result, String errorStr) {
     assertEquals(FORBIDDEN, result.status());
     assertEquals(errorStr, contentAsString(result));
+  }
+
+  public static void assertForbiddenWithException(Result result, String errorStr) {
+    assertEquals(FORBIDDEN, result.status());
+    assertErrorResponse(result, errorStr);
   }
 
   public static void assertNotFound(Result result, String errorStr) {

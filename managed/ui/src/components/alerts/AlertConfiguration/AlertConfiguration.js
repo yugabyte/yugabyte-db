@@ -5,7 +5,7 @@
 // This file will hold all the alert configuration tabs along
 // with their respective components.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { isDisabled } from '../../../utils/LayoutUtils';
 import { YBTabsPanel } from '../../panels';
@@ -40,10 +40,10 @@ export const AlertConfiguration = (props) => {
     if (!getPromiseState(universes).isSuccess()) {
       props.fetchUniverseList().then((data) => {
         setAlertUniverseList([
-          ...data.map((universe) => ({
+          ...data?.map((universe) => ({
             label: universe.name,
             value: universe.universeUUID
-          }))
+          })) ?? []
         ]);
       });
     }

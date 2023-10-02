@@ -79,17 +79,17 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
                                  &ts_test_metric_registry_, "ts_server-test")) {
   // Disable the maintenance ops manager since we want to trigger our own
   // maintenance operations at predetermined times.
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
 
   // Decrease heartbeat timeout: we keep re-trying heartbeats when a
   // single master server fails due to a network error. Decreasing
   // the heartbeat timeout to 1 second speeds up unit tests which
   // purposefully specify non-running Master servers.
-  FLAGS_heartbeat_rpc_timeout_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) = 1000;
 
   // Keep unit tests fast, but only if no one has set the flag explicitly.
   if (google::GetCommandLineFlagInfoOrDie("enable_data_block_fsync").is_default) {
-    FLAGS_enable_data_block_fsync = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false;
   }
 }
 
@@ -122,10 +122,10 @@ void TabletServerTestBase::StartTabletServer() {
 
   // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
   // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
-  FLAGS_disable_auto_flags_management = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
 
   // Disallow encryption at rest as there is no master.
-  FLAGS_allow_encryption_at_rest = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
   auto mini_ts =
       MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
@@ -155,7 +155,7 @@ Status TabletServerTestBase::WaitForTabletRunning(const char *tablet_id) {
   // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
   RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
 
-  RETURN_NOT_OK(tablet_peer->consensus()->EmulateElection());
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection());
 
   return WaitFor([tablet_manager, tablet_peer, tablet_id]() {
         if (tablet_manager->IsTabletInTransition(tablet_id)) {

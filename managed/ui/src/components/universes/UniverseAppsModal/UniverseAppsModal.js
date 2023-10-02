@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
@@ -146,7 +146,12 @@ export default class UniverseAppsModal extends Component {
       const command =
         appType.title === 'YCQL'
           ? sampleAppCommandTxt
-          : commandSyntax + ' --workload ' + appType.code + ' --nodes ' + hostPorts;
+          : commandSyntax +
+            ' --workload ' +
+            appType.code +
+            ' --nodes ' +
+            hostPorts +
+            ' --username yugabyte --password <your_password> ';
 
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>

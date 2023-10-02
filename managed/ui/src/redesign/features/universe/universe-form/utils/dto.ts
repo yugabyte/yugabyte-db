@@ -128,6 +128,7 @@ export interface UserIntent {
   enableIPV6?: boolean;
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
+  specificGFlags?: Record<string, any>;
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
@@ -170,6 +171,7 @@ export interface NodeDetails {
   nodeUuid: string | null;
   placementUuid: string;
   state: NodeState;
+  cloudInfo?: CloudInfo;
 }
 
 export interface EncryptionAtRestConfig {
@@ -202,12 +204,15 @@ export interface UniverseDetails {
   nodePrefix: string;
   resetAZConfig: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
   updateSucceeded: boolean;
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  useSpotInstance: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -279,8 +284,8 @@ export interface DeviceInfo {
 }
 
 export interface K8NodeSpec {
-  memory: number;
-  cpu: number;
+  memoryGib: number;
+  cpuCoreCount: number;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 
@@ -354,6 +359,9 @@ export interface Cluster {
 
 export interface CloudInfo {
   assignPublicIP: boolean;
+  private_ip?: string;
+  az?: string;
+  region?: string;
 }
 
 export interface NodeDetails {
@@ -508,6 +516,7 @@ export interface Gflag {
   Name: string;
   MASTER?: string | boolean | number;
   TSERVER?: string | boolean | number;
+  tags?: string;
 }
 
 export interface UniverseFormData {
@@ -516,6 +525,7 @@ export interface UniverseFormData {
   advancedConfig: AdvancedConfigFormValue;
   instanceTags: InstanceTags;
   gFlags: Gflag[];
+  inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
 }
@@ -600,6 +610,7 @@ export const DEFAULT_FORM_DATA: UniverseFormData = {
   advancedConfig: DEFAULT_ADVANCED_CONFIG,
   instanceTags: DEFAULT_USER_TAGS,
   gFlags: DEFAULT_GFLAGS,
+  inheritFlagsFromPrimary: true,
   universeOverrides: DEFAULT_UNIVERSE_OVERRIDES,
   azOverrides: DEFAULT_AZ_OVERRIDES
 };

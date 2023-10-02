@@ -14,11 +14,14 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -43,20 +46,25 @@ import lombok.extern.slf4j.Slf4j;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected EditKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected EditKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
   public void run() {
+    Throwable th = null;
     try {
       checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
       // This value is used by subsequent calls to helper methods for
@@ -119,9 +127,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
 
       // Update the user intent.
-      // This writes placement info and user intent of all clusters to DB.
-      writeUserIntentToUniverse();
-
+      // This writes new state of nodes to DB.
+      updateUniverseNodesAndSettings(universe, taskParams(), false);
       // primary cluster edit.
       boolean mastersAddrChanged =
           editCluster(
@@ -130,6 +137,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getPrimaryCluster(),
               masterAddresses,
               false /* restartAllPods */);
+      // Updating cluster in DB
+      createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -140,6 +149,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getClusterByUuid(cluster.uuid),
               masterAddresses,
               mastersAddrChanged);
+          // Updating cluster in DB
+          createUpdateUniverseIntentTask(cluster);
         }
       }
 
@@ -153,8 +164,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
@@ -215,16 +228,42 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     boolean instanceTypeChanged = false;
-    if (!curIntent.instanceType.equals(newIntent.instanceType)) {
-      List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
-      // If the instance type changed from dev/xsmall to anything else,
-      // master resources will also change.
-      if (!isReadOnlyCluster
-          && !curIntent.instanceType.equals(newIntent.instanceType)
-          && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+    // TODO Support overriden instance types
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      if (!curIntent.instanceType.equals(newIntent.instanceType)) {
+        List<String> masterResourceChangeInstances = Arrays.asList("dev", "xsmall");
+        // If the instance type changed from dev/xsmall to anything else,
+        // master resources will also change.
+        if (!isReadOnlyCluster && masterResourceChangeInstances.contains(curIntent.instanceType)) {
+          restartAllPods = true;
+        }
+        instanceTypeChanged = true;
+      }
+    } else {
+      boolean tserverCpuChanged =
+          !curIntent.tserverK8SNodeResourceSpec.cpuCoreCount.equals(
+              newIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      boolean tserverMemChanged =
+          !curIntent.tserverK8SNodeResourceSpec.memoryGib.equals(
+              newIntent.tserverK8SNodeResourceSpec.memoryGib);
+      boolean masterMemChanged = false;
+      boolean masterCpuChanged = false;
+
+      // For clusters that have read replicas, this condition is true since we
+      // do not pass in masterK8sNodeResourceSpec.
+      if (curIntent.masterK8SNodeResourceSpec != null) {
+        masterMemChanged =
+            !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
+                newIntent.masterK8SNodeResourceSpec.memoryGib);
+        masterCpuChanged =
+            !curIntent.masterK8SNodeResourceSpec.cpuCoreCount.equals(
+                newIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+      }
+      instanceTypeChanged =
+          tserverCpuChanged || masterCpuChanged || tserverMemChanged || masterMemChanged;
+      if (!isReadOnlyCluster && (masterMemChanged || masterCpuChanged)) {
         restartAllPods = true;
       }
-      instanceTypeChanged = true;
     }
 
     Set<NodeDetails> mastersToAdd =
@@ -306,7 +345,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
 
     // Update the blacklist servers on master leader.
-    createPlacementInfoTask(tserversToRemove)
+    createPlacementInfoTask(tserversToRemove, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     // If the tservers have been removed, move the data.
@@ -393,6 +432,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         KubernetesCommandExecutor.CommandType.POD_INFO,
         newPI,
         isReadOnlyCluster);
+    if (!tserversToAdd.isEmpty()) {
+      installThirdPartyPackagesTaskK8s(
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+    }
 
     if (!mastersToAdd.isEmpty()) {
       // Update the master addresses on the target universes whose source universe belongs to
@@ -442,11 +485,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     // Perform adds.
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
     // Perform removes.
     for (int idx = 0; idx < mastersToRemove.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
     // Wait for master leader.
     createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -23,6 +23,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
   public boolean enableNodeToNodeEncrypt = false;
   public boolean enableClientToNodeEncrypt = false;
   public boolean allowInsecure = true;
+
   // below fields are already inherited from UniverseDefinitionTaskParams
   //  public UUID rootCA = null;
   //  public UUID clientRootCA = null;
@@ -50,10 +51,11 @@ public class TlsToggleParams extends UpgradeTaskParams {
     boolean existingEnableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeDetails.rootCA;
     UUID existingClientRootCA = universeDetails.getClientRootCA();
-    if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
-        && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+
+    // Due to a bug, temporarily disable rolling upgrade for TLS toggle.
+    if (upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
       throw new PlatformServiceException(
-          Status.BAD_REQUEST, "TLS toggle can be performed either rolling or non-rolling way.");
+          Status.BAD_REQUEST, "TLS toggle can only be performed in a non-rolling manner.");
     }
 
     if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
@@ -113,7 +115,8 @@ public class TlsToggleParams extends UpgradeTaskParams {
         && !userIntent.providerType.equals(CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
+          "K8SCertManager certificates are only supported for k8s providers with cert-manager"
+              + " configured.");
     }
 
     // TODO: Add check that the userIntent is to use cert-manager
@@ -122,7 +125,8 @@ public class TlsToggleParams extends UpgradeTaskParams {
         && !userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
-          "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
+          "K8SCertManager certificates are only supported for k8s providers with cert-manager"
+              + " configured.");
     }
 
     if (rootAndClientRootCASame

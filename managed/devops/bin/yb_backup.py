@@ -25,7 +25,7 @@ import signal
 import sys
 
 from argparse import RawDescriptionHelpFormatter
-from datetime import timedelta
+from datetime import datetime, timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
 
@@ -69,14 +69,14 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
-SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
+SNAPSHOT_DIR_GLOB = '*/table-*/tablet-*.snapshots/*'
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
-TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
+TABLE_PATH_PREFIX_TEMPLATE = '*/table-{}'
 
 TABLET_MASK = 'tablet-????????????????????????????????'
-TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
+TABLET_DIR_GLOB = TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 
 MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
@@ -223,12 +223,16 @@ class SingleArgParallelCmd:
                            Thread-3: -> fn(c)
     """
 
-    def __init__(self, fn, args):
+    def __init__(self, fn, args, verbose):
         self.fn = fn
         self.args = args
+        self.verbose = verbose
 
     def run(self, pool):
         fn_args = sorted(set(self.args))
+        if self.verbose:
+            utc_time = datetime.utcfromtimestamp(time.time())
+            logging.info(f'Method {self.fn.__name__} with args {fn_args} queued at {utc_time}')
         return self._run_internal(self.fn, fn_args, fn_args, pool)
 
     def _run_internal(self, internal_fn, internal_fn_srgs, fn_args, pool):
@@ -252,9 +256,10 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
                            Thread-2: -> fn(b1, b2)
     """
 
-    def __init__(self, fn):
+    def __init__(self, fn, verbose):
         self.fn = fn
         self.args = []
+        self.verbose = verbose
 
     def add_args(self, *args_tuple):
         assert isinstance(args_tuple, tuple)
@@ -263,6 +268,10 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
     def run(self, pool):
         def internal_fn(args_tuple):
             # One tuple - one function run.
+            if self.verbose:
+                utc_time = datetime.utcfromtimestamp(time.time())
+                logging.info(f'Method {self.fn.__name__} with args {args_tuple} \
+                             queued at {utc_time}')
             return self.fn(*args_tuple)
 
         fn_args = sorted(set(self.args))
@@ -286,13 +295,14 @@ class SequencedParallelCmd(SingleArgParallelCmd):
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
 
-    def __init__(self, fn, preprocess_args_fn=None, handle_errors=False):
+    def __init__(self, fn, preprocess_args_fn=None, handle_errors=False, verbose=False):
         self.fn = fn
         self.args = []
         self.preprocess_args_fn = preprocess_args_fn
         # Whether or not we will throw an error on a cmd failure, or handle it and return a
         # tuple: ('failed-cmd', handle).
         self.handle_errors = handle_errors
+        self.verbose = verbose
 
     # Handle is returned on failed command if handle_errors=true.
     # Example handle is a tuple of (tablet_id, tserver_ip).
@@ -308,6 +318,10 @@ class SequencedParallelCmd(SingleArgParallelCmd):
 
     def run(self, pool):
         def internal_fn(list_of_arg_tuples):
+            if self.verbose:
+                utc_time = datetime.utcfromtimestamp(time.time())
+                logging.info(f'Method {self.fn.__name__} with args {list_of_arg_tuples} \
+                            queued at {utc_time}')
             assert isinstance(list_of_arg_tuples, list)
             # First entry is the handle.
             handle = list_of_arg_tuples[0]
@@ -510,6 +524,9 @@ class AzBackupStorage(AbstractBackupStorage):
 
     def _command_list_prefix(self):
         return "azcopy"
+
+    def clean_up_logs_cmd(self):
+        return ["{} {} {}".format(self._command_list_prefix(), "jobs", "clean")]
 
     def upload_file_cmd(self, src, dest, local=False):
         if local is True:
@@ -1313,6 +1330,11 @@ class YBBackup:
             help="Do not disable automatic splitting before taking a backup. This is dangerous "
                  "because a tablet might be split and cleaned up just before we try to copy its "
                  "data.")
+        parser.add_argument(
+            '--use_server_broadcast_address', required=False, action='store_true', default=False,
+            help="Use server_broadcast_address if available, otherwise use rpc_bind_address. Note "
+                 "that broadcast address is overwritten by 'ts_secondary_ip_map' if available."
+        )
 
         """
         Test arguments
@@ -1340,6 +1362,11 @@ class YBBackup:
         parser.add_argument(
             '--TEST_never_fsync', required=False, action='store_true',
             default=False, help=argparse.SUPPRESS)
+
+        parser.add_argument(
+            '--TEST_drop_table_before_upload', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
+
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1356,7 +1383,8 @@ class YBBackup:
             with terminating(ThreadPool(self.args.parallelism)) as pool:
                 self.pools.append(pool)
                 tserver_ips = self.get_live_tservers()
-                SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
+                SingleArgParallelCmd(self.find_nfs_storage,
+                                     tserver_ips, verbose=self.args.verbose).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
@@ -1433,9 +1461,9 @@ class YBBackup:
             if not sas_token:
                 raise BackupException(
                     "Set SAS for Azure Storage in AZURE_STORAGE_SAS_TOKEN environment variable.")
-            if '?sv' not in sas_token:
+            if '?' not in sas_token:
                 raise BackupException(
-                    "SAS tokens must begin with '?sv'.")
+                    "SAS tokens must begin with '?'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 
@@ -1455,7 +1483,7 @@ class YBBackup:
             # of the tserver. The host can either be RPC IP/Broadcast IP.
             logging.info('TS Web hosts/ports: {}'.format(self.args.ts_web_hosts_ports))
             for host_port in self.args.ts_web_hosts_ports.split(','):
-                (host, port) = host_port.split(':')
+                (host, port) = host_port.rsplit(':', 1)
                 # Add this host(RPC IP or Broadcast IP) to ts_cfgs dict. Set web port to access
                 # /varz endpoint.
                 self.ts_cfgs.setdefault(host, YBTSConfig(self)).set_web_port(port)
@@ -1469,8 +1497,8 @@ class YBBackup:
             for i in range(len(self.args.region)):
                 self.region_to_location[self.args.region[i]] = self.args.region_location[i]
 
+        live_tservers = self.get_live_tservers()
         if not self.args.disable_checksums:
-            live_tservers = self.get_live_tservers()
             if live_tservers:
                 # Need to check the architecture for only first node, rest
                 # will be same in the cluster.
@@ -1562,7 +1590,7 @@ class YBBackup:
         if not self.leader_master_ip:
             all_masters = self.args.masters.split(",")
             # Use first Master's ip in list to get list of all masters.
-            self.leader_master_ip = all_masters[0].split(':')[0]
+            self.leader_master_ip = all_masters[0].rsplit(':', 1)[0]
 
             # Get LEADER ip, if it's ALIVE, else any alive master ip.
             output = self.run_yb_admin(['list_all_masters'])
@@ -1617,7 +1645,7 @@ class YBBackup:
             alive_ts_ips = self.get_live_tservers()
             if alive_ts_ips:
                 leader_master = self.get_leader_master_ip()
-                master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                master_hosts = {hp.rsplit(':', 1)[0] for hp in self.args.masters.split(",")}
                 # Exclude the Master Leader because the host has maximum network pressure.
                 # Let's try to use a follower Master node instead.
                 master_hosts.discard(leader_master)
@@ -1796,7 +1824,7 @@ class YBBackup:
         return self.run_dump_tool(self.args.local_ysql_dumpall_binary,
                                   self.args.remote_ysql_dumpall_binary, cmd_line_args)
 
-    def run_ysql_shell(self, cmd_line_args):
+    def run_ysql_shell(self, cmd_line_args, db_name="template1"):
         """
         Runs the ysql shell utility from the configured location.
         :param cmd_line_args: command-line arguments to ysql shell
@@ -1812,7 +1840,7 @@ class YBBackup:
             # Passing dbname template1 explicitly as ysqlsh fails to connect if
             # yugabyte database is deleted. We assume template1 will always be there
             # in ysqlsh.
-            self.get_ysql_dump_std_args() + ['--dbname=template1'],
+            self.get_ysql_dump_std_args() + ['--dbname={}'.format(db_name)],
             cmd_line_args,
             run_ip=run_at_ip)
 
@@ -2068,9 +2096,17 @@ class YBBackup:
         return output
 
     def upload_cloud_config(self, server_ip):
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'upload_cloud_config with args {server_ip} started at {start_time}')
         if server_ip not in self.server_ips_with_uploaded_cloud_cfg:
             self.server_ips_with_uploaded_cloud_cfg[server_ip] = self.upload_local_file_to_server(
                 server_ip, self.cloud_cfg_file_path, self.get_tmp_dir())
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(f'upload_cloud_config with args {server_ip} finished at {end_time}. \
+                        Time taken = {time_taken.total_seconds():.6f}s.')
 
     def upload_file_from_local(self, dest_ip, src, dest):
         output = ''
@@ -2273,9 +2309,10 @@ class YBBackup:
         :return: The obtained broadcast_ip.
         """
         resolved_ip_port = broadcast_ip_port \
-            if broadcast_ip_port != 'N/A' else rpc_ip_port
-        (broadcast_ip, port) = resolved_ip_port.split(':')
-        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+            if broadcast_ip_port != 'N/A' and self.args.use_server_broadcast_address \
+            else rpc_ip_port
+        (broadcast_ip, port) = resolved_ip_port.rsplit(':', 1)
+        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
         if self.secondary_to_primary_ip_map:
             broadcast_ip = self.secondary_to_primary_ip_map.get(rpc_ip, broadcast_ip)
 
@@ -2315,6 +2352,9 @@ class YBBackup:
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'find_data_dirs with args {tserver_ip} started at {start_time}')
         (ts_config_ip, ts_config) = self.get_ts_config_detail(tserver_ip)
         if self.secondary_to_primary_ip_map:
             ts_config_ip = self.secondary_to_primary_ip_map.get(ts_config_ip,
@@ -2330,6 +2370,11 @@ class YBBackup:
         # entry to self.ts_cfgs for tserver_ip with the same YBTSConfig object.
         if tserver_ip != ts_config_ip:
             self.ts_cfgs.setdefault(tserver_ip, ts_config)
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(f'find_data_dirs with args {tserver_ip} finished at {end_time}. \
+                     Time taken = {time_taken.total_seconds():.6f}s.')
         return ts_config.data_dirs()
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
@@ -2364,9 +2409,11 @@ class YBBackup:
                 tablet_dirs = tserver_ip_to_tablet_dirs[tserver_ip]
 
                 for data_dir in data_dirs:
+                    ts_data_dir = data_dir
+                    rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                        ['find', data_dir] +
+                        ['find', rocksdb_data_dir] +
                         ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
                         ['-name', TABLET_MASK,
                          '-and',
@@ -2429,6 +2476,11 @@ class YBBackup:
         :param tserver_ip: tablet server IP or host name
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(
+                f'find_snapshot_directories with args {data_dir, snapshot_id, tserver_ip} \
+                started at {start_time}')
         output = self.run_ssh_cmd(
             ['find', data_dir] +
             ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
@@ -2436,6 +2488,13 @@ class YBBackup:
              '-wholename', SNAPSHOT_DIR_GLOB,
              '-print'],
             tserver_ip)
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(
+                f'find_snapshot_directories with args {data_dir, snapshot_id, tserver_ip} \
+                finished at {end_time}. \
+                Time taken = {time_taken.total_seconds():.6f}s.')
         return [line.strip() for line in output.split("\n") if line.strip()]
 
     def upload_snapshot_directories(self, tablet_leaders, snapshot_id, snapshot_bucket):
@@ -2466,17 +2525,21 @@ class YBBackup:
             # Upload config to every TS here to prevent parallel uploading of the config
             # in 'find_snapshot_directories' below.
             if self.has_cfg_file():
-                SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
+                SingleArgParallelCmd(self.upload_cloud_config,
+                                     tserver_ips, verbose=self.args.verbose).run(pool)
 
-            parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+            parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories,
+                                                          verbose=self.args.verbose)
             tservers_processed = []
             while len(tserver_ips) > len(tservers_processed):
                 for tserver_ip in list(tserver_ips):
                     if tserver_ip not in tservers_processed:
                         data_dirs = data_dir_by_tserver[tserver_ip]
                         if len(data_dirs) > 0:
-                            data_dir = data_dirs[0]
-                            parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
+                            ts_data_dir = data_dir = data_dirs[0]
+                            rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
+                            parallel_find_snapshots.add_args(rocksdb_data_dir,
+                                                             snapshot_id, tserver_ip)
                             data_dirs.remove(data_dir)
 
                             if len(data_dirs) == 0:
@@ -2494,8 +2557,14 @@ class YBBackup:
                              "dirs.")
                 time.sleep(TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC)
 
+            if self.args.TEST_drop_table_before_upload:
+                logging.info("Dropping table mytbl before uploading snapshot")
+                db_name = keyspace_name(self.args.keyspace[0])
+                drop_table_cmd = ['--command=drop table mytbl']
+                self.run_ysql_shell(drop_table_cmd, db_name)
+
             parallel_uploads = SequencedParallelCmd(
-                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, verbose=self.args.verbose)
             self.prepare_cloud_ssh_cmds(
                 parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
                 snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
@@ -2600,6 +2669,7 @@ class YBBackup:
                          target_checksum_filepath))
             upload_checksum_cmd = self.storage.upload_file_cmd(
                 snapshot_dir_checksum, target_checksum_filepath)
+            delete_checksum_cmd = ['rm', snapshot_dir_checksum]
 
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
@@ -2612,8 +2682,14 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 2. Upload check-sum file.
             parallel_commands.add_args(tuple(upload_checksum_cmd))
-        # 3. Upload tablet folder.
+            # 3. Delete local check-sum file.
+            parallel_commands.add_args(tuple(delete_checksum_cmd))
+        # 4. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd))
+
+        # Cleanup azcopy logs and plan files
+        if self.is_az():
+            parallel_commands.add_args(tuple(self.storage.clean_up_logs_cmd()))
 
     def prepare_download_command(self, parallel_commands, tablet_id,
                                  tserver_ip, snapshot_dir, snapshot_metadata):
@@ -2647,14 +2723,16 @@ class YBBackup:
         create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
         # Throw an error on failed checksum comparison, this will trigger this entire command
         # chain to be retried.
+        generated_checksum = self.checksum_path(strip_dir(snapshot_dir_tmp))
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum,
-            self.checksum_path(strip_dir(snapshot_dir_tmp)),
+            generated_checksum,
             error_on_failure=True)
 
         rmcmd = ['rm', '-rf', snapshot_dir]
         mkdircmd = ['mkdir', '-p', snapshot_dir_tmp]
         mvcmd = ['mv', snapshot_dir_tmp, snapshot_dir]
+        rm_checksum_cmd = ['rm', snapshot_dir_checksum, generated_checksum]
 
         # Commands to be run over ssh for downloading the tablet backup.
         # 1. Clean-up: delete target tablet folder.
@@ -2670,8 +2748,14 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 6. Compare check-sum files.
             parallel_commands.add_args(check_checksum_cmd)
-        # 7. Move the backup in place.
+            # 7. Remove downloaded and generated check-sum files
+            parallel_commands.add_args(tuple(rm_checksum_cmd))
+        # 8. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd))
+
+        # Cleanup azcopy logs and plan files
+        if self.is_az():
+            parallel_commands.add_args(tuple(self.storage.clean_up_logs_cmd()))
 
     def prepare_cloud_ssh_cmds(
             self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
@@ -2831,8 +2915,16 @@ class YBBackup:
         raise exception
         :param tserver_ip: tablet server ip
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'find_nfs_storage with args {tserver_ip} started at {start_time}')
         try:
             self.run_ssh_cmd(['ls', self.args.nfs_storage_path], tserver_ip)
+            end_time = datetime.utcfromtimestamp(time.time())
+            time_taken = end_time - start_time
+            if self.args.verbose:
+                logging.info(f'find_nfs_storage with args {tserver_ip} finished at {end_time}. \
+                            Time taken = {time_taken.total_seconds():.6f}s.')
         except Exception as ex:
             raise BackupException(
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
@@ -2887,6 +2979,10 @@ class YBBackup:
             self.run_ssh_cmd(
                 self.storage.upload_file_cmd(src_path, dest_path),
                 server_ip)
+
+            # Cleanup azure logs and plan files after upload
+            if self.is_az():
+                self.run_ssh_cmd(self.storage.clean_up_logs_cmd(), server_ip)
 
     def get_ysql_catalog_version(self):
         """
@@ -3449,7 +3545,7 @@ class YBBackup:
         parallelism = min(16, (self.args.parallelism + 1) // 2)
         pool = ThreadPool(parallelism)
         self.pools.append(pool)
-        parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin)
+        parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin, verbose=self.args.verbose)
 
         # First construct all the yb-admin commands to send.
         for new_tablet_id in snapshot_metadata['tablet']:
@@ -3479,7 +3575,7 @@ class YBBackup:
                     if LEADING_UUID_RE.match(line):
                         fields = split_by_tab(line)
                         (rpc_ip_port, role) = (fields[1], fields[2])
-                        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+                        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
                         if role == 'LEADER' or role == 'FOLLOWER' or role == 'READ_REPLICA':
                             broadcast_ip = self.rpc_to_broadcast_map[rpc_ip]
                             tablets_by_tserver_ip.setdefault(broadcast_ip, set()).add(tablet_id)
@@ -3537,7 +3633,9 @@ class YBBackup:
             self.pools.append(pool)
             self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
             tserver_ips = list(tablets_by_tserver_to_download.keys())
-            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs,
+                                                       tserver_ips,
+                                                       verbose=self.args.verbose).run(pool)
 
             if self.args.verbose:
                 logging.info('Found data directories: {}'.format(data_dir_by_tserver))
@@ -3553,7 +3651,8 @@ class YBBackup:
 
             self.timer.log_new_phase("Download data")
             parallel_downloads = SequencedParallelCmd(
-                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, handle_errors=True)
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds,
+                handle_errors=True, verbose=self.args.verbose)
             self.prepare_cloud_ssh_cmds(
                 parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
                 None, snapshot_id, tablets_by_tserver_to_download,

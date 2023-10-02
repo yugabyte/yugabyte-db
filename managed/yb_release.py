@@ -35,7 +35,7 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
-    common_sbt_options = ['-batch', '-no-color']
+    common_sbt_options = ['-batch', '-no-colors']
 
     _, err = Popen(["sbt", "clean"] + common_sbt_options, stderr=PIPE).communicate()
     if err:

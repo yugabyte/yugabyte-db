@@ -494,17 +494,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-	{InheritsRelationId,    /* INHERITSRELID */
-		InheritsParentIndexId,
-		2,
-		{
-			Anum_pg_inherits_inhparent,
-			Anum_pg_inherits_inhrelid,
-			0,
-			0
-		},
-		32
-	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
 		1,
@@ -1221,7 +1210,9 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 
 	/* Done: mark cache(s) as loaded. */
 	if (!YBCIsInitDbModeEnvVarSet() &&
-		*YBCGetGFlags()->ysql_catalog_preload_additional_tables)
+		(IS_NON_EMPTY_STR_FLAG(
+			YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
+			*YBCGetGFlags()->ysql_catalog_preload_additional_tables))
 	{
 		cache->yb_cc_is_fully_loaded = true;
 		if (idx_cache)

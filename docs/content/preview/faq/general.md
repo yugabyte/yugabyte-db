@@ -1,8 +1,8 @@
 ---
-title: FAQs about YugabyteDB
+title: YugabyteDB FAQS
 headerTitle: General FAQ
 linkTitle: General FAQ
-description: Answers to commonly asked questions about YugabyteDB.
+description: YugabyteDB FAQ — How does YugabyteDB work? When is YugabyteDB database a good fit? What APIs does YugabyteDB support? And other frequently asked questions.
 aliases:
   - /preview/faq/product/
   - /preview/introduction/overview/
@@ -88,7 +88,7 @@ YugabyteDB feature highlights are listed below.
 
 - [Global data distribution](../../explore/multi-region-deployments/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
-- [Auto-sharding and auto-rebalancing](../../explore/linear-scalability/sharding-data/) to ensure uniform load across all nodes even for very large clusters.
+- [Auto-sharding and auto-rebalancing](../../architecture/docdb-sharding/sharding/) to ensure uniform load across all nodes even for very large clusters.
 
 #### Cloud native
 
@@ -108,6 +108,7 @@ YugabyteDB feature highlights are listed below.
 
 YugabyteDB has had the following major (stable) releases:
 
+- [v2.18](https://www.yugabyte.com/blog/release-218-announcement/) in May 2023
 - [v2.16](https://www.yugabyte.com/blog/yugabytedb-216/) in December 2022
 - [v2.14](https://www.yugabyte.com/blog/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.
 - [v2.12](https://www.yugabyte.com/blog/announcing-yugabytedb-2-12/) in February 2022. (There was no v2.10 release.)
@@ -155,7 +156,7 @@ Please do try our beta features and give feedback on them on our [Slack communit
 
 [YugabyteDB Anywhere](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options, and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
-[YugabyteDB Managed](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS) and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
+[YugabyteDB Managed](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
 
 For a more detailed comparison between the above, see [Compare Products](https://www.yugabyte.com/compare-products/).
 
@@ -183,7 +184,7 @@ Examples: Amazon Aurora, Google Cloud Spanner, CockroachDB, TiDB
 
 - None
 
-Learn more: [What is Distributed SQL?](https://www.yugabyte.com/blog/what-is-distributed-sql/)
+Learn more: [What is Distributed SQL?](https://www.yugabyte.com/tech/distributed-sql/)
 
 #### Monolithic SQL
 

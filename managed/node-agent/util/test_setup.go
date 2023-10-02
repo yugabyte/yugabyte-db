@@ -168,7 +168,7 @@ func GetTestRegisterResponse() model.RegisterResponseSuccess {
 		NodeAgent: model.NodeAgent{
 			CommonInfo:   commonInfo,
 			Uuid:         "n1234",
-			UpdatedAt:    1234,
+			UpdatedAt:    time.Now(),
 			Config:       config,
 			CustomerUuid: "c1234",
 		},

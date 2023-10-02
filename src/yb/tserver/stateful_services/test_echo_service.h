@@ -27,15 +27,17 @@ class TestEchoService : public StatefulRpcServiceBase<TestEchoServiceIf> {
       const std::shared_future<client::YBClient*>& client_future);
 
  private:
-  void Activate(const int64_t leader_term) override;
+  void Activate() override;
   void Deactivate() override;
   Result<bool> RunPeriodicTask() override;
   Status RecordRequestInTable(const std::string& message);
+  Status ReloadEchoCountFromTable();
 
-  STATEFUL_SERVICE_IMPL_METHODS((GetEcho));
+  STATEFUL_SERVICE_IMPL_METHODS((GetEcho)(GetEchoCount));
 
  private:
   const std::string node_uuid_;
+  uint32 echo_count_ = 0;
 };
 
 }  // namespace stateful_service

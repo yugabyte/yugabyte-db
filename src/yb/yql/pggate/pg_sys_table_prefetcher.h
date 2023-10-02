@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <boost/container/small_vector.hpp>
@@ -22,7 +23,9 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 struct PgObjectId;
@@ -30,14 +33,28 @@ struct PgObjectId;
 namespace pggate {
 class PgSession;
 
-YB_DEFINE_ENUM(PrefetchingCacheMode, (NO_CACHE)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+YB_DEFINE_ENUM(PrefetchingCacheMode, (TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
 
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
 
 struct PrefetcherOptions {
-  uint64_t latest_known_ysql_catalog_version;
-  PrefetchingCacheMode cache_mode;
+  struct VersionInfo {
+    uint64_t version;
+    bool is_db_catalog_version_mode;
+
+    std::string ToString() const;
+  };
+
+  struct CachingInfo {
+    VersionInfo version_info;
+    PrefetchingCacheMode mode;
+
+    std::string ToString() const;
+  };
+
+  std::optional<CachingInfo> caching_info;
+  uint64_t fetch_row_limit;
 
   std::string ToString() const;
 };
@@ -51,7 +68,8 @@ class PgSysTablePrefetcher {
   ~PgSysTablePrefetcher();
 
   // Register new sys table to be read on a first GetData method call.
-  void Register(const PgObjectId& table_id, const PgObjectId& index_id);
+  void Register(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
 
   // Load registered tables
   Status Prefetch(PgSession* session);

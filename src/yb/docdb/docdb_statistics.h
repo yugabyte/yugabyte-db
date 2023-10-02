@@ -22,7 +22,11 @@ class ScopedStatistics;
 
 } // namespace rocksdb
 
-namespace yb::docdb {
+namespace yb {
+
+class PgsqlResponsePB;
+
+namespace docdb {
 
 class DocDBStatistics {
  public:
@@ -42,9 +46,16 @@ class DocDBStatistics {
       rocksdb::Statistics* regulardb_statistics,
       rocksdb::Statistics* intentsdb_statistics);
 
+  // Returns number of metric changes dumped.
+  size_t Dump(std::stringstream* out) const;
+
+  void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+
  private:
   std::unique_ptr<rocksdb::ScopedStatistics> regulardb_statistics_;
   std::unique_ptr<rocksdb::ScopedStatistics> intentsdb_statistics_;
 };
 
-} // namespace yb::docdb
+} // namespace docdb
+
+} // namespace yb

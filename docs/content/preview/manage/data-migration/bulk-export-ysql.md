@@ -58,12 +58,11 @@ To overcome the above issues, YugabyteDB supports `HASH` ordering in addition to
 - The table can be pre-split to utilize all nodes of a cluster right from the start.
 - Range queries **cannot** be efficiently supported on the index.
 
-<!-- Commenting out this section which can be introduced again when we can recommend colocation.
- ### Optimize databases with many objects
+### Optimize databases with many objects
 
 {{< tip title="Tip" >}}
 
-Databases with over 500 objects (tables, indexes and unique constraints mainly) would benefit from the colocation optimization here. Colocation also improves join performance for smaller tables.
+Databases with more than 500 objects (tables, indexes and unique constraints mainly) can benefit from colocation. Colocation also improves join performance for smaller tables.
 
 {{< /tip >}}
 
@@ -71,11 +70,7 @@ In many scenarios, there may be a large number of database objects (tables and i
 
 Enabling the colocation property at a database level causes all tables created in this database to be colocated by default. Tables in this database that hold a large dataset or those that are expected to grow in size over time can be opted out of the colocation group, which would cause them to be split into multiple tablets.
 
-{{< note title="Note" >}}
-
-Making colocation the default for all databases is [work in progress](https://github.com/yugabyte/yugabyte-db/issues/5239).
-
-{{< /note >}} -->
+For more information, refer to [Colocated tables](../../../architecture/docdb-sharding/colocated-tables/).
 
 ### Pre-split large tables
 
@@ -253,7 +248,7 @@ The recommended way to export data from PostgreSQL for purposes of importing it 
 However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../migrate/). To learn more, refer to the [export schema](../../../migrate/migrate-steps/#export-and-analyze-schema) and [export data](../../../migrate/migrate-steps/#export-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../yugabyte-voyager/). To learn more, refer to the [export schema](../../../yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](../../../yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
 {{< /tip >}}
 
 ### Export data into CSV files using the COPY command

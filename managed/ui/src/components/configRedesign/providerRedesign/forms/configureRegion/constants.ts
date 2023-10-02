@@ -1,7 +1,18 @@
+/**
+ * ```
+ * `
+ * ADD - Add a region to the provider
+ * EDIT_NEW - Edit a region which is not yet saved on the DB
+ * EDIT_EXISTING - Edit a region which was saved on the DB
+ * VIEW - View a region (Readonly)
+ * `
+ * ```
+ */
 export const RegionOperation = {
   ADD: 'add',
   EDIT_NEW: 'editNew',
-  EDIT_EXISTING: 'editExisting'
+  EDIT_EXISTING: 'editExisting',
+  VIEW: 'view'
 } as const;
 export type RegionOperation = typeof RegionOperation[keyof typeof RegionOperation];
 
@@ -37,5 +48,7 @@ export const K8sCertIssuerTypeLabel = {
 export const OnPremRegionFieldLabel = {
   CODE: 'Region Name',
   LOCATION: 'Location',
+  LONGITUDE: 'Longitude',
+  LATITUDE: 'Latitude',
   ZONE_NAME: 'Zone Name'
 } as const;

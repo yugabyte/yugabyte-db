@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-python3 "$YB_SRC_ROOT"/python/yb/run_pvs_studio_analyzer.py "$@"
+python3 "$YB_SCRIPT_PATH_RUN_PVS_STUDIO_ANALYZER" "$@"

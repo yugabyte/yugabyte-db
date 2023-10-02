@@ -143,6 +143,14 @@ public class AlertTemplateSettingsService {
     return settings;
   }
 
+  public AlertTemplateSettings getOrBadRequest(UUID customerUuid, UUID uuid) {
+    AlertTemplateSettings settings = getOrBadRequest(uuid);
+    if (!(settings.getCustomerUUID().equals(customerUuid))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Template Settings UUID: " + uuid);
+    }
+    return settings;
+  }
+
   public List<AlertTemplateSettings> list(AlertTemplateSettingsFilter filter) {
     return createQueryByFilter(filter).findList();
   }

@@ -1,13 +1,6 @@
 import { Field } from 'formik';
-import React from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import {
-  YBCheckBox,
-  YBControlledSelectWithLabel,
-  YBFormInput,
-  YBFormToggle,
-  YBToggle
-} from '../fields';
+import { YBCheckBox, YBControlledSelectWithLabel, YBFormToggle, YBToggle } from '../fields';
 import YBModalForm from '../YBModalForm/YBModalForm';
 
 import { YBLoading } from '../../indicators';
@@ -16,7 +9,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
 import { updateTLS } from '../../../../actions/customers';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
+import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
@@ -146,8 +142,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     createNewRootCA: false,
     createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,
-    timeDelay: 240,
-    rollingUpgrade: true
+    rollingUpgrade: false
   };
 
   const preparePayload = (formValues, setStatus) => {
@@ -224,9 +219,13 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     });
   };
 
-  const universeHasXClusterConfig =
-    universeDetails.sourceXClusterConfigs.length > 0 ||
-    universeDetails.targetXClusterConfigs.length > 0;
+  const universeHasXClusterConfig = getAllXClusterConfigs(currentUniverse.data).length > 0;
+
+  const canEditEAT = hasNecessaryPerm({
+    onResource: currentUniverse.data.universeDetails.universeUUID,
+    ...UserPermissionMap.editEncryptionInTransit
+  });
+
   return (
     <YBModalForm
       visible={visible}
@@ -239,6 +238,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
         handleSubmit(values, setStatus);
         setSubmitting(false);
       }}
+      isButtonDisabled={!canEditEAT}
       render={({ values, handleChange, setFieldValue, status, setStatus }) => {
         if (isCertificateListLoading) {
           return <YBLoading />;
@@ -256,7 +256,10 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
                 <p>
                   To enable replication again after toggling TLS on this universe, you must:
                   <ol>
-                    <li>Toggle TLS on all other participating universes.</li>
+                    <li>
+                      Configure the TLS toggle on all other participating universes to match the
+                      current universe.
+                    </li>
                     <li>Restart all affected xCluster configurations.</li>
                   </ol>
                 </p>
@@ -381,26 +384,6 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
                     }
                   )}
                 </div>
-                <Row className="rolling-upgrade">
-                  <Col lg={12}>
-                    <Field
-                      name="rollingUpgrade"
-                      component={YBCheckBox}
-                      checkState={initialValues.rollingUpgrade}
-                      label="Rolling Upgrade"
-                    />
-                  </Col>
-                </Row>
-                <Row className="server-delay">
-                  <Col lg={12}>
-                    <Field
-                      name="timeDelay"
-                      type="number"
-                      label="Upgrade Delay Between Servers (seconds)"
-                      component={YBFormInput}
-                    />
-                  </Col>
-                </Row>
               </>
             )}
           </div>

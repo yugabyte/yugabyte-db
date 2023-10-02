@@ -69,6 +69,7 @@ set(TABLET_SRCS
   tablet_retention_policy.cc
   preparer.cc
   write_query.cc
+  retryable_requests_flusher.cc
   )
 
 set(TABLET_DEPS pq_utils)

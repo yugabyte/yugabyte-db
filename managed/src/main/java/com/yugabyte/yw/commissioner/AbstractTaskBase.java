@@ -21,8 +21,10 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -73,6 +75,8 @@ public abstract class AbstractTaskBase implements ITask {
   private final TaskExecutor taskExecutor;
   protected final HealthChecker healthChecker;
   protected final NodeManager nodeManager;
+  protected final BackupHelper backupHelper;
+  protected final AutoFlagUtil autoFlagUtil;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -92,6 +96,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
     this.healthChecker = baseTaskDependencies.getHealthChecker();
     this.nodeManager = baseTaskDependencies.getNodeManager();
+    this.backupHelper = baseTaskDependencies.getBackupHelper();
+    this.autoFlagUtil = baseTaskDependencies.getAutoFlagUtil();
   }
 
   protected ITaskParams taskParams() {

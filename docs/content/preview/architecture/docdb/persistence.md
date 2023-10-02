@@ -17,13 +17,15 @@ Once data is replicated using Raft across a majority of the YugabyteDB tablet-pe
 
 ## Storage model
 
-This storage layer is a persistent key-to-object (or to-document) store. The following diagram depicts the storage model:
+This storage layer is a persistent key-to-object (or to-document) store. The following diagram depicts the storage model where not every element is always present:
 
 ![cql_row_encoding](/images/architecture/cql_row_encoding.png)
 
 ### DocDB key
 
-The keys in a DocDB document model are compound keys consisting of one or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.
+The keys in a DocDB document model are compound keys consisting of zero or more hash-organized components followed by zero or more ordered (range) components. These components are stored in their data type-specific sort order, with both ascending and descending sort order supported for each ordered component of the key.  If any hash columns are present then they are preceded by a 16-bit hash of the hash column values.
+
+If [colocation](../../docdb-sharding/colocated-tables/) is being used then the key will be prefixed with the colocation ID of the table it is referring to (not shown in the diagram); this separates data from different tables colocated in the same tablet.
 
 ### DocDB value
 
@@ -42,16 +44,15 @@ The following example shows a document stored in DocDB:
 
 ```text
 DocumentKey1 = {
-	SubKey1 = {
-		SubKey2 = Value1
-		SubKey3 = Value2
-	},
-	SubKey4 = Value3
+  SubKey1 = {
+    SubKey2 = Value1
+    SubKey3 = Value2
+  },
+  SubKey4 = Value3
 }
 ```
 
-Keys stored in RocksDB consist of a number of components, where the first component is a document
-key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from strings. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
+Keys stored in RocksDB consist of a number of components, where the first component is a document key, followed by several scalar components, and finally followed by a MVCC timestamp (sorted in reverse order). Each component in the DocumentKey, SubKey, and Value, are PrimitiveValues, which are type value pairs that can be encoded to and decoded from byte arrays. When encoding primitive values in keys, a binary-comparable encoding is used for the value, so that sort order of the encoding is the same as the sort order of the value.
 
 #### Updates and deletes
 
@@ -65,8 +66,7 @@ DocumentKey1, SubKey1, SubKey3, T10 -> Value2
 DocumentKey1, SubKey4, T10 -> Value3
 ```
 
-Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the
-corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
+Deletions of documents and subdocuments are performed by writing a single Tombstone marker at the corresponding value. During compaction, overwritten or deleted values are cleaned up to reclaim space.
 
 ## Mapping SQL rows to DocDB
 
@@ -76,11 +76,11 @@ For YSQL and YCQL tables, every row is a document in DocDB.
 
 The document key contains the full primary key with column values organized in the following order:
 
-1. A 16-bit hash of the hash column values is stored.
+1. A 16-bit hash of the hash column values is stored if any hash columns are present.
 2. The hash columns are stored.
 3. The clustering (range) columns are stored.
 
-Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key’s hash or range components.
+Each data type supported in YSQL or YCQL is represented by a unique byte. The type prefix is also present in the primary key hash or range components.
 
 ### Non-primary key columns
 
@@ -130,15 +130,14 @@ Testing the packed row feature with different configurations showed significant 
 
 The packed row feature works for the YSQL API using the YSQL-specific GFlags with most cross features like backup and restore, schema changes, and so on, subject to certain known limitations which are currently under development:
 
-* [#15740](https://github.com/yugabyte/yugabyte-db/issues/15740) Integration with CDC and schema changes (Beta) - There are some known limitations with schema changes/DDLs and CDC and Packed Row feature.
-* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster (Beta) - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
+* [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143) Colocated and xCluster - There are some limitations around propagation of schema changes for colocated tables in xCluster in the packed row format that are being worked on.
 * [#14369](https://github.com/yugabyte/yugabyte-db/issues/14369) Packed row support for YCQL is limited and is still being hardened.
 
 ## Data expiration in YCQL
 
 In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's syscatalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
 
-Furthermore, YCQL has a distinction between rows created using Insert vs Update. YugabyteDB keeps track of this difference (and column-level TTLs) using a "liveness column", a special system column invisible to the user. It is added for inserts, but not updates, which ensures the row is present even if all non-primary key columns are deleted only in the case of inserts.
+Furthermore, YCQL has a distinction between rows created using Insert vs Update. YugabyteDB keeps track of this difference (and row-level TTLs) using a "liveness column", a special system column invisible to the user. It is added for inserts, but not updates, which ensures the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
 ## Collection type examples for YCQL
 
@@ -188,6 +187,7 @@ The entries in DocDB would look similar to the following:
 (hash1, 'user1', 10), msg_props_column_id, 'subject', T1 -> 'hello'
 </code>
 </pre>
+
 ### Update entire row
 
 The following example updates an entire row:
@@ -265,8 +265,8 @@ T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
 
 The following are the two types of TTL used in YCQL:
 
-- Table-level TTL: YCQL allows the TTL property to be specified at the table level. In this case, TTL is not stored on a per key-value pair basis in RocksDB; instead, TTL is implicitly enforced on reads and during compactions to reclaim space.
-- Row- and column-level TTL: YCQL allows the TTL property to be specified at the level of each `INSERT` and `UPDATE` operation. In such cases, TTL is stored as part of the RocksDB value.
+* Table-level TTL: YCQL allows the TTL property to be specified at the table level. In this case, TTL is not stored on a per key-value pair basis in RocksDB; instead, TTL is implicitly enforced on reads and during compactions to reclaim space.
+* Row- and column-level TTL: YCQL allows the TTL property to be specified at the level of each `INSERT` and `UPDATE` operation. In such cases, TTL is stored as part of the RocksDB value.
 
 The following example demonstrates use of the row-level TTL:
 

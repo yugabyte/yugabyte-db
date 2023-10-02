@@ -114,7 +114,12 @@ class TransactionStatusResolver::Impl {
     // transaction statuses, which is NOT concurrent.
     // So we could avoid doing synchronization here.
     auto& tablet_id_and_queue = *queues_.begin();
-    auto client = participant_context_.client_future().get();
+    auto client_result = participant_context_.client();
+    if (!client_result.ok()) {
+      Complete(client_result.status());
+      return;
+    }
+    auto client = client_result.get();
     if (!client) {
       Complete(STATUS(Aborted, "Aborted because cannot start RPC"));
     }
@@ -163,7 +168,12 @@ class TransactionStatusResolver::Impl {
 
     AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_delay_ms);
 
-    auto client = participant_context_.client_future().get();
+    auto client_result = participant_context_.client();
+    if (!client_result.ok()) {
+      Complete(client_result.status());
+      return;
+    }
+    auto client = client_result.get();
     if (!client || !rpcs_.RegisterAndStart(
         client::GetTransactionStatus(
             std::min(deadline_, TransactionRpcDeadline()),
@@ -249,6 +259,11 @@ class TransactionStatusResolver::Impl {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
+      if (response.deadlock_reason().size() > i &&
+          response.deadlock_reason(i).code() != AppStatusPB::OK) {
+        // response contains a deadlock specific error.
+        status_info.expected_deadlock_status = StatusFromPB(response.deadlock_reason(i));
+      }
 
       if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
         YB_LOG_EVERY_N(WARNING, 1)

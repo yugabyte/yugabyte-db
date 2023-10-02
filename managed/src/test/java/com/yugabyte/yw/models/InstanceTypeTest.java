@@ -6,12 +6,14 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,6 +22,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -36,6 +40,7 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
+  private Provider azuProvider;
   private Provider onpremProvider;
   private Customer defaultCustomer;
   private InstanceType.InstanceTypeDetails defaultDetails;
@@ -47,6 +52,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    azuProvider = ModelFactory.azuProvider(defaultCustomer);
+
     onpremProvider = ModelFactory.onpremProvider(defaultCustomer);
     InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
     volumeDetails.volumeSizeGB = 100;
@@ -241,5 +248,178 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertEquals(1, volumeDetailsList.size());
     assertValue(volumeDetailsList.get(0), "volumeSizeGB", "20");
     assertValue(volumeDetailsList.get(0), "volumeType", "SSD");
+  }
+
+  @Test
+  public void testValidateInstanceTypeNonExistingType() {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    details.cloudInstanceTypeCodes = new ArrayList<>();
+    details.cloudInstanceTypeCodes.add("s1");
+    details.cloudInstanceTypeCodes.add("s2");
+    InstanceType instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("logical-instance-type1", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> InstanceType.validateInstanceType(azuProvider.getUuid(), instanceType));
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals("Non-existing instance type codes - s1, s2", exception.getMessage());
+  }
+
+  @Test
+  public void testValidateInstanceTypeDiffCores() {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    InstanceType instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s1", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s2", azuProvider.getUuid()));
+    instanceType.setNumCores(4.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    InstanceType logicalInstanceType = new InstanceType();
+    details.cloudInstanceTypeCodes = new ArrayList<>();
+    details.cloudInstanceTypeCodes.add("s1");
+    details.cloudInstanceTypeCodes.add("s2");
+    logicalInstanceType.setIdKey(
+        InstanceTypeKey.create("logical-instance-type1", azuProvider.getUuid()));
+    logicalInstanceType.setNumCores(2.0);
+    logicalInstanceType.setMemSizeGB(12.0);
+    logicalInstanceType.setInstanceTypeDetails(details);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> InstanceType.validateInstanceType(azuProvider.getUuid(), logicalInstanceType));
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals(
+        "Invalid instance type codes - s2(cores=4, memory=12GB, volumeDetails=[])",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testValidateInstanceTypDiffMem() {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    InstanceType instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s1", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(16.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s2", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    InstanceType logicalInstanceType = new InstanceType();
+    details.cloudInstanceTypeCodes = new ArrayList<>();
+    details.cloudInstanceTypeCodes.add("s1");
+    details.cloudInstanceTypeCodes.add("s2");
+    logicalInstanceType.setIdKey(
+        InstanceTypeKey.create("logical-instance-type1", azuProvider.getUuid()));
+    logicalInstanceType.setNumCores(2.0);
+    logicalInstanceType.setMemSizeGB(12.0);
+    logicalInstanceType.setInstanceTypeDetails(details);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> InstanceType.validateInstanceType(azuProvider.getUuid(), logicalInstanceType));
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals(
+        "Invalid instance type codes - s1(cores=2, memory=16GB, volumeDetails=[])",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testValidateInstanceTypeDiffVolDetails() {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 200, VolumeType.EBS);
+    InstanceType instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s1", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 100, VolumeType.EBS);
+    instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s2", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 100, VolumeType.EBS);
+    InstanceType logicalInstanceType = new InstanceType();
+    details.cloudInstanceTypeCodes = new ArrayList<>();
+    details.cloudInstanceTypeCodes.add("s1");
+    details.cloudInstanceTypeCodes.add("s2");
+    logicalInstanceType.setIdKey(
+        InstanceTypeKey.create("logical-instance-type1", azuProvider.getUuid()));
+    logicalInstanceType.setNumCores(2.0);
+    logicalInstanceType.setMemSizeGB(12.0);
+    logicalInstanceType.setInstanceTypeDetails(details);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> InstanceType.validateInstanceType(azuProvider.getUuid(), logicalInstanceType));
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals(
+        "Invalid instance type codes - s1(cores=2, memory=12GB, "
+            + "volumeDetails=[InstanceType.VolumeDetails(volumeSizeGB=200, "
+            + "volumeType=EBS, mountPath=/mnt/d0), InstanceType.VolumeDetails(volumeSizeGB=200, "
+            + "volumeType=EBS, mountPath=/mnt/d1)])",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testValidateInstanceTypeSuccess() {
+    InstanceTypeDetails details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 100, VolumeType.EBS);
+    InstanceType instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s1", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 100, VolumeType.EBS);
+    instanceType = new InstanceType();
+    instanceType.setIdKey(InstanceTypeKey.create("s2", azuProvider.getUuid()));
+    instanceType.setNumCores(2.0);
+    instanceType.setMemSizeGB(12.0);
+    instanceType.setInstanceTypeDetails(details);
+    instanceType.save();
+
+    details = new InstanceTypeDetails();
+    details.setVolumeDetailsList(2, 100, VolumeType.EBS);
+    InstanceType logicalInstanceType = new InstanceType();
+    details.cloudInstanceTypeCodes = new ArrayList<>();
+    details.cloudInstanceTypeCodes.add("s1");
+    details.cloudInstanceTypeCodes.add("s2");
+    logicalInstanceType.setIdKey(
+        InstanceTypeKey.create("logical-instance-type1", azuProvider.getUuid()));
+    logicalInstanceType.setNumCores(2.0);
+    logicalInstanceType.setMemSizeGB(12.0);
+    logicalInstanceType.setInstanceTypeDetails(details);
+    InstanceType.validateInstanceType(azuProvider.getUuid(), logicalInstanceType);
   }
 }

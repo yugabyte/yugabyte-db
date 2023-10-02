@@ -16,6 +16,7 @@
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
 #include "parser/parse_node.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef enum ExplainFormat
 {
@@ -24,6 +25,17 @@ typedef enum ExplainFormat
 	EXPLAIN_FORMAT_JSON,
 	EXPLAIN_FORMAT_YAML
 } ExplainFormat;
+
+typedef struct YbExplainExecStats
+{
+	YbPgRpcStats read;
+	YbPgRpcStats catalog_read;
+	YbPgRpcStats flush;
+	double		 write_count;
+	double		 catalog_write_count;
+
+	double	     storage_metrics[YB_ANALYZE_METRIC_COUNT];
+} YbExplainExecStats;
 
 typedef struct ExplainState
 {
@@ -36,6 +48,7 @@ typedef struct ExplainState
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
 	bool		rpc;			/* print RPC stats */
+	bool		debug;			/* print debug information */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */
@@ -46,8 +59,7 @@ typedef struct ExplainState
 	List	   *rtable_names;	/* alias names for RTEs */
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
-	double		yb_total_read_rpc_count;	/* total read RPC count */
-	double		yb_total_read_rpc_wait;	/* total read RPC wait time */
+	YbExplainExecStats yb_stats;		   /* hold YB-specific exec stats */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */

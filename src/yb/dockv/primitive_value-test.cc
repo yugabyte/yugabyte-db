@@ -214,7 +214,7 @@ void TestRoundTrip(const PrimitiveValue& primitive_value, DataType data_type) {
   AppendEncodedValue(ql_value, &buffer);
 
   QLValuePB decoded_ql_value;
-  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), ql_type, &decoded_ql_value));
+  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), data_type, &decoded_ql_value));
 
   ASSERT_EQ(QLValue(ql_value), QLValue(decoded_ql_value))
       << Format("{ expected: $0, actual: $1 }", ql_value, decoded_ql_value);
@@ -319,6 +319,12 @@ TEST(PrimitiveValueTest, TestCorruption) {
 
   // Invalid varint.
   key_bytes.AppendInt64(std::numeric_limits<int64_t>::max());
+  ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
+
+  // kObsoleteIntentType without following byte
+  key_bytes.Clear();
+  key_bytes.AppendKeyEntryType(KeyEntryType::kObsoleteIntentType);
+  slice = key_bytes.AsSlice();
   ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
 }
 
@@ -477,56 +483,56 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
 void ValidateEncodedKeyEntryType(const DataType& data_type) {
   KeyEntryValue key_entry_value;
   switch (data_type) {
-    case NULL_VALUE_TYPE:
+    case DataType::NULL_VALUE_TYPE:
       key_entry_value = KeyEntryValue::NullValue(SortingType::kAscending);
       break;
-    case BOOL:
+    case DataType::BOOL:
       key_entry_value = KeyEntryValue(KeyEntryType::kTrue);
       break;
-    case INT8: FALLTHROUGH_INTENDED;
-    case INT16: FALLTHROUGH_INTENDED;
-    case INT32:
+    case DataType::INT8: FALLTHROUGH_INTENDED;
+    case DataType::INT16: FALLTHROUGH_INTENDED;
+    case DataType::INT32:
       key_entry_value = KeyEntryValue::Int32(100);
       break;
-    case FLOAT:
+    case DataType::FLOAT:
       key_entry_value = KeyEntryValue::Float(100.5f);
       break;
-    case UINT32: FALLTHROUGH_INTENDED;
-    case DATE:
+    case DataType::UINT32: FALLTHROUGH_INTENDED;
+    case DataType::DATE:
       key_entry_value = KeyEntryValue::UInt32(100);
       break;
-    case INT64: FALLTHROUGH_INTENDED;
-    case TIME:
+    case DataType::INT64: FALLTHROUGH_INTENDED;
+    case DataType::TIME:
       key_entry_value = KeyEntryValue::Int64(100);
       break;
-    case DOUBLE:
+    case DataType::DOUBLE:
       key_entry_value = KeyEntryValue::Double(100.5);
       break;
-    case UINT64:
+    case DataType::UINT64:
       key_entry_value = KeyEntryValue::UInt64(100);
       break;
-    case TIMESTAMP:
+    case DataType::TIMESTAMP:
       key_entry_value = KeyEntryValue::MakeTimestamp(Timestamp(1000));
       break;
-    case UUID: FALLTHROUGH_INTENDED;
-    case TIMEUUID: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
-    case STRING: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
-    case DECIMAL: FALLTHROUGH_INTENDED;
-    case VARINT: FALLTHROUGH_INTENDED;
-    case INET: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
-    case MAP: FALLTHROUGH_INTENDED;
-    case SET: FALLTHROUGH_INTENDED;
-    case TUPLE: FALLTHROUGH_INTENDED;
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-    case FROZEN: FALLTHROUGH_INTENDED;
-    case JSONB: FALLTHROUGH_INTENDED;
-    case UINT8: FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case GIN_NULL:
+    case DataType::UUID: FALLTHROUGH_INTENDED;
+    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+    case DataType::STRING: FALLTHROUGH_INTENDED;
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::VARINT: FALLTHROUGH_INTENDED;
+    case DataType::INET: FALLTHROUGH_INTENDED;
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::FROZEN: FALLTHROUGH_INTENDED;
+    case DataType::JSONB: FALLTHROUGH_INTENDED;
+    case DataType::UINT8: FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::GIN_NULL:
       EXPECT_TRUE(false);
   }
 
@@ -540,22 +546,19 @@ void ValidateEncodedKeyEntryType(const DataType& data_type) {
 }
 
 TEST(PrimitiveValueTest, ValidateEncodedKeyEntryTypeSize) {
-  for (int dt_idx = 0; dt_idx < DataType_ARRAYSIZE; dt_idx++) {
-    auto data_type = DataType(dt_idx);
-    if (DataType_IsValid(data_type)) {
-      if (KeyEntryValue::GetEncodedKeyEntryValueSize(data_type)) {
-        ValidateEncodedKeyEntryType(data_type);
-      } else {
-        // TYPEARGS, GIN_NULL and UNKNOWN_DATA are undefiened types. And Key entry value doesn't
-        // support uint8 and uint16.
-        if (data_type != DataType::TYPEARGS && data_type != DataType::GIN_NULL &&
-            data_type != DataType::UNKNOWN_DATA && data_type != DataType::UINT8 &&
-            data_type != DataType::UINT16) {
-          auto type_info = GetTypeInfo(data_type);
-          ASSERT_TRUE(type_info) << "DataType: " << QLType::ToCQLString(data_type);
-          ASSERT_TRUE(type_info->var_length())
-              << "Fixed datatype expected varlength: " << QLType::ToCQLString(data_type);
-        }
+  for (auto data_type : kDataTypeArray) {
+    if (KeyEntryValue::GetEncodedKeyEntryValueSize(data_type)) {
+      ValidateEncodedKeyEntryType(data_type);
+    } else {
+      // TYPEARGS, GIN_NULL and UNKNOWN_DATA are undefiened types. And Key entry value doesn't
+      // support uint8 and uint16.
+      if (data_type != DataType::TYPEARGS && data_type != DataType::GIN_NULL &&
+          data_type != DataType::UNKNOWN_DATA && data_type != DataType::UINT8 &&
+          data_type != DataType::UINT16) {
+        auto type_info = GetTypeInfo(data_type);
+        ASSERT_TRUE(type_info) << "DataType: " << QLType::ToCQLString(data_type);
+        ASSERT_TRUE(type_info->var_length())
+            << "Fixed datatype expected varlength: " << QLType::ToCQLString(data_type);
       }
     }
   }

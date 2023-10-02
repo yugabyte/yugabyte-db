@@ -12,15 +12,15 @@ menu:
     weight: 240
 type: indexpage
 ---
-YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
+YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties: Atomicity, Consistency, Isolation, Durability (ACID).
 
 The following table summarizes the support for transactions across the YSQL and YCQL APIs.
 
 | Property | YSQL | YCQL | Comments |
 | :------- | :--- | :--- | :------- |
-| [Distributed transactions](distributed-transactions-ysql/) | Yes | Yes | Perform multi-row or multi-table transactions.<br/>Application can connect to any node of the cluster. |
-| [Isolation levels](isolation-levels/) | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
-| Set `AUTOCOMMIT = false` | Yes | No | The transaction must be expressed as one statement in YCQL. |
+| Distributed transactions | Yes | Yes | Perform multi-row or multi-table transactions.<br/>An application can connect to any node of the cluster. |
+| Isolation levels | Serializable<br/>Snapshot | Snapshot | Repeatable read isolation level in PostgreSQL maps to snapshot isolation in YSQL. |
+| `AUTOCOMMIT = false` setting | Yes | No | The transaction must be expressed as one statement in YCQL. |
 
 <!--
 | [Explicit locking](explicit-locking/) | Yes | No | Ability to perform row- and table-level locking |
@@ -28,10 +28,7 @@ The following table summarizes the support for transactions across the YSQL and 
 | [Non-transactional tables](non-transactional-tables/) | No | Yes | Ability to disable multi-row transactions on a per-table basis. <br/>Useful for some features such as automatic data expiry. |
 -->
 
-The various features are explained in the following sections.
-
 <div class="row">
-
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="distributed-transactions-ysql/">
       <div class="head">
@@ -39,7 +36,7 @@ The various features are explained in the following sections.
         <div class="title">Distributed transactions</div>
       </div>
       <div class="body">
-        Understand how distributed transactions work in YugabyteDB.
+        Distributed transactions in YugabyteDB.
       </div>
     </a>
   </div>
@@ -65,7 +62,9 @@ The various features are explained in the following sections.
       </div>
     </a>
   </div>
+
 <!-- ADD THIS ONCE READY:
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ddl-operations/">
       <div class="head">

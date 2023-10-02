@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <string>
 
 /* These macro definitions have been taken from elog.h */

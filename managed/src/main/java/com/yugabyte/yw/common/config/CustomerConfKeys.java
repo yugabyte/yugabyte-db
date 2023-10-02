@@ -110,14 +110,18 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useK8CustomResources =
+
+  public static final ConfKeyInfo<Boolean> showDrUi =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.k8s_custom_resources",
+          "yb.ui.feature_flags.disaster_recovery",
           ScopeType.CUSTOMER,
-          "Use K8 custom resources",
-          "Allows user to select custom K8 memory(GB) and cpu cores",
+          "Show disaster recovery UI",
+          "YBA provides an active-active single-master disaster recovery (DR) solution "
+              + "through the API. This runtime config exposes a user interface for managing DR "
+              + "configurations.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",

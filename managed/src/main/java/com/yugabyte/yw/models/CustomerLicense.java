@@ -88,4 +88,13 @@ public class CustomerLicense extends Model {
     }
     return cLicense;
   }
+
+  public static CustomerLicense getOrBadRequest(UUID customerUUID, UUID licenseUUID) {
+    CustomerLicense customerLicense =
+        find.query().where().idEq(licenseUUID).eq("customer_uuid", customerUUID).findOne();
+    if (customerLicense == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "License not found: " + licenseUUID);
+    }
+    return customerLicense;
+  }
 }

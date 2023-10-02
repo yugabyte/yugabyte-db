@@ -66,7 +66,7 @@ public class EncryptionAtRestManager {
   public enum RestoreKeyResult {
     RESTORE_SKIPPED,
     RESTORE_FAILED,
-    RESTORE_SUCCEEDED;
+    RESTORE_SUCCEEDED
   }
 
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
@@ -235,21 +235,13 @@ public class EncryptionAtRestManager {
     return universeKeyRef;
   }
 
-  public byte[] getUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
-    return getUniverseKey(universeUUID, configUUID, keyRef, null);
-  }
-
   public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
-      byte[] getUniverseKey(
-          UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+      byte[] getUniverseKey(UUID universeUUID, UUID configUUID, byte[] keyRef) {
     byte[] keyVal = null;
     T keyService;
     try {
       keyService = getServiceInstance(KmsConfig.get(configUUID).getKeyProvider().name());
-      keyVal =
-          config == null
-              ? keyService.retrieveKey(universeUUID, configUUID, keyRef)
-              : keyService.retrieveKey(universeUUID, configUUID, keyRef, config);
+      keyVal = keyService.retrieveKey(universeUUID, configUUID, keyRef);
     } catch (Exception e) {
       String errMsg =
           String.format(
@@ -257,6 +249,7 @@ public class EncryptionAtRestManager {
                   + "with config %s",
               universeUUID.toString(), configUUID.toString());
       LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
     return keyVal;
   }
@@ -316,7 +309,7 @@ public class EncryptionAtRestManager {
           "Found {} master keys on universe '{}''. Not adding them to backup metadata: {}.",
           distinctKmsConfigUUIDs.size(),
           universeUUID,
-          distinctKmsConfigUUIDs.toString());
+          distinctKmsConfigUUIDs);
     }
   }
 
@@ -355,7 +348,7 @@ public class EncryptionAtRestManager {
    * @return ObjectNode consisting of universe key history.
    * @throws Exception
    */
-  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) throws Exception {
+  public ObjectNode backupUniverseKeyHistory(UUID universeUUID) {
     ObjectNode backup = Json.newObject();
     ArrayNode universeKeys = backup.putArray("universe_keys");
     List<ObjectNode> universeKeyRefs = getUniverseKeyRefsForBackup(universeUUID);
@@ -414,7 +407,9 @@ public class EncryptionAtRestManager {
       // universe key registry which we need to be the case.
       EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, keyRef);
     } catch (Exception e) {
-      LOG.error("Error sending universe key to master: ", e);
+      String errMsg = "Error sending universe key to master.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
@@ -425,7 +420,7 @@ public class EncryptionAtRestManager {
     final byte[] universeKeyRef = Base64.getDecoder().decode(backupEntry.get("key_ref").asText());
 
     if (universeKeyRef != null) {
-      String validDbKeyId = null;
+      String validDbKeyId;
       if (backupEntry.has("db_key_id")) {
         // For new backups after this change.
         validDbKeyId = backupEntry.get("db_key_id").asText();
@@ -438,7 +433,7 @@ public class EncryptionAtRestManager {
       String keyProviderString = KmsConfig.getOrBadRequest(kmsConfigUUID).getKeyProvider().name();
       EncryptionAtRestService<? extends SupportedAlgorithmInterface> keyService =
           getServiceInstance(keyProviderString);
-      UUID validKmsConfigUUID = null;
+      UUID validKmsConfigUUID;
 
       if (keyService.verifyKmsConfigAndKeyRef(universeUUID, kmsConfigUUID, universeKeyRef)) {
         // Case 1: When the given KMS config UUID matches the key ref.
@@ -463,7 +458,7 @@ public class EncryptionAtRestManager {
       }
 
       // Get the valid and active KMS history.
-      KmsHistory validKmsHistory = null;
+      KmsHistory validKmsHistory;
       KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universeUUID);
 
       // Case when EAR was disabled on target universe.
@@ -536,7 +531,9 @@ public class EncryptionAtRestManager {
         result = restoreUniverseKeyHistory(ybService, universeUUID, kmsConfigUUID, universeKeys);
       }
     } catch (Exception e) {
-      LOG.error("Error occurred restoring universe key history", e);
+      String errMsg = "Error occurred restoring universe key history.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
 
     return result;
@@ -557,7 +554,9 @@ public class EncryptionAtRestManager {
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
       }
     } catch (Exception e) {
-      LOG.error("Error occurred restoring universe key history", e);
+      String errMsg = "Error occurred restoring universe key history.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
     return result;
   }

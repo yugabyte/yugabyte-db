@@ -46,7 +46,8 @@ public interface CloudInfoInterface {
 
   public static enum VPCType {
     EXISTING,
-    NEW
+    NEW,
+    HOSTVPC // in case we want to use the same VPC as that of the host.
   }
 
   public static <T extends CloudInfoInterface> T get(Provider provider) {
@@ -75,7 +76,7 @@ public interface CloudInfoInterface {
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new ProviderDetails.CloudInfo();
-      providerDetails.cloudInfo = cloudInfo;
+      providerDetails.setCloudInfo(cloudInfo);
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -114,7 +115,7 @@ public interface CloudInfoInterface {
     AvailabilityZoneDetails.AZCloudInfo cloudInfo = azDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
-      azDetails.cloudInfo = cloudInfo;
+      azDetails.setCloudInfo(cloudInfo);
     }
     return getCloudInfo(cloudInfo, cloudType, maskSensitiveData);
   }
@@ -266,7 +267,7 @@ public interface CloudInfoInterface {
       return null;
     }
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
-    get(details, true, region.getProvider().getCloudCode());
+    get(details, true, region.getProviderCloudCode());
     return details;
   }
 
@@ -279,7 +280,7 @@ public interface CloudInfoInterface {
       return null;
     }
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
-    get(details, true, zone.getRegion().getProvider().getCloudCode());
+    get(details, true, zone.getProviderCloudCode());
     return details;
   }
 
@@ -431,8 +432,64 @@ public interface CloudInfoInterface {
     CloudInfoInterface providerCloudInfo = CloudInfoInterface.get(provider);
     CloudInfoInterface editProviderCloudInfo = CloudInfoInterface.get(editProviderReq);
     editProviderCloudInfo.mergeMaskedFields(providerCloudInfo);
-    // ToDo: Add the same for regions/zones. Should we assume the indexing of region/zone
-    // won't change? Will revisit once edit region/zone are checked in.
+
+    // TODO(bhavin192): verify following understanding and fix the
+    // issue. what happens when user changes the code of a zone or
+    // region? All this happens in CloudProviderEdit.
+    //
+    // In case of region code change: It is considered as new region,
+    // so it gets created (UI marks the old region as inactive, and
+    // passes details for new region). There are two scenarios here
+    // while we are looping through the regions from editProviderReq
+    // to take the decision.
+    //
+    // 1. If the old region comes first in the iteration. The region
+    // and its zones are marked inactive. So during new region
+    // creation new zones will be created with the data from the
+    // request.
+    //
+    // 2. If the new regions comes first in the iteration. The new
+    // region gets created and it reuses the zones from the old region
+    // as we do getByCode(provider, code). Won't these zones become
+    // inactive in next iteration when we go to the region which is
+    // supposed to be marked as inactive?
+    //
+    //
+    // In case of zone code change: It will be considered as new zone
+    // (UI marks the old zone as inactive, and passes details for new
+    // zone). We do fetchEnvVars in bootstrapKubernetesProvider on the
+    // received zone so it retains the values which UI gives us in the
+    // newly created zone.
+    //
+    // In all above cases be it zone or region, following merging
+    // logic for hidden values will fail because they don't have any
+    // environment variable associated with them i.e. UI has zero clue
+    // about these, UI never gets any value for these fields. We
+    // cannot rely on UUIDs as of now because UI doesn't send us UUID
+    // for the newly named zone/region.
+    Map<String, Region> existingRegions =
+        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
+    for (Region region : editProviderReq.getRegions()) {
+      Region oldRegion = existingRegions.get(region.getCode());
+      if (oldRegion == null) {
+        continue;
+      }
+      CloudInfoInterface regionCloudInfo = CloudInfoInterface.get(region);
+      CloudInfoInterface oldRegionCloudInfo = CloudInfoInterface.get(oldRegion);
+      regionCloudInfo.mergeMaskedFields(oldRegionCloudInfo);
+
+      Map<String, AvailabilityZone> existingAZs =
+          oldRegion.getZones().stream().collect(Collectors.toMap(az -> az.getCode(), az -> az));
+      for (AvailabilityZone az : region.getZones()) {
+        AvailabilityZone oldAZ = existingAZs.get(az.getCode());
+        if (oldAZ == null) {
+          continue;
+        }
+        CloudInfoInterface azCloudInfo = CloudInfoInterface.get(az);
+        CloudInfoInterface oldAZCloudInfo = CloudInfoInterface.get(oldAZ);
+        azCloudInfo.mergeMaskedFields(oldAZCloudInfo);
+      }
+    }
 
     if (!provider.getCloudCode().equals(CloudType.kubernetes)) {
       // Merge the accessKey Private Content.

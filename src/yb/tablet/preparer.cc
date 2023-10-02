@@ -29,10 +29,12 @@
 
 #include "yb/tablet/operations/operation_driver.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/threadpool.h"
 
 DEFINE_UNKNOWN_uint64(max_group_replicate_batch_size, 16,
@@ -43,6 +45,16 @@ DEFINE_UNKNOWN_double(estimated_replicate_msg_size_percentage, 0.95,
 
 DEFINE_test_flag(int32, preparer_batch_inject_latency_ms, 0,
                  "Inject latency before replicating batch.");
+
+DEFINE_test_flag(bool, block_prepare_batch, false,
+                 "pause the prepare task.");
+
+DEFINE_test_flag(double, simulate_preparer_skips_run, 0.0,
+                 "Probability that the preparer will skip invoking Run after submitting an item.");
+
+DEFINE_test_flag(double, simulate_skip_process_batch, 0.0,
+                 "Probability that the preparer will skip invoking ProcessAndClearLeaderSideBatch "
+                 "after processing an item.");
 
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
@@ -71,6 +83,8 @@ class PreparerImpl {
   ThreadPoolToken* PoolToken() {
     return tablet_prepare_pool_token_.get();
   }
+
+  void DumpStatusHtml(std::ostream& out);
 
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
@@ -120,8 +134,11 @@ class PreparerImpl {
   consensus::ConsensusRounds rounds_to_replicate_;
 
   void Run();
+
+  // Should only be run via tablet_prepare_pool_token_
   void ProcessItem(OperationDriver* item);
 
+  // Should only be run via tablet_prepare_pool_token_
   void ProcessAndClearLeaderSideBatch();
 
   void ProcessFailedItem(OperationDriver* item, Status status);
@@ -195,6 +212,9 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
     // running_ was already true, so we are not creating a task to process operations.
     return Status::OK();
   }
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_simulate_preparer_skips_run))) {
+    return Status::OK();
+  }
   // We flipped running_ from 0 to 1. The previously running thread could go back to doing another
   // iteration, but in that case since we are submitting to a token of a thread pool, only one
   // such thread will be running, the other will be in the queue.
@@ -203,6 +223,9 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
 
 void PreparerImpl::Run() {
   VLOG(2) << "Starting prepare task:" << this;
+  while (GetAtomicFlag(&FLAGS_TEST_block_prepare_batch)) {
+      std::this_thread::sleep_for(100ms);
+  }
   for (;;) {
     while (OperationDriver *item = queue_.Pop()) {
       active_tasks_.fetch_sub(1, std::memory_order_release);
@@ -210,16 +233,28 @@ void PreparerImpl::Run() {
     }
     ProcessAndClearLeaderSideBatch();
     std::unique_lock<std::mutex> stop_lock(stop_mtx_);
-    running_.store(false, std::memory_order_release);
-    // Check whether tasks were added while we were setting running to false.
-    if (active_tasks_.load(std::memory_order_acquire)) {
-      // Got more operations, try stay in the loop.
-      bool expected = false;
-      if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-        continue;
+    // If load of active_tasks_ below is re-ordered by the compiler/cpu and gets to execute before
+    // exchange of running_, we could get into a state where there is a new item enqueued on queue_
+    // but no newly submitted task of type PreparerImpl::Run. And the current thread executing
+    // PreparerImpl::Run could return as well which would put us in a "stuck" state.
+    //
+    // Use of acquire-release ordering for running_.exchange prevents any subsequent atomic
+    // operations in this thread from being re-ordered before the state of running_ is set to false,
+    // thus preventing the situation described above.
+    if (PREDICT_TRUE(running_.exchange(false, std::memory_order_acq_rel))) {
+      // Check whether tasks were added while we were switching running to false.
+      if (active_tasks_.load(std::memory_order_acquire)) {
+        // Got more operations, try stay in the loop.
+        bool expected = false;
+        if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+          continue;
+        }
+        // If someone else has flipped running_ to true, we can safely exit this function because
+        // another task is already submitted to the same token.
       }
-      // If someone else has flipped running_ to true, we can safely exit this function because
-      // another task is already submitted to the same token.
+    } else {
+      LOG(DFATAL) << "running_ is false when there's an active thread executing PreparerImpl::Run. "
+                  << "Getting into this state may affect throughput or halt workloads.";
     }
     if (stop_requested_.load(std::memory_order_acquire)) {
       VLOG(2) << "Prepare task's Run() function is returning because stop is requested.";
@@ -309,6 +344,10 @@ void PreparerImpl::ProcessFailedItem(OperationDriver* item, Status status) {
 }
 
 void PreparerImpl::ProcessAndClearLeaderSideBatch() {
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_simulate_skip_process_batch))) {
+    return;
+  }
+
   if (leader_side_batch_.empty()) {
     return;
   }
@@ -388,6 +427,41 @@ void PreparerImpl::ReplicateSubBatch(
   }
 }
 
+void PreparerImpl::DumpStatusHtml(std::ostream& out) {
+  out << "<div>" << "stop_requested: " << stop_requested_ << "</div>" << std::endl;
+  out << "<div>" << "running: " << running_ << "</div>" << std::endl;
+  out << "<div>" << "stopped: " << stopped_ << "</div>" << std::endl;
+  out << "<div>" << "active_tasks: " << active_tasks_ << "</div>" << std::endl;
+  out << "<div>" << "prepare_should_fail: " << prepare_should_fail_ << "</div>" << std::endl;
+  auto get_ops_status = MakeFuture<Status>([&](auto callback) {
+    auto s = tablet_prepare_pool_token_->SubmitFunc([&, cb = std::move(callback)]() {
+      out << "<div>" << "queue ops:</div>" << std::endl;
+      out << "<ul>" << std::endl;
+      for (const auto& op : queue_) {
+        out << "<li>" << op.ToString() << "</li>" << std::endl;
+      }
+      out << "</ul>" << std::endl;
+
+      out << "<div>" << "leader batched ops: " << leader_side_batch_.size()
+          << "</div>" << std::endl;
+      out << "<ul>" << std::endl;
+      for (const auto& op : leader_side_batch_) {
+        out << "<li>" << op->ToString() << "</li>" << std::endl;
+      }
+      out << "</ul>" << std::endl;
+
+      cb(Status::OK());
+    });
+    if (!s.ok()) {
+      out << "<div>" << "Error generating preparer ops status" << s << "</div>" << std::endl;
+    }
+  }).get();
+  if (!get_ops_status.ok()) {
+    out << "<div>" << "Error generating preparer ops status"
+        << get_ops_status << "</div>" << std::endl;
+  }
+}
+
 // ------------------------------------------------------------------------------------------------
 // Preparer
 
@@ -414,6 +488,10 @@ Status Preparer::Submit(OperationDriver* operation_driver) {
 
 ThreadPoolToken* Preparer::PoolToken() {
   return impl_->PoolToken();
+}
+
+void Preparer::DumpStatusHtml(std::ostream& out) {
+  return impl_->DumpStatusHtml(out);
 }
 
 }  // namespace tablet

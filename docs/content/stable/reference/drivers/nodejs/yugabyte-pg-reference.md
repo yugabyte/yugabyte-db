@@ -1,7 +1,8 @@
 ---
-title: Node.js Drivers
+title: YugabyteDB node-postgres Smart Driver reference
+headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
-description: Node.js Drivers for YSQL
+description: YugabyteDB node-postgres smart driver for YSQL
 headcontent: Node.js Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -30,30 +31,16 @@ type: docs
 
 </ul>
 
-[YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../../../drivers-orms/smart-drivers/) features:
+YugabyteDB node-postgres smart driver is a Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional connection load balancing features.
 
-- It is **cluster-aware**, which eliminates the need for an external load balancer.
-- It is **topology-aware**, which is essential for geographically-distributed applications.
+For more information on the YugabyteDB node-postgres smart driver, see the following:
 
-## Load balancing
+- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../../drivers-orms/nodejs/yugabyte-node-driver)
+- [GitHub repository](https://github.com/yugabyte/node-postgres)
+- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
-The YugabyteDB node-postgres smart driver has the following load balancing features:
-
-- Uniform load balancing
-
-   In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using a smart driver.
-
-- Topology-aware load balancing
-
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the smart driver is topology-aware. The driver uses servers that are part of a set of geo-locations specified by topology keys. This means it can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
-
-The YugabyteDB node-postgres smart driver can be configured with pooling as well.
-
-## Fundamentals
-
-Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
-
-### Download the driver dependency
+## Download the driver dependency
 
 Download and install the YugabyteDB node-postgres smart driver using the following command (you need to have Node.js installed on your system):
 
@@ -65,12 +52,18 @@ The driver requires YugabyteDB version 2.7.2.0 or higher.
 
 You can start using the driver in your code.
 
+## Fundamentals
+
+Learn how to perform the common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
+
 ### Load balancing connection properties
 
 The following connection properties need to be added to enable load balancing:
 
-- loadBalance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topologyKeys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
+- `loadBalance` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- `topologyKeys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `ybServersRefreshInterval` parameter.
 
 ### Use the driver
 
@@ -78,13 +71,15 @@ To use the driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL.
 
-  To enable uniform load balancing across all servers, set the `loadBalance` property to `true` in the URL, as per the following connection string:
+    To enable uniform load balancing across all servers, set the `loadBalance` property to `true` in the URL, as per the following connection string:
 
     ```javascript
     const connectionString = "postgresql://user:password@localhost:port/database?loadBalance=true"
     const client = new Client(connectionString);
     client.connect()
     ```
+
+    After the driver establishes the initial connection, it fetches the list of available servers from the universe and performs load balancing of subsequent connection requests across these servers.
 
 - To specify topology keys, set the `topologyKeys` property to comma separated values, as per the following connection string:
 
@@ -96,7 +91,7 @@ To use the driver, do the following:
 
 - To configure a basic connection pool of maximum 100 connections using `Pool`, specify load balance as follows:
 
-  ```js
+    ```js
     let pool = new Pool({
         user: 'yugabyte',
         password: 'yugabyte',
@@ -106,11 +101,11 @@ To use the driver, do the following:
         database: 'yugabyte',
         max: 100
     })
-  ```
+    ```
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB node-postgres smart Driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
 
 Next, you use a Node.js application to demonstrate the driver's load balancing features.
 
@@ -118,7 +113,7 @@ Next, you use a Node.js application to demonstrate the driver's load balancing f
 The driver requires YugabyteDB version 2.7.2.0 or higher.
 {{< /note>}}
 
-### Install YugabyteDB and create a local cluster
+### Create a local cluster
 
 Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
@@ -249,7 +244,3 @@ When you're done experimenting, run the following command to destroy the local c
 ```sh
 ./bin/yb-ctl destroy
 ```
-
-## Learn more
-
-To learn more about the driver, you can read the [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md).

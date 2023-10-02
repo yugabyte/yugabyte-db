@@ -32,6 +32,8 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ImportUniverseFormData;
 import com.yugabyte.yw.forms.ImportUniverseFormData.State;
@@ -57,6 +59,11 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -112,7 +119,16 @@ public class ImportController extends AuthenticatedController {
     this.taskExecutor = taskExecutor;
   }
 
-  @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
+  @Deprecated
+  @ApiOperation(
+      value = "Deprecated: Do not use, this will be removed soon. Import a universe",
+      response = ImportUniverseFormData.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result importUniverse(UUID customerUUID, Http.Request request) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
@@ -264,6 +280,8 @@ public class ImportController extends AuthenticatedController {
                 importForm,
                 Util.getNodePrefix(customer.getId(), universeName),
                 universeName);
+      } else {
+        Universe.getOrBadRequest(importForm.universeUUID, customer);
       }
       List<Provider> providerList = Provider.get(customer.getUuid(), importForm.providerType);
       Provider provider;
@@ -338,7 +356,7 @@ public class ImportController extends AuthenticatedController {
     }
     masterAddresses = masterAddresses.replaceAll("\\s+", "");
 
-    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID, customer);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.MASTERS_ADDED) {
@@ -436,7 +454,7 @@ public class ImportController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, results.error);
     }
 
-    Universe universe = Universe.getOrBadRequest(importForm.universeUUID);
+    Universe universe = Universe.getOrBadRequest(importForm.universeUUID, customer);
 
     ImportedState curState = universe.getUniverseDetails().importedState;
     if (curState != ImportedState.TSERVERS_ADDED) {
@@ -544,7 +562,7 @@ public class ImportController extends AuthenticatedController {
                       region,
                       zone,
                       index,
-                      cluster.userIntent.instanceType);
+                      cluster.userIntent.getInstanceType(zone.getUuid()));
 
               node.isMaster = isMaster;
             }

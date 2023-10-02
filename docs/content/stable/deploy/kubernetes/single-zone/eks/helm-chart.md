@@ -1,5 +1,5 @@
 ---
-title: Deploy on Amazon Elastic Kubernetes Service (EKS) using Helm Chart
+title: Deploy single zone on EKS using Helm Chart
 linkTitle: Amazon Elastic Kubernetes Service (EKS)
 description: Use Helm Chart to deploy a single-zone Kubernetes cluster on Amazon Elastic Kubernetes Service (EKS).
 menu:

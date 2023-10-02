@@ -94,7 +94,7 @@ For information on the relevant YCQL API, see the following:
 
 #### Range-sharded tables
 
-In range-sharded YSQL tables, the start and end key for each tablet is not immediately known since this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
+In range-sharded YSQL tables, the start and end key for each tablet is not immediately known as this depends on the column type and the intended usage. For example, if the primary key is a `percentage NUMBER` column where the range of values is in the `[0, 100]` range, presplitting on the entire `NUMBER` space would not be effective.
 
 For this reason, in order to presplit range-sharded tables, you must explicitly specify the split points, as per the following example:
 
@@ -160,10 +160,10 @@ Note that misuse or overuse of manual tablet splitting (for example, splitting t
 
 #### Verify the table has one tablet
 
-In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
+To verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
 ```bash
-.bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+./bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
 Expect the following output:
@@ -175,12 +175,22 @@ Tablet UUID                       Range                         Leader
 
 Note the tablet UUID for later use.
 
+#### Manually flush the tablet
+
+The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+
+```sh
+./bin/yb-ts-cli \
+    --server_address=127.0.0.1:9100,127.0.0.2:9100,127.0.0.3:9100 \
+    flush_tablet 9991368c4b85456988303cd65a3c6503
+```
+
 #### Manually split the tablet
 
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command:
 
 ```sh
-.bin/yb-admin \
+./bin/yb-admin \
     --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     split_tablet 9991368c4b85456988303cd65a3c6503
 ```
@@ -205,9 +215,19 @@ For details on the architecture design, see [Automatic resharding of data with t
 
 #### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
+When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one tablet per node by default.
 
-When automatic tablet splitting is enabled, newly-created tables have one shard per YB-TServer by default.
+In addition, from version 2.14.10, for servers with up to 2 CPU cores, newly-created tables have one tablet per cluster, and servers with up to 4 CPU cores have 2 tablets per cluster.
+
+From version 2.18.0, automatic tablet splitting is turned on by default.
+
+To control automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split, and use `yb-tserver` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-tserver/#enable-automatic-tablet-splitting). The flags must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< note title="Note" >}}
+
+Newly-created tables with [range sharding](../../../architecture/docdb-sharding/sharding/#range-sharding) always have one tablet _per cluster_ unless table partitioning is specified explicitly during table creation.
+
+{{< /note >}}
 
 Automatic tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
 
@@ -221,7 +241,7 @@ In the high phase, each node has fewer than [`tablet_split_high_phase_shard_coun
 
 ##### Final phase
 
-Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit is reached (256 tablets by default; if set to 0, there will be no limit).
+When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit is reached (256 tablets by default; if set to 0, there will be no limit).
 
 #### Post-split compactions
 
@@ -229,13 +249,13 @@ Once a split has been executed on a tablet, the two resulting tablets require a 
 
 In the event that performance suffers due to automatic tablet splitting, the following flags can be used for tuning:
 
-- [YB-Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags):
-  - `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by default. Tablets that are performing post-split compactions count against this limit.
-  - `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
-- [YB-TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags):
-  - `post_split_trigger_compaction_pool_max_threads` indicates the number of threads dedicated to post-split compaction tasks per node. By default, this is limited to 1. Increasing this may complete tablet splits faster, but would require more CPU and disk resources.
-  - `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
-  - `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
+* [YB-Master flags](../../../reference/configuration/yb-master/#tablet-splitting-flags):
+  * `outstanding_tablet_split_limit` limits the total number of outstanding tablet splits to 1 by default. Tablets that are performing post-split compactions count against this limit.
+  * `outstanding_tablet_split_limit_per_tserver` limits the total number of outstanding tablet splits per node to 1 by default. Tablets that are performing post-split compactions count against this limit.
+* [YB-TServer flags](../../../reference/configuration/yb-tserver/#sharding-flags):
+  * `post_split_trigger_compaction_pool_max_threads` indicates the number of threads dedicated to post-split compaction tasks per node. By default, this is limited to 1. Increasing this may complete tablet splits faster, but would require more CPU and disk resources.
+  * `post_split_trigger_compaction_pool_max_queue_size` indicates the number of outstanding post-split compaction tasks that can be queued at once per node, limited to 16 by default.
+  * `automatic_compaction_extra_priority` provides additional compaction priorities to [smaller compactions](../../concepts/yb-tserver/#small-and-large-compaction-queues) when automatic tablet splitting is enabled. This prevents smaller compactions from being starved for resources by the larger post-split compactions. This is set to 50 by default (the maximum recommended), and can be reduced to 0.
 
 #### YCSB workload with automatic tablet splitting example
 
@@ -294,6 +314,8 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
  For details on using YCSB with YugabyteDB, see [Benchmark: YCSB](../../../benchmark/ycsb-jdbc/).
 
 ## Limitations
+
+* Tablet splitting is disabled for index tables with range partitioning that are being restored in version 2.14.5 or later from a backup taken in any version prior to 2.14.5. It is not recommended to use tablet splitting for range partitioned index tables prior to version 2.14.5 to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
 
 The following known limitations are planned to be resolved in upcoming releases:
 

@@ -143,7 +143,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM users WHERE geo_partition=yb_server_region();
 (4 rows)
 ```
 
-In other words, using `yb_server_region()` in the WHERE clause automatically returns only values from your current region.
+In other words, using `yb_server_region()` in the `WHERE` clause automatically returns only values from your current region.
 
 ```sql
 SELECT * FROM users WHERE geo_partition=yb_server_region();

@@ -14,6 +14,10 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <vector>
+
+#include <boost/optional/optional.hpp>
 
 #include "yb/qlexpr/ql_scanspec.h"
 
@@ -23,8 +27,11 @@
 
 #include "yb/rocksdb/options.h"
 
-namespace yb {
-namespace docdb {
+#include "yb/util/result.h"
+
+namespace yb::docdb {
+
+YB_STRONGLY_TYPED_BOOL(AddHighestToUpperDocKey);
 
 // DocDB variant of scanspec.
 class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
@@ -53,12 +60,13 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
-                   const PgsqlExpressionPB *where_expr,
                    const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
                    const dockv::DocKey& lower_doc_key = DefaultStartDocKey(),
                    const dockv::DocKey& upper_doc_key = DefaultStartDocKey(),
-                   const size_t prefix_length = 0);
+                   const size_t prefix_length = 0,
+                   AddHighestToUpperDocKey add_highest_to_upper_doc_key =
+                       AddHighestToUpperDocKey::kFalse);
 
   //------------------------------------------------------------------------------------------------
   // Filters.
@@ -127,5 +135,4 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

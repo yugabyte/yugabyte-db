@@ -22,6 +22,7 @@ CONNECTION_ATTEMPT_DELAY_SEC = 3
 CONNECT_RETRY_LIMIT = 60
 # Retry in seconds
 CONNECT_RETRY_DELAY = 10
+CONNECT_TIMEOUT_SEC = 10
 
 
 # Similar method exists for SSH.
@@ -48,7 +49,8 @@ def can_connect(connect_options):
 
     try:
         client = RemoteShell(connect_options)
-        stdout = client.exec_command("echo 'test'", output_only=True)
+        # The param timeout is used by node-agent.
+        stdout = client.exec_command("echo 'test'", output_only=True, timeout=CONNECT_TIMEOUT_SEC)
         stdout = stdout.splitlines()
         if len(stdout) == 1 and (stdout[0] == "test"):
             return True
@@ -60,10 +62,12 @@ def can_connect(connect_options):
 
 # Similar method exists for SSH.
 def copy_to_tmp(connect_options, filepath, retries=3, retry_delay=CONNECT_RETRY_DELAY, **kwargs):
-    """This method copies the given file to /tmp on remote host and return the output.
+    """This method copies the given file to the specified tmp directory on remote host
+    and return the output.
     """
 
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    remote_tmp_dir = kwargs.get("remote_tmp_dir", "/tmp")
+    dest_path = os.path.join(remote_tmp_dir, os.path.basename(filepath))
     chmod = kwargs.get('chmod', 0)
     if chmod == 0:
         chmod = os.stat(filepath).st_mode
@@ -236,8 +240,8 @@ class _SshRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -314,8 +318,8 @@ class _RpcRemoteShell(object):
             raise YBOpsRecoverableError(
                 "Remote shell command '{}' failed with "
                 "return code '{}' and error '{}'".format(cmd,
-                                                         result.stderr,
-                                                         result.exited)
+                                                         result.exited,
+                                                         result.stderr)
             )
         return result
 
@@ -359,7 +363,7 @@ class _RpcRemoteShell(object):
         if result.stderr != '' or result.rc != 0:
             raise YBOpsRecoverableError(
                 "Remote method invocation failed with "
-                "return code '{}' and error '{}'".format(result.stderr,
+                "return code '{}' and error '{}'".format(result.rc,
                                                          result.stderr)
             )
         return result.obj

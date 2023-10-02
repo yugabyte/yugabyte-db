@@ -49,7 +49,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.Spy;
 import org.mockito.invocation.InvocationOnMock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 import play.Environment;
 import play.libs.Json;
@@ -86,6 +86,11 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 return new ByteArrayInputStream(versionJson.getBytes(StandardCharsets.UTF_8));
               }
             });
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
   }
 
   @After
@@ -804,7 +809,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
     releaseManager.addGFlagsMetadataFiles("0.0.1", metadata);
-    verify(mockCommissioner, times(1)).submit(any(), any());
+    verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
   @Test

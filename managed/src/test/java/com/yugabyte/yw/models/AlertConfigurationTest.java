@@ -10,8 +10,12 @@ import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,6 +30,8 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
@@ -39,7 +45,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.CallableSql;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -76,6 +82,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private AlertDestination alertDestination;
 
   private MaintenanceService maintenanceService;
+  private AlertTemplateService alertTemplateService;
   private AlertTemplateVariableService alertTemplateVariableService;
 
   @Before
@@ -85,6 +92,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     otherUniverse = ModelFactory.createUniverse("some other");
 
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
     alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
 
     alertDestination =
@@ -264,7 +272,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     assertFind(filter, configuration, configuration2, platformConfiguration);
 
     // Name filter
-    filter = AlertConfigurationFilter.builder().name(MEMORY_CONSUMPTION.getName()).build();
+    filter = AlertConfigurationFilter.builder().name("Memory Consumption").build();
     assertFind(filter, configuration);
 
     // Name starts with
@@ -516,7 +524,6 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertDefinition duplicate =
         new AlertDefinition()
             .setCustomerUUID(customer.getUuid())
-            .setQuery(definition.getQuery())
             .setConfigurationUUID(definition.getConfigurationUUID())
             .setLabels(
                 definition.getLabels().stream()
@@ -702,8 +709,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
   @Test
   public void testTransactions() {
     AlertConfiguration configuration = createTestConfiguration();
-    CallableSql dropTable = Ebean.createCallableSql("drop table maintenance_window");
-    Ebean.execute(dropTable);
+    CallableSql dropTable = DB.createCallableSql("drop table maintenance_window");
+    DB.getDefault().execute(dropTable);
 
     configuration.setMaintenanceWindowUuids(ImmutableSet.of(UUID.randomUUID()));
 
@@ -750,13 +757,16 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(template);
     assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
-    assertThat(configuration.getName(), equalTo(template.getName()));
-    assertThat(configuration.getDescription(), equalTo(template.getDescription()));
+    assertThat(configuration.getName(), equalTo(templateDescription.getName()));
+    assertThat(configuration.getDescription(), equalTo(templateDescription.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));
-    assertThat(configuration.getDurationSec(), equalTo(template.getDefaultDurationSec()));
+    assertThat(
+        configuration.getDurationSec(), equalTo(templateDescription.getDefaultDurationSec()));
     assertThat(configuration.getDestinationUUID(), equalTo(alertDestination.getUuid()));
-    assertThat(configuration.getTargetType(), equalTo(template.getTargetType()));
+    assertThat(configuration.getTargetType(), equalTo(templateDescription.getTargetType()));
     assertThat(configuration.getTarget(), equalTo(new AlertConfigurationTarget().setAll(true)));
     assertThat(
         configuration.getThresholds().get(AlertConfiguration.Severity.SEVERE),

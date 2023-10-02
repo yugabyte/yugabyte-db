@@ -57,8 +57,8 @@ void TestCallHome(
   };
 
   webserver.RegisterPathHandler("/callhome", "callhome", handler);
-  FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = Format("http://$0/callhome", addr);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_tag) = tag_value;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_url) = Format("http://$0/callhome", addr);
 
   std::set<std::string> low{"cluster_uuid", "node_uuid", "server_type",
                        "timestamp",    "tablets",   "gflags"};
@@ -73,7 +73,7 @@ void TestCallHome(
 
   for (const auto& collection_level : collection_levels) {
     LOG(INFO) << "Collection level: " << collection_level.first;
-    FLAGS_callhome_collection_level = collection_level.first;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_collection_level) = collection_level.first;
     CallHomeType call_home(server);
     json = call_home.BuildJson();
     ASSERT_TRUE(!json.empty());
@@ -111,6 +111,8 @@ void TestCallHome(
     call_home.SendData(json);
     ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));
     latch.Reset(1);
+
+    call_home.Shutdown();
   }
 }
 
@@ -147,10 +149,10 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
   webserver.RegisterPathHandler("/callhome", "callhome", handler);
   LOG(INFO) << "Started webserver to listen for callhome post requests.";
 
-  FLAGS_callhome_tag = tag_value;
-  FLAGS_callhome_url = Format("http://$0/callhome", addr);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_tag) = tag_value;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_url) = Format("http://$0/callhome", addr);
   // Set the interval to 3 secs.
-  FLAGS_callhome_interval_secs = 3 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_callhome_interval_secs) = 3 * kTimeMultiplier;
   // Start with the default value i.e. callhome enabled.
   disabled = false;
 
@@ -168,6 +170,8 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
   // Wait for 3 cycles for no callhome posts. The handler is expected to assert
   // if it gets any new HTTP POST now.
   SleepFor(MonoDelta::FromSeconds(3 * FLAGS_callhome_interval_secs * kTimeMultiplier));
+
+  call_home.Shutdown();
 }
 
 template <class ServerType, class CallHomeType>
@@ -186,6 +190,8 @@ void TestGFlagsCallHome(ServerType* server) {
   std::string flags;
   ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
   ASSERT_TRUE(flags.find(R"(flagA="String with quotes")") != std::string::npos);
+
+  call_home.Shutdown();
 }
 
 }  // namespace yb

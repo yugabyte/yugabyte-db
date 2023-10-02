@@ -38,7 +38,10 @@
 
 #include <boost/bimap.hpp>
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
@@ -59,6 +62,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_parent_table_id_field);
 
@@ -66,6 +70,47 @@ namespace yb {
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+
+// Per table structure for external cluster snapshot importing to this cluster.
+// Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
+struct ExternalTableSnapshotData {
+  bool is_index() const { return !table_entry_pb.indexed_table_id().empty(); }
+
+  NamespaceId old_namespace_id;
+  TableId old_table_id;
+  TableId new_table_id;
+  SysTablesEntryPB table_entry_pb;
+  std::string pg_schema_name;
+  size_t num_tablets = 0;
+  typedef std::pair<std::string, std::string> PartitionKeys;
+  typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
+  typedef std::vector<PartitionPB> Partitions;
+  Partitions partitions;
+  PartitionToIdMap new_tablets_map;
+  // Mapping: Old tablet ID -> New tablet ID.
+  std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
+};
+typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
+
+struct ExternalNamespaceSnapshotData {
+  ExternalNamespaceSnapshotData() : db_type(YQL_DATABASE_UNKNOWN), just_created(false) {}
+
+  NamespaceId new_namespace_id;
+  YQLDatabase db_type;
+  bool just_created;
+};
+// Map: old_namespace_id (key) -> new_namespace_id + db_type + created-flag.
+typedef std::unordered_map<NamespaceId, ExternalNamespaceSnapshotData> NamespaceMap;
+
+struct ExternalUDTypeSnapshotData {
+  ExternalUDTypeSnapshotData() : just_created(false) {}
+
+  UDTypeId new_type_id;
+  SysUDTypeEntryPB type_entry_pb;
+  bool just_created;
+};
+// Map: old_type_id (key) -> new_type_id + type_entry_pb + created-flag.
+typedef std::unordered_map<UDTypeId, ExternalUDTypeSnapshotData> UDTypeMap;
 
 struct TableDescription {
   scoped_refptr<NamespaceInfo> namespace_info;
@@ -75,7 +120,8 @@ struct TableDescription {
 
 struct TabletLeaderLeaseInfo {
   bool initialized = false;
-  consensus::LeaderLeaseStatus leader_lease_status;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
@@ -278,7 +324,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                          const TabletLeaderLeaseInfo& leader_lease_info);
 
   // Returns the per-stream replication status bitmasks.
-  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+  std::unordered_map<xrepl::StreamId, uint64_t> GetReplicationStatus();
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
@@ -319,7 +365,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
-  // The next five methods are getters and setters for the transient, in memory list of table ids
+  // The next four methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
   // hosted_tables_mapped_by_parent_id field is set.
   void SetTableIds(std::vector<TableId>&& table_ids);
@@ -362,7 +408,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   std::atomic<bool> initiated_election_{false};
 
-  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
+  std::unordered_map<xrepl::StreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   // Transient, in memory list of table ids hosted by this tablet. This is not persisted.
   // Only used when FLAGS_use_parent_table_id_field is set.
@@ -465,6 +511,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   bool is_being_created_by_ysql_ddl_txn() const {
     return has_ysql_ddl_txn_verifier_state() &&
       ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
+  std::vector<std::string> cols_marked_for_deletion() const {
+    std::vector<std::string> columns;
+    for (const auto& col : pb.schema().columns()) {
+      if (col.marked_for_deletion()) {
+        columns.push_back(col.name());
+      }
+    }
+    return columns;
   }
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
@@ -576,6 +632,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return GetTableType() == REDIS_TABLE_TYPE;
   }
 
+  bool IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const;
+
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);
 
@@ -659,23 +717,21 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
 
-  // Transition table from PREPARING to RUNNING state if all its tablets are RUNNING.
+  // Check if all tablets of the table are in RUNNING state.
   // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
-  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has
-  // changed.
-  bool TransitionTableFromPreparingToRunning(
-      const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets);
+  // (dirty copy is modified) and yet to be persisted.
+  bool AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    SharedLock l(lock_);
     return is_backfilling_;
   }
 
   Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     is_backfilling_ = false;
   }
 
@@ -727,14 +783,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
-
-  bool SetBootstrappingXClusterReplication(bool val) {
-    return bootstrapping_xcluster_replication_.exchange(val, std::memory_order_acq_rel);
-  }
-
-  bool GetBootstrappingXClusterReplication() const {
-    return bootstrapping_xcluster_replication_.load(std::memory_order_acquire);
-  }
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -1176,14 +1224,20 @@ struct PersistentCDCStreamInfo : public Persistent<
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }
+
+  cdc::StreamModeTransactional transactional() const {
+    return cdc::StreamModeTransactional(pb.transactional());
+  }
 };
 
 class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
                       public MetadataCowWrapper<PersistentCDCStreamInfo> {
  public:
-  explicit CDCStreamInfo(CDCStreamId stream_id) : stream_id_(std::move(stream_id)) {}
+  explicit CDCStreamInfo(const xrepl::StreamId& stream_id)
+      : stream_id_(stream_id), stream_id_str_(stream_id.ToString()) {}
 
-  const CDCStreamId& id() const override { return stream_id_; }
+  const std::string& id() const override { return stream_id_str_; }
+  const xrepl::StreamId& StreamId() const { return stream_id_; }
 
   const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
@@ -1195,16 +1249,38 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;
 
-  const CDCStreamId stream_id_;
+  const xrepl::StreamId stream_id_;
+  const std::string stream_id_str_;
 
   DISALLOW_COPY_AND_ASSIGN(CDCStreamInfo);
 };
 
+typedef scoped_refptr<CDCStreamInfo> CDCStreamInfoPtr;
+
+class UniverseReplicationInfoBase {
+ public:
+  Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
+      google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
+
+ protected:
+  explicit UniverseReplicationInfoBase(cdc::ReplicationGroupId replication_group_id)
+      : replication_group_id_(std::move(replication_group_id)) {}
+
+  virtual ~UniverseReplicationInfoBase() = default;
+
+  const cdc::ReplicationGroupId replication_group_id_;
+
+  std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
+  std::string master_addrs_;
+
+  // Protects xcluster_rpc_tasks_.
+  mutable rw_spinlock lock_;
+};
+
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
-struct PersistentUniverseReplicationInfo :
-    public Persistent<SysUniverseReplicationEntryPB, SysRowEntryType::UNIVERSE_REPLICATION> {
-
+struct PersistentUniverseReplicationInfo
+    : public Persistent<SysUniverseReplicationEntryPB, SysRowEntryType::UNIVERSE_REPLICATION> {
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationEntryPB::DELETED
       || pb.state() == SysUniverseReplicationEntryPB::DELETED_ERROR
@@ -1216,18 +1292,17 @@ struct PersistentUniverseReplicationInfo :
   }
 };
 
-class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationInfo>,
+class UniverseReplicationInfo : public UniverseReplicationInfoBase,
+                                public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(std::string producer_id)
-      : producer_id_(std::move(producer_id)) {}
+  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+      : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
 
-  const std::string& id() const override { return producer_id_; }
+  const std::string& id() const override { return replication_group_id_.ToString(); }
+  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
-
-  Result<std::shared_ptr<CDCRpcTasks>> GetOrCreateCDCRpcTasks(
-      google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
   // Set the Status related to errors on SetupUniverseReplication.
   void SetSetupUniverseReplicationErrorStatus(const Status& status);
@@ -1236,31 +1311,24 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   Status GetSetupUniverseReplicationErrorStatus() const;
 
   void StoreReplicationError(
-    const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
-    ReplicationErrorPb error,
-    const std::string& error_detail);
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
+      ReplicationErrorPb error,
+      const std::string& error_detail);
 
   void ClearReplicationError(
-    const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
-    ReplicationErrorPb error);
+      const TableId& consumer_table_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error);
 
   // Maps from a table id -> stream id -> replication error -> error detail.
   typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-  typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
+  typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
   typedef std::unordered_map<TableId, StreamReplicationErrorMap> TableReplicationErrorMap;
 
   TableReplicationErrorMap GetReplicationErrors() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
-  ~UniverseReplicationInfo() = default;
-
-  const std::string producer_id_;
-
-  std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
-  std::string master_addrs_;
+  virtual ~UniverseReplicationInfo() = default;
 
   // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
   // constructed object, or if the SetupUniverseReplication was successful.
@@ -1268,10 +1336,99 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
 
   TableReplicationErrorMap table_replication_error_map_;
 
-  // Protects cdc_rpc_tasks_.
-  mutable rw_spinlock lock_;
-
   DISALLOW_COPY_AND_ASSIGN(UniverseReplicationInfo);
+};
+
+// This wraps around the proto containing universe replication information. It will be used for
+// CowObject managed access.
+struct PersistentUniverseReplicationBootstrapInfo
+    : public Persistent<
+          SysUniverseReplicationBootstrapEntryPB, SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP> {
+  bool is_deleted_or_failed() const {
+    return pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED ||
+           pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED_ERROR ||
+           pb.state() == SysUniverseReplicationBootstrapEntryPB::FAILED;
+  }
+
+  bool is_done() const {
+    return pb.state() == SysUniverseReplicationBootstrapEntryPB::DONE;
+  }
+
+  TxnSnapshotId old_snapshot_id() const {
+    return pb.has_old_snapshot_id() ? TryFullyDecodeTxnSnapshotId(pb.old_snapshot_id())
+                                    : TxnSnapshotId::Nil();
+  }
+
+  TxnSnapshotId new_snapshot_id() const {
+    return pb.has_new_snapshot_id() ? TryFullyDecodeTxnSnapshotId(pb.new_snapshot_id())
+                                    : TxnSnapshotId::Nil();
+  }
+
+  TxnSnapshotRestorationId restoration_id() const {
+    return pb.has_restoration_id() ? TryFullyDecodeTxnSnapshotRestorationId(pb.restoration_id())
+                                   : TxnSnapshotRestorationId::Nil();
+  }
+
+  LeaderEpoch epoch() const { return LeaderEpoch(pb.leader_term(), pb.pitr_count()); }
+
+  SysUniverseReplicationBootstrapEntryPB::State state() const { return pb.state(); }
+  SysUniverseReplicationBootstrapEntryPB::State failed_on() const { return pb.failed_on(); }
+
+  void set_into_namespace_map(NamespaceMap* namespace_map) const;
+  void set_into_ud_type_map(UDTypeMap* type_map) const;
+  void set_into_tables_data(ExternalTableSnapshotDataMap* tables_data) const;
+
+  void set_old_snapshot_id(const TxnSnapshotId& snapshot_id) {
+    pb.set_old_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  }
+
+  void set_new_snapshot_id(const TxnSnapshotId& snapshot_id) {
+    pb.set_new_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  }
+
+  void set_restoration_id(const TxnSnapshotRestorationId& restoration_id) {
+    pb.set_restoration_id(restoration_id.data(), restoration_id.size());
+  }
+
+  void set_state(const SysUniverseReplicationBootstrapEntryPB::State& state) {
+    pb.set_state(state);
+  }
+
+  void set_new_snapshot_objects(
+      const NamespaceMap& namespace_map, const UDTypeMap& type_map,
+      const ExternalTableSnapshotDataMap& tables_data);
+};
+
+class UniverseReplicationBootstrapInfo
+    : public UniverseReplicationInfoBase,
+      public RefCountedThreadSafe<UniverseReplicationBootstrapInfo>,
+      public MetadataCowWrapper<PersistentUniverseReplicationBootstrapInfo> {
+ public:
+  explicit UniverseReplicationBootstrapInfo(cdc::ReplicationGroupId replication_group_id)
+      : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
+  UniverseReplicationBootstrapInfo(const UniverseReplicationBootstrapInfo&) = delete;
+  UniverseReplicationBootstrapInfo& operator=(const UniverseReplicationBootstrapInfo&) = delete;
+
+  const std::string& id() const override { return replication_group_id_.ToString(); }
+  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+
+  std::string ToString() const override;
+
+  // Set the Status related to errors on SetupUniverseReplication.
+  void SetReplicationBootstrapErrorStatus(const Status& status);
+
+  // Get the Status of the last error from the current SetupUniverseReplication.
+  Status GetReplicationBootstrapErrorStatus() const;
+
+  LeaderEpoch epoch() { return LockForRead()->epoch(); }
+
+ private:
+  friend class RefCountedThreadSafe<UniverseReplicationBootstrapInfo>;
+  ~UniverseReplicationBootstrapInfo() = default;
+
+  // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
+  // constructed object, or if the SetupUniverseReplication was successful.
+  Status replication_bootstrap_error_ = Status::OK();
 };
 
 // The data related to a snapshot which is persisted on disk.

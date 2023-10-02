@@ -79,16 +79,37 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
               } else {
                 clusterList = universeDetails.clusters;
               }
-
+              boolean usingSpecificGFlags = false;
               // Update the gflags.
               for (Cluster cluster : clusterList) {
                 cluster.userIntent.specificGFlags = taskParams().specificGFlags;
                 cluster.userIntent.masterGFlags = taskParams().masterGFlags;
                 cluster.userIntent.tserverGFlags = taskParams().tserverGFlags;
-                GFlagsUtil.syncGflagsToIntent(cluster.userIntent.tserverGFlags, cluster.userIntent);
-                GFlagsUtil.syncGflagsToIntent(cluster.userIntent.masterGFlags, cluster.userIntent);
+                usingSpecificGFlags =
+                    usingSpecificGFlags || cluster.userIntent.specificGFlags != null;
               }
-
+              // Sync gflags to userIntent
+              for (Cluster cluster : universeDetails.clusters) {
+                Map<String, String> masterGFlags =
+                    GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, universeDetails.clusters);
+                Map<String, String> tserverGFlags =
+                    GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, universeDetails.clusters);
+                if (usingSpecificGFlags) {
+                  // Updating old maps accordingly
+                  cluster.userIntent.masterGFlags = masterGFlags;
+                  cluster.userIntent.tserverGFlags = tserverGFlags;
+                  if (cluster.userIntent.specificGFlags != null
+                      && cluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+                    SpecificGFlags primaryGFlags =
+                        universeDetails.getPrimaryCluster().userIntent.specificGFlags;
+                    cluster.userIntent.specificGFlags.setPerProcessFlags(
+                        primaryGFlags.getPerProcessFlags());
+                    cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                  }
+                }
+                GFlagsUtil.syncGflagsToIntent(masterGFlags, cluster.userIntent);
+                GFlagsUtil.syncGflagsToIntent(tserverGFlags, cluster.userIntent);
+              }
               universe.setUniverseDetails(universeDetails);
             }
           };

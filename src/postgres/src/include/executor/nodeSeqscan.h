@@ -28,10 +28,4 @@ extern void ExecSeqScanReInitializeDSM(SeqScanState *node, ParallelContext *pcxt
 extern void ExecSeqScanInitializeWorker(SeqScanState *node,
 							ParallelWorkerContext *pwcxt);
 
-/*
- * Update YugabyteDB specific run-time statistics
- */
-extern void YbExecUpdateInstrumentSeqScan(SeqScanState *node,
-										  Instrumentation *instr);
-
 #endif							/* NODESEQSCAN_H */

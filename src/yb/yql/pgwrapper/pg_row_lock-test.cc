@@ -18,8 +18,13 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_bool(enable_wait_queues);
 
 using namespace std::literals;
+
+DECLARE_bool(yb_enable_read_committed_isolation);
 
 namespace yb::pgwrapper {
 
@@ -27,11 +32,20 @@ YB_DEFINE_ENUM(TestStatement, (kInsert)(kDelete));
 
 class PgRowLockTest : public PgMiniTestBase {
  public:
-  // Run interleaved INSERT/DELETE, SELECT with specified isolation level and row mark.
-  // Possible isolation levels are SNAPSHOT_ISOLATION and SERIALIZABLE_ISOLATION.
-  // Possible row marks are ROW_MARK_KEYSHARE, ROW_MARK_SHARE, ROW_MARK_NOKEYEXCLUSIVE, and
-  // ROW_MARK_EXCLUSIVE.
-  void TestSelectRowLock(IsolationLevel isolation, RowMarkType row_mark, TestStatement statement);
+  // Test an INSERT/DELETE in a concurrent transaction but before a SELECT  with specified isolation
+  // level and row mark.
+  void TestStmtBeforeRowLock(
+      IsolationLevel isolation, RowMarkType row_mark, TestStatement statement);
+  void TestStmtBeforeRowLockImpl(TestStatement statement);
+
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgMiniTestBase::SetUp();
+  }
 };
 
 std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
@@ -80,10 +94,8 @@ class TxnHelper {
 };
 
 
-void PgRowLockTest::TestSelectRowLock(
+void PgRowLockTest::TestStmtBeforeRowLock(
     IsolationLevel isolation, RowMarkType row_mark, TestStatement statement) {
-  const std::string isolation_str = (
-      isolation == IsolationLevel::SNAPSHOT_ISOLATION ? "REPEATABLE READ" : "SERIALIZABLE");
   const std::string row_mark_str = RowMarkTypeToPgsqlString(row_mark);
   constexpr auto kSleepTime = 1s;
   constexpr int kKeys = 3;
@@ -99,12 +111,16 @@ void PgRowLockTest::TestSelectRowLock(
     ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
   }
 
-  ASSERT_OK(read_conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_str));
+  ASSERT_OK(read_conn.StartTransaction(isolation));
   ASSERT_OK(read_conn.FetchFormat("SELECT * FROM t WHERE i = $0", -1));
 
-  // Sleep to ensure that read done in txn doesn't face kReadRestart after INSERT (a sleep will
-  // ensure sufficient gap between write time and read point - more than clock skew).
-  std::this_thread::sleep_for(kSleepTime);
+  // Sleep to ensure that read done in snapshot isolation txn doesn't face kReadRestart after INSERT
+  // (a sleep will ensure sufficient gap between write time and read point - more than clock skew).
+  //
+  // kReadRestart errors can't occur in read committed and serializable isolation levels.
+  if (isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    std::this_thread::sleep_for(kSleepTime);
+  }
 
   if (statement == TestStatement::kInsert) {
     ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", kKeys));
@@ -115,15 +131,14 @@ void PgRowLockTest::TestSelectRowLock(
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION && statement == TestStatement::kDelete) {
     ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(),
-                        "could not serialize access due to concurrent update");
-    ASSERT_OK(read_conn.Execute("ABORT"));
+    const auto& status = result.status();
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+    ASSERT_OK(read_conn.RollbackTransaction());
   } else {
     ASSERT_OK(result);
-    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for Yugabyte.
+    // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for
+    // YugabyteDB.
     auto expected_keys = kKeys;
     if (isolation != IsolationLevel::SNAPSHOT_ISOLATION) {
       expected_keys += statement == TestStatement::kInsert ? 1 : -1;
@@ -131,98 +146,31 @@ void PgRowLockTest::TestSelectRowLock(
     ASSERT_EQ(PQntuples(result.get().get()), expected_keys);
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }
-  ASSERT_OK(read_conn.Execute("COMMIT"));
+  ASSERT_OK(read_conn.CommitTransaction());
+  ASSERT_OK(misc_conn.Execute("DROP TABLE t"));
 }
 
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE, TestStatement::kInsert);
+void PgRowLockTest::TestStmtBeforeRowLockImpl(TestStatement statement) {
+  for (const auto& isolation : {
+          IsolationLevel::READ_COMMITTED, IsolationLevel::SNAPSHOT_ISOLATION,
+          IsolationLevel::SERIALIZABLE_ISOLATION}) {
+    for (const auto& row_mark : {
+            RowMarkType::ROW_MARK_EXCLUSIVE, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
+            RowMarkType::ROW_MARK_SHARE, RowMarkType::ROW_MARK_KEYSHARE}) {
+      TestStmtBeforeRowLock(isolation, row_mark, statement);
+    }
+  }
 }
 
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE,
-      TestStatement::kInsert);
+TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(InsertBeforeExplicitRowLock)) {
+  TestStmtBeforeRowLockImpl(TestStatement::kInsert);
 }
 
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForNoKeyUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
-      TestStatement::kInsert);
+TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(DeleteBeforeExplicitRowLock)) {
+  TestStmtBeforeRowLockImpl(TestStatement::kDelete);
 }
 
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForNoKeyUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
-      TestStatement::kInsert);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kInsert);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kInsert);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotInsertForKeyShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE, TestStatement::kInsert);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableInsertForKeyShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE,
-      TestStatement::kInsert);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE, TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_EXCLUSIVE,
-      TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForNoKeyUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
-      TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForNoKeyUpdate)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_NOKEYEXCLUSIVE,
-      TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_SHARE, TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SnapshotDeleteForKeyShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SNAPSHOT_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE, TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(SerializableDeleteForKeyShare)) {
-  TestSelectRowLock(
-      IsolationLevel::SERIALIZABLE_ISOLATION, RowMarkType::ROW_MARK_KEYSHARE,
-      TestStatement::kDelete);
-}
-
-TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
+TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
   auto conn = ASSERT_RESULT(Connect());
 
   auto status = conn.Execute(
@@ -232,10 +180,24 @@ TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(RowLockWithoutTransaction)) {
                       "Read request with row mark types must be part of a transaction");
 }
 
+TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
+  const auto table = "foo";
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
+
+  ASSERT_OK(cluster_->RestartSync());
+}
+
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
  protected:
   void BeforePgProcessStart() override {
-    FLAGS_ysql_sleep_before_retry_on_txn_conflict = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
   }
 };
 
@@ -243,7 +205,7 @@ class PgMiniTestNoTxnRetry : public PgRowLockTest {
 // A test performing manual transaction control on system tables.
 // ------------------------------------------------------------------------------------------------
 
-TEST_F_EX(PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoTxnRetry) {
+TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
 
   // Resolving conflicts between transactions on a system table.
   //
@@ -350,8 +312,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(StartTxn(&extra_conn));
     ASSERT_OK(extra_conn.Execute("INSERT INTO fktable VALUES(1, 1, 2)"));
     ASSERT_OK(conn.Execute("UPDATE pktable SET v = 20 WHERE k = 1"));
-    // extra_conn created strong read intent on (1, liveness) due to foreign key check.
-    // As a result weak read intent is created for (1).
+    // extra_conn creates weak read intent on (1) due to foreign key check.
     // conn UPDATE created strong write intent on (1, v).
     // As a result weak write intent is created for (1).
     // Weak read + weak write on (1) has no conflicts.
@@ -501,44 +462,44 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     // Transaction 1.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 2.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 3.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR SHARE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 4.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
@@ -546,9 +507,9 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Check FOR KEY SHARE + FOR UPDATE conflict separately
     // as FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
 
     ASSERT_NOK(conn.Execute("COMMIT"));
   }
@@ -618,14 +579,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     DuplicateInsertImpl(IndexRequirement::NON_UNIQUE,
     false /* low_pri_txn_insert_same_key */,
     true /* low_pri_txn_succeed */);
-  }
-
-  static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
-    return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
-  }
-
-  static Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
-    return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
   }
 
   static Status StartTxn(PGConn* connection) {
@@ -701,7 +654,7 @@ class PgMiniTestTxnHelperSerializable
     ASSERT_EQ(res, 1);
 
     ASSERT_OK(StartTxn(&conn));
-    // Next statement will lock whole row for updates due to expression
+    // Next statement will lock whole row for both read and write due to expression
     ASSERT_OK(conn.Execute("UPDATE t SET v2 = v2 * 2 WHERE k = 1"));
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "UPDATE t SET v2 = 10 WHERE k = 1"));
@@ -744,135 +697,177 @@ class PgRowLockTxnHelperSnapshotTest
 };
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(ReferencedTableUpdateSerializable),
+          ReferencedTableUpdateSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestReferencedTableUpdate();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(ReferencedTableUpdateSnapshot),
+          ReferencedTableUpdateSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestReferencedTableUpdate();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowKeyShareLockSerializable),
+          ReferencedTableUpdateReadCommitted,
+          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
+  TestReferencedTableUpdate();
+}
+
+TEST_F_EX(PgRowLockTest,
+          RowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowKeyShareLock();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowKeyShareLockSnapshot),
+          RowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowKeyShareLock();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrixSerializable),
+          RowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowLockConflictMatrix();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(RowLockConflictMatrixSnapshot),
+          RowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowLockConflictMatrix();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSerializable),
+          CursorRowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowKeyShareLock("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowKeyShareLockSnapshot),
+          CursorRowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowKeyShareLock("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSerializable),
+          CursorRowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestRowLockConflictMatrix("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(CursorRowLockConflictMatrixSnapshot),
+          CursorRowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestRowLockConflictMatrix("cur_name");
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithPushdown),
+          SameColumnUpdateSerializableWithPushdown,
           PgMiniTestTxnHelperSerializable) {
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithPushdown),
+          SameColumnUpdateSnapshotWithPushdown,
           PgRowLockTxnHelperSnapshotTest) {
   TestSameColumnUpdate(true /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSerializableWithoutPushdown),
+          SameColumnUpdateSerializableWithoutPushdown,
           PgMiniTestTxnHelperSerializable) {
   TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(SameColumnUpdateSnapshotWithoutPushdown),
+          SameColumnUpdateSnapshotWithoutPushdown,
           PgRowLockTxnHelperSnapshotTest) {
   TestSameColumnUpdate(false /* enable_expression_pushdown */);
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSerializable),
+          DuplicateInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateInsertSnapshot),
+          DuplicateInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestDuplicateInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSerializable),
+          DuplicateInsertReadCommitted,
+          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
+  TestDuplicateInsert();
+}
+
+TEST_F_EX(PgRowLockTest,
+          DuplicateUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateUniqueIndexInsertSnapshot),
+          DuplicateUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
   TestDuplicateUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSerializable),
+          DuplicateUniqueIndexInsertReadCommitted,
+          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
+  TestDuplicateUniqueIndexInsert();
+}
+
+TEST_F_EX(PgRowLockTest,
+          DuplicateNonUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateNonUniqueIndexInsert();
 }
 
 TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertSnapshot),
+          DuplicateNonUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
+  TestDuplicateNonUniqueIndexInsert();
+}
+
+TEST_F_EX(PgRowLockTest,
+          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertReadCommitted),
+          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
   TestDuplicateNonUniqueIndexInsert();
 }
 
 TEST_F_EX(
-  PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SnapshotInOperatorLock),
+  PgRowLockTest, SnapshotInOperatorLock,
   PgRowLockTxnHelperSnapshotTest) {
   TestInOperatorLock();
 }
 
 TEST_F_EX(
-    PgRowLockTest, YB_DISABLE_TEST_IN_TSAN(SerializableInOperatorLock),
+    PgRowLockTest, SerializableInOperatorLock,
     PgMiniTestTxnHelperSerializable) {
   TestInOperatorLock();
+}
+
+TEST_F_EX(
+    PgRowLockTest, PartialKeyRowLockConflict,
+    PgMiniTestTxnHelperSerializable) {
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY(h, r))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 3)"));
+
+  ASSERT_OK(StartTxn(&conn));
+  ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r = 2 FOR KEY SHARE"));
+
+  // Check that FOR KEY SHARE + FOR UPDATE conflicts.
+  // FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
+  ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE h = 1 FOR UPDATE"));
+  ASSERT_NOK(conn.Execute("COMMIT"));
 }
 
 }  // namespace yb::pgwrapper

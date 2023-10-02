@@ -113,7 +113,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
         }
 
         if (HighAvailabilityConfig.get().isPresent()) {
-          getUniverse(true).incrementVersion();
+          universe.incrementVersion();
         }
 
         // Save the role in the DB.

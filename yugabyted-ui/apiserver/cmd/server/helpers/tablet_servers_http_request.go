@@ -3,12 +3,8 @@ package helpers
 import (
         "encoding/json"
         "errors"
-        "fmt"
-        "io/ioutil"
         "net"
-        "net/http"
         "regexp"
-        "time"
 )
 
 type PathMetrics struct {
@@ -47,23 +43,18 @@ type TabletServersFuture struct {
         Error   error
 }
 
-func GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
+func (h *HelperContainer) GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
         tabletServers := TabletServersFuture{
                 Tablets: map[string]map[string]TabletServer{},
                 Error:   nil,
         }
-        httpClient := &http.Client{
-                Timeout: time.Second * 10,
-        }
-        url := fmt.Sprintf("http://%s:7000/api/v1/tablet-servers", nodeHost)
-        resp, err := httpClient.Get(url)
+        urls, err := h.BuildMasterURLs("api/v1/tablet-servers")
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
                 return
         }
-        defer resp.Body.Close()
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := h.AttemptGetRequests(urls, true)
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
@@ -87,7 +78,7 @@ func GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
 }
 
 // Helper for getting the hostnames of each node given a TabletServersFuture response
-func GetNodesList(tablets TabletServersFuture) []string {
+func (h *HelperContainer) GetNodesList(tablets TabletServersFuture) []string {
         hostNames := []string{}
         for _, obj := range tablets.Tablets {
                 for hostport := range obj {
@@ -102,18 +93,13 @@ func GetNodesList(tablets TabletServersFuture) []string {
 
 // Helper for getting a map between hostnames and uuids for tservers
 // For now, we hit the /tablet-servers endpoint and parse the html
-func GetHostToUuidMap(nodeHost string) (map[string]string, error) {
+func (h *HelperContainer) GetHostToUuidMap(nodeHost string) (map[string]string, error) {
         hostToUuidMap := map[string]string{}
-        httpClient := &http.Client{
-                Timeout: time.Second * 10,
-        }
-        url := fmt.Sprintf("http://%s:7000/tablet-servers", HOST)
-        resp, err := httpClient.Get(url)
+        urls, err := h.BuildMasterURLs("tablet-servers")
         if err != nil {
                 return hostToUuidMap, err
         }
-        defer resp.Body.Close()
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := h.AttemptGetRequests(urls, false)
         if err != nil {
                 return hostToUuidMap, err
         }

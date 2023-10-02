@@ -167,7 +167,7 @@ Misuse or overuse of manual tablet splitting (for example, splitting tablets whi
 In order to verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
 ```bash
-.bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+./bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
 Expect the following output:
@@ -179,12 +179,22 @@ Tablet UUID                       Range                         Leader
 
 Note the tablet UUID for later use.
 
+### Manually flush the tablet
+
+The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+
+```sh
+./bin/yb-ts-cli \
+    --server_address=127.0.0.1:9100,127.0.0.2:9100,127.0.0.3:9100 \
+    flush_tablet 9991368c4b85456988303cd65a3c6503
+```
+
 ### Manually split the tablet
 
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command:
 
 ```sh
-.bin/yb-admin \
+./bin/yb-admin \
     --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     split_tablet 9991368c4b85456988303cd65a3c6503
 ```
@@ -209,9 +219,19 @@ For details on the architecture design, see [Automatic re-sharding of data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
+When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one tablet per node by default.
 
-When automatic tablet splitting is enabled, newly-created tables have one shard per T-Server by default.
+In addition, from version 2.14.10, for servers with up to 2 CPU cores, newly-created tables have one tablet per cluster, and servers with up to 4 CPU cores have 2 tablets per cluster.
+
+From version 2.18.0, automatic tablet splitting is turned on by default.
+
+To control automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split, and use `yb-tserver` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-tserver/#enable-automatic-tablet-splitting). The flags must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+
+{{< note title="Note" >}}
+
+Newly-created tables with [range sharding](../../../architecture/docdb-sharding/sharding/#range-sharding) always have one shard *per cluster* unless table partitioning is specified explicitly during table creation.
+
+{{< /note >}}
 
 Automatic tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
 
@@ -297,6 +317,8 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
  For details on using YCSB with YugabyteDB, see [Benchmark: YCSB](../../../benchmark/ycsb-jdbc/).
 
 ## Limitations
+
+* Tablet splitting is disabled for index tables with range partitioning that are being restored in version `2.14.5` or later from a backup taken in any version prior to `2.14.5`. It is not recommended to use tablet splitting for range partitioned index tables prior to version `2.14.5` to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
 
 The following known limitations are planned to be resolved in upcoming releases:
 

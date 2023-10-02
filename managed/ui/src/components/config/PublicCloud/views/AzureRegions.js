@@ -2,9 +2,15 @@ import _ from 'lodash';
 import * as Yup from 'yup';
 import { Field, Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { YBFormInput, YBFormSelect, YBModal } from '../../../common/forms/fields';
 
+// The following region array is used in the old provider form.
+// Please also add any new regions and zones to:
+// src/components/configRedesign/providerRedesign/providerRegionsData.ts
+// so that the new kubernetes provider UI stays in sync.
+// The old provider UI and its related components/constants/types will be removed once
+// it is no longer used as a fallback option.
 const AZURE_REGIONS = [
   {
     region: 'westus',
@@ -175,7 +181,7 @@ const AZURE_REGIONS = [
     region: 'brazilsouth',
     name: 'Brazil South',
     zones: ['brazilsouth-1', 'brazilsouth-2', 'brazilsouth-3']
-  },
+  }
 ];
 
 const zonesMap = {};
@@ -227,9 +233,9 @@ export const AzureRegions = ({ regions, onChange }) => {
   // remove already selected regions from the list and convert them to rendering format
   useEffect(() => {
     const selectedRegions = _.map(regions, 'region.value');
-    const result = AZURE_REGIONS
-      .filter(item => !selectedRegions.includes(item.region))
-      .map((region) => ({ value: region.region, label: region.name }));
+    const result = AZURE_REGIONS.filter(
+      (item) => !selectedRegions.includes(item.region)
+    ).map((region) => ({ value: region.region, label: region.name }));
 
     // when editing existing region - make sure to keep it in dropdown options
     if (currentRegion) {
@@ -344,7 +350,9 @@ export const AzureRegions = ({ regions, onChange }) => {
                 <Field name="customSecurityGroupId" component={YBFormInput} />
               </div>
               <div>
-                <div className="form-item-custom-label">Marketplace Image URN/Shared Gallery Image ID (optional)</div>
+                <div className="form-item-custom-label">
+                  Marketplace Image URN/Shared Gallery Image ID (optional)
+                </div>
                 <Field name="customImageId" component={YBFormInput} />
               </div>
               <div className="divider" />
@@ -353,8 +361,11 @@ export const AzureRegions = ({ regions, onChange }) => {
                 <Row
                   // eslint-disable-next-line react/no-array-index-key
                   key={index}
-                  className={(index >= (zonesMap[values.region.value] || []).length) &&
-                             values.region ? "invisible" : "visible"}
+                  className={
+                    index >= (zonesMap[values.region.value] || []).length && values.region
+                      ? 'invisible'
+                      : 'visible'
+                  }
                 >
                   <Col lg={6}>
                     <Field

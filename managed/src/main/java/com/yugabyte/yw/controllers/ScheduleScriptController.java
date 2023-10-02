@@ -11,9 +11,12 @@ import com.fasterxml.jackson.databind.node.JsonNodeType;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -24,6 +27,11 @@ import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper;
 import com.yugabyte.yw.models.helpers.ExternalScriptHelper.ExternalScriptConfObject;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,6 +49,12 @@ public class ScheduleScriptController extends AuthenticatedController {
   @Inject SettableRuntimeConfigFactory sConfigFactory;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result externalScriptSchedule(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
@@ -63,7 +77,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
     // settings.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Check if a script is already scheduled for this universe.
@@ -103,15 +118,21 @@ public class ScheduleScriptController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result stopScheduledScript(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
     // Validate Customer
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Extract scheduleUUID from RuntimeConfig DB inserted at the time of scheduling
     // script.
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
     Schedule schedule;
     try {
@@ -140,6 +161,12 @@ public class ScheduleScriptController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateScheduledScript(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate Access
     canAccess();
@@ -159,7 +186,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     taskParams.userUUID = user.getUser().getUuid();
 
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Extract the already present External Script Scheduler for universe.

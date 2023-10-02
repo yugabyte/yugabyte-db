@@ -60,7 +60,7 @@ struct ColumnValue {
 
 template <class Col>
 auto GetColumnValue(const Col& col) {
-  CHECK_EQ(col.size(), 2);
+  CHECK_EQ(col.size(), 2) << yb::ToString(col);
   auto it = col.begin();
   using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
   if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
@@ -155,12 +155,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
   switch (condition.op()) {
     // For relational conditions, the ranges are as follows. If the column is not a range column,
     // just return since it doesn't impose a bound on a range column.
-    //
-    // We are not distinguishing between < and <= currently but treat the bound as inclusive lower
-    // bound. After all, the bound is just a superset of the scan range and as a best-effort
-    // measure. There may be a some ways to optimize and distinguish the two in future, like using
-    // exclusive lower bound in DocRowwiseIterator or increment the bound value by "1" to become
-    // inclusive bound. Same for > and >=.
     case QL_OP_EQUAL: {
       if (has_range_column) {
         // - <column> = <value> --> min/max values = <value>
@@ -176,7 +170,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
     case QL_OP_LESS_THAN:
-      // We can only process strict inequalities if we're using hybridscan
       is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
@@ -197,7 +190,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
     case QL_OP_GREATER_THAN:
-      // We can only process strict inequalities if we're using hybridscan
       is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
@@ -240,7 +232,6 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
             ranges_[column_id].max_bound = bound;
           }
 
-          // We can only process strict inequalities if we're using hybridscan
           if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
@@ -351,6 +342,18 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       }
       return;
     }
+    case QL_OP_IS_NOT_NULL: {
+      if (has_range_column) {
+        CHECK_EQ(operands.size(), 1);
+        auto it = operands.begin();
+        if (it->expr_case() == ExprCase::kColumnId) {
+          const ColumnId column_id(it->column_id());
+          auto& range = ranges_[column_id];
+          range.is_not_null = true;
+        }
+      }
+      return;
+    }
 
       // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case QL_OP_AND: {
@@ -376,14 +379,15 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
 
-    case QL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_NOT_NULL: FALLTHROUGH_INTENDED;
-    case QL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
-    case QL_OP_LIKE:        FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_NULL:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_TRUE:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_FALSE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_EQUAL:    FALLTHROUGH_INTENDED;
+    case QL_OP_LIKE:         FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_LIKE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_IN:       FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS:     FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_BETWEEN:
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
@@ -455,6 +459,13 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
     } else if (other_range.max_bound) {
       range.max_bound = other_range.max_bound;
     }
+
+    if (!range.min_bound && !range.max_bound) {
+      range.is_not_null |= other_range.is_not_null;
+    } else {
+      // IS NOT NULL is covered by having a min_bound or a max_bound.
+      range.is_not_null = false;
+    }
   }
   has_in_range_options_ = has_in_range_options_ || other.has_in_range_options_;
   has_in_hash_options_ = has_in_hash_options_ || other.has_in_hash_options_;
@@ -481,6 +492,11 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     } else if (!other_range.max_bound) {
       range.max_bound = boost::none;
     }
+
+    if (!range.min_bound && !range.max_bound) {
+      // A query that allows a null wins in an OR.
+      range.is_not_null = range.is_not_null && other_range.is_not_null;
+    }
   }
   has_in_range_options_ = has_in_range_options_ && other.has_in_range_options_;
   has_in_hash_options_ = has_in_hash_options_ && other.has_in_hash_options_;
@@ -496,9 +512,10 @@ QLScanRange& QLScanRange::operator~() {
     if (range.min_bound && range.max_bound) {
       // If the condition's min and max values are defined, the negation of it will be
       // disjoint ranges at the two ends, which is not representable as a simple range. So
-      // we will treat the result as unbounded.
+      // we will treat the result as unbounded, but omit NULLs.
       range.min_bound = boost::none;
       range.max_bound = boost::none;
+      range.is_not_null = true;
     } else {
       // Otherwise, for one-sided range or unbounded range, the resulting min/max bounds are
       // just the reverse of the bounds.
@@ -557,7 +574,7 @@ QLScanSpec::QLScanSpec(
       condition_(condition),
       if_condition_(if_condition),
       executor_(std::move(executor)) {
-  if (executor_ == nullptr) {
+  if (!executor_) {
     executor_ = std::make_shared<QLExprExecutor>();
   }
 }
@@ -584,22 +601,65 @@ PgsqlScanSpec::PgsqlScanSpec(
     const Schema& schema,
     bool is_forward_scan,
     rocksdb::QueryId query_id,
-    std::unique_ptr<const QLScanRange>
-        range_bounds,
-    size_t prefix_length,
-    const PgsqlExpressionPB* where_expr,
-    QLExprExecutor::SharedPtr executor)
+    std::unique_ptr<const QLScanRange> range_bounds,
+    size_t prefix_length)
     : YQLScanSpec(
           YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id, std::move(range_bounds),
-          prefix_length),
-      where_expr_(where_expr),
-      executor_(executor) {
-  if (executor_ == nullptr) {
-    executor_ = std::make_shared<QLExprExecutor>();
-  }
+          prefix_length) {
 }
 
-PgsqlScanSpec::~PgsqlScanSpec() {
+std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
+    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs) {
+  std::vector<const QLValuePB*> options_elems;
+  options_elems.reserve(options.elems_size());
+  for (const auto& value : options.elems()) {
+    options_elems.push_back(&value);
+  }
+  std::sort(
+      options_elems.begin(), options_elems.end(),
+      [&schema, is_forward_scan, &col_idxs](const auto& t1, const auto& t2) {
+        DCHECK(t1->has_tuple_value());
+        DCHECK(t2->has_tuple_value());
+        const auto& tuple1 = t1->tuple_value();
+        const auto& tuple2 = t2->tuple_value();
+        DCHECK(tuple1.elems().size() == tuple2.elems().size());
+        auto li = tuple1.elems().begin();
+        auto ri = tuple2.elems().begin();
+        int i = 0;
+        int cmp = 0;
+        for (i = 0; i < tuple1.elems().size(); ++i, ++li, ++ri) {
+          if (IsNull(*li)) {
+            if (!IsNull(*ri)) {
+              cmp = 1;
+              break;
+            }
+          } else {
+            if (IsNull(*ri)) {
+              cmp = 0;
+              break;
+            }
+            int result = Compare(*li, *ri);
+            if (result != 0) {
+              cmp = (result < 0);
+              break;
+            }
+          }
+        }
+
+        if (i != tuple1.elems().size()) {
+          auto sorting_type =
+              col_idxs[i] == kYbHashCodeColId ? SortingType::kAscending
+                                              : schema.column(col_idxs[i]).sorting_type();
+          auto is_reverse_order =
+               is_forward_scan ^ (sorting_type == SortingType::kAscending ||
+                                  sorting_type == SortingType::kAscendingNullsLast ||
+                                  sorting_type == SortingType::kNotSpecified);
+          cmp ^= is_reverse_order;
+        }
+        return cmp;
+      });
+  return options_elems;
 }
 
 }  // namespace yb::qlexpr

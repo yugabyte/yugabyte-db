@@ -1754,8 +1754,8 @@ _readYbSeqScan(void)
 
 	ReadCommonScan(&local_node->scan);
 
-	READ_NODE_FIELD(remote.qual);
-	READ_NODE_FIELD(remote.colrefs);
+	READ_NODE_FIELD(yb_pushdown.quals);
+	READ_NODE_FIELD(yb_pushdown.colrefs);
 
 	READ_DONE();
 }
@@ -1793,10 +1793,12 @@ _readIndexScan(void)
 	READ_NODE_FIELD(indexorderbyops);
 	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
-	READ_NODE_FIELD(index_remote.qual);
-	READ_NODE_FIELD(index_remote.colrefs);
-	READ_NODE_FIELD(rel_remote.qual);
-	READ_NODE_FIELD(rel_remote.colrefs);
+	READ_NODE_FIELD(yb_idx_pushdown.quals);
+	READ_NODE_FIELD(yb_idx_pushdown.colrefs);
+	READ_NODE_FIELD(yb_rel_pushdown.quals);
+	READ_NODE_FIELD(yb_rel_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 
 	READ_DONE();
 }
@@ -1816,8 +1818,9 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(indexorderby);
 	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
-	READ_NODE_FIELD(remote.qual);
-	READ_NODE_FIELD(remote.colrefs);
+	READ_NODE_FIELD(yb_pushdown.quals);
+	READ_NODE_FIELD(yb_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
 
 	READ_DONE();
 }
@@ -2100,12 +2103,12 @@ _readYbBatchedNestLoop(void)
 
 	YbBNLHashClauseInfo *current_hinfo = local_node->hashClauseInfos;
 	for (int i = 0; i < num_hashClauseInfos; i++)
-	{	
+	{
 		char *tok = pg_strtok(&length);
 		(void) tok;
 		tok = pg_strtok(&length);
 		current_hinfo->hashOp = atoi(tok);
-		
+
 		tok = pg_strtok(&length);
 		(void) tok;
 		tok = pg_strtok(&length);

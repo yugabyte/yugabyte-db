@@ -23,11 +23,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.pgsql.ExplainAnalyzeUtils.checkReadRequests;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
 
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
@@ -57,95 +61,157 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     }
   }
 
-  private TopLevelCheckerBuilder makeTopLevelBuilder() {
-    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class);
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false /* nullify */);
   }
 
   private static PlanCheckerBuilder makePlanBuilder() {
-    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
-  }
-
-  private static String makeFillerString(int n) {
-    char[] charArray = new char[n];
-    Arrays.fill(charArray, 'a');
-    return new String(charArray);
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
   }
 
   @Test
   public void testSimplePrefetch() throws Exception {
-    String tableName = "TestPrefetch";
+    String tableName = "testprefetch";
     createPrefetchTable(tableName);
 
     int tableRowCount = 5000;
     try (Statement statement = connection.createStatement()) {
-      List<Row> insertedRows = new ArrayList<>();
+      statement.execute(String.format(
+        "INSERT INTO %s SELECT " +
+        "  g, CONCAT('range_', g::TEXT), " +
+        "  g + 10000, CONCAT('value_', (g + 10000)::TEXT) " +
+        "FROM generate_series(0, %d) g",
+        tableName, tableRowCount - 1));
 
-      for (int i = 0; i < tableRowCount; i++) {
-        int h = i;
-        String r = String.format("range_%d", h);
-        int vi = i + 10000;
-        String vs = String.format("value_%d", vi);
-        String stmt = String.format("INSERT INTO %s VALUES (%d, '%s', %d, '%s')",
-                                    tableName, h, r, vi, vs);
-        statement.execute(stmt);
-        insertedRows.add(new Row(h, r, vi, vs));
-      }
+      String seqScanQuery = String.format("SELECT * FROM %s", tableName);
 
-      // Check rows.
-      String stmt = String.format("SELECT * FROM %s ORDER BY h", tableName);
-      try (ResultSet rs = statement.executeQuery(stmt)) {
-        assertEquals(insertedRows, getRowList(rs));
-      }
-
-      // Check that ysql_prefetch_limit is respected.
-      ExplainAnalyzeUtils.testExplain(
-        statement,
-        stmt,
-        makeTopLevelBuilder()
-          .storageReadRequests(Checkers.greaterOrEqual(50))
-          .storageWriteRequests(Checkers.equal(0))
-          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-          .plan(makePlanBuilder().build())
-          .build());
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(51), tableRowCount);
     }
   }
 
-  public void checkFetchLimitReadRequests(Statement statement, String stmt,
-    int rowLimit, int sizeLimit, int expectedReadRequests) throws Exception {
-
-    statement.execute(String.format("SET yb_fetch_row_limit=%d", rowLimit));
-    statement.execute(String.format("SET yb_fetch_size_limit=%d", sizeLimit));
-    ExplainAnalyzeUtils.testExplain(
-      statement,
-      stmt,
-      makeTopLevelBuilder()
-        .storageReadRequests(Checkers.equal(expectedReadRequests))
-        .storageWriteRequests(Checkers.equal(0))
-        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-        .plan(makePlanBuilder().build())
-        .build());
+  private void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimit)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %d", rowLimit, sizeLimit));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimit));
   }
 
   @Test
   public void testSizeBasedFetch() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      String tableName = "TestPrefetch";
+      String tableName = "testfetch";
       int charLength = 109;
-      String fillerData = makeFillerString(charLength);
+      int tableRowCount = 100000;
 
-      String stmt = String.format("create table %s (k bigint, v char(%d), primary key (k asc))",
-        tableName, charLength);
-      statement.execute(stmt);
-      stmt = String.format("insert into %s (select s, '%s' from generate_series(1, 100000) as s)",
-        tableName, fillerData);
-      statement.execute(stmt);
+      statement.execute(String.format(
+          "create table %s (k bigint, v char(%d), primary key (k asc))",
+          tableName, charLength));
+      statement.execute(String.format(
+          "insert into %s (select s, repeat('a', %d) from generate_series(1, %d) as s)",
+          tableName, charLength, tableRowCount));
 
-      stmt = String.format("SELECT * FROM %s", tableName);
+      statement.execute(String.format("create index on %s (v asc)", tableName));
 
-      checkFetchLimitReadRequests(statement, stmt, 1024,  0,    98);
-      checkFetchLimitReadRequests(statement, stmt, 0,     512,  25);
-      checkFetchLimitReadRequests(statement, stmt, 0,     1024, 13);
-      checkFetchLimitReadRequests(statement, stmt, 0,     0,    1);
+      String seqScanQuery = String.format("SELECT * FROM %s", tableName);
+      String indexScanQuery = String.format("SELECT * FROM %s WHERE k > 0", tableName);
+      String indexOnlyScanQuery = String.format("SELECT v FROM %s WHERE v > ''", tableName);
+
+      setRowAndSizeLimit(statement, 1024, 0);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(98), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(98), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(98), tableRowCount);
+
+      setRowAndSizeLimit(statement, 0, 0);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(1), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(1), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(1), tableRowCount);
+
+      // row buffer fills up faster in YbSeqScan
+      setRowAndSizeLimit(statement, 0, 512);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(25), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(25), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(23), tableRowCount);
+
+      setRowAndSizeLimit(statement, 0, 1024);
+      checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
+                        Checkers.equal(13), tableRowCount);
+      checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
+                        Checkers.equal(13), tableRowCount);
+      checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
+                        Checkers.equal(12), tableRowCount);
+    }
+  }
+
+  @Test
+  public void testBnlWithSizeLimit() throws Exception {
+    // #18708: BNL with small LIMIT and yb_fetch_size_limit > 0 and yb_fetch_row_limit = 0
+    // used the small limit for each request to the outer table. This resulted in
+    // (yb_bnl_batch_size / query_limit) RPCs to fill the first batch.
+    int tableRowCount = 1000;
+    int limitCount = 10;
+    String createStatement = "CREATE TABLE %s (a INT PRIMARY KEY, b INT)";
+    String insertStatement = "INSERT INTO %s SELECT i, i FROM generate_series(1, %d) i";
+    String tableName1 = "tb1";
+    String tableName2 = "tb2";
+    String query = String.format(
+        "/*+ Set(yb_bnl_batch_size 1024) NestLoop(t1 t2) */ " +
+        "SELECT t1.a, t2.b FROM %s AS t1 JOIN %s AS t2 ON t1.a = t2.a LIMIT %d",
+        tableName1, tableName2, limitCount);
+    int innerTableRequests = 1;
+    int outerTableRequests = 4;
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(String.format(createStatement, tableName1));
+      statement.execute(String.format(createStatement, tableName2));
+      statement.execute(String.format(insertStatement, tableName1, tableRowCount));
+      statement.execute(String.format(insertStatement, tableName2, tableRowCount));
+      PlanCheckerBuilder limitChecker = makePlanBuilder()
+        .nodeType(NODE_LIMIT)
+        .actualRows(Checkers.equal(limitCount));
+
+      PlanCheckerBuilder batchNestedLoopNodeChecker = makePlanBuilder()
+        .nodeType(NODE_YB_BATCHED_NESTED_LOOP)
+        .actualRows(Checkers.equal(limitCount));
+
+      PlanCheckerBuilder outerTableSeqScanChecker = makePlanBuilder()
+          .nodeType(NODE_SEQ_SCAN)
+          .relationName(tableName1)
+          .storageTableReadRequests(Checkers.equal(outerTableRequests));
+
+      PlanCheckerBuilder innerTableIndexScanChecker = makePlanBuilder()
+          .nodeType(NODE_INDEX_SCAN)
+          .relationName(tableName2)
+          .storageTableReadRequests(Checkers.equal(innerTableRequests))
+          .actualLoops(Checkers.equal(1));
+
+      Checker checker = makeTopLevelBuilder()
+          .plan(limitChecker.plans(batchNestedLoopNodeChecker
+                  .plans(outerTableSeqScanChecker.build(), innerTableIndexScanChecker.build())
+                  .build())
+              .build())
+          .storageReadRequests(Checkers.equal(innerTableRequests + outerTableRequests))
+          .build();
+
+      // Test with row limit (and no size limit) - this is default behaviour
+      statement.execute("SET yb_fetch_size_limit = 0");
+      statement.execute("SET yb_fetch_row_limit = 1024");
+      ExplainAnalyzeUtils.testExplain(statement, query, checker);
+
+      // Test with size limit (and no row limit). 1MB is large enough that we can expect the same
+      // behaviour as with the row limit.
+      statement.execute("SET yb_fetch_size_limit = 1024");
+      statement.execute("SET yb_fetch_row_limit = 0");
+      ExplainAnalyzeUtils.testExplain(statement, query, checker);
     }
   }
 

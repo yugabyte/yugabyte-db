@@ -84,9 +84,9 @@ export type CloudVendorRegionMutation = AWSRegionMutation | AZURegionMutation | 
 // ---------------------------------------------------------------------------
 interface ProviderBase {
   code: ProviderCode;
+  details: YBProviderDetails | YBProviderDetailsMutation;
   name: string;
   regions: YBRegion[] | YBRegionMutation[];
-  details: YBProviderDetails | YBProviderDetailsMutation;
 
   config?: { [property: string]: string };
   keyPairName?: string;
@@ -114,10 +114,13 @@ export interface AWSProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.AWS;
   details: AWSProviderDetailsMutation;
   regions: AWSRegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface AWSProvider extends Provider {
   code: typeof ProviderCode.AWS;
   details: AWSProviderDetails;
+  imageBundles: ImageBundle[];
   regions: AWSRegion[];
 }
 
@@ -125,10 +128,13 @@ export interface AZUProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.AZU;
   details: AZUProviderDetailsMutation;
   regions: AZURegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface AZUProvider extends Provider {
   code: typeof ProviderCode.AZU;
   details: AZUProviderDetails;
+  imageBundles: ImageBundle[];
   regions: AZURegion[];
 }
 
@@ -136,10 +142,13 @@ export interface GCPProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.GCP;
   details: GCPProviderDetailsMutation;
   regions: GCPRegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface GCPProvider extends Provider {
   code: typeof ProviderCode.GCP;
   details: GCPProviderDetails;
+  imageBundles: ImageBundle[];
   regions: GCPRegion[];
 }
 
@@ -193,6 +202,28 @@ export interface AccessKey {
 }
 
 // ---------------------------------------------------------------------------
+// Image Bundle
+// ---------------------------------------------------------------------------
+export interface ImageBundle {
+  details: ImageBundleDetails;
+  name: string;
+  useAsDefault: boolean;
+}
+export interface ImageBundleRegionDetails {
+  [regionCode: string]: {
+    sshPortOverride: number;
+    sshUserOverride: string;
+    ybImage: string;
+  };
+}
+
+interface ImageBundleDetails {
+  arch: ArchitectureType;
+  globalYBImage: string;
+  regions: ImageBundleRegionDetails;
+}
+
+// ---------------------------------------------------------------------------
 // Provider Details
 // ---------------------------------------------------------------------------
 interface ProviderDetailsBase {
@@ -212,6 +243,7 @@ interface ProviderDetailsBase {
 type ProviderDetailsMutation = ProviderDetailsBase;
 interface ProviderDetails extends ProviderDetailsBase {
   showSetUpChrony: boolean; // showSetUpChrony is `True` if the provider was created after PLAT-3009
+  enableNodeAgent: boolean; // Flag to enable node agent for this provider depending on the runtime config settings.
 }
 
 interface AWSCloudInfoBase {
@@ -231,7 +263,9 @@ interface AZUCloudInfoBase {
   azuClientId: string;
   azuClientSecret: string;
   azuRG: string; // azure resource group
+  azuNetworkRG?: string;
   azuSubscriptionId: string;
+  azuNetworkSubscriptionId?: string;
   azuTenantId: string;
 
   azuHostedZoneId?: string;
@@ -253,9 +287,12 @@ interface GCPCloudInfoMutation extends GCPCloudInfoBase {
   gceApplicationCredentials?: {};
 }
 interface GCPCloudInfo extends GCPCloudInfoBase {
-  gceApplicationCredentials: GCPServiceAccount;
-  gceApplicationCredentialsPath: string;
   vpcType: Exclude<VPCSetupType, typeof VPCSetupType.HOST_INSTANCE>;
+
+  // gcpApplicationCredentials is undefined when the user chooses to use
+  // YBA host credentials instead.
+  gceApplicationCredentials?: GCPServiceAccount;
+  gceApplicationCredentialsPath?: string;
 }
 
 interface K8sCloudInfoBase {
@@ -373,8 +410,8 @@ export interface GCPRegion extends Region {
 
 export interface K8sRegionMutation extends RegionMutation {
   name: string; // This is required because the `name` field is not derived on the backend before inserting into the db
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sRegionCloudInfoMutation } };
   zones: K8sAvailabilityZoneMutation[];
 }
@@ -424,6 +461,7 @@ interface AZURegionCloudInfo extends AZURegionCloudInfoBase {
 }
 
 interface GCPRegionCloudInfoBase {
+  instanceTemplate?: string;
   ybImage?: string;
 }
 type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
@@ -502,6 +540,20 @@ type NTPServerField = 'ntpServers' | 'setUpChrony';
 type SSHField = 'sshUser' | 'sshPort' | 'sshPrivateKeyContent' | 'keyPairName';
 
 // ---------------------------------------------------------------------------
+// Region metadata types
+// ---------------------------------------------------------------------------
+export interface RegionMetadataResponse {
+  regionMetadata: {
+    [regionCode: string]: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      availabilityZones: string[];
+    };
+  };
+}
+
+// ---------------------------------------------------------------------------
 // File types
 // ---------------------------------------------------------------------------
 export interface K8sPullSecretFile {
@@ -533,7 +585,6 @@ export interface GCPServiceAccount {
 // ---------------------------------------------------------------------------
 // On Prem Instance Type
 // ---------------------------------------------------------------------------
-// TODO: Double check these types
 export interface InstanceTypeDetailsMutation {
   volumeDetailsList: { mountPath: string; volumeSizeGB: number; volumeType: string }[];
 }

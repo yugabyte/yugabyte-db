@@ -11,7 +11,8 @@ package com.yugabyte.yw.models.common;
 
 public enum Condition {
   GREATER_THAN(">"),
-  LESS_THAN("<");
+  LESS_THAN("<"),
+  NOT_EQUAL("!=");
 
   private final String value;
 

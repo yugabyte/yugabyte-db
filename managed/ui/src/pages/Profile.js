@@ -1,37 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { Link } from 'react-router';
-import { YBBanner, YBBannerVariant } from '../components/common/descriptors';
-import { CustomerProfileContainer } from '../components/profile';
-
+import { Component, lazy, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
 import './Profile.scss';
 
-const BannerContent = () => (
-  <>
-    <b>Note!</b> “Users” page has moved. You can now{' '}
-    <Link className="p-page-banner-link" to="/admin/user-management">
-      access Users page
-    </Link>{' '}
-    from the User Management section under Admin menu.
-  </>
+const CustomerProfileContainer = lazy(() =>
+  import('../components/profile/CustomerProfileContainer')
 );
 
 class Profile extends Component {
   render() {
     return (
-      <>
-        <YBBanner
-          className="p-page-banner"
-          variant={YBBannerVariant.WARNING}
-          showBannerIcon={false}
-        >
-          <BannerContent />
-        </YBBanner>
-        <div className="dashboard-container">
-          <CustomerProfileContainer {...this.props} />
-        </div>
-      </>
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <CustomerProfileContainer {...this.props} />
+      </Suspense>
     );
   }
 }

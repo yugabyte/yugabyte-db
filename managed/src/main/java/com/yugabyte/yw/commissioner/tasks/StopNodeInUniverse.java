@@ -24,13 +24,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,37 +48,10 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  private NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
+  protected NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
     boolean startMasterOnStopNode = confGetter.getGlobalConf(GlobalConfKeys.startMasterOnStopNode);
-    if (startMasterOnStopNode
-        && NodeActionFormData.startMasterOnStopNode
-        && (currentNode.isMaster || currentNode.masterState == MasterState.ToStop)
-        && currentNode.dedicatedTo == null) {
-      List<NodeDetails> candidates =
-          universe.getNodes().stream()
-              .filter(
-                  n ->
-                      (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
-                          && Objects.equals(n.placementUuid, currentNode.placementUuid)
-                          && !n.getNodeName().equals(currentNode.getNodeName())
-                          && n.getZone().equals(currentNode.getZone()))
-              .collect(Collectors.toList());
-      Optional<NodeDetails> optional =
-          candidates.stream()
-              .filter(
-                  n ->
-                      n.masterState == MasterState.ToStart
-                          || n.masterState == MasterState.Configured)
-              .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
-              .findFirst();
-      if (optional.isPresent()) {
-        return optional.get();
-      }
-      return candidates.stream()
-          .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
-          .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
-          .findFirst()
-          .orElse(null);
+    if (startMasterOnStopNode && NodeActionFormData.startMasterOnStopNode) {
+      return super.findReplacementMaster(universe, currentNode);
     }
     return null;
   }
@@ -145,11 +114,18 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      if (currentNode.isTserver) {
+        createNodePrecheckTasks(
+            currentNode,
+            EnumSet.of(ServerType.TSERVER),
+            SubTaskGroupType.StoppingNodeProcesses,
+            null);
+      }
+
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       boolean instanceExists = instanceExists(taskParams());
       if (instanceExists) {
-
         if (currentNode.isTserver) {
           stopProcessesOnNode(
               currentNode,
@@ -173,61 +149,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
-      if (currentNode.masterState == MasterState.ToStop) {
-        // Find the previously saved node to start master.
-        NodeDetails newMasterNode = findNewMasterIfApplicable(universe, currentNode);
-        if (newMasterNode == null) {
-          log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
-          createChangeConfigTask(
-              currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
-          // Stop the master process on this node after the new master is added
-          // and this current master is removed.
-          if (instanceExists) {
-            createStopMasterTasks(nodeList)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-            createWaitForMasterLeaderTask()
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
-          // Update this so that it is not added as a master in config update.
-          createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          // Now isTserver and isMaster are both false for this stopped node.
-          createMasterInfoUpdateTask(universe, null, currentNode);
-          // Update the master addresses on the target universes whose source universe belongs to
-          // this task.
-          createXClusterConfigUpdateMasterAddressesTask();
-        } else if (newMasterNode.masterState == MasterState.ToStart
-            || newMasterNode.masterState == MasterState.Configured) {
-          log.info(
-              "Automatically bringing up master for under replicated "
-                  + "universe {} ({}) on node {}.",
-              universe.getUniverseUUID(),
-              universe.getName(),
-              newMasterNode.getNodeName());
-          // Update node state to Starting Master.
-          createSetNodeStateTask(newMasterNode, NodeState.Starting)
-              .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-          // This method takes care of master config change.
-          createStartMasterOnNodeTasks(universe, newMasterNode, currentNode);
-          // Update node state to running.
-          // Stop the master process on this node after the new master is added
-          // and this current master is removed.
-          if (instanceExists) {
-            createStopMasterTasks(nodeList)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-            createWaitForMasterLeaderTask()
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
-          createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
-              .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-        }
-
-        // This is automatically cleared when the task is successful. It is done
-        // proactively to not run this conditional block on re-run or retry.
-        createSetNodeStatusTasks(
-                nodeList, NodeStatus.builder().masterState(MasterState.None).build())
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      }
+      createMasterReplacementTasks(
+          universe,
+          currentNode,
+          () -> findNewMasterIfApplicable(universe, currentNode),
+          instanceExists);
 
       // Update Node State to Stopped
       createSetNodeStateTask(currentNode, NodeState.Stopped)
@@ -239,7 +165,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update the DNS entry for this universe.
       UniverseDefinitionTaskParams.UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       // Mark universe task state to success

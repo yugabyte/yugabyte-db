@@ -30,15 +30,16 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -46,12 +47,6 @@ import play.test.Helpers;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase {
-
-  @Override
-  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
-    // Setting platform type as correct.
-    return applicationBuilder.configure("yb.mode", "OSS");
-  }
 
   @Test
   public void testRunQueryWithInvalidUniverse() throws Exception {
@@ -170,6 +165,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     "true, \"\", baz, baz, baz, false, true,",
     // cloud customer, neither YSQL nor YCQL user
     "true,,,,, false, false, Need to provide YSQL and/or YCQL username.",
+    // non-cloud customer but change in password of default user
+    "false, yugabyte, Admin@321, cassandra, Admin@321, true, true,"
   })
   // @formatter:on
   public void testSetDatabaseCredentials(
@@ -182,6 +179,13 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       boolean ycqlProcessed,
       String responseError) {
     Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQLAuth = true;
+    userIntent.enableYCQLAuth = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    u.setUniverseDetails(details);
+    u.save();
     if (isCloudCustomer) {
       when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     }
@@ -189,8 +193,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
             .put("ysqlAdminUsername", ysqlAdminUsername)
-            .put("ycqlCurrAdminPassword", "foo")
-            .put("ysqlCurrAdminPassword", "foo")
+            .put("ycqlCurrAdminPassword", "Admin@123")
+            .put("ysqlCurrAdminPassword", "Admin@123")
             .put("ycqlAdminPassword", ycqlPassword)
             .put("ysqlAdminPassword", ysqlPassword)
             .put("dbName", "test");
@@ -216,6 +220,56 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertErrorResponse(result, responseError);
       assertAuditEntry(0, customer.getUuid());
     }
+  }
+
+  @Test
+  public void testSetOldDatabaseCredentials() {
+    Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQLAuth = true;
+    userIntent.enableYCQLAuth = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    u.setUniverseDetails(details);
+    u.save();
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("ycqlAdminUsername", "cassandra")
+            .put("ysqlAdminUsername", "yugabyte")
+            .put("ycqlCurrAdminPassword", "Admin@123")
+            .put("ysqlCurrAdminPassword", "Admin@123")
+            .put("ycqlAdminPassword", "Admin@123")
+            .put("ysqlAdminPassword", "Admin@123")
+            .put("dbName", "test");
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/update_db_credentials";
+
+    // Test if provided new and old ycql password are same.
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
+    assertErrorResponse(result, "Please provide new YCQL password.");
+    assertAuditEntry(0, customer.getUuid());
+    bodyJson.put("ycqlAdminPassword", "Admin@321");
+    // Test if provided new and old ysql password are same.
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
+    assertErrorResponse(result, "Please provide new YSQL password.");
+    assertAuditEntry(0, customer.getUuid());
+    bodyJson.put("ysqlAdminPassword", "Admin@321");
+    // Test that checks passes when new passwords are provided.
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Mockito.verify(mockYcqlQueryExecutor, times(1)).updateAdminPassword(any(), any());
+    Mockito.verify(mockYsqlQueryExecutor, times(1)).updateAdminPassword(any(), any());
+    assertOk(result);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -270,5 +324,88 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertBadRequest(result, UniverseYbDbAdminHandler.RUN_QUERY_ISNT_ALLOWED);
       assertAuditEntry(0, customer.getUuid());
     }
+  }
+
+  @Test
+  public void testConfigureYSQL() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, false, false, true, false);
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", true).put("enableYSQLAuth", false);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot enable YSQL if it was disabled earlier.");
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    bodyJson.put("enableYSQL", true).put("ysqlPassword", "Admin@123");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot set password while YSQL auth is disabled.");
+    bodyJson.put("enableYSQLAuth", true);
+    bodyJson.remove("ysqlPassword");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Required password to configure YSQL auth.");
+    bodyJson.put("ysqlPassword", "Admin@123");
+    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  @Test
+  public void testConfigureYCQL() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, true, false, false);
+    ObjectNode bodyJson = Json.newObject().put("enableYCQL", false).put("enableYCQLAuth", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ycql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot enable YCQL auth when API is disabled.");
+    updateUniverseAPIDetails(universe, false, false, true, false);
+    bodyJson.put("enableYCQL", true).put("enableYCQLAuth", false).put("ycqlPassword", "Admin@123");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Cannot set password while YCQL auth is disabled.");
+    bodyJson.put("enableYCQLAuth", true);
+    bodyJson.remove("ycqlPassword");
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "Required password to configure YCQL auth.");
+    bodyJson.put("ycqlPassword", "Admin@123");
+    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  private void updateUniverseAPIDetails(
+      Universe universe,
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQL = enableYSQL;
+    userIntent.enableYSQLAuth = enableYSQLAuth;
+    userIntent.enableYCQL = enableYCQL;
+    userIntent.enableYCQLAuth = enableYCQLAuth;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
   }
 }

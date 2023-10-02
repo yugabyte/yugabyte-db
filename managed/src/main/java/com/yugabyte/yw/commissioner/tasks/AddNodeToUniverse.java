@@ -196,6 +196,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createTransferXClusterCertsCopyTasks(
           Collections.singleton(currentNode), universe, SubTaskGroupType.Provisioning);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, nodeSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       // Bring up any masters, as needed.
       if (addMaster) {
         log.info(
@@ -207,16 +211,16 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Add it into the master quorum.
-        createChangeConfigTask(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
+        createChangeConfigTasks(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
+
+        // Wait for master to be responsive.
+        createWaitForServersTasks(nodeSet, ServerType.MASTER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
         // Mark node as a master in YW DB.
         // Do this last so that master addresses does not pick up current node.
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-        // Wait for master to be responsive.
-        createWaitForServersTasks(nodeSet, ServerType.MASTER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
       }
 
       // Bring up TServers, as needed.
@@ -280,7 +284,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update node state to live.

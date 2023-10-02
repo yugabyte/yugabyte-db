@@ -5,12 +5,33 @@ import {
   isNonEmptyArray,
   isNonEmptyObject,
   isDefinedNotNull,
-  isNonEmptyString
+  isNonEmptyString,
+  isEmptyString
 } from './ObjectUtils';
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
 
+export const MULTILINE_GFLAGS_ARRAY = ['ysql_hba_conf_csv', 'ysql_ident_conf_csv'];
+
+const LDAP_KEYS = [
+  'ldapserver',
+  'ldapport',
+  'ldapscheme',
+  'ldaptls',
+  'ldapprefix',
+  'ldapsuffix',
+  'ldapbasedn',
+  'ldapbinddn',
+  'ldapbindpasswd',
+  'ldapsearchattribute',
+  'ldapsearchfilter',
+  'ldapurl'
+];
+
+const JWT_KEYS = ['map', 'jwt_audiences', 'jwt_issuers', 'jwt_matching_claim_key', 'jwks'];
+
 export const CONST_VALUES = {
+  JWT: 'jwt',
   LDAP: 'ldap',
   EMPTY_STRING: '',
   SPACE_SEPARATOR: ' ',
@@ -18,7 +39,8 @@ export const CONST_VALUES = {
   DOUBLE_DOUBLE_QUOTES_SEPARATOR: '""',
   SINGLE_QUOTES_SEPARATOR: "'",
   COMMA_SEPARATOR: ',',
-  EQUALS: '='
+  EQUALS: '=',
+  JWKS: 'jwks'
 };
 
 export const GFLAG_EDIT = 'EDIT';
@@ -31,6 +53,11 @@ export const nodeInClusterStates = [
   NodeState.Unreachable,
   NodeState.MetricsUnavailable
 ];
+
+export const MultilineGFlags = {
+  YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
+  YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv'
+};
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -123,13 +150,13 @@ export const getUniverseDedicatedNodeCount = (nodeDetailsSet, cluster = null) =>
     (node) =>
       (cluster === null || node.placementUuid === cluster.uuid) &&
       _.includes(nodeInClusterStates, node.state) &&
-      node.dedicatedTo === 'TSERVER'
+      node.isTserver
   ).length;
   const numMasterNodes = nodes.filter(
     (node) =>
       (cluster === null || node.placementUuid === cluster.uuid) &&
       _.includes(nodeInClusterStates, node.state) &&
-      node.dedicatedTo === 'MASTER'
+      node.isMaster
   ).length;
   return {
     numTserverNodes,
@@ -249,20 +276,16 @@ export const getProxyNodeAddress = (universeUUID, nodeIp, nodePort) => {
   return `${BASE_URL}/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
 };
 
-export const isLDAPKeywordExist = (GFlagInput) => {
-  return GFlagInput.includes(CONST_VALUES.LDAP);
-};
-
 /**
- * Unformat LDAP Configuration string to ensure they are split into rows accordingly in EDIT mode
+ * Unformat Configuration string to ensure they are split into rows accordingly in EDIT mode
  *
  * @param GFlagInput The entire Gflag configuration enetered that needs to be unformatted
  */
-export const unformatLDAPConf = (GFlagInput) => {
+export const unformatConf = (GFlagInput) => {
   // Regex expression to extract non-quoted comma
   const filteredGFlagInput = GFlagInput.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-
   const unformattedConf = filteredGFlagInput?.map((GFlagRowConf, index) => {
+    let JWKSToken = '';
     const hasInputStartQuotes =
       GFlagRowConf.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) ||
       GFlagRowConf.startsWith(CONST_VALUES.SINGLE_QUOTES_SEPARATOR);
@@ -282,11 +305,24 @@ export const unformatLDAPConf = (GFlagInput) => {
           : GFlagRowConf.length
       );
     }
+
+    // Extract jwks content from the row input if it exists
+    if (GFlagRowConfSubset.includes(CONST_VALUES.JWKS)) {
+      const JWKSKey = GFlagRowConfSubset.substring(GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS));
+      if (isNonEmptyString(JWKSKey)) {
+        GFlagRowConfSubset = GFlagRowConfSubset.replace(JWKSKey, '');
+        GFlagRowConfSubset = GFlagRowConfSubset.trimEnd();
+      }
+      JWKSToken = JWKSKey.substring(JWKSKey.indexOf(CONST_VALUES.EQUALS) + 1);
+    }
+
     return {
       id: `item-${index}`,
       index: index,
       content: isNonEmptyString(GFlagRowConfSubset) ? GFlagRowConfSubset : GFlagRowConf,
-      error: false
+      error: false,
+      showJWKSButton: isNonEmptyString(JWKSToken),
+      JWKSToken: JWKSToken
     };
   });
 
@@ -294,28 +330,26 @@ export const unformatLDAPConf = (GFlagInput) => {
 };
 
 /**
-  * Format LDAP Configuration string based on rules here: 
+  * Format Configuration string based on rules here: 
   * https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#ysql-hba-conf-csv
   *
   * @param GFlagInput Input entered in the text field
 
 */
-export const formatLDAPConf = (GFlagInput) => {
-  const LDAPKeywordLength = CONST_VALUES.LDAP.length;
-  const isLDAPExist = isLDAPKeywordExist(GFlagInput);
+export const formatConf = (GFlagInput, searchTerm, JWKSToken) => {
+  const keywordLength = searchTerm.length;
+  const isKeywordExist = GFlagInput.includes(searchTerm);
 
-  if (isLDAPExist) {
-    const LDAPKeywordIndex = GFlagInput.indexOf(CONST_VALUES.LDAP);
-    const initialLDAPConf = GFlagInput.substring(0, LDAPKeywordIndex + 1 + LDAPKeywordLength);
-    // Get the substring of entire configuration which has LDAP attributes
-    const LDAPRowWithAttributes = GFlagInput?.substring(
-      LDAPKeywordIndex + 1 + LDAPKeywordLength,
-      GFlagInput.length
-    );
+  if (isKeywordExist) {
+    const keywordIndex = GFlagInput.indexOf(searchTerm);
+    const initialLDAPConf = GFlagInput.substring(0, keywordIndex + 1 + keywordLength);
+    // Get the substring of entire configuration which has LDAP or JWT attributes
+    const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
 
-    // Extract LDAP Attributes key/value pair
-    const LDAPAttributes = LDAPRowWithAttributes?.match(/"([^"]+)"|""([^""]+)""|[^" ]+/g);
-    const appendedLDAPConf = LDAPAttributes?.reduce((accumulator, attribute, index) => {
+    // Extract LDAP or JWT Attributes key/value pair
+    const attributes = keywordConf?.match(/"([^"]+)"|""([^""]+)""|[^" ]+/g);
+    let JWKS = '';
+    const appendedLDAPConf = attributes?.reduce((accumulator, attribute, index) => {
       if (
         attribute.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
         !attribute.startsWith(CONST_VALUES.DOUBLE_DOUBLE_QUOTES_SEPARATOR)
@@ -325,14 +359,14 @@ export const formatLDAPConf = (GFlagInput) => {
           CONST_VALUES.DOUBLE_QUOTES_SEPARATOR +
           attribute +
           CONST_VALUES.DOUBLE_QUOTES_SEPARATOR +
-          (index === LDAPAttributes.length - 1
+          (index === attributes.length - 1
             ? CONST_VALUES.EMPTY_STRING
             : CONST_VALUES.SPACE_SEPARATOR);
       } else if (attribute.startsWith(CONST_VALUES.DOUBLE_DOUBLE_QUOTES_SEPARATOR)) {
         accumulator =
           accumulator +
           attribute +
-          (index === LDAPAttributes.length - 1
+          (index === attributes.length - 1
             ? CONST_VALUES.EMPTY_STRING
             : CONST_VALUES.SPACE_SEPARATOR);
       } else {
@@ -341,69 +375,128 @@ export const formatLDAPConf = (GFlagInput) => {
           attribute +
           (attribute.endsWith(CONST_VALUES.EQUALS)
             ? CONST_VALUES.EMPTY_STRING
-            : index === LDAPAttributes.length - 1
+            : index === attributes.length - 1
             ? CONST_VALUES.EMPTY_STRING
             : CONST_VALUES.SPACE_SEPARATOR);
       }
       return accumulator;
     }, CONST_VALUES.EMPTY_STRING);
 
-    return initialLDAPConf + appendedLDAPConf;
+    if (searchTerm === CONST_VALUES.JWT && isNonEmptyString(JWKSToken)) {
+      JWKS = ` jwks=${JWKSToken}`;
+    }
+
+    return initialLDAPConf + appendedLDAPConf + JWKS;
   }
   return GFlagInput;
 };
 
 /**
-  * verifyLDAPAttributes checks for certain validation rules and return a boolean value.
+  * verifyAttributes checks for certain validation rules and return a boolean value.
   * to indicate if GFlag Conf does not meet the criteria
   *
   * @param GFlagInput Input entered in the text field
 
 */
-export const verifyLDAPAttributes = (GFlagInput) => {
+export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSupported) => {
   let isAttributeInvalid = false;
   let isWarning = false;
-  let errorMessage = '';
+  let errorMessageKey = '';
 
+  // If string contains any non-ASCII character
   const numNonASCII = GFlagInput.match(/[^\x20-\x7F]+/);
-  if (numNonASCII && numNonASCII?.length > 0) {
+  const isNonASCII = numNonASCII && numNonASCII?.length > 0;
+  if (isNonASCII) {
     isAttributeInvalid = false;
     isWarning = true;
-    errorMessage = 'universeForm.gFlags.nonASCIIDetected';
+    errorMessageKey = 'universeForm.gFlags.nonASCIIDetected';
   }
 
-  const LDAPKeywordLength = CONST_VALUES.LDAP.length;
-  const isLDAPExist = isLDAPKeywordExist(GFlagInput);
+  if (!searchTerm || isNonASCII) {
+    return { isAttributeInvalid, errorMessageKey, isWarning };
+  }
 
-  if (isLDAPExist) {
-    const LDAPIndex = GFlagInput.indexOf(CONST_VALUES.LDAP);
-    const LDAPConf = GFlagInput?.substring(LDAPIndex + 1 + LDAPKeywordLength, GFlagInput.length);
-    const LDAPAttributes = LDAPConf?.split(CONST_VALUES.SPACE_SEPARATOR);
-    const LDAPRowWithAttributes = LDAPAttributes?.filter((attribute) =>
-      attribute.startsWith(CONST_VALUES.LDAP)
-    );
+  // Raise error when there is jwt keyword but is no JWKS keyset associated with it
+  if (searchTerm === CONST_VALUES.JWT && (isEmptyString(JWKSKeyset) || !JWKSKeyset)) {
+    isAttributeInvalid = true;
+    isWarning = false;
+    errorMessageKey = isOIDCSupported
+      ? 'universeForm.gFlags.uploadKeyset'
+      : 'universeForm.gFlags.jwksNotSupported';
+    return { isAttributeInvalid, errorMessageKey, isWarning };
+  }
 
-    for (let index = 0; index < LDAPRowWithAttributes?.length; index++) {
-      const splitLDAPAttribute = LDAPRowWithAttributes[index]?.split(CONST_VALUES.EQUALS);
-      // If a LDAP attribute does not have any value, raise a validation error
-      if (splitLDAPAttribute?.length < 2 && isNonEmptyString(splitLDAPAttribute?.[0])) {
-        isAttributeInvalid = true;
-        isWarning = false;
-        errorMessage = 'universeForm.gFlags.LDAPMissingAttributeValue';
-        break;
+  const keywordLength = searchTerm.length;
+  const isKeywordExist = GFlagInput.includes(searchTerm);
+
+  if (isKeywordExist) {
+    const keywordIndex = GFlagInput.indexOf(searchTerm);
+    const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
+    const attributes = keywordConf?.split(CONST_VALUES.SPACE_SEPARATOR);
+
+    for (let index = 0; index < attributes?.length; index++) {
+      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);
+      const attributeValue = attributeValues.join(CONST_VALUES.EQUALS);
+
+      const hasNoAndStartQuote =
+        !attributeValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        !attributeValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+      const hasNoEndQuote =
+        attributeValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        !attributeValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+
+      const hasNoStartQuote =
+        !attributeValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        attributeValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+
+      if (searchTerm === CONST_VALUES.LDAP) {
+        // Raise error when the attribute key has any spelling mistake
+        if (!LDAP_KEYS.includes(attributeKey)) {
+          isAttributeInvalid = true;
+          isWarning = false;
+          errorMessageKey = 'universeForm.gFlags.invalidKey';
+          break;
+        }
+        // Raise error when there are no proper quotation around attribute value
+        if (hasNoEndQuote || hasNoStartQuote) {
+          isAttributeInvalid = true;
+          isWarning = false;
+          errorMessageKey = 'universeForm.gFlags.missingQuoteAttributeValue';
+          break;
+        }
+      } else if (searchTerm === CONST_VALUES.JWT) {
+        // Raise error when attribute key has any spelling mistake
+        if (!JWT_KEYS.includes(attributeKey)) {
+          isAttributeInvalid = true;
+          isWarning = false;
+          errorMessageKey = 'universeForm.gFlags.invalidKey';
+          break;
+        }
+        // Raise error when there are no proper quotation around attribute value
+        if (hasNoEndQuote || hasNoStartQuote || hasNoAndStartQuote) {
+          isAttributeInvalid = true;
+          isWarning = false;
+          errorMessageKey = 'universeForm.gFlags.missingQuoteAttributeValue';
+          break;
+        }
       }
-      // If a LDAP attribute starts with double quotes and does not end with it, raise a validation error
-      if (
-        splitLDAPAttribute.length === 2 &&
-        splitLDAPAttribute[1].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
-        !splitLDAPAttribute[1].endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR)
-      ) {
+
+      if (isEmptyString(attributeValue)) {
         isAttributeInvalid = true;
         isWarning = false;
-        errorMessage = 'universeForm.gFlags.LDAPMissingQuote';
+        errorMessageKey = 'universeForm.gFlags.missingAttributeValue';
         break;
       }
     }
   }
-  return { isAttributeInvalid, errorMessage, isWarning };
+
+  return { isAttributeInvalid, errorMessageKey, isWarning };
+};
+
+export const optimizeVersion = (version) => {
+  if (parseInt(version[version.length - 1], 10) === 0) {
+    return optimizeVersion(version.slice(0, version.length - 1));
+  } else {
+    return version.join('.');
+  }
 };

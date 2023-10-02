@@ -1,16 +1,16 @@
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
-import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
+import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
-import { PARALLEL_THREADS_RANGE } from '../../../backupv2/common/BackupUtils';
+import { ParallelThreads } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
@@ -18,18 +18,20 @@ import {
   XClusterConfigAction,
   XClusterConfigType
 } from '../../constants';
-import { adaptTableUUID, parseFloatIfDefined } from '../../ReplicationUtils';
+import {
+  getTablesForBootstrapping,
+  getXClusterConfigTableType,
+  parseFloatIfDefined
+} from '../../ReplicationUtils';
 import {
   editXClusterConfigTables,
   fetchUniverseDiskUsageMetric,
   fetchTaskUntilItCompletes,
-  isBootstrapRequired,
   fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
-import { TableSelect } from '../../common/tableSelect/TableSelect';
-import { YBTableRelationType } from '../../../../redesign/helpers/constants';
+import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
 
-import { XClusterConfig, XClusterTableType } from '../..';
+import { XClusterConfig } from '../..';
 
 import styles from './AddTableModal.module.scss';
 
@@ -58,7 +60,8 @@ interface AddTableModalProps {
   isVisible: boolean;
   onHide: () => void;
   xClusterConfig: XClusterConfig;
-  configTableType: XClusterTableType;
+
+  isDrConfig?: boolean;
 }
 
 const MODAL_TITLE = 'Add Tables to Replication';
@@ -75,7 +78,7 @@ const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 const INITIAL_VALUES: Partial<AddTableFormValues> = {
   tableUUIDs: [],
   // Bootstrap fields
-  parallelThreads: PARALLEL_THREADS_RANGE.MIN
+  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
 };
 
 /**
@@ -85,7 +88,7 @@ export const AddTableModal = ({
   isVisible,
   onHide,
   xClusterConfig,
-  configTableType
+  isDrConfig = false
 }: AddTableModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [formWarnings, setFormWarnings] = useState<AddTableFormWarnings>();
@@ -99,7 +102,7 @@ export const AddTableModal = ({
   const formik = useRef({} as FormikProps<AddTableFormValues>);
 
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
@@ -135,29 +138,25 @@ export const AddTableModal = ({
         closeModal();
 
         fetchTaskUntilItCompletes(
-          response.data.taskUUID,
+          response.taskUUID,
           (err: boolean) => {
             if (err) {
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
                   <span>{`Add table to xCluster config failed: ${xClusterConfig.name}`}</span>
-                  <a
-                    href={`/tasks/${response.data.taskUUID}`}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
+                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                     View Details
                   </a>
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },
@@ -249,7 +248,12 @@ export const AddTableModal = ({
     );
   }
 
-  if (sourceUniverseQuery.isError || sourceUniverseTablesQuery.isError) {
+  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
+  if (
+    sourceUniverseQuery.isError ||
+    sourceUniverseTablesQuery.isError ||
+    !xClusterConfigTableType
+  ) {
     return (
       <YBModal
         size="large"
@@ -264,29 +268,7 @@ export const AddTableModal = ({
     );
   }
 
-  const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
-  const ysqlTableUUIDToKeyspace = new Map<string, string>();
   const sourceUniverseTables = sourceUniverseTablesQuery.data;
-  sourceUniverseTables.forEach((table) => {
-    if (
-      table.tableType !== TableType.PGSQL_TABLE_TYPE ||
-      table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
-    ) {
-      // Ignore all index tables and non-YSQL tables.
-      return;
-    }
-    const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
-    if (tableUUIDs !== undefined) {
-      tableUUIDs.add(adaptTableUUID(table.tableUUID));
-    } else {
-      ysqlKeyspaceToTableUUIDs.set(
-        table.keySpace,
-        new Set<string>([adaptTableUUID(table.tableUUID)])
-      );
-    }
-    ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
-  });
-
   const sourceUniverse = sourceUniverseQuery.data;
   return (
     <YBModalForm
@@ -298,10 +280,8 @@ export const AddTableModal = ({
           values,
           currentStep,
           sourceUniverse,
-          ysqlKeyspaceToTableUUIDs,
-          ysqlTableUUIDToKeyspace,
+          sourceUniverseTables,
           isTableSelectionValidated,
-          configTableType,
           xClusterConfig.type,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
@@ -331,26 +311,25 @@ export const AddTableModal = ({
             return (
               <>
                 <div className={styles.formInstruction}>
-                  {`1. Select the ${TableTypeLabel[configTableType]} tables you want to add to the xCluster configuration.`}
+                  {`1. Select the ${TableTypeLabel[xClusterConfigTableType]} tables you want to add to the xCluster configuration.`}
                 </div>
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.ADD_TABLE,
-                    xClusterConfigUUID: xClusterConfig.uuid,
-                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
-                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
-                    currentStep,
-                    setCurrentStep,
+                    isDrConfig,
+                    isFixedTableType: true,
+                    selectedKeyspaces,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
+                    selectionError: errors.tableUUIDs,
+                    selectionWarning: formWarnings?.tableUUIDs,
+                    setSelectedKeyspaces,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
-                    tableType: configTableType,
-                    isFixedTableType: true,
                     setTableType: (_) => null,
-                    selectedKeyspaces,
-                    setSelectedKeyspaces,
-                    selectionError: errors.tableUUIDs,
-                    selectionWarning: formWarnings?.tableUUIDs
+                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
+                    tableType: xClusterConfigTableType,
+                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
+                    xClusterConfigUUID: xClusterConfig.uuid
                   }}
                 />
               </>
@@ -376,10 +355,8 @@ const validateForm = async (
   values: AddTableFormValues,
   currentStep: FormStep,
   sourceUniverse: Universe,
-  ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
-  ysqlTableUUIDToKeyspace: Map<string, string>,
+  sourceUniverseTables: YBTable[],
   isTableSelectionValidated: boolean,
-  configTableType: XClusterTableType,
   xClusterConfigType: XClusterConfigType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
@@ -404,15 +381,28 @@ const validateForm = async (
       }
       let bootstrapTableUUIDs: string[] | null = null;
       try {
-        bootstrapTableUUIDs = await getBootstrapTableUUIDs(
-          configTableType,
-          xClusterConfigType,
+        // We pass null as the target universe in the following method because add table does not
+        // support the case where a matching table does not exist on the target universe.
+        bootstrapTableUUIDs = await getTablesForBootstrapping(
           values.tableUUIDs,
           sourceUniverse.universeUUID,
-          ysqlKeyspaceToTableUUIDs,
-          ysqlTableUUIDToKeyspace
+          null /* targetUniverseUUID */,
+          sourceUniverseTables,
+          xClusterConfigType
         );
-      } catch (error) {
+      } catch (error: any) {
+        toast.error(
+          <span className={styles.alertMsg}>
+            <div>
+              <i className="fa fa-exclamation-circle" />
+              <span>Table bootstrap verification failed.</span>
+            </div>
+            <div>
+              An error occured while verifying whether the selected tables require bootstrapping:
+            </div>
+            <div>{error.message}</div>
+          </span>
+        );
         errors.tableUUIDs = {
           title: 'Table bootstrap verification error',
           body:
@@ -452,13 +442,10 @@ const validateForm = async (
       }
       const shouldValidateParallelThread =
         values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > PARALLEL_THREADS_RANGE.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
-      } else if (
-        shouldValidateParallelThread &&
-        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
-      ) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
+      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
+        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
+      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
+        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;
@@ -466,71 +453,6 @@ const validateForm = async (
     default:
       return {};
   }
-};
-
-/**
- * Return the UUIDs for tables which require bootstrapping.
- */
-const getBootstrapTableUUIDs = async (
-  configTableType: XClusterTableType,
-  xClusterConfigType: XClusterConfigType,
-  selectedTableUUIDs: string[],
-  sourceUniverseUUID: string,
-  ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
-  ysqlTableUUIDToKeyspace: Map<string, string>
-) => {
-  // Check if bootstrap is required, for each selected table
-  let bootstrapTest: { [tableUUID: string]: boolean } = {};
-  try {
-    bootstrapTest = await isBootstrapRequired(
-      sourceUniverseUUID,
-      selectedTableUUIDs.map(adaptTableUUID),
-      xClusterConfigType
-    );
-  } catch (error: any) {
-    toast.error(
-      <span className={styles.alertMsg}>
-        <div>
-          <i className="fa fa-exclamation-circle" />
-          <span>Table bootstrap verification failed.</span>
-        </div>
-        <div>
-          An error occured while verifying whether the selected tables require bootstrapping:
-        </div>
-        <div>{error.message}</div>
-      </span>
-    );
-    throw new Error(error.message);
-  }
-
-  const bootstrapTableUUIDs = new Set<string>();
-  if (bootstrapTest) {
-    Object.keys(bootstrapTest).forEach((tableUUID) => {
-      if (bootstrapTest[tableUUID]) {
-        switch (configTableType) {
-          case TableType.YQL_TABLE_TYPE:
-            bootstrapTableUUIDs.add(tableUUID);
-            return;
-          case TableType.PGSQL_TABLE_TYPE: {
-            bootstrapTableUUIDs.add(tableUUID);
-            // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
-            //            for bootstrapping.
-            const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
-            if (keyspace !== undefined) {
-              const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
-              if (tableUUIDs !== undefined) {
-                tableUUIDs.forEach((tableUUID) => bootstrapTableUUIDs.add(tableUUID));
-              }
-            }
-            return;
-          }
-          default:
-            assertUnreachableCase(configTableType);
-        }
-      }
-    });
-  }
-  return Array.from(bootstrapTableUUIDs);
 };
 
 const getFormSubmitLabel = (

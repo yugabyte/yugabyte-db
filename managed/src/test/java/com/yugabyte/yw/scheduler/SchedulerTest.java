@@ -18,14 +18,20 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
@@ -34,6 +40,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SchedulerTest extends FakeDBApplication {
@@ -85,6 +92,35 @@ public class SchedulerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testClearScheduleIncrementBacklog() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Map<String, String> updateConfigParams = new HashMap<String, String>();
+    updateConfigParams.put(Universe.TAKE_BACKUPS, "true");
+    universe.updateConfig(updateConfigParams);
+    universe.save();
+    BackupRequestParams backupRequestParams = new BackupRequestParams();
+    backupRequestParams.setUniverseUUID(universe.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    backupRequestParams.incrementalBackupFrequency = 1800 * 1000L;
+    backupRequestParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    Schedule s =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
+
+    s.updateIncrementBacklogStatus(true);
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(1)).submit(any(), any());
+    s.refresh();
+    assertEquals(false, s.isIncrementBacklogStatus());
+  }
+
+  @Test
   public void testEnableScheduleBacklog() {
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
@@ -95,6 +131,49 @@ public class SchedulerTest extends FakeDBApplication {
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
     assertEquals(true, s.isBacklogStatus());
+  }
+
+  @Test
+  public void testScheduleIncrementBacklogAfterBacklogIsReset() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Map<String, String> updateConfigParams = new HashMap<String, String>();
+    updateConfigParams.put(Universe.TAKE_BACKUPS, "true");
+    universe.updateConfig(updateConfigParams);
+    universe.save();
+    BackupRequestParams backupRequestParams = new BackupRequestParams();
+    backupRequestParams.setUniverseUUID(universe.getUniverseUUID());
+    backupRequestParams.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    backupRequestParams.incrementalBackupFrequency = 1 * 1000L;
+    backupRequestParams.incrementalBackupFrequencyTimeUnit = TimeUnit.MINUTES;
+    Schedule s =
+        Schedule.create(
+            defaultCustomer.getUuid(),
+            backupRequestParams,
+            TaskType.CreateBackup,
+            3600 * 1000L,
+            null);
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateBackup);
+    taskInfo.setDetails(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setTaskUUID(fakeTaskUUID);
+    taskInfo.save();
+
+    setUniverseBackupInProgress(true, universe);
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    s.refresh();
+    assertEquals(true, s.isBacklogStatus());
+    assertEquals(false, s.isIncrementBacklogStatus());
+
+    setUniverseBackupInProgress(false, universe);
+    scheduler.scheduleRunner();
+    verify(mockCommissioner, times(1)).submit(any(), any());
+    s.refresh();
+    assertEquals(false, s.isBacklogStatus());
+    assertEquals(false, s.isIncrementBacklogStatus());
   }
 
   @Test

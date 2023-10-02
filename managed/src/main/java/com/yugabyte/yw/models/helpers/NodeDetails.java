@@ -9,9 +9,11 @@ import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
@@ -20,6 +22,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -36,6 +39,7 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -70,7 +74,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "SSH port override for the AMI")
   public Integer sshPortOverride;
 
-  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  // Indicates that disks in fstab are mounted using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
   public boolean disksAreMountedByUUID;
 
@@ -97,6 +101,8 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is finalized after upgrade.
+    FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
@@ -109,7 +115,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY),
+    Stopped(START, REMOVE, QUERY, REPROVISION),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),
@@ -136,6 +142,8 @@ public class NodeDetails {
     UpdateCert(),
     // Set when TLS params (node-to-node and client-to-node) is being toggled
     ToggleTls(),
+    // Set when configuring DB Apis
+    ConfigureDBApis(),
     // Set when the node is being resized to a new intended type
     Resizing(),
     // Set when the node is being upgraded to systemd from cron
@@ -252,6 +260,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
   public UniverseTaskBase.ServerType dedicatedTo = null;
 
+  @ApiModelProperty(
+      value = "Store last volume update time",
+      example = "2022-12-12T13:07:18Z",
+      accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date lastVolumeUpdateTime;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(
@@ -361,6 +376,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.FinalizeUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved
@@ -465,5 +481,14 @@ public class NodeDetails {
       namespace = this.cloudInfo.private_ip.split("\\.")[2];
     }
     return namespace;
+  }
+
+  // Returns the provisioned instance type.
+  @JsonIgnore
+  public String getInstanceType() {
+    if (cloudInfo != null && StringUtils.isNotBlank(cloudInfo.instance_type)) {
+      return cloudInfo.instance_type;
+    }
+    throw new IllegalStateException("Cloud info or instance type is not set");
   }
 }

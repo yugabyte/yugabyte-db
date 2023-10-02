@@ -97,8 +97,16 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
     }
   }
 
+  private void forceCatalogCacheRefresh() throws Exception {
+    Connection connection = getConnectionBuilder().withTServer(0).connect();
+    Statement stmt = connection.createStatement();
+    stmt.execute("ALTER ROLE yugabyte SUPERUSER");
+    waitForTServerHeartbeat();
+  }
+
   @Test
   public void testSetMemoryTracking() throws Exception {
+    forceCatalogCacheRefresh();
     try (Statement stmt = connection.createStatement()) {
       int beid = getPgBackendBeid(stmt);
 

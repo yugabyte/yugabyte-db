@@ -228,11 +228,9 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
 
 TYPED_TEST(TestTablet, TestDocKeyMetrics) {
   auto metrics = this->harness()->tablet()->metrics();
-  auto total_keys = metrics->docdb_keys_found;
-  auto obsolete_keys = metrics->docdb_obsolete_keys_found;
 
-  ASSERT_EQ(total_keys->value(), 0);
-  ASSERT_EQ(obsolete_keys->value(), 0);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound), 0);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 0);
 
   LocalTabletWriter writer(this->tablet());
   ASSERT_OK(this->InsertTestRow(&writer, 0, 0));
@@ -243,16 +241,16 @@ TYPED_TEST(TestTablet, TestDocKeyMetrics) {
 
   this->VerifyTestRows(0, 5);
 
-  ASSERT_EQ(total_keys->value(), 5);
-  ASSERT_EQ(obsolete_keys->value(), 0);
-  auto prev_total_keys = total_keys->value();
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound), 5);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 0);
+  auto prev_total_keys = metrics->Get(TabletCounters::kDocDBKeysFound);
 
   ASSERT_OK(this->DeleteTestRow(&writer, 0));
   std::vector<std::string> str;
   ASSERT_OK(this->IterateToStringList(&str));
 
-  ASSERT_EQ(total_keys->value() - prev_total_keys, 5);
-  ASSERT_EQ(obsolete_keys->value(), 1);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBKeysFound) - prev_total_keys, 5);
+  ASSERT_EQ(metrics->Get(TabletCounters::kDocDBObsoleteKeysFound), 1);
 }
 
 } // namespace tablet

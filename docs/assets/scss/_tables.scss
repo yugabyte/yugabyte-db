@@ -63,6 +63,12 @@ main {
         }
       }
 
+      &.sno-1 {
+        tr th:first-child, tr td:first-child {
+          width: 1%;
+        }
+      }
+
       thead {
         border-color: #e9eef2;
         border-style: solid;
@@ -118,6 +124,8 @@ main {
     }
   }
 }
+
+
 
 @media (min-width: 1024px) {
   main {

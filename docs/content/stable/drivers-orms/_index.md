@@ -46,7 +46,7 @@ In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also suppo
   <li>
     <a href="nodejs/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
@@ -114,14 +114,14 @@ The following libraries are officially supported by YugabyteDB.
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD](java/yugabyte-jdbc/) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD](java/postgres-jdbc/) |
 | [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD](java/ycql) |
-| [YugabyteDB Java Driver for YCQL (4.6)](java/ycql-4.6/) | Full | [CRUD](java/ycql-4.6) |
+| [YugabyteDB Java Driver for YCQL (4.15)](java/ycql-4.x/) | Full | [CRUD](java/ycql-4.x) |
 | [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |
 | [Spring Data JPA](../integrations/spring-framework/sd-jpa/) | Full | [CRUD](../integrations/spring-framework/sd-jpa/#fundamentals) |
+| [MyBatis](java/mybatis/) | Full | [CRUD](java/mybatis/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
-<!-- | MyBatis | Full |  | -->
 
   {{% /tab %}}
 
@@ -182,6 +182,7 @@ The following libraries are officially supported by YugabyteDB.
 
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
+| [YugabyteDB C# Smart Driver for YSQL](csharp/ysql/) | Full | [CRUD](csharp/ysql/) |
 | [PostgreSQL Npgsql Driver](csharp/postgres-npgsql/) | Full | [CRUD](csharp/postgres-npgsql/) |
 | [YugabyteDB C# Driver for YCQL](csharp/ycql/) | Full | [CRUD](csharp/ycql/) |
 | [Entity Framework](csharp/entityframework/) | Full | [CRUD](csharp/entityframework/) |
@@ -212,6 +213,7 @@ The following libraries are officially supported by YugabyteDB.
 | Driver/ORM | Support Level | Example apps |
 | :--------- | :------------ | :----------- |
 | [php-pgsql Driver](php/ysql/) | Full | [CRUD](php/ysql/) |
+| [Laravel](php/laravel/) | Full | [CRUD](php/laravel/) |
 
   {{% /tab %}}
 

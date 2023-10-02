@@ -33,6 +33,7 @@ public class KubernetesOverridesResponse {
 class KubernetesOverrideError {
   @JsonProperty(value = "errorString")
   public String errorString;
+
   // We can add line number in yaml or possible fix or any other properties later on.
 
   public KubernetesOverrideError(String errorString) {

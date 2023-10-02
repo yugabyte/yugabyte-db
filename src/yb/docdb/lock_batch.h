@@ -128,6 +128,9 @@ class UnlockedBatch {
   LockBatch Lock(CoarseTimePoint deadline) &&;
 
   UnlockedBatch& operator=(UnlockedBatch&& other) { MoveFrom(&other); return *this; }
+
+  const LockBatchEntries& Get() const { return key_to_type_; }
+
  private:
   void MoveFrom(UnlockedBatch* other);
 

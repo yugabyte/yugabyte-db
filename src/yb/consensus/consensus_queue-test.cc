@@ -76,7 +76,7 @@ class ConsensusQueueTest : public YBTest {
       : schema_(GetSimpleTestSchema()),
         metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "queue-test")),
         registry_(new log::LogAnchorRegistry) {
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
   }
 
   void SetUp() override {
@@ -313,7 +313,7 @@ TEST_F(ConsensusQueueTest, TestGetPagedMessages) {
 
   // Save the current flag state.
   google::FlagSaver saver;
-  FLAGS_consensus_max_batch_size_bytes = page_size_estimate;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = page_size_estimate;
 
   ThreadSafeArena arena;
   {
@@ -748,7 +748,7 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
 // as successful and the peer's last received would be taken into account when
 // calculating watermarks, which was incorrect.
 TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) {
-  FLAGS_consensus_max_batch_size_bytes = 1024 * 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1024 * 10;
 
   queue_->Init(OpId(72, 30));
   queue_->SetLeaderMode(OpId(72, 31), 76, OpId(72, 31), BuildRaftConfigPBForTests(3));

@@ -64,7 +64,7 @@ class LongOperationTrackerHelper {
 
   ~LongOperationTrackerHelper() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       stop_ = true;
     }
     cond_.notify_one();
@@ -86,7 +86,7 @@ class LongOperationTrackerHelper {
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
         Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       queue_.push(result);
     }
 
@@ -118,9 +118,14 @@ class LongOperationTrackerHelper {
       queue_.pop();
       if (!operation.unique()) {
         lock.unlock();
-        LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
-                     << " in thread " << operation->thread_id << ":\n"
-                     << DumpThreadStack(operation->thread_id);
+        auto stack = DumpThreadStack(operation->thread_id);
+        // Make sure the task did not complete while we were dumping the stack. Else we could get
+        // some other innocent stack.
+        if (!operation.unique()) {
+          LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
+                       << " in thread " << operation->thread_id << ":\n"
+                       << stack;
+        }
         lock.lock();
       }
     }

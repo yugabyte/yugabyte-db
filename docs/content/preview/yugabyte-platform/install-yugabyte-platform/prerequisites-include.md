@@ -77,7 +77,7 @@ Generally, the process involves the following:
 
 You need to perform the following steps:
 
-1. Login to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
+1. Log in to [Quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret `yaml` file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
    ```sh
    docker login -u “your_yugabyte_username” -p “yugabyte_provided_password” quay.io
@@ -99,22 +99,22 @@ You need to perform the following steps:
    ```properties
    image:
    commonRegistry: ""
-    	repository: **quay.io/yugabyte/yugaware**
-    	tag: **{{ version.build }}**
+      repository: **quay.io/yugabyte/yugaware**
+      tag: **{{ version.build }}**
    pullPolicy: IfNotPresent
    pullSecret: yugabyte-k8s-pull-secret
    thirdparty-deps:
-   	registry: quay.io
-   	tag: **latest**
-   	name: **yugabyte/thirdparty-deps**
+      registry: quay.io
+      tag: **latest**
+      name: **yugabyte/thirdparty-deps**
    prometheus:
-   	registry: ""
-   	tag:  **{{ version.prometheus }}**
-   	name: **prom/prometheus**
+      registry: ""
+      tag:  **{{ version.prometheus }}**
+      name: **prom/prometheus**
    nginx:
-   	registry: ""
-   	tag: **{{ version.nginx }}**
-   	name: nginx
+      registry: ""
+      tag: **{{ version.nginx }}**
+      name: nginx
    ```
 
 1. Pull images to your Docker Desktop, as follows:
@@ -244,7 +244,7 @@ You need to perform the following steps:
    docker.io/janeczku/go-dnsmasq:release-1.0.7
    ```
 
-1. Login to your target container registry, as per the following example that uses Google Container Registry (GCR) :
+1. Log in to your target container registry, as per the following example that uses Google Container Registry (GCR) :
 
    ```sh
    docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
@@ -298,25 +298,25 @@ You need to perform the following steps:
       pullPolicy: IfNotPresent
       pullSecret: yugabyte-k8s-pull-secret
       thirdparty-deps:
-      		registry: /yugabyte/thhirdparty-deps
-   			tag: **latest**
-   			name: **yugabyte/thirdparty-deps**
+            registry: /yugabyte/thhirdparty-deps
+            tag: **latest**
+            name: **yugabyte/thirdparty-deps**
       postgres:
-   			registry: "yugabyte/postgres"
-   			tag: 11.5
-   			name: **postgres**
+            registry: "yugabyte/postgres"
+            tag: 11.5
+            name: **postgres**
       prometheus:
-   			registry: "prom/prometheus"
-   			tag: **v2.2.1**
-   			name: **prom/prometheus**
+            registry: "prom/prometheus"
+            tag: **v2.2.1**
+            name: **prom/prometheus**
       nginx:
-   			registry: "yugabyte/nginx"
-   			tag: **1.17.4**
-   			name: nginx
+            registry: "yugabyte/nginx"
+            tag: **1.17.4**
+            name: nginx
       dnsmasq:
-   			registry: "janeczku/go-dnsmasq/"
-   			tag: **release-1.0.7**
-   			name: **janeczku/go-dnsmasq
+            registry: "janeczku/go-dnsmasq/"
+            tag: **release-1.0.7**
+            name: **janeczku/go-dnsmasq
    ```
 
 1. Install Helm chart or specify the container registry in YugabyteDB Anywhere cloud provider, as follows:

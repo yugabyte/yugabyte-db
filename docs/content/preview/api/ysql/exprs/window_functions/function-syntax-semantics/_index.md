@@ -3,7 +3,7 @@ title: YSQL window functions signature and purpose
 linkTitle: Per function signature and purpose
 headerTitle: Signature and purpose of each window function
 description: This section summarizes the signature and purpose of each of the YSQL window functions and links to their individual accounts.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: window-function-syntax-semantics
@@ -21,7 +21,7 @@ The two tables at the end classify the eleven built-in window functions into two
 
 ### Aggregate function variants
 
-A few of these also have an aggregate function variant. This can be seen with the `\df` metacommand. For example, `df lag` shows this:
+A few of these also have an aggregate function variant. This can be seen with the `\df` meta-command. For example, `df lag` shows this:
 
 ```
  Result data type |          Argument data types           |  Type

@@ -24,7 +24,7 @@ class TestEchoServiceClient : public StatefulServiceClientBase {
  public:
   TestEchoServiceClient();
 
-  STATEFUL_SERVICE_RPCS(TestEcho, (GetEcho));
+  STATEFUL_SERVICE_RPCS(TestEcho, (GetEcho)(GetEchoCount));
 };
 }  // namespace client
 }  // namespace yb

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <bitset>
+#include <optional>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -191,14 +192,10 @@ namespace yb::dockv {
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
-    ((kPackedRow, 'z')) /* ASCII code 122 */ \
+    ((kPackedRowV1, 'z')) /* ASCII code 122 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
-    \
-    /* Null desc must be higher than the other descending primitive types so that it compares */ \
-    /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
-    /* null elements) on DESC columns. */ \
-    ((kNullHigh, '|')) /* ASCII code 124 */ \
+    ((kPackedRowV2, '|')) /* ASCII code 124 */ \
     \
     /* This is used for sanity checking. */ \
     ((kInvalid, 127)) \
@@ -224,7 +221,7 @@ struct ValueEntryTypeAsChar {
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
-constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kNullHigh;
+constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kObject;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.
@@ -269,7 +266,7 @@ constexpr inline bool IsSpecialKeyEntryType(KeyEntryType value_type) {
 }
 
 // Decode the first byte of the given slice as a ValueType.
-inline ValueEntryType DecodeValueEntryType(const Slice& value) {
+inline ValueEntryType DecodeValueEntryType(Slice value) {
   return value.empty() ? ValueEntryType::kInvalid : static_cast<ValueEntryType>(value.data()[0]);
 }
 
@@ -307,5 +304,27 @@ inline bool IsMergeRecord(const Slice& value) {
 inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
 }
+
+YB_DEFINE_ENUM(PackedRowVersion, (kV1)(kV2));
+
+inline std::optional<PackedRowVersion> GetPackedRowVersion(ValueEntryType type) {
+  if (type == ValueEntryType::kPackedRowV1) {
+    return PackedRowVersion::kV1;
+  }
+  if (type == ValueEntryType::kPackedRowV2) {
+    return PackedRowVersion::kV2;
+  }
+  return std::nullopt;
+}
+
+inline std::optional<PackedRowVersion> GetPackedRowVersion(Slice slice) {
+  return GetPackedRowVersion(DecodeValueEntryType(slice));
+}
+
+inline bool IsPackedRow(ValueEntryType type) {
+  return GetPackedRowVersion(type).has_value();
+}
+
+Status UnexpectedPackedRowVersionStatus(PackedRowVersion version);
 
 }  // namespace yb::dockv

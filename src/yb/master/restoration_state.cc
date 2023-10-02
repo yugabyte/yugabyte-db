@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 
@@ -17,6 +18,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
 
@@ -165,10 +167,36 @@ void RestorationState::PrepareOperations(
   });
 }
 
+Status RestorationState::Abort() {
+  SCHECK(!VERIFY_RESULT(Complete()), IllegalState, "Cannot abort completed restoration");
+  auto tablets_ = tablets();
+  for (auto it = tablets_.begin(); it != tablets_.end(); ++it) {
+    const auto& tablet_id = it->id;
+    auto status = STATUS(
+        Aborted, Format(
+                     "Failed at state $0 for tablet $1: Aborted by user request",
+                     InitialStateName(), tablet_id));
+    tablets_.modify(it, [&status](TabletData& data) {
+      data.aborted = true;
+      data.last_error = status;
+      data.state = SysSnapshotEntryPB::FAILED;
+    });
+
+    // Only decrement if the given tablet is in the initial state and is NOT running. If the task IS
+    // running, the value will be decremented in Done when the task itself finishes.
+    if (it->state == initial_state_ && !it->running) {
+      DecrementTablets();
+    }
+  }
+
+  return Status::OK();
+}
+
 std::optional<SysSnapshotEntryPB::State> RestorationState::GetTerminalStateForStatus(
     const Status& status) {
-  if (status.IsAborted() ||
-      tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT) {
+  if (status.IsAborted() || status.IsNotFound() ||
+      tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT  ||
+      master::MasterError(status) == MasterErrorPB::TABLE_NOT_RUNNING) {
     return SysSnapshotEntryPB::FAILED;
   }
   return std::nullopt;

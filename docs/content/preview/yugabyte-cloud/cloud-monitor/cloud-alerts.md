@@ -30,8 +30,6 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 Enable alerts using the **Configurations** tab on the **Alerts** page.
 
-Only Admin users can configure billing alerts.
-
 ![Alert Configurations](/images/yb-cloud/cloud-alerts-configurations.png)
 
 <!-- To view alert details, select the alert to display the **Alert Policy Settings** sheet.-->
@@ -54,9 +52,9 @@ YugabyteDB monitors the health of your clusters based on [cluster alert](#cluste
 
 | Status | Alert | Level |
 | :----- | :---- | :---- |
-| Healthy | No alerts<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Info |
-| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
-| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts) | Severe |
+| Healthy | No alerts<br/>[Disk throughput](#fix-throughput-alerts)<br/>[Disk IOPS](#fix-iops-alerts)<br/>[Fewer than 34% of nodes down](#fix-nodes-reporting-as-down-alerts) | <br/>Warning<br/>Warning<br/>Info |
+| Needs Attention | [Node free storage](#fix-storage-alerts)<br/>[More than 34% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[Memory Utilization](#fix-memory-alerts)<br/>[YSQL Connections](#fix-ysql-connection-alerts)<br/>[CPU Utilization](#fix-cpu-alerts) | Warning or Severe<br/>Warning or Severe<br/>Warning or Severe<br/>Warning<br/>Warning or Severe<br/>Warning or Severe<br/>Warning or Severe
+| Unhealthy | [More than 66% of nodes down](#fix-nodes-reporting-as-down-alerts)<br/>[CMK unavailable](#fix-cmk-unavailable-alerts)  | Severe<br/>Warning |
 
 To see the alert conditions that caused the current health condition, click the cluster health icon.
 
@@ -72,26 +70,52 @@ Alerts can have two severity levels: Warning or Severe. The nodes down alert has
 
 ### Cluster alerts
 
-When you receive a cluster alert, the first step is to review the chart for the metric over time to evaluate trends and monitor your progress. The following charts are available:
+When you receive a cluster alert, the first step is to review the chart for the metric over time (if available) to evaluate trends and monitor your progress.
 
-| Alert | Chart |
+| Alert | Metric |
 | :--- | :--- |
-| Node Free Storage | Disk Usage |
-| Memory Use | Memory Usage |
-| Cluster Queues Overflow | RPC Queue Size |
-| Compaction Overload | Compaction |
-| YSQL Connections | YSQL Operations/Sec |
-| CPU Utilization | CPU Usage |
+| [Disk Throughput](#fix-throughput-alerts) | Disk IOPS |
+| [Disk IOPS](#fix-iops-alerts) | Disk IOPS |
+| [Node Free Storage](#fix-storage-alerts) | Disk Usage metric |
+| [Nodes Down](#fix-nodes-reporting-as-down-alerts) | Go to the cluster **Nodes** tab to see which nodes are down |
+| [Memory Use](#fix-memory-alerts) | Memory Usage metric |
+| [Cluster Queues Overflow](#fix-database-overload-alerts) | RPC Queue Size metric |
+| [Compaction Overload](#fix-database-overload-alerts) | Compaction metric |
+| [YSQL Connections](#fix-ysql-connection-alerts) | YSQL Operations/Sec metric |
+| [CMK Unavailable](#fix-cmk-unavailable-alerts) | N/A |
+| [CPU Utilization](#fix-cpu-alerts) | CPU Usage metric |
 
-For a nodes down alert, go to the cluster **Nodes** tab to see which nodes are down.
-
-You can view the metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
+You can view metrics on the cluster **Performance** tab. Refer to [Performance metrics](../overview/#performance-metrics).
 
 {{< note title="Note" >}}
 
-If you get frequent cluster alerts on a Sandbox cluster, you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
+If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/create-clusters/create-clusters-free/#limitations), you may have reached the performance limits for Sandbox clusters. Consider upgrading to a Dedicated cluster.
 
 {{< /note >}}
+
+#### Fix throughput alerts
+
+YugabyteDB Managed sends a notification when the disk throughput on any node in the cluster exceeds the threshold, as follows:
+
+- Node disk throughput utilization exceeded 80% (Warning).
+- Node disk throughput utilization reached 100% (Warning).
+
+If disk throughput consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. Throughput is automatically scaled together with IOPS. For clusters deployed on GCP or Azure, add more vCPUs or increase the disk size.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix IOPS alerts
+
+YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster (AWS only) exceeds the threshold, as follows:
+
+- Node disk IOPS utilization exceeded 80% (Warning).
+- Node disk IOPS utilization reached 100% (Warning).
+
+For large datasets or clusters with high concurrent transactions, higher IOPS is recommended.
+
+If disk IOPS consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. For clusters deployed in GCP and Azure, add more vCPUs and/or increase the disk size.
+
+For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 #### Fix storage alerts
 
@@ -108,14 +132,16 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix nodes reporting as down alerts
 
-YugabyteDB Managed sends a notification when the number of nodes that are down in a cluster exceeds the threshold, as follows:
+YugabyteDB Managed sends a notification when the number of primary or read replica nodes that are down in a cluster exceeds the threshold, as follows:
 
-- More than 34% of all nodes in the cluster are reporting as down (Warning).
-- More than 66% of all nodes in the cluster are reporting as down (Severe).
+- More than 34% of all primary or read replica nodes in the cluster are reporting as down (Warning).
+- More than 66% of all primary or read replica nodes in the cluster are reporting as down (Severe).
 
-If fewer than 34% of nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests, and the status is reported in the [cluster health](#cluster-health).
+Go to the cluster **Nodes** tab to see which nodes are down.
 
-If more than 66% of nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
+If fewer than 34% of primary or read replica nodes in a multi-node (that is, highly available) cluster are down, the cluster remains healthy and can continue to serve requests, and the status is reported in the [cluster health](#cluster-health).
+
+If more than 66% of primary or read replica nodes in a multi-node (that is, highly available) cluster are down, the cluster is considered unhealthy and the downed nodes should be replaced as soon as possible.
 
 When cluster nodes go down, Yugabyte is notified automatically and will restore the nodes as quickly as possible.
 
@@ -123,7 +149,7 @@ When cluster nodes go down, Yugabyte is notified automatically and will restore 
 
 YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
 
-- Memory use exceeds 75% (Warning).
+- Memory use exceeds 70% (Warning).
 - Memory use exceeds 90% (Severe).
 
 If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
@@ -159,7 +185,7 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Managed clusters support [10 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).
@@ -173,6 +199,18 @@ You may need to implement some form of connection pooling.
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
 
 To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
+
+#### Fix CMK unavailable alerts
+
+YugabyteDB Managed sends a notification when the customer managed key (CMK) used to encrypt a cluster is unreachable.
+
+If your CMK is unreachable, check the following:
+
+- Verify the key is still enabled in your cloud provider KMS.
+- Verify the role or account used to access the key still has valid permissions.
+- Verify the credentials or access key are still valid, and generate new credentials if needed.
+
+Refer to [Encryption at rest](../../cloud-secure-clusters/managed-ear/).
 
 #### Fix CPU alerts
 

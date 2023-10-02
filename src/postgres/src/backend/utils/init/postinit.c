@@ -84,6 +84,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
+#include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -670,6 +671,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	InitCatalogCache();
 	InitPlanCache();
 
+	if (YBIsEnabledInPostgresEnvVar())
+		YbInitPgInheritsCache();
+
 	/* Initialize portal manager */
 	EnablePortalManager();
 
@@ -689,22 +693,23 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		const uint64_t catalog_master_version =
-			YbGetCatalogCacheVersionForTablePrefetching();
+		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
+		 * kind of a hack and must be removed. This function is called before
+		 * starting prefetching because for now switching into DB catalog
+		 * version mode is impossible in case prefething is started.
+		 */
+		YBIsDBCatalogVersionMode();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching(
-			catalog_master_version, YB_YQL_PREFETCHER_NO_CACHE);
-		YbRegisterSysTableForPrefetching(
-			AuthIdRelationId);        // pg_authid
-		YbRegisterSysTableForPrefetching(
-			DatabaseRelationId);      // pg_database
+		YBCStartSysTablePrefetchingNoCache();
+		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
+		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);		// pg_yb_profile
+				YbProfileRelationId);     // pg_yb_profile
 			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId);	// pg_yb_role_profile
+				YbRoleProfileRelationId); // pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 

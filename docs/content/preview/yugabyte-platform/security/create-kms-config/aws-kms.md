@@ -45,15 +45,33 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
 
 Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
+The master key resource policy should include the following key policy [permissions](https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html):
+
+- kms:Encrypt
+- kms:Decrypt
+- kms:GenerateDataKeyWithoutPlaintext
+- kms:DescribeKey
+- kms:DisableKey
+- kms:ScheduleKeyDeletion
+- kms:CreateAlias
+- kms:DeleteAlias
+- kms:UpdateAlias
+
+{{< note title="Note" >}}
+
+To support master key rotation, after upgrading YBA from a version prior to 2.17.3, add the kms:Encrypt permission to any existing keys that are used by any AWS KMS configurations, if not already present.
+
+{{< /note >}}
+
 The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
 
-- `kms:CreateKey`
-- `kms:ListAliases`
-- `kms:ListKeys`
-- `kms:CreateAlias`
-- `kms:DeleteAlias`
-- `kms:UpdateAlias`
-- `kms:TagResource`
+- kms:CreateKey
+- kms:ListAliases
+- kms:ListKeys
+- kms:CreateAlias
+- kms:DeleteAlias
+- kms:UpdateAlias
+- kms:TagResource
 
 ## Create a KMS configuration
 

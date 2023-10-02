@@ -663,4 +663,25 @@ void StatusCheck(bool value) {
   CHECK(value);
 }
 
+Status StatusHolder::GetStatus() const {
+  if (PREDICT_TRUE(is_ok_.load(std::memory_order_acquire))) {
+    return Status::OK();
+  }
+  std::lock_guard lock(mutex_);
+  return status_;
+}
+
+void StatusHolder::SetError(const Status& status) {
+  std::lock_guard lock(mutex_);
+  status_ = status;
+  is_ok_.store(false, std::memory_order_release);
+}
+
+void StatusHolder::Reset() {
+  std::lock_guard lock(mutex_);
+  status_ = Status::OK();
+  is_ok_.store(true, std::memory_order_release);
+}
+
+
 }  // namespace yb

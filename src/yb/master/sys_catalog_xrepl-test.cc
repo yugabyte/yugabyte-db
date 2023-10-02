@@ -31,9 +31,10 @@ class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     streams.clear();
   }
 
-  Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata) override {
+  Status Visit(const std::string& stream_id, const SysCDCStreamEntryPB& metadata) override {
     // Setup the CDC stream info.
-    CDCStreamInfo* const stream = new CDCStreamInfo(stream_id);
+    CDCStreamInfo* const stream =
+        new CDCStreamInfo(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
@@ -58,9 +59,11 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
   }
 
   Status Visit(
-      const std::string& producer_id, const SysUniverseReplicationEntryPB& metadata) override {
+      const std::string& replication_group_id,
+      const SysUniverseReplicationEntryPB& metadata) override {
     // Setup the universe replication info.
-    UniverseReplicationInfo* const universe = new UniverseReplicationInfo(producer_id);
+    UniverseReplicationInfo* const universe =
+        new UniverseReplicationInfo(cdc::ReplicationGroupId(replication_group_id));
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
@@ -80,7 +83,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
   // 1. CHECK ADD_CDCSTREAM.
-  auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
+  auto stream = make_scoped_refptr<CDCStreamInfo>(xrepl::StreamId::GenerateRandom());
   {
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.add_table_id("test_table");
@@ -112,7 +115,8 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
   // 1. CHECK ADD_UNIVERSE_REPLICATION.
-  auto universe = make_scoped_refptr<UniverseReplicationInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
+  auto universe = make_scoped_refptr<UniverseReplicationInfo>(
+      cdc::ReplicationGroupId("deadbeafdeadbeafdeadbeafdeadbeaf"));
   {
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.add_tables("producer_table_id");

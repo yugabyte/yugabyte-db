@@ -52,7 +52,7 @@ namespace yb::dockv {
 
 namespace {
 
-inline Result<size_t> FindColumn(const Schema& schema, const Slice& col_name) {
+inline Result<size_t> FindColumn(const Schema& schema, Slice col_name) {
   GStringPiece sp(col_name.cdata(), col_name.size());
   auto result = schema.find_column(sp);
   if (PREDICT_FALSE(result == Schema::kColumnNotFound)) {
@@ -124,7 +124,7 @@ YBPartialRow& YBPartialRow::operator=(YBPartialRow other) {
 }
 
 template<typename T>
-Status YBPartialRow::Set(const Slice& col_name,
+Status YBPartialRow::Set(Slice col_name,
                          const typename T::cpp_type& val,
                          bool owned) {
   return Set<T>(VERIFY_RESULT(FindColumn(*schema_, col_name)), val, owned);
@@ -169,67 +169,67 @@ Status YBPartialRow::Set(size_t column_idx, const uint8_t* val) {
   const ColumnSchema& column_schema = schema()->column(column_idx);
 
   switch (column_schema.type_info()->type) {
-    case BOOL: {
+    case DataType::BOOL: {
       RETURN_NOT_OK(SetBool(column_idx, *reinterpret_cast<const bool*>(val)));
       break;
     };
-    case INT8: {
+    case DataType::INT8: {
       RETURN_NOT_OK(SetInt8(column_idx, *reinterpret_cast<const int8_t*>(val)));
       break;
     };
-    case INT16: {
+    case DataType::INT16: {
       RETURN_NOT_OK(SetInt16(column_idx, *reinterpret_cast<const int16_t*>(val)));
       break;
     };
-    case INT32: {
+    case DataType::INT32: {
       RETURN_NOT_OK(SetInt32(column_idx, *reinterpret_cast<const int32_t*>(val)));
       break;
     };
-    case INT64: {
+    case DataType::INT64: {
       RETURN_NOT_OK(SetInt64(column_idx, *reinterpret_cast<const int64_t*>(val)));
       break;
     };
-    case FLOAT: {
+    case DataType::FLOAT: {
       RETURN_NOT_OK(SetFloat(column_idx, *reinterpret_cast<const float*>(val)));
       break;
     };
-    case DOUBLE: {
+    case DataType::DOUBLE: {
       RETURN_NOT_OK(SetDouble(column_idx, *reinterpret_cast<const double*>(val)));
       break;
     };
-    case STRING: {
+    case DataType::STRING: {
       RETURN_NOT_OK(SetStringCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case BINARY: {
+    case DataType::BINARY: {
       RETURN_NOT_OK(SetBinaryCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case TIMESTAMP: {
+    case DataType::TIMESTAMP: {
       RETURN_NOT_OK(SetTimestamp(column_idx, *reinterpret_cast<const int64_t*>(val)));
       break;
     };
-    case INET: {
+    case DataType::INET: {
       RETURN_NOT_OK(SetInet(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case JSONB: {
+    case DataType::JSONB: {
       RETURN_NOT_OK(SetJsonb(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case UUID: {
+    case DataType::UUID: {
       RETURN_NOT_OK(SetUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case TIMEUUID: {
+    case DataType::TIMEUUID: {
       RETURN_NOT_OK(SetTimeUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     }
-    case FROZEN: {
+    case DataType::FROZEN: {
       RETURN_NOT_OK(SetFrozenCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
-    case DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     default: {
       return STATUS(InvalidArgument, "Unknown column type in schema",
                                      column_schema.ToString());
@@ -258,133 +258,133 @@ void YBPartialRow::DeallocateOwnedStrings() {
 // Setters
 //------------------------------------------------------------
 
-Status YBPartialRow::SetBool(const Slice& col_name, bool val) {
-  return Set<TypeTraits<BOOL> >(col_name, val);
+Status YBPartialRow::SetBool(Slice col_name, bool val) {
+  return Set<TypeTraits<DataType::BOOL>>(col_name, val);
 }
-Status YBPartialRow::SetInt8(const Slice& col_name, int8_t val) {
-  return Set<TypeTraits<INT8> >(col_name, val);
+Status YBPartialRow::SetInt8(Slice col_name, int8_t val) {
+  return Set<TypeTraits<DataType::INT8>>(col_name, val);
 }
-Status YBPartialRow::SetInt16(const Slice& col_name, int16_t val) {
-  return Set<TypeTraits<INT16> >(col_name, val);
+Status YBPartialRow::SetInt16(Slice col_name, int16_t val) {
+  return Set<TypeTraits<DataType::INT16>>(col_name, val);
 }
-Status YBPartialRow::SetInt32(const Slice& col_name, int32_t val) {
-  return Set<TypeTraits<INT32> >(col_name, val);
+Status YBPartialRow::SetInt32(Slice col_name, int32_t val) {
+  return Set<TypeTraits<DataType::INT32>>(col_name, val);
 }
-Status YBPartialRow::SetInt64(const Slice& col_name, int64_t val) {
-  return Set<TypeTraits<INT64> >(col_name, val);
+Status YBPartialRow::SetInt64(Slice col_name, int64_t val) {
+  return Set<TypeTraits<DataType::INT64>>(col_name, val);
 }
-Status YBPartialRow::SetTimestamp(const Slice& col_name, int64_t val) {
-  return Set<TypeTraits<TIMESTAMP> >(col_name, val);
+Status YBPartialRow::SetTimestamp(Slice col_name, int64_t val) {
+  return Set<TypeTraits<DataType::TIMESTAMP>>(col_name, val);
 }
-Status YBPartialRow::SetFloat(const Slice& col_name, float val) {
-  return Set<TypeTraits<FLOAT> >(col_name, val);
+Status YBPartialRow::SetFloat(Slice col_name, float val) {
+  return Set<TypeTraits<DataType::FLOAT>>(col_name, val);
 }
-Status YBPartialRow::SetDouble(const Slice& col_name, double val) {
-  return Set<TypeTraits<DOUBLE> >(col_name, val);
+Status YBPartialRow::SetDouble(Slice col_name, double val) {
+  return Set<TypeTraits<DataType::DOUBLE>>(col_name, val);
 }
-Status YBPartialRow::SetString(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<STRING> >(col_name, val, false);
+Status YBPartialRow::SetString(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::STRING>>(col_name, val, false);
 }
-Status YBPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<BINARY> >(col_name, val, false);
+Status YBPartialRow::SetBinary(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::BINARY>>(col_name, val, false);
 }
-Status YBPartialRow::SetFrozen(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<FROZEN> >(col_name, val, false);
+Status YBPartialRow::SetFrozen(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::FROZEN>>(col_name, val, false);
 }
-Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<INET> >(col_name, val);
+Status YBPartialRow::SetInet(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::INET>>(col_name, val);
 }
-Status YBPartialRow::SetUuid(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<UUID> >(col_name, val, false);
+Status YBPartialRow::SetUuid(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::UUID>>(col_name, val, false);
 }
-Status YBPartialRow::SetTimeUuid(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<TIMEUUID> >(col_name, val, false);
+Status YBPartialRow::SetTimeUuid(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::TIMEUUID>>(col_name, val, false);
 }
-Status YBPartialRow::SetDecimal(const Slice& col_name, const Slice& val) {
-  return Set<TypeTraits<DECIMAL> >(col_name, val, false);
+Status YBPartialRow::SetDecimal(Slice col_name, Slice val) {
+  return Set<TypeTraits<DataType::DECIMAL>>(col_name, val, false);
 }
 Status YBPartialRow::SetBool(size_t col_idx, bool val) {
-  return Set<TypeTraits<BOOL> >(col_idx, val);
+  return Set<TypeTraits<DataType::BOOL>>(col_idx, val);
 }
 Status YBPartialRow::SetInt8(size_t col_idx, int8_t val) {
-  return Set<TypeTraits<INT8> >(col_idx, val);
+  return Set<TypeTraits<DataType::INT8>>(col_idx, val);
 }
 Status YBPartialRow::SetInt16(size_t col_idx, int16_t val) {
-  return Set<TypeTraits<INT16> >(col_idx, val);
+  return Set<TypeTraits<DataType::INT16>>(col_idx, val);
 }
 Status YBPartialRow::SetInt32(size_t col_idx, int32_t val) {
-  return Set<TypeTraits<INT32> >(col_idx, val);
+  return Set<TypeTraits<DataType::INT32>>(col_idx, val);
 }
 Status YBPartialRow::SetInt64(size_t col_idx, int64_t val) {
-  return Set<TypeTraits<INT64> >(col_idx, val);
+  return Set<TypeTraits<DataType::INT64>>(col_idx, val);
 }
 Status YBPartialRow::SetTimestamp(size_t col_idx, int64_t val) {
-  return Set<TypeTraits<TIMESTAMP> >(col_idx, val);
+  return Set<TypeTraits<DataType::TIMESTAMP>>(col_idx, val);
 }
-Status YBPartialRow::SetString(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<STRING> >(col_idx, val, false);
+Status YBPartialRow::SetString(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::STRING>>(col_idx, val, false);
 }
-Status YBPartialRow::SetBinary(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<BINARY> >(col_idx, val, false);
+Status YBPartialRow::SetBinary(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::BINARY>>(col_idx, val, false);
 }
-Status YBPartialRow::SetFrozen(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<FROZEN> >(col_idx, val, false);
+Status YBPartialRow::SetFrozen(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::FROZEN>>(col_idx, val, false);
 }
-Status YBPartialRow::SetInet(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
+Status YBPartialRow::SetInet(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::INET>>(col_idx, val);
 }
-Status YBPartialRow::SetJsonb(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<JSONB> >(col_idx, val);
+Status YBPartialRow::SetJsonb(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::JSONB>>(col_idx, val);
 }
-Status YBPartialRow::SetUuid(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<UUID> >(col_idx, val, false);
+Status YBPartialRow::SetUuid(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::UUID>>(col_idx, val, false);
 }
-Status YBPartialRow::SetTimeUuid(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<TIMEUUID> >(col_idx, val, false);
+Status YBPartialRow::SetTimeUuid(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::TIMEUUID>>(col_idx, val, false);
 }
-Status YBPartialRow::SetDecimal(size_t col_idx, const Slice& val) {
-  return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
+Status YBPartialRow::SetDecimal(size_t col_idx, Slice val) {
+  return Set<TypeTraits<DataType::DECIMAL>>(col_idx, val, false);
 }
 Status YBPartialRow::SetFloat(size_t col_idx, float val) {
-  return Set<TypeTraits<FLOAT> >(col_idx, util::CanonicalizeFloat(val));
+  return Set<TypeTraits<DataType::FLOAT>>(col_idx, util::CanonicalizeFloat(val));
 }
 Status YBPartialRow::SetDouble(size_t col_idx, double val) {
-  return Set<TypeTraits<DOUBLE> >(col_idx, util::CanonicalizeDouble(val));
+  return Set<TypeTraits<DataType::DOUBLE>>(col_idx, util::CanonicalizeDouble(val));
 }
 
-Status YBPartialRow::SetBinaryCopy(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<BINARY> >(col_name, val);
+Status YBPartialRow::SetBinaryCopy(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::BINARY>>(col_name, val);
 }
-Status YBPartialRow::SetBinaryCopy(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<BINARY> >(col_idx, val);
+Status YBPartialRow::SetBinaryCopy(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::BINARY>>(col_idx, val);
 }
-Status YBPartialRow::SetStringCopy(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<STRING> >(col_name, val);
+Status YBPartialRow::SetStringCopy(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::STRING>>(col_name, val);
 }
-Status YBPartialRow::SetStringCopy(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<STRING> >(col_idx, val);
+Status YBPartialRow::SetStringCopy(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::STRING>>(col_idx, val);
 }
-Status YBPartialRow::SetUuidCopy(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<UUID> >(col_name, val);
+Status YBPartialRow::SetUuidCopy(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::UUID>>(col_name, val);
 }
-Status YBPartialRow::SetUuidCopy(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<UUID> >(col_idx, val);
+Status YBPartialRow::SetUuidCopy(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::UUID>>(col_idx, val);
 }
-Status YBPartialRow::SetTimeUuidCopy(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_name, val);
+Status YBPartialRow::SetTimeUuidCopy(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::TIMEUUID>>(col_name, val);
 }
-Status YBPartialRow::SetTimeUuidCopy(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
+Status YBPartialRow::SetTimeUuidCopy(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::TIMEUUID>>(col_idx, val);
 }
-Status YBPartialRow::SetFrozenCopy(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<FROZEN> >(col_name, val);
+Status YBPartialRow::SetFrozenCopy(Slice col_name, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::FROZEN>>(col_name, val);
 }
-Status YBPartialRow::SetFrozenCopy(size_t col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<FROZEN> >(col_idx, val);
+Status YBPartialRow::SetFrozenCopy(size_t col_idx, Slice val) {
+  return SetSliceCopy<TypeTraits<DataType::FROZEN>>(col_idx, val);
 }
 
 template<typename T>
-Status YBPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetSliceCopy(Slice col_name, Slice val) {
   auto relocated = new uint8_t[val.size()];
   memcpy(relocated, val.data(), val.size());
   Slice relocated_val(relocated, val.size());
@@ -396,7 +396,7 @@ Status YBPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
 }
 
 template<typename T>
-Status YBPartialRow::SetSliceCopy(size_t col_idx, const Slice& val) {
+Status YBPartialRow::SetSliceCopy(size_t col_idx, Slice val) {
   auto relocated = new uint8_t[val.size()];
   memcpy(relocated, val.data(), val.size());
   Slice relocated_val(relocated, val.size());
@@ -407,7 +407,7 @@ Status YBPartialRow::SetSliceCopy(size_t col_idx, const Slice& val) {
   return s;
 }
 
-Status YBPartialRow::SetNull(const Slice& col_name) {
+Status YBPartialRow::SetNull(Slice col_name) {
   return SetNull(VERIFY_RESULT(FindColumn(*schema_, col_name)));
 }
 
@@ -417,7 +417,9 @@ Status YBPartialRow::SetNull(size_t col_idx) {
     return STATUS(InvalidArgument, "column not nullable", col.ToString());
   }
 
-  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == DataType::BINARY) {
+    DeallocateStringIfSet(col_idx, col);
+  }
 
   ContiguousRow row(schema_, row_data_);
   row.set_null(col_idx, true);
@@ -427,13 +429,15 @@ Status YBPartialRow::SetNull(size_t col_idx) {
   return Status::OK();
 }
 
-Status YBPartialRow::Unset(const Slice& col_name) {
+Status YBPartialRow::Unset(Slice col_name) {
   return Unset(VERIFY_RESULT(FindColumn(*schema_, col_name)));
 }
 
 Status YBPartialRow::Unset(size_t col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == DataType::BINARY) {
+    DeallocateStringIfSet(col_idx, col);
+  }
   BitmapClear(isset_bitmap_, col_idx);
   return Status::OK();
 }
@@ -445,141 +449,141 @@ Status YBPartialRow::Unset(size_t col_idx) {
 //------------------------------------------------------------
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::STRING>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::BINARY>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::INET>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::JSONB>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::UUID>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(size_t col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::TIMEUUID>>(size_t col_idx, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::STRING>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::BINARY>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::INET>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::JSONB>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::UUID>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<DataType::TIMEUUID>>(Slice col_name, Slice val);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT8> >(size_t col_idx,
-                                              const TypeTraits<INT8>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT8>>(size_t col_idx,
+                                              const TypeTraits<DataType::INT8>::cpp_type& val,
                                               bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT16> >(size_t col_idx,
-                                               const TypeTraits<INT16>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT16>>(size_t col_idx,
+                                               const TypeTraits<DataType::INT16>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT32> >(size_t col_idx,
-                                               const TypeTraits<INT32>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT32>>(size_t col_idx,
+                                               const TypeTraits<DataType::INT32>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT64> >(size_t col_idx,
-                                               const TypeTraits<INT64>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT64>>(size_t col_idx,
+                                               const TypeTraits<DataType::INT64>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<TIMESTAMP> >(
+Status YBPartialRow::Set<TypeTraits<DataType::TIMESTAMP>>(
     size_t col_idx,
-    const TypeTraits<TIMESTAMP>::cpp_type& val,
+    const TypeTraits<DataType::TIMESTAMP>::cpp_type& val,
     bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<STRING> >(size_t col_idx,
-                                                const TypeTraits<STRING>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::STRING>>(size_t col_idx,
+                                                const TypeTraits<DataType::STRING>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BINARY> >(size_t col_idx,
-                                                const TypeTraits<BINARY>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::BINARY>>(size_t col_idx,
+                                                const TypeTraits<DataType::BINARY>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<FLOAT> >(size_t col_idx,
-                                               const TypeTraits<FLOAT>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::FLOAT>>(size_t col_idx,
+                                               const TypeTraits<DataType::FLOAT>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<DOUBLE> >(size_t col_idx,
-                                                const TypeTraits<DOUBLE>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::DOUBLE>>(size_t col_idx,
+                                                const TypeTraits<DataType::DOUBLE>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BOOL> >(size_t col_idx,
-                                              const TypeTraits<BOOL>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::BOOL>>(size_t col_idx,
+                                              const TypeTraits<DataType::BOOL>::cpp_type& val,
                                               bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT8> >(const Slice& col_name,
-                                              const TypeTraits<INT8>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT8>>(Slice col_name,
+                                              const TypeTraits<DataType::INT8>::cpp_type& val,
                                               bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT16> >(const Slice& col_name,
-                                               const TypeTraits<INT16>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT16>>(Slice col_name,
+                                               const TypeTraits<DataType::INT16>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT32> >(const Slice& col_name,
-                                               const TypeTraits<INT32>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT32>>(Slice col_name,
+                                               const TypeTraits<DataType::INT32>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT64> >(const Slice& col_name,
-                                               const TypeTraits<INT64>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::INT64>>(Slice col_name,
+                                               const TypeTraits<DataType::INT64>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<TIMESTAMP> >(
-    const Slice& col_name,
-    const TypeTraits<TIMESTAMP>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::TIMESTAMP>>(
+    Slice col_name,
+    const TypeTraits<DataType::TIMESTAMP>::cpp_type& val,
     bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<FLOAT> >(const Slice& col_name,
-                                               const TypeTraits<FLOAT>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::FLOAT>>(Slice col_name,
+                                               const TypeTraits<DataType::FLOAT>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<DOUBLE> >(const Slice& col_name,
-                                                const TypeTraits<DOUBLE>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::DOUBLE>>(Slice col_name,
+                                                const TypeTraits<DataType::DOUBLE>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BOOL> >(const Slice& col_name,
-                                              const TypeTraits<BOOL>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::BOOL>>(Slice col_name,
+                                              const TypeTraits<DataType::BOOL>::cpp_type& val,
                                               bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<STRING> >(const Slice& col_name,
-                                                const TypeTraits<STRING>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::STRING>>(Slice col_name,
+                                                const TypeTraits<DataType::STRING>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BINARY> >(const Slice& col_name,
-                                                const TypeTraits<BINARY>::cpp_type& val,
+Status YBPartialRow::Set<TypeTraits<DataType::BINARY>>(Slice col_name,
+                                                const TypeTraits<DataType::BINARY>::cpp_type& val,
                                                 bool owned);
 
 //------------------------------------------------------------
@@ -591,7 +595,7 @@ bool YBPartialRow::IsColumnSet(size_t col_idx) const {
   return BitmapTest(isset_bitmap_, col_idx);
 }
 
-bool YBPartialRow::IsColumnSet(const Slice& col_name) const {
+bool YBPartialRow::IsColumnSet(Slice col_name) const {
   return IsColumnSet(CHECK_RESULT(FindColumn(*schema_, col_name)));
 }
 
@@ -607,97 +611,97 @@ bool YBPartialRow::IsNull(size_t col_idx) const {
   return row.is_null(col_idx);
 }
 
-bool YBPartialRow::IsNull(const Slice& col_name) const {
+bool YBPartialRow::IsNull(Slice col_name) const {
   return IsNull(CHECK_RESULT(FindColumn(*schema_, col_name)));
 }
 
-Status YBPartialRow::GetBool(const Slice& col_name, bool* val) const {
-  return Get<TypeTraits<BOOL> >(col_name, val);
+Status YBPartialRow::GetBool(Slice col_name, bool* val) const {
+  return Get<TypeTraits<DataType::BOOL>>(col_name, val);
 }
-Status YBPartialRow::GetInt8(const Slice& col_name, int8_t* val) const {
-  return Get<TypeTraits<INT8> >(col_name, val);
+Status YBPartialRow::GetInt8(Slice col_name, int8_t* val) const {
+  return Get<TypeTraits<DataType::INT8>>(col_name, val);
 }
-Status YBPartialRow::GetInt16(const Slice& col_name, int16_t* val) const {
-  return Get<TypeTraits<INT16> >(col_name, val);
+Status YBPartialRow::GetInt16(Slice col_name, int16_t* val) const {
+  return Get<TypeTraits<DataType::INT16>>(col_name, val);
 }
-Status YBPartialRow::GetInt32(const Slice& col_name, int32_t* val) const {
-  return Get<TypeTraits<INT32> >(col_name, val);
+Status YBPartialRow::GetInt32(Slice col_name, int32_t* val) const {
+  return Get<TypeTraits<DataType::INT32>>(col_name, val);
 }
-Status YBPartialRow::GetInt64(const Slice& col_name, int64_t* val) const {
-  return Get<TypeTraits<INT64> >(col_name, val);
+Status YBPartialRow::GetInt64(Slice col_name, int64_t* val) const {
+  return Get<TypeTraits<DataType::INT64>>(col_name, val);
 }
-Status YBPartialRow::GetTimestamp(const Slice& col_name, int64_t* micros_since_utc_epoch) const {
-  return Get<TypeTraits<TIMESTAMP> >(col_name, micros_since_utc_epoch);
+Status YBPartialRow::GetTimestamp(Slice col_name, int64_t* micros_since_utc_epoch) const {
+  return Get<TypeTraits<DataType::TIMESTAMP>>(col_name, micros_since_utc_epoch);
 }
-Status YBPartialRow::GetFloat(const Slice& col_name, float* val) const {
-  return Get<TypeTraits<FLOAT> >(col_name, val);
+Status YBPartialRow::GetFloat(Slice col_name, float* val) const {
+  return Get<TypeTraits<DataType::FLOAT>>(col_name, val);
 }
-Status YBPartialRow::GetDouble(const Slice& col_name, double* val) const {
-  return Get<TypeTraits<DOUBLE> >(col_name, val);
+Status YBPartialRow::GetDouble(Slice col_name, double* val) const {
+  return Get<TypeTraits<DataType::DOUBLE>>(col_name, val);
 }
-Status YBPartialRow::GetString(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<STRING> >(col_name, val);
+Status YBPartialRow::GetString(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::STRING>>(col_name, val);
 }
-Status YBPartialRow::GetBinary(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<BINARY> >(col_name, val);
+Status YBPartialRow::GetBinary(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::BINARY>>(col_name, val);
 }
-Status YBPartialRow::GetInet(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<INET> >(col_name, val);
+Status YBPartialRow::GetInet(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::INET>>(col_name, val);
 }
-Status YBPartialRow::GetJsonb(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<JSONB> >(col_name, val);
+Status YBPartialRow::GetJsonb(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::JSONB>>(col_name, val);
 }
-Status YBPartialRow::GetUuid(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<UUID> >(col_name, val);
+Status YBPartialRow::GetUuid(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::UUID>>(col_name, val);
 }
-Status YBPartialRow::GetTimeUuid(const Slice& col_name, Slice* val) const {
-  return Get<TypeTraits<TIMEUUID> >(col_name, val);
+Status YBPartialRow::GetTimeUuid(Slice col_name, Slice* val) const {
+  return Get<TypeTraits<DataType::TIMEUUID>>(col_name, val);
 }
 Status YBPartialRow::GetBool(size_t col_idx, bool* val) const {
-  return Get<TypeTraits<BOOL> >(col_idx, val);
+  return Get<TypeTraits<DataType::BOOL>>(col_idx, val);
 }
 Status YBPartialRow::GetInt8(size_t col_idx, int8_t* val) const {
-  return Get<TypeTraits<INT8> >(col_idx, val);
+  return Get<TypeTraits<DataType::INT8>>(col_idx, val);
 }
 Status YBPartialRow::GetInt16(size_t col_idx, int16_t* val) const {
-  return Get<TypeTraits<INT16> >(col_idx, val);
+  return Get<TypeTraits<DataType::INT16>>(col_idx, val);
 }
 Status YBPartialRow::GetInt32(size_t col_idx, int32_t* val) const {
-  return Get<TypeTraits<INT32> >(col_idx, val);
+  return Get<TypeTraits<DataType::INT32>>(col_idx, val);
 }
 Status YBPartialRow::GetInt64(size_t col_idx, int64_t* val) const {
-  return Get<TypeTraits<INT64> >(col_idx, val);
+  return Get<TypeTraits<DataType::INT64>>(col_idx, val);
 }
 Status YBPartialRow::GetTimestamp(size_t col_idx, int64_t* micros_since_utc_epoch) const {
-  return Get<TypeTraits<TIMESTAMP> >(col_idx, micros_since_utc_epoch);
+  return Get<TypeTraits<DataType::TIMESTAMP>>(col_idx, micros_since_utc_epoch);
 }
 Status YBPartialRow::GetFloat(size_t col_idx, float* val) const {
-  return Get<TypeTraits<FLOAT> >(col_idx, val);
+  return Get<TypeTraits<DataType::FLOAT>>(col_idx, val);
 }
 Status YBPartialRow::GetDouble(size_t col_idx, double* val) const {
-  return Get<TypeTraits<DOUBLE> >(col_idx, val);
+  return Get<TypeTraits<DataType::DOUBLE>>(col_idx, val);
 }
 Status YBPartialRow::GetString(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<STRING> >(col_idx, val);
+  return Get<TypeTraits<DataType::STRING>>(col_idx, val);
 }
 Status YBPartialRow::GetBinary(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<BINARY> >(col_idx, val);
+  return Get<TypeTraits<DataType::BINARY>>(col_idx, val);
 }
 Status YBPartialRow::GetInet(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<INET> >(col_idx, val);
+  return Get<TypeTraits<DataType::INET>>(col_idx, val);
 }
 Status YBPartialRow::GetJsonb(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<JSONB> >(col_idx, val);
+  return Get<TypeTraits<DataType::JSONB>>(col_idx, val);
 }
 Status YBPartialRow::GetUuid(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<UUID> >(col_idx, val);
+  return Get<TypeTraits<DataType::UUID>>(col_idx, val);
 }
 Status YBPartialRow::GetTimeUuid(size_t col_idx, Slice* val) const {
-  return Get<TypeTraits<TIMEUUID> >(col_idx, val);
+  return Get<TypeTraits<DataType::TIMEUUID>>(col_idx, val);
 }
 
 template<typename T>
-Status YBPartialRow::Get(const Slice& col_name,
+Status YBPartialRow::Get(Slice col_name,
                          typename T::cpp_type* val) const {
   return Get<T>(VERIFY_RESULT(FindColumn(*schema_, col_name)), val);
 }

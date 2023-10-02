@@ -13,15 +13,24 @@
 
 #pragma once
 
+#include <ostream>
+#include <string>
+
 #include <boost/function.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/dockv/dockv_fwd.h"
-#include "yb/util/ref_cnt_buffer.h"
 
-namespace yb::dockv {
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+
+class RefCntPrefix;
+
+namespace dockv {
 
 // We may write intents with empty groups to intents_db, but when interacting with SharedLockManager
 // or WaitQueue, we expect no kGroupEnd markers in keys. This method normalizes the passed in key to
@@ -109,19 +118,27 @@ Result<DecodedIntentValue> DecodeIntentValue(
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
-IntentTypeSet GetStrongIntentTypeSet(
-    IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark);
+struct ReadIntentTypeSets {
+  IntentTypeSet read;
+  IntentTypeSet row_mark;
+};
 
-inline IntentTypeSet StrongToWeak(IntentTypeSet inp) {
-  IntentTypeSet result(inp.ToUIntPtr() >> kStrongIntentFlag);
-  DCHECK((inp & result).None());
-  return result;
+[[nodiscard]] ReadIntentTypeSets GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
+
+[[nodiscard]] IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
+
+YB_STRONGLY_TYPED_BOOL(IsRowLock);
+
+[[nodiscard]] inline IntentTypeSet GetIntentTypes(
+    const ReadIntentTypeSets& intents, IsRowLock is_row_lock) {
+  return is_row_lock ? intents.row_mark : intents.read;
 }
 
-inline IntentTypeSet WeakToStrong(IntentTypeSet inp) {
-  IntentTypeSet result(inp.ToUIntPtr() << kStrongIntentFlag);
-  DCHECK((inp & result).None());
-  return result;
+[[nodiscard]] inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
+  static constexpr auto kWeakIntentMask = (1 << kStrongIntentFlag) - 1;
+
+  const auto value = inp.ToUIntPtr();
+  return IntentTypeSet((value >> kStrongIntentFlag) | (value & kWeakIntentMask));
 }
 
 bool HasStrong(IntentTypeSet inp);
@@ -135,12 +152,15 @@ bool IntentValueType(char ch);
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
 // Enumerates intents corresponding to provided key value pairs.
-// For each key it generates a strong intent and for each parent of each it generates a weak one.
-// functor should accept 3 arguments:
-// intent_kind - kind of intent weak or strong
+// functor should accept 4 arguments:
+// ancestor_doc_key - indicates that doc key is an ancestor of provided key
+// full_doc_key - indicates that doc key does not omit any final range components
 // value_slice - value of intent
 // key - pointer to key in format of SubDocKey (no ht)
-// last_key - whether it is last strong key in enumeration
+// last_key - whether it is the last leaf (non-ancestor) key in enumeration
+
+// Indicates that doc key is an ancestor of provided key or key it self.
+YB_STRONGLY_TYPED_BOOL(AncestorDocKey);
 
 // Indicates that the intent contains a full document key, i.e. it does not omit any final range
 // components of the document key. This flag is also true for intents that include subdocument keys.
@@ -155,11 +175,12 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 using EnumerateIntentsCallback = boost::function<
-    Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)>;
+    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey, IsRowLock)>;
 
 Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 
-}  // namespace yb::dockv
+}  // namespace dockv
+}  // namespace yb

@@ -54,6 +54,8 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - For **Instance Configuration**, change the instance type (**n1-standard-8**).
 
+- Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
+
 - Click **Create**.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
@@ -63,7 +65,7 @@ For specific scenarios such as creating large numbers of tables, high rates of D
 The **Universes** view allows you to examine various aspects of the universe:
 
 - **Overview** provides the information on the current YugabyteDB Anywhere version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
-- **Tables** provides details about YSQL, YCQL, and YEDIS tables included in the universe.
+- **Tables** provides details about YSQL, YCQL, and YEDIS tables included in the universe. Table sizes are calculated across all the nodes in the cluster.
 - **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
 - **Queries** displays details about live and slow queries that you can filter by column and text.

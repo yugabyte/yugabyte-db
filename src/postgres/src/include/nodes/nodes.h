@@ -518,7 +518,7 @@ typedef enum NodeTag
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
 	T_PartitionPruneStepFuncOp,
-	T_YbExprParamDesc,
+	T_YbExprColrefDesc,
 	T_YbSeqScan,
 	T_YbSeqScanState,
 	T_YbBatchedNestLoop,

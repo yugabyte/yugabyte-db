@@ -113,6 +113,14 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
     }
+
+    public static void mergeCommunicationPorts(
+        CommunicationPorts ports, ConfigureDBApiParams params) {
+      ports.ysqlServerHttpPort = params.communicationPorts.ysqlServerHttpPort;
+      ports.ysqlServerRpcPort = params.communicationPorts.ysqlServerRpcPort;
+      ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
+      ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
+    }
   }
 
   @ApiModel(description = "Extra dependencies")

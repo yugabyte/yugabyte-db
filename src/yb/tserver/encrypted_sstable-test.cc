@@ -71,9 +71,10 @@ INSTANTIATE_TEST_CASE_P(
 
 void EncryptedSSTableTest::CounterOverflow(
     int num_keys, int64_t initial_counter) {
-  FLAGS_encryption_counter_min = initial_counter;
-  FLAGS_encryption_counter_max = initial_counter;
-  FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow = GetParam();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_min) = initial_counter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_max) = initial_counter;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow) = GetParam();
 
   string test_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));

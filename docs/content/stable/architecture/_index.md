@@ -18,10 +18,10 @@ type: indexpage
     <a class="section-link icon-offset" href="design-goals/">
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/core_features.png" aria-hidden="true" />
-        <div class="title">Design Goals</div>
+        <div class="title">Design goals</div>
       </div>
       <div class="body">
-          The design goals around which YugabyteDB is built.
+          The YugabyteDB design goals.
       </div>
     </a>
   </div>
@@ -34,7 +34,7 @@ type: indexpage
         <div class="title">Key concepts</div>
       </div>
       <div class="body">
-        Key concepts you need to know to understand the YugabyteDB architecture and the components and processes that make up a YugabyteDB cluster.
+        Key concepts of the YugabyteDB architecture as well as the components and processes of a YugabyteDB universe.
       </div>
     </a>
   </div>
@@ -47,7 +47,7 @@ type: indexpage
         <div class="title">Core functions</div>
       </div>
       <div class="body">
-        Understand universe creation, table creation, write IO path, read IO path, and high availability.
+        Universe and table creation, the I/O path reading and writing, and high availability.
       </div>
     </a>
   </div>
@@ -59,7 +59,7 @@ type: indexpage
         <div class="title">Layered architecture</div>
       </div>
       <div class="body">
-          A high level overview of the YugabyteDB architecture.
+          YugabyteDB architecture overview.
       </div>
     </a>
   </div>
@@ -72,7 +72,7 @@ type: indexpage
         <div class="title">Query layer</div>
       </div>
       <div class="body">
-          Learn about the Yugabyte Query Layer (YQL).
+          YugabyteDB Query Layer (YQL) overview.
       </div>
     </a>
   </div>
@@ -85,7 +85,7 @@ type: indexpage
         <div class="title">DocDB transactions layer</div>
       </div>
       <div class="body">
-        Review transaction model and how transactional consistency is ensured at various isolation levels.
+        The transaction model and transactional consistency at various isolation levels.
       </div>
     </a>
   </div>
@@ -98,7 +98,7 @@ type: indexpage
         <div class="title">DocDB sharding layer</div>
       </div>
       <div class="body">
-        How sharding works in DocDB.
+        DocDB sharding overview.
       </div>
     </a>
   </div>
@@ -111,7 +111,7 @@ type: indexpage
         <div class="title">DocDB replication layer</div>
       </div>
       <div class="body">
-        How replication works in DocDB.
+        DocDB replication overview.
       </div>
     </a>
   </div>
@@ -124,7 +124,7 @@ type: indexpage
         <div class="title">DocDB storage layer</div>
       </div>
       <div class="body">
-          How persistence storage works in DocDB.
+          DocDB persistence storage overview.
       </div>
     </a>
   </div>

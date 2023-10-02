@@ -54,6 +54,7 @@ public class ConcurrentLogConnector {
   private String namespace;
   private String tableName;
 
+  private String dbType;
   private Properties prop = new Properties();
   int concurrency = 1;
 
@@ -78,6 +79,7 @@ public class ConcurrentLogConnector {
     prop.load(input);
     format = prop.getProperty("format");
     namespace = prop.getProperty("schema.name");
+    dbType = prop.getProperty("db.type");
     tableName = prop.getProperty("table.name");
     String schemaName = PUBLIC_SCHEMA_NAME;
 

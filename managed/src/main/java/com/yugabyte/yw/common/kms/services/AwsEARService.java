@@ -229,14 +229,23 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     // Test if GenerateDataKeyWithoutPlaintext permission exists.
     byte[] randomEncryptedBytes =
         AwsEARServiceUtil.generateDataKey(null, authConfig, cmkId, "AES", 256);
+
     // Test if Decrypt permission exists.
     byte[] decryptedBytes =
         AwsEARServiceUtil.decryptUniverseKey(null, randomEncryptedBytes, authConfig);
-
     if (decryptedBytes == null || decryptedBytes.length < 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format("Could not get decrypted bytes in AWS KMS config '%s'.", configUUID));
+    }
+
+    // Test if Encrypt permission exists.
+    byte[] encryptedBytes =
+        AwsEARServiceUtil.encryptUniverseKey(null, randomEncryptedBytes, authConfig);
+    if (encryptedBytes == null || encryptedBytes.length < 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Could not get encrypted bytes in AWS KMS config '%s'.", configUUID));
     }
   }
 

@@ -196,8 +196,8 @@ void CreateTable(
                                                table_name.namespace_type()));
 
   YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(INT32);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::INT32);
   if (transactional) {
     TableProperties table_properties;
     table_properties.SetTransactional(true);
@@ -210,12 +210,13 @@ void CreateTable(
 void BuildSchema(Partitioning partitioning, Schema* schema) {
   switch (partitioning) {
     case Partitioning::kHash:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32, false, true),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({ ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::HASH),
+                         ColumnSchema(kValueColumn, DataType::INT32) });
       return;
     case Partitioning::kRange:
-      *schema = Schema({ ColumnSchema(kKeyColumn, INT32),
-                         ColumnSchema(kValueColumn, INT32) }, 1);
+      *schema = Schema({
+          ColumnSchema(kKeyColumn, DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+          ColumnSchema(kValueColumn, DataType::INT32) });
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
@@ -493,11 +494,11 @@ int KeyValueTableTest<MiniClusterType>::NumTablets() {
 template <class MiniClusterType>
 YBSessionPtr KeyValueTableTest<MiniClusterType>::CreateSession(
     const YBTransactionPtr& transaction, const server::ClockPtr& clock) {
-  auto session = std::make_shared<YBSession>(client_.get(), clock);
+  auto session =
+      std::make_shared<YBSession>(client_.get(), RegularBuildVsSanitizers(15s, 60s), clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }
-  session->SetTimeout(RegularBuildVsSanitizers(15s, 60s));
   return session;
 }
 
@@ -515,9 +516,9 @@ Status CheckOp(YBqlOp* op) {
   return Status::OK();
 }
 
-Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table) {
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table, MonoDelta timeout) {
   LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
-  session->SetTimeout(5s * kTimeMultiplier);
+  session->SetTimeout(timeout);
   QLPagingStatePB paging_state;
   bool has_paging_state = false;
   size_t row_count = 0;

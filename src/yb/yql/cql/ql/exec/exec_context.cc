@@ -90,10 +90,9 @@ Status ExecContext::StartTransaction(
   }
 
   if (!transactional_session_) {
-    transactional_session_ = ql_env->NewSession();
+    transactional_session_ = ql_env->NewSession(rescheduler->GetDeadline());
     transactional_session_->RestartNonTxnReadPoint(client::Restart::kFalse);
   }
-  transactional_session_->SetDeadline(rescheduler->GetDeadline());
   transactional_session_->SetTransaction(transaction_);
 
   return Status::OK();

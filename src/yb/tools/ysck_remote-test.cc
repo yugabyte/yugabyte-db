@@ -77,8 +77,8 @@ class RemoteYsckTest : public YBTest {
   RemoteYsckTest()
     : random_(SeedRandom()) {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -86,7 +86,7 @@ class RemoteYsckTest : public YBTest {
     YBTest::SetUp();
 
     // Speed up testing, saves about 700ms per TEST_F.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -135,8 +135,7 @@ class RemoteYsckTest : public YBTest {
       promise->Set(status);
       return;
     }
-    shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeout(10s);
+    auto session = client_->NewSession(10s);
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
@@ -156,8 +155,7 @@ class RemoteYsckTest : public YBTest {
   Status GenerateRowWrites(uint64_t num_rows) {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeout(10s);
+    auto session = client_->NewSession(10s);
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());

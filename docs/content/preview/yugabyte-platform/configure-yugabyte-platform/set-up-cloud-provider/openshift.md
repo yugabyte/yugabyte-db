@@ -1,8 +1,9 @@
 ---
 title: Configure the OpenShift cloud provider
-headerTitle: Configure the OpenShift cloud provider
-linkTitle: Configure cloud providers
-description: Configure the OpenShift cloud provider
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the OpenShift provider configuration
+headContent: Configure an OpenShift provider configuration
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
@@ -65,13 +66,15 @@ type: docs
 
 </ul>
 
-You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-## Create RBAC and kubeconfig
+## Prerequisites
 
-kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider.
+
+### Create RBAC
 
 Set the `YBA_NAMESPACE` environment variable to the project where your YugabyteDB Anywhere is installed, as follows:
 
@@ -118,13 +121,17 @@ rolebinding.rbac.authorization.k8s.io/yugabyte-helm-operations created
 rolebinding.rbac.authorization.k8s.io/yugabyte-management created
 ```
 
-The next step is to create a kubeconfig for this service account. You download a helper script for generating a kubeconfig file by executing the following command:
+### Create kubeconfig file
+
+The next step is to create a `kubeconfig` file for this service account. The `kubeconfig` file is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
+
+You download a helper script for generating a `kubeconfig` file by executing the following command:
 
 ```shell
 wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
 ```
 
-To generate the kubeconfig file, execute the following:
+To generate the `kubeconfig` file, execute the following:
 
 ```shell
 export YBA_NAMESPACE="yb-platform"
@@ -140,35 +147,25 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
-The kubeconfig needs to be generated for each OpenShift cluster if you are doing a multi-cluster setup.
+The `kubeconfig` file needs to be generated for each OpenShift cluster if you are doing a multi-cluster setup.
 
-## Create a provider in YugabyteDB Anywhere
+## Configure OpenShift
 
-Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Navigate to **Configs > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
 
-You can create a provider as follows:
+This lists all currently configured OpenShift providers.
 
-- Open YugabyteDB Anywhere UI and click **Configure a Provider** to open the **Cloud Provider Configuration** page shown in the following illustration.
-- Select **Red Hat OpenShift** and complete the fields, as follows:
-  - In the **Type** filed, select **OpenShift**.
-  - In the **Name** field, enter ocp-test.
-  - Use the **Kube Config** field to select the file that you created in the preceding step.
-  - In the **Service Account** field, enter yugabyte-platform-universe-management.
-  - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support.
+To create an OpenShift provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
-  ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
+### Provider settings
 
-- Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
-  - In the **Zone** field, enter the exact zone label (us-east4-a).
-  - In the **Namespace** field, enter yb-platform.
+Set the **Kubernetes Provider Type** to Red Hat OpenShift.
 
-  ![Add Region](/images/ee/openshift-add-region.png)
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#provider-settings).
 
-- Click **Add Region**.
-- Click **Save**.
+### Create the configuration
 
-You should see the newly-added provider under **Red Hat OpenShift configs**.
+Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you should see the newly-added provider under **Red Hat OpenShift Configs**.
 
 ## Create a universe using the provider
 
@@ -228,7 +225,7 @@ yb-tserver-2  2/2   Running  0     5m58s
 
 If any of the pods are in pending state, perform the following:
 
-- Login with an admin account and navigate to **Compute > Machine Sets**.
+- Log in with an admin account and navigate to **Compute > Machine Sets**.
 - Open the Machine Set corresponding to your zone label (us-east4-a).
 - Click **Desired Count** and increase the count by 1 or 2, as shown in the following illustration.
 - Click **Save**.

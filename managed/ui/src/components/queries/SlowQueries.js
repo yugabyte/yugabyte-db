@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { withRouter } from 'react-router';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
@@ -6,13 +6,14 @@ import { Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { toast } from 'react-toastify';
 import { useSlowQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
-import { resetSlowQueries  } from '../../actions/universe';
+import { resetSlowQueries } from '../../actions/universe';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBCheckBox, YBButtonLink, YBToggle } from '../common/forms/fields';
 import { QuerySearchInput } from './QuerySearchInput';
+import { QueryType } from './helpers/constants';
 
 const dropdownColKeys = {
   Query: {
@@ -189,6 +190,20 @@ const SlowQueriesComponent = () => {
     localStorage.setItem('__yb_close_query_info__', true);
   };
 
+  const handleSortChange = (sortName) => {
+    const newCols = { ...columns };
+    for (const property in dropdownColKeys) {
+      const value = dropdownColKeys[property].value;
+      if (sortName === value) {
+        newCols[property].disabled = true;
+        // Property 'Query' should always be disabled
+      } else if (newCols[property] && property !== 'Query') {
+        newCols[property].disabled = false;
+      }
+    }
+    setColumns(newCols);
+  };
+
   const displayedQueries = filterBySearchTokens(ysqlQueries, searchTokens, dropdownColKeys);
 
   const tableColHeaders = [
@@ -344,7 +359,10 @@ const SlowQueriesComponent = () => {
                 options={{
                   clearSearch: true,
                   toolBar: renderTableToolbar,
-                  searchPanel: renderCustomSearchPanel
+                  searchPanel: renderCustomSearchPanel,
+                  onSortChange: (sortName) => {
+                    handleSortChange(sortName);
+                  }
                 }}
               >
                 {tableColHeaders}
@@ -356,9 +374,10 @@ const SlowQueriesComponent = () => {
         }
       />
       <QueryInfoSidePanel
-        visible={selectedRow.length}
         onHide={() => setSelectedRow([])}
-        data={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
+        queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
+        queryType={QueryType.SLOW}
+        visible={selectedRow.length}
       />
     </div>
   );

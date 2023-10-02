@@ -199,17 +199,26 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual void DisplayGeneralInfoIcons(std::stringstream* output);
 
+  virtual void DisplayMemoryIcons(std::stringstream* output);
+
   virtual Status DisplayRpcIcons(std::stringstream* output);
 
   static void DisplayIconTile(std::stringstream* output, const std::string icon,
                               const std::string caption, const std::string url);
 
   Status Init() override;
+  Status InitAutoFlags() override;
   Status Start() override;
   void Shutdown() override;
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<Webserver> web_server_;
+
+ protected:
+  // Returns all the AutoFlags associated with this process both promoted, and non-promoted ones.
+  virtual Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const {
+    return std::unordered_set<std::string>();
+  }
 
  private:
   void GenerateInstanceID();

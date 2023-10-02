@@ -30,11 +30,11 @@ Result<std::string> DocDBKeyToDebugStr(
 
 Result<std::string> DocDBValueToDebugStr(
     KeyType key_type, Slice key, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage);
+    SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
 Result<std::string> DocDBValueToDebugStr(
     Slice key, StorageDbType db_type, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage);
+    SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
 }  // namespace docdb
 }  // namespace yb

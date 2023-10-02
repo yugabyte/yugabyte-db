@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import moment from 'moment';
 import _, { isEmpty } from 'lodash';
@@ -161,7 +161,7 @@ export default class Replication extends Component {
       if (replicationNodeMetrics.length > 0) {
         // Get max-value and avg-value metric array
         let avgArr = null;
-          let maxArr = null;
+        let maxArr = null;
         replicationNodeMetrics.forEach((metric) => {
           if (!avgArr && !maxArr) {
             avgArr = metric.y.map((v) => parseFloat(v) / replicationNodeMetrics.length);

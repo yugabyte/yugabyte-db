@@ -18,7 +18,7 @@ Use the following automation tools to manage your YugabyteDB Managed account and
 | Automation | Description |
 | :--------- | :---------- |
 | [REST API](https://api-docs.yugabyte.com/docs/managed-apis/) | Deploy and manage database clusters using a REST API. |
-| [Terraform provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) | Provider for automating YugabyteDB Managed resources that are accessible via the API. |
+| [Terraform provider](https://registry.terraform.io/providers/yugabyte/ybm/latest/docs) | Provider for automating YugabyteDB Managed resources that are accessible via the API. |
 | [CLI](managed-cli/) | Manage YugabyteDB Managed resources from the command line. |
 
 ### Authentication
@@ -39,7 +39,7 @@ For some REST API commands, you may need one or more of the following account de
 
 - Cluster ID.
 
-    Every cluster has a unique ID. The cluster ID is available via the cluster **Settings** tab.
+    Every cluster has a unique ID. The cluster ID is available via the cluster **Settings > Infrastructure** tab.
 
 These identifiers can also be found in the URL when you access a cluster using the YugabyteDB Managed user interface.
 

@@ -241,7 +241,7 @@ void RowsResult::ClearPagingState() {
 }
 
 std::unique_ptr<qlexpr::QLRowBlock> RowsResult::GetRowBlock() const {
-  return qlexpr::CreateRowBlock(client_, Schema(*column_schemas_, 0), rows_data_.AsSlice());
+  return qlexpr::CreateRowBlock(client_, Schema(*column_schemas_), rows_data_.AsSlice());
 }
 
 //------------------------------------------------------------------------------------------------

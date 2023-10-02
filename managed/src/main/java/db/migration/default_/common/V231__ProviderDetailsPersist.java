@@ -6,14 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.migrations.V231.AvailabilityZone;
 import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
 import com.yugabyte.yw.models.migrations.V231.Customer;
 import com.yugabyte.yw.models.migrations.V231.Provider;
 import com.yugabyte.yw.models.migrations.V231.Region;
-import io.ebean.Ebean;
+import io.ebean.DB;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +25,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
   public void migrate(Context context) {
-    Ebean.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
+    DB.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
   }
 
   public static void migrateConfigToDetails() {
@@ -87,7 +87,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
             put("project_id", "host_project_id");
             put("GOOGLE_APPLICATION_CREDENTIALS", "config_file_path");
             put("CUSTOM_GCE_NETWORK", "network");
-            put(CloudProviderHandler.YB_FIREWALL_TAGS, CloudProviderHandler.YB_FIREWALL_TAGS);
+            put(CloudProviderHelper.YB_FIREWALL_TAGS, CloudProviderHelper.YB_FIREWALL_TAGS);
           }
         };
 
@@ -124,7 +124,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
     if (provider.getDetails() == null) {
       return;
     }
-    GCPCloudInfo gcpCloudInfo = provider.getDetails().cloudInfo.gcp;
+    GCPCloudInfo gcpCloudInfo = provider.getDetails().getCloudInfo().gcp;
     if (gcpCloudInfo == null) {
       return;
     }

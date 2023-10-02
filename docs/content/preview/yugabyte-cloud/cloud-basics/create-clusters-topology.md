@@ -21,10 +21,10 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 
 | Type | Consistency | Read Latency | Write Latency | Best For |
 | :--- | :--- | :--- | :--- | :--- |
-| Multi zone | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
-| Replicate across regions | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
-| Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
-| Read replica | Strong in source, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
+| [Multi zone](#single-region-multi-zone-cluster) | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
+| [Replicate across regions](#replicate-across-regions) | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
+| [Partition by region](#partition-by-region) | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
+| [Read replica](#read-replicas) | Strong in primary, eventual in replica | Low in region (1-10ms) | Low in primary region (1-10ms) | Low latency reads |
 
 For more information on replication and deployment strategies for YugabyteDB, see the following:
 
@@ -45,7 +45,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 
 ![Single cluster deployed across three zones in a region](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-1.png)
 
-**Resilience**: Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+**Resilience**: Cloud providers design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
 
 **Consistency**: YugabyteDB automatically shards the tables of the database, places the data across the nodes, and replicates all writes synchronously. The cluster ensures strong consistency of all I/O and distributed transactions.
 
@@ -158,19 +158,21 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 - [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
 
 <!--
-## Cross-cluster
+## Cross-universe
+
+WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.  Also, note that YBM  does not use the word "universe" currently.
 
 In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers xCluster replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 
 Here's how it works:
 
-1. You deploy two YugabyteDB clusters (typically) in different regions. Each cluster automatically replicates data in the cluster synchronously for strong consistency.
+1. You deploy two YugabyteDB universes (typically) in different regions. Each universe automatically replicates data in itself synchronously for strong consistency.
 
-2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
+2. You then set up xCluster asynchronous replication from one universe to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
 **Deployment**
 
-To deploy a cross-cluster replication cluster, first [deploy your primary cluster](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the replica.
+To deploy a xCluster replication universe, first [deploy your source universe](#single-region-multi-zone-cluster), then contact {{% support-cloud %}} to add the target universe.
 
 **Learn more**
 
@@ -178,51 +180,51 @@ To deploy a cross-cluster replication cluster, first [deploy your primary cluste
 
 ### Active-passive
 
-In an active-passive configuration, one cluster handles writes, and asynchronously replicates to a sink cluster.
+In an active-passive configuration, one universe handles writes, and asynchronously replicates to a target universe.
 
-The sink cluster can be used to serve low-latency reads that are timeline consistent to clients nearby. They can also be used for disaster recovery. In the event of a source cluster failure, clients can connect to the replicated sink cluster.
+The target universe can be used to serve low-latency reads that are timeline consistent to clients nearby. They can also be used for disaster recovery. In the event of a source universe failure, clients can connect to the replicated target universe.
 
-This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use cross cluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the sink clusters can get low latency reads.
+This configuration is used for use cases such as data recovery, auditing, and compliance. You can also use xCluster replication to migrate data from a data center to the cloud or from one cloud to another. In situations that tolerate eventual consistency, clients in the same region as the target universes can get low latency reads.
 
-![Multi-region deployment with single-direction xCluster replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
+![Multi-region deployment with single-direction xCluster replication between universe](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-3.png)
 
-**Resilience**: If you deploy the nodes of each cluster across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery in the event that the source cluster goes down.
+**Resilience**: If you deploy the nodes of each universe across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery in the event that the source universe goes down.
 
-**Consistency**: Reads and writes in the source cluster are strongly consistent. Because replication across clusters is asynchronous, I/O will be timeline consistent.
+**Consistency**: Reads and writes in the source universe are strongly consistent. Because replication across universes is asynchronous, I/O in the target universe will be timeline consistent, with transactions seeing a consistent snapshot sometime in the past.
 
-**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency. Reads in the regions with a cluster have low latency.
+**Latency**: With xCluster, replication to the remote universe happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency. Reads in the regions with a universe have low latency.
 
 **Strengths**
 
 - Disaster recovery – non-zero RPO and non- zero RTO
-- Timeline consistency in the sink cluster, strong consistency in the source cluster
-- Low latency reads and writes in the source cluster region
+- Timeline consistency in the target universe, strong consistency in the source universe
+- Low latency reads and writes in the source universe region
 
 **Tradeoffs**
 
-- The sink cluster doesn't handle writes. Writes from clients outside the source cluster region can incur high latency
+- The target universe doesn't handle writes. Writes from clients outside the source universe region can incur high latency
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 
 ### Active-active
 
-In an active-active configuration, both clusters can handle writes to potentially the same data. Writes to either cluster are asynchronously replicated to the other cluster with a timestamp for the update. Cross cluster with bi-directional replication is used for disaster recovery.
+In an active-active configuration, both universes can handle writes to potentially the same data. Writes to either universe are asynchronously replicated to the other universe with a timestamp for the update. xCluster with bi-directional replication is used for disaster recovery.
 
-![Multi-region deployment with bi-directional xCluster replication between clusters](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
+![Multi-region deployment with bi-directional xCluster replication between universes](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-4.png)
 
-**Resilience**: If you deploy the nodes of each cluster across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery if either cluster goes down.
+**Resilience**: If you deploy the nodes of each universe across zones, you get zone-level resilience. In addition, this topology also gives you disaster recovery if either universe goes down.
 
-**Consistency**: Reads and writes in the cluster that handles a write request are strongly consistent. Because replication across clusters is asynchronous, data replication to the remote cluster will be timeline consistent. If the same key is updated in both clusters at a similar time window, this will result in the write with the higher timestamp becoming the latest write (last writer wins semantics).
+**Consistency**: Reads are eventually consistent and the last writer wins.  For more details, including inconsistencies affecting transactions, see [non-transactional replication](../../../architecture/docdb-replication/async-replication/#non-transactional-replication).
 
-**Latency**: With xCluster, replication to the remote cluster happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency.
+**Latency**: With xCluster, replication to the remote universe happens outside the critical path of a write operation. So replication doesn't materially impact latency of reads and writes. In essence you are trading off consistency for latency.
 
 **Strengths**
 
 - Disaster recovery – non-zero RPO and non- zero RTO
-- Strong consistency in the cluster that handles a write request, eventual (timeline) consistency in the remote cluster
-- Low latency reads and writes in either cluster
+- Low latency reads and writes in either universe
 
 **Tradeoffs**
 
+- Because of the reduced consistency, applications have to be able to handle eventual consistency.  In the event of an unplanned failover, the inconsistency can become permanent.
 - Because xCluster replication bypasses the query layer for replicated records, database triggers won't get fired and can lead to unexpected behavior
 - Because xCluster replication is done at the write-ahead log (WAL) level, there is no way to check for unique constraints. It's possible to have two conflicting writes in separate universes that will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
 - Similarly, the active-active mode doesn't support auto-increment IDs because both universes will generate the same sequence numbers, and this can result in conflicting rows. It is better to use UUIDs instead.

@@ -1,12 +1,13 @@
-import React, { Component } from 'react';
-import { Row, Col, ButtonGroup, DropdownButton, MenuItem }
-  from 'react-bootstrap';
-  import { isNonAvailable } from '../../../utils/LayoutUtils';
-  import { getSeverityLabel } from './AlertUtils';
-  import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-  
-  import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
-  import './AlertDetails.scss';
+import { Component } from 'react';
+import { Row, Col, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
+import { getSeverityLabel } from './AlertUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+
+import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
+import {  hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import './AlertDetails.scss';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
@@ -21,26 +22,29 @@ const getSourceName = (alertDetails) => {
   const universeUUID = findValueforlabel(alertDetails.labels, 'source_uuid');
 
   return (
-    <a target="_blank" rel="noopener noreferrer" className="universeLink" href={`/universes/${universeUUID}`}>
+    <a
+      target="_blank"
+      rel="noopener noreferrer"
+      className="universeLink"
+      href={`/universes/${universeUUID}`}
+    >
       {source_name}
     </a>
   );
 };
 
-
 const getAlertExpressionLink = (alertDetails) => {
   if (!alertDetails.alertExpressionUrl) {
     // Just in case we get alert without Prometheus URL.
     // Shouldn't happen though.
-    return "";
+    return '';
   }
   const url = new URL(alertDetails.alertExpressionUrl);
-  url.hostname = window.location.hostname;
+  if (alertDetails.metricsLinkUseBrowserFqdn) {
+    url.hostname = window.location.hostname;
+  }
   return (
-    <a
-      target="_blank"
-      rel="noopener noreferrer"
-      href={url.href}>
+    <a target="_blank" rel="noopener noreferrer" href={url.href}>
       <img
         className="prometheus-link-icon"
         alt="Alert expression graph in Prometheus"
@@ -65,8 +69,7 @@ export default class AlertDetails extends Component {
 
   render() {
     const { customer, onHide, alertDetails, onAcknowledge } = this.props;
-    const isReadOnly = isNonAvailable(
-      customer.data.features, 'alert.list.actions');
+    const isReadOnly = isNonAvailable(customer.data.features, 'alert.list.actions');
 
     if (!alertDetails) return null;
 
@@ -80,7 +83,7 @@ export default class AlertDetails extends Component {
             <div className="side-panel__title">Alert Details</div>
           </div>
           <div className="side-panel__content">
-            <div className='panel-highlight'>
+            <div className="panel-highlight">
               <Row>
                 <Col className="alert-label no-left-padding" xs={10} md={10} lg={10}>
                   <h6 className="alert-label-header">Source</h6>
@@ -102,16 +105,13 @@ export default class AlertDetails extends Component {
                 </Col>
               </Row>
               <Row>
-                <Col
-                  lg={12}
-                  className="alert-label no-left-padding no-margin-bottom"
-                >
+                <Col lg={12} className="alert-label no-left-padding no-margin-bottom">
                   <h6 className="alert-label-header">DESCRIPTION</h6>
                   <div className="alert-label-message">{alertDetails.message}</div>
                 </Col>
               </Row>
             </div>
-            <div className='panel-highlight marginTop'>
+            <div className="panel-highlight marginTop">
               <Row>
                 <Col lg={12} className="no-padding">
                   <Row>
@@ -138,19 +138,27 @@ export default class AlertDetails extends Component {
                 </Col>
                 {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                   <Col lg={6} className="no-padding">
-                    <ButtonGroup>
-                      <DropdownButton id="alert-mark-as-button" title="Mark as">
-                        <MenuItem
-                          eventKey="1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAcknowledge();
-                          }}
-                        >
-                        Acknowledged
-                        </MenuItem>
-                      </DropdownButton>
-                    </ButtonGroup>
+                      <ButtonGroup>
+                        <DropdownButton id="alert-mark-as-button" title="Mark as">
+                          <MenuItem
+                            eventKey="1"
+                            disabled={!hasNecessaryPerm({
+                              ...UserPermissionMap.acknowledgeAlert
+                            })}
+                            onClick={(e) => {
+                              if(!hasNecessaryPerm({
+                                ...UserPermissionMap.acknowledgeAlert
+                              })){
+                                return;
+                              }
+                              e.stopPropagation();
+                              onAcknowledge();
+                            }}
+                          >
+                            Acknowledged
+                          </MenuItem>
+                        </DropdownButton>
+                      </ButtonGroup>
                   </Col>
                 )}
               </Row>
@@ -162,7 +170,9 @@ export default class AlertDetails extends Component {
                   <ul>
                     {alertDetails.resolvedTime && (
                       <li className="alert-history-item">
-                        <div className="content">Alert resolved on {ybFormatDate(alertDetails.resolvedTime)}</div>
+                        <div className="content">
+                          Alert resolved on {ybFormatDate(alertDetails.resolvedTime)}
+                        </div>
                       </li>
                     )}
                     {alertDetails.acknowledgedTime && (

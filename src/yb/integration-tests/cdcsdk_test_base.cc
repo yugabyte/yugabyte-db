@@ -44,7 +44,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -93,7 +93,7 @@ void CDCSDKTestBase::TearDown() {
 }
 
 std::unique_ptr<CDCServiceProxy> CDCSDKTestBase::GetCdcProxy() {
-  YBClient *client_ = test_client();
+  YBClient* client_ = test_client();
   const auto mini_server = test_cluster()->mini_tablet_servers().front();
   std::unique_ptr<CDCServiceProxy> proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(), HostPort::FromBoundEndpoint(mini_server->bound_rpc_addr()));
@@ -121,7 +121,8 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
           pg_ts->server()->GetSharedMemoryFd()));
   pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
   pg_process_conf.force_disable_log_file = true;
-  FLAGS_pgsql_proxy_webserver_port = cluster->mini_cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
             << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
@@ -136,18 +137,16 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
 
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
-    uint32_t replication_factor,
-    uint32_t num_masters,
-    bool colocated) {
+    uint32_t replication_factor, uint32_t num_masters, bool colocated,
+    bool cdc_populate_safepoint_record) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
-  CDCSDKTestBase::SetUp();
-  FLAGS_enable_ysql = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_cdc_enable_replicate_intents = true;
-  FLAGS_replication_factor = replication_factor;
-  FLAGS_ysql_enable_pack_full_row_update = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;
@@ -160,8 +159,8 @@ Status CDCSDKTestBase::SetUpWithParams(
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
-    RETURN_NOT_OK(InitPostgres(&test_cluster_));
-    RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
+  RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
 
@@ -192,7 +191,7 @@ Result<YBTableName> CDCSDKTestBase::GetTable(
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-      RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
   if (resp.has_error()) {
     return STATUS(IllegalState, "Failed listing tables");
   }
@@ -234,7 +233,6 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE TYPE $0.coupon_discount_type$1 AS ENUM ('FIXED$2','PERCENTAGE$3');", schema_name,
         enum_suffix, enum_suffix, enum_suffix));
-
   }
 
   std::string table_oid_string = "";
@@ -360,7 +358,7 @@ Result<std::string> CDCSDKTestBase::GetTableId(
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-      RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
+  RETURN_NOT_OK(master_proxy.ListTables(req, &resp, &rpc));
   if (resp.has_error()) {
     return STATUS(IllegalState, "Failed listing tables");
   }
@@ -391,7 +389,7 @@ void CDCSDKTestBase::InitCreateStreamRequest(
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
-Result<std::string> CDCSDKTestBase::CreateDBStream(
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
     CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
@@ -403,8 +401,8 @@ Result<std::string> CDCSDKTestBase::CreateDBStream(
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 
-  return resp.db_stream_id();
+  return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
-} // namespace cdc
-} // namespace yb
+}  // namespace cdc
+}  // namespace yb

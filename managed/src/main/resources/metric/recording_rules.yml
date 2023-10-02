@@ -2,43 +2,44 @@ groups:
   - name: yugaware_recording
     rules:
       - record: rpc_irate_rps
-        expr: 'irate(rpc_latency_count[{{ range }}])'
+        expr: "irate(rpc_latency_count[{{ range }}])"
         labels:
           saved_name: rpc_irate
 
       - record: node_cpu_usage
-        expr: 'irate(node_cpu_seconds_total[{{ range }}])'
+        expr: "irate(node_cpu_seconds_total[{{ range }}])"
         labels:
           saved_name: node_cpu_usage
 
       - record: node_cpu_usage_avg
-        expr: 'avg without (cpu) (irate(node_cpu_seconds_total[{{ range }}]))'
+        expr: "avg without (cpu) (irate(node_cpu_seconds_total[{{ range }}]))"
         labels:
           saved_name: node_cpu_usage
 
       - record: node_disk_reads_irate
-        expr: 'sum without (device) (irate(node_disk_reads_completed_total[{{ range }}]))'
+        expr: "sum without (device) (irate(node_disk_reads_completed_total[{{ range }}]))"
         labels:
           saved_name: node_disk_reads_irate
 
       - record: node_disk_writes_irate
-        expr: 'sum without (device) (irate(node_disk_writes_completed_total[{{ range }}]))'
+        expr: "sum without (device) (irate(node_disk_writes_completed_total[{{ range }}]))"
         labels:
           saved_name: node_disk_writes_irate
 
       - record: node_disk_read_bytes_irate
-        expr: 'sum without (device) (irate(node_disk_read_bytes_total[{{ range }}]))'
+        expr: "sum without (device) (irate(node_disk_read_bytes_total[{{ range }}]))"
         labels:
           saved_name: node_disk_read_bytes_irate
 
       - record: node_disk_write_bytes_irate
-        expr: 'sum without (device) (irate(node_disk_written_bytes_total[{{ range }}]))'
+        expr: "sum without (device) (irate(node_disk_written_bytes_total[{{ range }}]))"
         labels:
           saved_name: node_disk_write_bytes_irate
 
       - record: container_cpu_usage
-        expr: 'avg(irate(container_cpu_usage_seconds_total[{{ range }}])) by (container_name, pod_name, namespace) /
-          on (container_name, pod_name, namespace) kube_pod_container_resource_requests_cpu_cores'
+        expr:
+          "avg(irate(container_cpu_usage_seconds_total[{{ range }}])) by (container_name, pod_name, namespace) /
+          on (container_name, pod_name, namespace) ybp_container_resource_requests_cpu_cores"
         labels:
           saved_name: container_cpu_usage
 
@@ -76,72 +77,93 @@ groups:
           saved_name: node_network_transmit_errs_irate
 
       - record: involuntary_context_switches_irate
-        expr: 'irate(involuntary_context_switches[{{ range }}])'
+        expr: "irate(involuntary_context_switches[{{ range }}])"
         labels:
           saved_name: involuntary_context_switches_irate
 
       - record: voluntary_context_switches_irate
-        expr: 'irate(voluntary_context_switches[{{ range }}])'
+        expr: "irate(voluntary_context_switches[{{ range }}])"
         labels:
           saved_name: voluntary_context_switches_irate
 
       - record: spinlock_contention_time_irate
-        expr: 'irate(spinlock_contention_time[{{ range }}])'
+        expr: "irate(spinlock_contention_time[{{ range }}])"
         labels:
           saved_name: spinlock_contention_time_irate
 
       - record: glog_info_messages_irate
-        expr: 'irate(glog_info_messages[{{ range }}])'
+        expr: "irate(glog_info_messages[{{ range }}])"
         labels:
           saved_name: glog_info_messages_irate
 
       - record: glog_warning_messages_irate
-        expr: 'irate(glog_warning_messages[{{ range }}])'
+        expr: "irate(glog_warning_messages[{{ range }}])"
         labels:
           saved_name: glog_warning_messages_irate
 
       - record: glog_error_messages_irate
-        expr: 'irate(glog_error_messages[{{ range }}])'
+        expr: "irate(glog_error_messages[{{ range }}])"
         labels:
           saved_name: glog_error_messages_irate
 
       - record: compaction_tasks
-        expr: 'active_task_metrics_compaction_tasks_added - ignoring(saved_name)
-          active_task_metrics_compaction_tasks_removed'
+        expr: "active_background_compaction_tasks_added - ignoring(saved_name)
+          active_background_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
-          state: Active
+          state_type: "Active Background"
 
       - record: compaction_tasks
-        expr: 'paused_task_metrics_compaction_tasks_added - ignoring(saved_name)
-          paused_task_metrics_compaction_tasks_removed'
+        expr: "active_full_compaction_tasks_added - ignoring(saved_name)
+          active_full_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
-          state: Paused
+          state_type: "Active Full"
 
       - record: compaction_tasks
-        expr: 'queued_task_metrics_compaction_tasks_added - ignoring(saved_name)
-          queued_task_metrics_compaction_tasks_removed'
+        expr: "active_post_split_compaction_tasks_added - ignoring(saved_name)
+          active_post_split_compaction_tasks_removed"
         labels:
           saved_name: compaction_tasks
-          state: Queued
+          state_type: "Active Post Split"
+
+      - record: compaction_tasks
+        expr: "nonactive_background_compaction_tasks_added - ignoring(saved_name)
+          nonactive_background_compaction_tasks_removed"
+        labels:
+          saved_name: compaction_tasks
+          state_type: "Non-Active Background"
+
+      - record: compaction_tasks
+        expr: "nonactive_full_compaction_tasks_added - ignoring(saved_name)
+          nonactive_full_compaction_tasks_removed"
+        labels:
+          saved_name: compaction_tasks
+          state_type: "Non-Active Full"
+
+      - record: compaction_tasks
+        expr: "nonactive_post_split_compaction_tasks_added - ignoring(saved_name)
+          nonactive_post_split_compaction_tasks_removed"
+        labels:
+          saved_name: compaction_tasks
+          state_type: "Non-Active Post Split"
 
       - record: rpc_inbound_calls_created_irate
-        expr: 'irate(rpc_inbound_calls_created[{{ range }}])'
+        expr: "irate(rpc_inbound_calls_created[{{ range }}])"
         labels:
           saved_name: rpc_inbound_calls_created_irate
 
       - record: cpu_utime_irate
-        expr: 'irate(cpu_utime[{{ range }}])'
+        expr: "irate(cpu_utime[{{ range }}])"
         labels:
           saved_name: cpu_utime_irate
 
       - record: cpu_stime_irate
-        expr: 'irate(cpu_stime[{{ range }}])'
+        expr: "irate(cpu_stime[{{ range }}])"
         labels:
           saved_name: cpu_stime_irate
 
       - record: node_filesystem_used_bytes
-        expr: 'node_filesystem_size_bytes - ignoring(saved_name)  node_filesystem_free_bytes'
+        expr: "node_filesystem_size_bytes - ignoring(saved_name)  node_filesystem_free_bytes"
         labels:
           saved_name: node_filesystem_used_bytes

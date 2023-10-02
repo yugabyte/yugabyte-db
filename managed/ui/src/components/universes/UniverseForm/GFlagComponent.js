@@ -23,6 +23,8 @@ import Edit from '../images/edit_pen.svg';
 import Close from '../images/close.svg';
 import Plus from '../images/plus.svg';
 import MoreIcon from '../images/ellipsis.svg';
+// Styles
+import './UniverseForm.scss';
 
 //server
 const MASTER = 'MASTER';
@@ -384,7 +386,12 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
+        return (
+          <AddGFlag
+            formProps={formProps}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields.getAll() }}
+          />
+        );
 
       default:
         return null;

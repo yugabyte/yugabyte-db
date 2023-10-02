@@ -160,7 +160,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
     ```sh
     ./bin/yb-admin \
         -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
-        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 2022-05-01 13:00-0700
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 "2022-05-01 13:00-0700"
     ```
 
   * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
@@ -187,7 +187,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
 YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which asynchronously populates a new index. The process runs in the background and can take a significant amount of time, depending on the size of the data. If you restore to a point in time soon after an index creation, you're likely to hit a state where the index is in the middle of the backfill process.
 
-**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
+**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to re-initiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
 
 ```sql
 SELECT pg_class.relname
@@ -207,7 +207,7 @@ This limitation will be removed in an upcoming release, and is tracked in issue 
 
 PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
-###  CDC
+### CDC
 
 Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
 
@@ -225,12 +225,6 @@ xCluster does not replicate any commands related to PITR. If you have two cluste
 1. Resume the application workloads.
 
 Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
-
-### Tablegroups
-
-Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you'll get an error. Attempting to create a tablegroup if a schedule exists on _any of the databases_ will also produce an error.
-
-Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 
 ### Global objects
 
@@ -255,6 +249,10 @@ You can't use PITR to restore to a state before the most recent [YSQL system cat
 Tracking issue: [13158](https://github.com/yugabyte/yugabyte-db/issues/13158)
 
 This limitation applies only to YSQL databases. YCQL is not affected.
+
+### YugabyteDB Anywhere
+
+YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-universes/pitr/). However, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
 
 ### Other limitations
 

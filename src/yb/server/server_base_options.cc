@@ -176,12 +176,12 @@ void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master
     LOG(INFO) << "Updating master addrs to " << MasterAddressesToString(*master_addresses);
   }
 
-  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  std::lock_guard l(master_addresses_mtx_);
   master_addresses_ = master_addresses;
 }
 
 MasterAddressesPtr ServerBaseOptions::GetMasterAddresses() const {
-  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  std::lock_guard l(master_addresses_mtx_);
   return master_addresses_;
 }
 

@@ -60,8 +60,7 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
         .leader_term = leader_term,
         .state = *request(),
         .op_id = op_id(),
-        .hybrid_time = request()->has_external_hybrid_time() ?
-            HybridTime(request()->external_hybrid_time()) : hybrid_time(),
+        .hybrid_time = hybrid_time(),
         .sealed = request()->sealed(),
         .already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse
     };
@@ -71,8 +70,7 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
       .leader_term = leader_term,
       .state = *request(),
       .op_id = op_id(),
-      .hybrid_time = request()->has_external_hybrid_time() ?
-          HybridTime(request()->external_hybrid_time()) : hybrid_time()
+      .hybrid_time = hybrid_time()
   };
   return tablet->transaction_coordinator()->ProcessReplicated(data);
 }

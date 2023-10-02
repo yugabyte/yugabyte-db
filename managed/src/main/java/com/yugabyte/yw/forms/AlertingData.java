@@ -11,13 +11,10 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import play.data.validation.Constraints;
 
 @ApiModel(description = "Alerting configuration")
 public class AlertingData {
 
-  @Constraints.Email
-  @Constraints.MinLength(5)
   @ApiModelProperty(value = "Alert email address", example = "test@example.com")
   public String alertingEmail;
 

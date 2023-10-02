@@ -169,13 +169,12 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
-  CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  auto stream_id = CreateCDCStream(cdc_proxy_, table_.table()->id());
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
 
-  change_req.set_stream_id(stream_id);
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets.Get(0).tablet_id());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
@@ -242,12 +241,11 @@ TEST_F(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
-  CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
-  change_req.set_stream_id(stream_id);
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablets.Get(0).tablet_id());
 
   // Consume the META_OP that has the initial table Schema.
@@ -321,15 +319,14 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
-  CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   auto tablet_id = tablets.Get(0).tablet_id();
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
 
-  change_req.set_stream_id(stream_id);
+  change_req.set_stream_id(stream_id.ToString());
   change_req.set_tablet_id(tablet_id);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
@@ -350,8 +347,8 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
     auto cdc_service = dynamic_cast<CDCServiceImpl*>(
         tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-    auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-        {"" /* UUID */, stream_id, tablet_id}));
+    auto metrics = std::static_pointer_cast<CDCTabletMetrics>(
+        cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
     auto lag = metrics->async_replication_sent_lag_micros->value();
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";
     // Only check sent lag, since we're just calling GetChanges once and expect committed lag to be

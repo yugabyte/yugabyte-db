@@ -33,7 +33,10 @@ set(DOCKV_SRCS
     expiration.cc
     intent.cc
     key_bytes.cc
+    pg_key_decoder.cc
+    pg_row.cc
     packed_row.cc
+    packed_value.cc
     partial_row.cc
     partition.cc
     primitive_value.cc
@@ -42,9 +45,10 @@ set(DOCKV_SRCS
     schema_packing.cc
     subdocument.cc
     value.cc
+    value_packing_v2.cc
     )
 
-set(DOCKV_DEPS yb_common yb_util dockv_proto)
+set(DOCKV_DEPS dockv_proto yb_common yb_pggate_util yb_util)
 
 ADD_YB_LIBRARY(yb_dockv
         SRCS ${DOCKV_SRCS}
@@ -63,8 +67,10 @@ set(YB_TEST_LINK_LIBS yb_common yb_dockv_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
+ADD_YB_TEST(intent-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
+ADD_YB_TEST(pg_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(subdocument-test)

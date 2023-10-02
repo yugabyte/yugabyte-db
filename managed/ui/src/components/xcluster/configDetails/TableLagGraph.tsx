@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import moment from 'moment';
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -24,9 +24,9 @@ import {
   MetricTimeRange,
   MetricTimeRangeOption,
   StandardMetricTimeRangeOption,
-  Metrics
+  Metrics,
+  XClusterTable
 } from '../XClusterTypes';
-import { YBTable } from '../../../redesign/helpers/dtos';
 
 import styles from './TableLagGraph.module.scss';
 import { getMaxNodeLagMetric } from '../ReplicationUtils';
@@ -43,7 +43,7 @@ const getTimeRange = (metricTimeRangeOption: StandardMetricTimeRangeOption): Met
 };
 
 interface Props {
-  tableDetails: YBTable;
+  tableDetails: XClusterTable;
   replicationUUID: string;
   universeUUID: string;
   queryEnabled: boolean;
@@ -51,7 +51,7 @@ interface Props {
 }
 
 export const TableLagGraph: FC<Props> = ({
-  tableDetails: { tableName, tableUUID },
+  tableDetails: { tableName, tableUUID, streamId },
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -71,10 +71,11 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const tableMetricsQuery = useQuery(
-    ['xClusterMetric', nodePrefix, tableUUID, selectedTimeRangeOption],
+    ['xClusterMetric', nodePrefix, tableUUID, streamId, selectedTimeRangeOption],
     () => {
       if (selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM) {
         return queryLagMetricsForTable(
+          streamId,
           tableUUID,
           nodePrefix,
           customStartMoment.format('X'),
@@ -85,6 +86,7 @@ export const TableLagGraph: FC<Props> = ({
       const timeRange = getTimeRange(selectedTimeRangeOption);
 
       return queryLagMetricsForTable(
+        streamId,
         tableUUID,
         nodePrefix,
         timeRange.startMoment.format('X'),

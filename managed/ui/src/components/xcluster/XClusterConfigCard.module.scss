@@ -18,24 +18,30 @@
   }
 
   .headerSection {
-    display: flex;
     align-items: center;
+    display: flex;
+    gap: 8px;
     justify-content: flex-start;
 
     padding: 12px 20px;
 
-    .configName {
-      margin-top: 6px;
+    .configNameContainer {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+
       width: 40%;
 
-      font-size: 18px;
-      font-weight: 500;
-      word-break: break-all;
-      color: colors.$YB_VIOLET_TEXT;
-      @include mixins.transition(0.35s);
-      a:hover {
-        color: colors.$YB_ORANGE !important;
-        @include mixins.transition(0.125s);
+      .configName {
+        color: colors.$YB_VIOLET_TEXT;
+        font-size: 18px;
+        font-weight: 500;
+        word-break: break-all;
+        @include mixins.transition(0.35s);
+        a:hover {
+          color: colors.$YB_ORANGE !important;
+          @include mixins.transition(0.125s);
+        }
       }
     }
 

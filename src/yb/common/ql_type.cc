@@ -21,10 +21,12 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/result.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 
 namespace {
+
 struct EmptyUDTypeInfo {};
 
 template<DataType type>
@@ -33,9 +35,23 @@ struct Traits {
 };
 
 template<>
-struct Traits<USER_DEFINED_TYPE> {
+struct Traits<DataType::USER_DEFINED_TYPE> {
   using UDTInfo = UDTypeInfo;
 };
+
+constexpr int kMaxValidYCQLTypeIndex = to_underlying(DataType::JSONB) + 1;
+
+// Set of keywords in CQL.
+// Derived from .../cassandra/src/java/org/apache/cassandra/cql3/Cql.g
+static const std::unordered_set<std::string> cql_keywords({
+    "add", "allow", "alter", "and", "apply", "asc", "authorize", "batch", "begin", "by",
+    "columnfamily", "create", "default", "delete", "desc", "describe", "drop", "entries",
+    "execute", "from", "frozen", "full", "grant", "if", "in", "index", "infinity", "insert",
+    "into", "is", "keyspace", "limit", "list", "map", "materialized", "mbean", "mbeans",
+    "modify", "nan", "norecursive", "not", "null", "of", "on", "or", "order", "primary",
+    "rename", "replace", "revoke", "schema", "select", "set", "table", "to", "token",
+    "truncate", "unlogged", "unset", "update", "use", "using", "view", "where", "with"
+});
 
 } // namespace
 
@@ -161,7 +177,7 @@ QLType::SharedPtr QLType::Create(DataType type) {
     case DataType::UINT64: return kDefaultType<DataType::UINT64>;
 
     // Datatype for variadic builtin function.
-    case TYPEARGS: return kDefaultType<DataType::TYPEARGS>;
+    case DataType::TYPEARGS: return kDefaultType<DataType::TYPEARGS>;
 
     // User-defined types cannot be created like this
     case DataType::USER_DEFINED_TYPE:
@@ -225,7 +241,7 @@ QLType::SharedPtr QLType::CreateUDType(
     std::string type_id,
     std::vector<std::string> field_names,
     Params field_types) {
-  return Internals::Make<USER_DEFINED_TYPE>(
+  return Internals::Make<DataType::USER_DEFINED_TYPE>(
       std::move(field_types), std::move(keyspace_name), std::move(type_name),
       std::move(type_id), std::move(field_names));
 }
@@ -234,7 +250,7 @@ QLType::SharedPtr QLType::CreateUDType(
 // ToPB and FromPB.
 
 void QLType::ToQLTypePB(QLTypePB* pb_type) const {
-  pb_type->set_main(id_);
+  pb_type->set_main(ToPB(id_));
   for (const auto& param : params_) {
     param->ToQLTypePB(pb_type->add_params());
   }
@@ -258,7 +274,7 @@ QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
     params.push_back(FromQLTypePB(param));
   }
 
-  if (pb_type.main() == USER_DEFINED_TYPE) {
+  if (pb_type.main() == PersistentDataType::USER_DEFINED_TYPE) {
     const auto& udt = pb_type.udtype_info();
     std::vector<std::string> field_names;
     field_names.reserve(udt.field_names().size());
@@ -270,19 +286,20 @@ QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
         udt.keyspace_name(), udt.name(), udt.id(), std::move(field_names), std::move(params));
   }
 
-  return params.empty() ? Create(pb_type.main()) : Create(pb_type.main(), std::move(params));
+  return params.empty() ? Create(ToLW(pb_type.main()))
+                        : Create(ToLW(pb_type.main()), std::move(params));
 }
 
 const QLType::SharedPtr& QLType::keys_type() const {
   switch (id_) {
-    case MAP:
+    case DataType::MAP:
       return params_[0];
-    case LIST:
+    case DataType::LIST:
       return kDefaultType<DataType::INT32>;
-    case SET:
+    case DataType::SET:
       // set has no keys, only values
       return kNullType;
-    case TUPLE:
+    case DataType::TUPLE:
       LOG(FATAL) << "The term 'key' is not applicable to the Tuple type";
 
     default:
@@ -293,13 +310,13 @@ const QLType::SharedPtr& QLType::keys_type() const {
 
 const QLType::SharedPtr& QLType::values_type() const {
   switch (id_) {
-    case MAP:
+    case DataType::MAP:
       return params_[1];
-    case LIST:
+    case DataType::LIST:
       return params_[0];
-    case SET:
+    case DataType::SET:
       return params_[0];
-    case TUPLE:
+    case DataType::TUPLE:
       LOG(FATAL) << "The term 'value' is not applicable to the Tuple type";
 
     default:
@@ -372,7 +389,14 @@ std::string QLType::ToString() const {
 void QLType::ToString(std::stringstream& os) const {
   if (IsUserDefined()) {
     // UDTs can only be used in the keyspace they are defined in, so keyspace name is implied.
-    os << udtype_name();
+    const std::string udt_name = udtype_name();
+    // Identifiers in cassandra/ycql are case-insensitive unless specified under double quotes.
+    // See: https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/ucase-lcase_r.html
+    if (cql_keywords.contains(ToLowerCase(udt_name))) {
+      os << "\"" <<  udt_name << "\"";
+    } else {
+      os << udt_name;
+    }
   } else {
     os << ToCQLString(id_);
     if (!params_.empty()) {
@@ -466,7 +490,10 @@ bool QLType::IsImplicitlyConvertible(const SharedPtr& lhs_type, const SharedPtr&
 }
 
 QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) {
-  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+  const size_t left_index = to_underlying(left);
+  const size_t right_index = to_underlying(right);
+  DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
+  DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
   static const ConversionMode kID = ConversionMode::kIdentical;
   static const ConversionMode kSI = ConversionMode::kSimilar;
@@ -474,7 +501,7 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
   static const ConversionMode kFC = ConversionMode::kFurtherCheck;
   static const ConversionMode kEX = ConversionMode::kExplicit;
   static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const ConversionMode kConversionMode[kMaxTypeIndex][kMaxTypeIndex] = {
+  static const ConversionMode kConversionMode[kMaxValidYCQLTypeIndex][kMaxValidYCQLTypeIndex] = {
       // LHS :=  RHS (source)
       //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso    // NOLINT
       /* nul */{ kID,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM }, // NOLINT
@@ -504,15 +531,19 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
       /* tim */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA }, // NOLINT
       /* jso */{ kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID }, // NOLINT
   };
-  return kConversionMode[left][right];
+
+  return kConversionMode[left_index][right_index];
 }
 
 bool QLType::IsComparable(DataType left, DataType right) {
-  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+  const size_t left_index = to_underlying(left);
+  const size_t right_index = to_underlying(right);
+  DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
+  DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
   static const bool kYS = true;
   static const bool kNO = false;
-  static const bool kCompareMode[kMaxTypeIndex][kMaxTypeIndex] = {
+  static const bool kCompareMode[kMaxValidYCQLTypeIndex][kMaxValidYCQLTypeIndex] = {
       // LHS ==  RHS (source)
       //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso    // NOLINT
       /* nul */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO }, // NOLINT
@@ -542,7 +573,8 @@ bool QLType::IsComparable(DataType left, DataType right) {
       /* tim */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO }, // NOLINT
       /* jso */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS }, // NOLINT
   };
-  return kCompareMode[left][right];
+
+  return kCompareMode[left_index][right_index];
 }
 
 bool QLType::IsPotentiallyConvertible(DataType left, DataType right) {

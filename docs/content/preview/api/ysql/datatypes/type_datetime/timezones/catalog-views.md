@@ -32,7 +32,7 @@ This is the result:
 
 ## pg_timezone_names
 
-The \\_d_ metacommand produces this result:
+The \\_d_ meta-command produces this result:
 
 ```outout
    Column   |   Type
@@ -159,7 +159,7 @@ The definition of the _[extended_timezone_names](../extended-timezone-names/)_ v
 
 ## pg_timezone_abbrevs
 
-The \\_d_ metacommand produces this result:
+The \\_d_ meta-command produces this result:
 
 ```output
    Column   |   Type

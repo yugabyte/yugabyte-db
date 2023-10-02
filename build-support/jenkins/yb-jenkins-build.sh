@@ -103,7 +103,7 @@ echo
 show_disk_usage
 
 if is_mac; then
-  "$YB_BUILD_SUPPORT_DIR"/kill_long_running_minicluster_daemons.py
+  "$YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS"
 fi
 
 set +e

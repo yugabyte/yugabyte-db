@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.models.Backup;
@@ -66,7 +68,13 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     customerConfigService = app.injector().instanceOf(CustomerConfigService.class);
     customerConfigService.setConfigValidator(
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets));
+            app.injector().instanceOf(BeanValidator.class),
+            allowedBuckets,
+            mockStorageUtilFactory,
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            mockAWSUtil,
+            mockGCPUtil));
+    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
   }
 
   @Test
@@ -465,8 +473,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
-        "{\"data\":[\"Minimal length should be not less than"
-            + " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
+        "{\"data\":[\"Minimal length should be not less than the sum of minimal counts for upper"
+            + " case, lower case, digits and special characters\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
   }

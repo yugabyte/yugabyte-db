@@ -16,7 +16,7 @@
 -- Display the initial catalog version.
 :display_catalog_version;
 
--- The next CREATE ROLE will increment current_version.
+-- The next CREATE ROLE will not increment current_version.
 CREATE ROLE cv_test_role;
 :display_catalog_version;
 
@@ -24,7 +24,19 @@ CREATE ROLE cv_test_role;
 CREATE ROLE cv_test_role;
 :display_catalog_version;
 
--- The next CREATE DATABASE will increment current_version.
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role2 IN ROLE cv_test_role;
+:display_catalog_version;
+
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role3 ADMIN cv_test_role;
+:display_catalog_version;
+
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role4 ROLE cv_test_role2, cv_test_role3;
+:display_catalog_version;
+
+-- The next CREATE DATABASE will not increment current_version.
 CREATE DATABASE cv_test_database;
 :display_catalog_version;
 
@@ -318,4 +330,27 @@ CREATE PROCEDURE p1() LANGUAGE PLPGSQL AS $$ BEGIN CALL p2(); END $$;
 CREATE PROCEDURE p2() LANGUAGE PLPGSQL AS $$ BEGIN CALL proc(2, 2); END $$;
 
 CALL p1();
+:display_catalog_version;
+
+-- Verify that variants of CREATE TABLE AS SELECT do not increment catalog version.
+CREATE TABLE t (id INT);
+SELECT id INTO TEMPORARY TABLE temp FROM t;
+:display_catalog_version;
+CREATE TEMPORARY TABLE temp2 AS SELECT id FROM t;
+:display_catalog_version;
+CREATE TABLE t_1 AS SELECT id FROM t;
+:display_catalog_version;
+
+-- Verify that catalog version gets incremented if CREATE TABLE AS invokes other
+-- DDL operations.
+CREATE TABLE t_2 (id INT);
+GRANT ALL ON t_2 TO public;
+CREATE OR REPLACE FUNCTION f1() RETURNS float8 AS $$
+BEGIN
+	ALTER TABLE t_2 ADD COLUMN v2 int;
+	REVOKE SELECT ON t_2 FROM public;
+	RETURN 1;
+END$$ LANGUAGE plpgsql;
+:display_catalog_version;
+CREATE TABLE t_3 AS SELECT c FROM (SELECT 1 AS c, f1()) AS s;
 :display_catalog_version;

@@ -174,6 +174,7 @@ constexpr int kNumTablets = 2;
 const std::string kKeyspaceName = "my_keyspace";
 const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
 const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+const std::string kPgsqlSchemaName = "my_schema";
 
 } // namespace
 
@@ -181,20 +182,20 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
  public:
   ClientTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(INT32)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(DataType::STRING)->Nullable();
+    b.AddColumn("non_null_with_default")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
   }
 
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     // Reduce the TS<->Master heartbeat interval
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
@@ -262,9 +263,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     if (client == nullptr) {
       client = client_.get();
     }
-    std::shared_ptr<YBSession> session = client->NewSession();
-    session->SetTimeout(10s * kTimeMultiplier);
-    return session;
+    return client->NewSession(10s * kTimeMultiplier);
   }
 
   // Inserts 'num_rows' test rows using 'client'
@@ -371,8 +370,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddInt32Condition(condition, "key", QL_OP_GREATER_THAN_EQUAL, 5);
     client_table_.AddInt32Condition(condition, "key", QL_OP_LESS_THAN_EQUAL, 10);
     client_table_.AddColumns({"key"}, req);
-    auto session = client_->NewSession();
-    session->SetTimeout(60s);
+    auto session = client_->NewSession(60s);
     ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -668,8 +666,8 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   ASSERT_EQ(1, filtered_tablets.size());
 
   for (int i = 0; i < kNumIterations; i++) {
-    auto start_idx = RandomUniformInt(0, PartitionSchema::kMaxPartitionKey - 1);
-    auto end_idx = RandomUniformInt(start_idx + 1, PartitionSchema::kMaxPartitionKey);
+    auto start_idx = RandomUniformInt<uint16_t>(0, PartitionSchema::kMaxPartitionKey - 1);
+    auto end_idx = RandomUniformInt<uint16_t>(start_idx + 1, PartitionSchema::kMaxPartitionKey);
     ASSERT_NO_FATALS(VerifyKeyRangeFiltering(partition_starts, tablets,
                      PartitionSchema::EncodeMultiColumnHashValue(start_idx),
                      PartitionSchema::EncodeMultiColumnHashValue(end_idx)));
@@ -758,7 +756,7 @@ TEST_F(ClientTest, TestKeyRangeUpperBoundFiltering) {
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsInvalidArgument());
 #ifndef NDEBUG
-  }, ".*Upped bound must not be exclusive when points to the first partition.*");
+  }, ".*Upper bound must not be exclusive when it points to the first partition.*");
 #endif
 }
 
@@ -1189,7 +1187,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
   LOG(INFO) << "Time out the lookup on the master side";
   {
     google::FlagSaver saver;
-    FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_inject_latency_on_tablet_lookups_ms) = 110;
     session->SetTimeout(100ms);
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->TEST_FlushAndGetOpsErrors();
@@ -1415,7 +1413,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
   {
     string huge_string(10 * 1024 * 1024, 'x');
 
-    shared_ptr<YBSession> session = client_->NewSession();
+    auto session = CreateSession();
     ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
   }
 }
@@ -1539,7 +1537,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
-      ->AddColumn("new_col")->Type(INT32);
+      ->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     // TODO(nspiegelberg): The below assert is flakey because of KUDU-1539.
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
@@ -1641,21 +1639,21 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      client_table_.table()->id(), options,
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_OK(stream);
-  ASSERT_FALSE(stream->empty());
+  ASSERT_FALSE(stream->IsNil());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
-      "MissingTableId", options,
+      "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_NOK(stream);
@@ -1664,7 +1662,8 @@ TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
   std::unordered_map<std::string, std::string> options;
-  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  auto result = client_->CreateCDCStream(
+      client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse);
   ASSERT_TRUE(result.ok());
 
   // Delete the created CDC stream.
@@ -1676,7 +1675,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
 TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   // Try to delete a non-existent CDC stream.
   Synchronizer sync;
-  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  client_->DeleteCDCStream(xrepl::StreamId::GenerateRandom(), sync.AsStatusCallback());
   Status s = sync.Wait();
   ASSERT_TRUE(TableNotFound(s)) << s;
 }
@@ -1887,7 +1886,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
         new_leader->server()->tablet_manager()->GetTablet(remote_tablet->tablet_id()));
     auto old_version = tablet_peer->tablet()->metadata()->schema_version();
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kReplicatedTable));
-    table_alterer->AddColumn("new_col")->Type(INT32);
+    table_alterer->AddColumn("new_col")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(old_version + 1, tablet_peer->tablet()->metadata()->schema_version());
   }
@@ -2069,8 +2068,7 @@ int CheckRowsEqual(const TableHandle& tbl, int32_t expected) {
 shared_ptr<YBSession> LoadedSession(YBClient* client,
                                     const TableHandle& tbl,
                                     bool fwd, int max, MonoDelta timeout) {
-  shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeout(timeout);
+  shared_ptr<YBSession> session = client->NewSession(timeout);
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
     ApplyUpdateToSession(session.get(), tbl, key, fwd);
@@ -2187,7 +2185,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
 }
 
 TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
-  FLAGS_max_create_tablets_per_ts = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
   auto many_tablets = FLAGS_replication_factor + 1;
 
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
@@ -2223,11 +2221,11 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
-  FLAGS_tablet_server_svc_queue_length = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_server_svc_queue_length) = 1;
   // Set the backoff limits to be small for this test, so that we finish in a reasonable
   // amount of time.
-  FLAGS_min_backoff_ms_exponent = 0;
-  FLAGS_max_backoff_ms_exponent = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_backoff_ms_exponent) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_backoff_ms_exponent) = 3;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     ASSERT_OK(ts->Restart());
@@ -2242,7 +2240,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   while (!thread_holder.stop_flag().load()) {
     CountDownLatch* latch;
     {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      std::lock_guard lock(idle_threads_mutex);
       if (!idle_threads.empty()) {
         latch = idle_threads.back();
         idle_threads.pop_back();
@@ -2262,7 +2260,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
           CheckRowCount(client_table_);
           latch.Reset(1);
           {
-            std::lock_guard<std::mutex> lock(idle_threads_mutex);
+            std::lock_guard lock(idle_threads_mutex);
             idle_threads.push_back(&latch);
           }
           latch.Wait();
@@ -2285,7 +2283,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   while (running_threads.load() > 0) {
     LOG(INFO) << "Left to stop " << running_threads.load() << " threads";
     {
-      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      std::lock_guard lock(idle_threads_mutex);
       while (!idle_threads.empty()) {
         idle_threads.back()->CountDown(1);
         idle_threads.pop_back();
@@ -2301,6 +2299,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
   const YBTableName kReadFromFollowerTable(YQL_DATABASE_CQL, "TestReadFromFollower");
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 1, &table));
+  // Followers which haven't heard from the leader will have last_replicated_ as kMin.
+  // These will return kMin for SafeTimeFromFollowers, causing the follower read to be
+  // rejected due to staleness. To avoid this situation, we'll wait until all followers
+  // have at least 1 op from the leader.
+  ASSERT_NO_FATALS(InsertTestRows(table, 1));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
   // Find the followers.
@@ -2352,6 +2357,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 
       // Verify response.
+      LOG_IF(INFO, resp.has_error()) << "Got response " << yb::ToString(resp);
       EXPECT_FALSE(resp.has_error());
       EXPECT_EQ(1, resp.ql_batch_size());
       const QLResponsePB &ql_resp = resp.ql_batch(0);
@@ -2411,16 +2417,19 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
   auto yql_table_name = YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "yqlrangepartitionedtable");
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
-  schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
+  schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
   EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
                                                 YQLDatabase::YQL_DATABASE_PGSQL,
                                                 "" /* creator_role_name */,
                                                 kPgsqlKeyspaceID));
   // Create a PGSQL table using range partition.
-  EXPECT_OK(schemaBuilder.Build(&schema));
+  EXPECT_OK(schema_builder.Build(&schema));
   Status s = table_creator->table_name(pgsql_table_name)
       .table_id(kPgsqlTableId)
       .schema(&schema)
@@ -2767,11 +2776,11 @@ class ColocationClientTest: public ClientTest {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
-    FLAGS_ysql_legacy_colocated_database_creation = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = false;
 
     // Reduce the TS<->Master heartbeat interval
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // Start minicluster and wait for tablet servers to connect to master.
     master::SetDefaultInitialSysCatalogSnapshotFlags();
@@ -2810,7 +2819,7 @@ class ColocationClientTest: public ClientTest {
             pg_ts->server()->GetSharedMemoryFd()));
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
-    FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
@@ -2839,24 +2848,22 @@ class ColocationClientTest: public ClientTest {
 // There should be only one lookup RPC asking for colocated tables tablet locations.
 // When we ask for tablet lookup for other tables colocated with the first one we asked, MetaCache
 // should be able to respond without sending RPCs to master again.
-TEST_F(ColocationClientTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablesLookupTablet)) {
+TEST_F(ColocationClientTest, ColocatedTablesLookupTablet) {
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 
   auto conn = ASSERT_RESULT(ConnectToDB());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kPgsqlKeyspaceName));
   conn = ASSERT_RESULT(ConnectToDB(kPgsqlKeyspaceName));
-  auto res = ASSERT_RESULT(conn.FetchFormat(
-                                    "SELECT oid FROM pg_database WHERE datname = '$0'",
-                                    kPgsqlKeyspaceName));
-  uint32_t database_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+  auto database_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kPgsqlKeyspaceName)));
 
   std::vector<TableId> table_ids;
   for (auto i = 0; i < kNumTables; ++i) {
     const auto name = Format("table_$0", i);
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key BIGINT PRIMARY KEY, value BIGINT)", name));
-    res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_class WHERE relname = '$0'", name));
-    uint32_t table_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+    auto table_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_class WHERE relname = '$0'", name)));
     table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
   }
 
@@ -2884,7 +2891,7 @@ TEST_F(ColocationClientTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablesLookupTablet
 // locations. When we ask for tablet lookup for other tables colocated with the first one we asked,
 // MetaCache should be able to respond without sending RPCs to master again.
 TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
-  FLAGS_ysql_legacy_colocated_database_creation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 
@@ -2900,11 +2907,14 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* txn =*/ nullptr,
       /* colocated =*/ true));
 
-  YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
-  schemaBuilder.AddColumn("value")->Type(yb::INT64);
+  YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn("value")->Type(DataType::INT64);
+  // kPgsqlKeyspaceID is not a proper Pgsql id, so need to set a schema name to avoid hitting errors
+  // in GetTableSchema (part of OpenTable).
+  schema_builder.SetSchemaName(kPgsqlSchemaName);
   YBSchema schema;
-  ASSERT_OK(schemaBuilder.Build(&schema));
+  ASSERT_OK(schema_builder.Build(&schema));
 
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   std::vector<YBTableName> table_names;
@@ -2948,9 +2958,9 @@ class ClientTestWithHashAndRangePk : public ClientTest {
  public:
   void SetUp() override {
     YBSchemaBuilder b;
-    b.AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("r")->Type(INT32)->PrimaryKey()->NotNull();
-    b.AddColumn("v")->Type(INT32);
+    b.AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r")->Type(DataType::INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("v")->Type(DataType::INT32);
 
     CHECK_OK(b.Build(&schema_));
 

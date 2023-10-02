@@ -7,6 +7,12 @@
 
 #include <machinarium.h>
 #include <odyssey.h>
+#include <sys/prctl.h>
+
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 void od_instance_init(od_instance_t *instance)
 {
@@ -17,6 +23,7 @@ void od_instance_init(od_instance_t *instance)
 
 	instance->config_file = NULL;
 	instance->shutdown_worker_id = INVALID_COROUTINE_ID;
+	instance->yb_stats = NULL;
 
 	sigset_t mask;
 	sigemptyset(&mask);
@@ -67,6 +74,31 @@ static inline od_retcode_t od_args_init(od_arguments_t *args,
 	return OK_RESPONSE;
 }
 
+struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
+					 char *stats_shm_key_str)
+{
+	key_t stats_shm_key = atoi(stats_shm_key_str);
+	int shmid = shmget(stats_shm_key, 0, 0666);
+	if (shmid == -1) {
+		od_error(
+			&instance->logger, "stats", NULL, NULL,
+			"Got error while updating the stats in the shared memory, %s",
+			strerror(errno));
+		return NULL;
+	}
+
+	struct shmid_ds shmid_ds;
+	if (shmctl(shmid, IPC_STAT, &shmid_ds) == -1) {
+		od_error(
+			&instance->logger, "stats", NULL, NULL,
+			"Got error while updating the stats in the shared memory, %s",
+			strerror(errno));
+		return NULL;
+	}
+
+	return (struct ConnectionStats *)shmat(shmid, NULL, 0);
+}
+
 int od_instance_main(od_instance_t *instance, int argc, char **argv)
 {
 	od_arguments_t args;
@@ -87,6 +119,21 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	}
 
 	od_log(&instance->logger, "startup", NULL, NULL, "Starting Odyssey");
+
+	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+	if (stats_shm_key != NULL) {
+		instance->yb_stats = yb_get_stats_ptr(instance, stats_shm_key);
+
+		if (instance->yb_stats == (void *)-1) {
+			od_error(
+				&instance->logger, "stats", NULL, NULL,
+				"Got error while updating the stats in the shared memory, %s",
+				strerror(errno));
+		}
+	}
+
+	od_log(&instance->logger, "startup", NULL, NULL, "Ysql Connection Manager stats is %s",
+		 instance->yb_stats != NULL ? "enabled" : "disabled");
 
 	/* prepare system services */
 	od_system_t system;
@@ -118,6 +165,9 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 			 error.error);
 		goto error;
 	}
+
+	yb_read_conf_from_env_var(&router.rules, &instance->config,
+				 &instance->logger);
 
 #ifdef PROM_FOUND
 	rc = od_prom_metrics_init(cron.metrics);
@@ -260,4 +310,31 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 error:
 	od_router_free(&router);
 	return NOT_OK_RESPONSE;
+}
+
+/*
+ * NOTE: This code has been duplicated from YBSetParentDeathSignal()
+ * function present in `src/postgres/src/backend/utils/misc/pg_yb_utils.c`.
+ */
+void YbSetParentDeathSignal()
+{
+	char *pdeathsig_str = getenv("YB_YSQLCONNMGR_PDEATHSIG");
+	if (pdeathsig_str) {
+		char *end_ptr = NULL;
+		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
+			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			} else {
+				fprintf(stdout,
+					"Error: YB_YSQLCONNMGR_PDEATHSIG is an invalid signal value: %ld",
+					pdeathsig);
+			}
+
+		} else {
+			fprintf(stdout,
+				"Error: failed to parse the value of YB_YSQLCONNMGR_PDEATHSIG: %s",
+				pdeathsig_str);
+		}
+	}
 }

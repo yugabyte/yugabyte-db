@@ -1,5 +1,5 @@
 ---
-title: Build a C# application that uses YSQL
+title: Build a C# application using the Npgsql driver
 headerTitle: Build a C# application
 description: Build a small C# application using the Npgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Npgsql"

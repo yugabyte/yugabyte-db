@@ -100,8 +100,6 @@ set(COMMON_SRCS
   transaction.cc
   transaction_error.cc
   wire_protocol.cc
-  ybc_util.cc
-  ybc-internal.cc
   llvm_profile_dumper.cc
   )
 
@@ -116,6 +114,7 @@ set(COMMON_LIBS
 
 if (NOT APPLE)
   list(APPEND COMMON_LIBS libuuid)
+  list(APPEND COMMON_LIBS absl)
 endif()
 
 ADD_YB_LIBRARY(yb_common

@@ -102,7 +102,7 @@ namespace consensus {
 
 namespace {
 
-const std::string kParentMemTrackerId = "log_cache"s;
+const std::string kParentMemTrackerId = "LogCache"s;
 
 }
 
@@ -130,9 +130,10 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
-      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id), parent_tracker_,
-      AddToParent::kTrue, CreateMetrics::kFalse);
-  tracker_->SetMetricEntity(metric_entity, kParentMemTrackerId);
+      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id),
+          /* metric_name */ "PerLogCache", parent_tracker_, AddToParent::kTrue,
+              CreateMetrics::kFalse);
+  tracker_->SetMetricEntity(metric_entity);
 
   // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
   auto zero_op = rpc::MakeSharedMessage<LWReplicateMsg>();
@@ -159,7 +160,7 @@ MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker)
 LogCache::~LogCache() {
   tracker_->Release(tracker_->consumption());
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     cache_.clear();
   }
 
@@ -167,7 +168,7 @@ LogCache::~LogCache() {
 }
 
 void LogCache::Init(const OpIdPB& preceding_op) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   CHECK_EQ(cache_.size(), 1) << "Cache should have only our special '0' op";
   next_sequential_op_index_ = preceding_op.index() + 1;
   min_pinned_op_index_ = next_sequential_op_index_;
@@ -190,7 +191,7 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   // Capture the evicted messages and release the memory outside of lock.
   ReplicateMsgVector evicted_messages;
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   // If we're not appending a consecutive op we're likely overwriting and need to replace operations
   // in the cache.
   if (first_idx_in_batch != next_sequential_op_index_) {
@@ -265,7 +266,7 @@ void LogCache::LogCallback(bool overwritten_cache,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
   if (overwritten_cache || log_status.ok()) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     if (overwritten_cache) {
       CHECK_GT(num_batches_overwritten_cache_, 0)
           << "num_batches_overwritten_cache_ is expected to be greater than 0, but actually is "
@@ -290,14 +291,14 @@ int64_t LogCache::earliest_op_index() const {
 }
 
 bool LogCache::HasOpBeenWritten(int64_t index) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return index < next_sequential_op_index_;
 }
 
 Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   // First check the log cache itself.
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
 
     // We sometimes try to look up OpIds that have never been written on
     // the local node. In that case, don't try to read the op from the
@@ -461,7 +462,7 @@ size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
   ReplicateMsgVector evicted_messages;
   size_t bytes_evicted = 0;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     bytes_evicted = EvictSomeUnlocked(index, bytes_to_evict, &evicted_messages);
   }
 
@@ -541,7 +542,7 @@ Result<OpId> LogCache::TEST_GetLastOpIdWithType(int64_t max_allowed_index, Opera
 }
 
 string LogCache::StatsString() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return StatsStringUnlocked();
 }
 
@@ -553,7 +554,7 @@ string LogCache::StatsStringUnlocked() const REQUIRES(lock_) {
 }
 
 std::string LogCache::ToString() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return ToStringUnlocked();
 }
 
@@ -580,7 +581,7 @@ void LogCache::DumpToLog() const {
 }
 
 void LogCache::DumpToStrings(vector<string>* lines) const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   int counter = 0;
   lines->push_back(ToStringUnlocked());
   lines->push_back("Messages:");
@@ -597,7 +598,7 @@ void LogCache::DumpToStrings(vector<string>* lines) const {
 void LogCache::DumpToHtml(std::ostream& out) const {
   using std::endl;
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   out << "<h3>Messages:</h3>" << endl;
   out << "<table>" << endl;
   out << "<tr><th>Entry</th><th>OpId</th><th>Type</th><th>Size</th><th>Status</th></tr>" << endl;
@@ -623,7 +624,7 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
   ReplicateMsgVector evicted_messages;
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
 
     size_t mem_required = 0;
     for (const auto& op_id : op_ids) {

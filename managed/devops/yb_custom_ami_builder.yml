@@ -1,10 +1,5 @@
 # Todo: Make cloud_type dynamic when we come to GCP VM image phase.
 
-- name: "Install OS updates and desired packages"
-  import_playbook: yb_os_package_updates.yml
-  vars:
-    yb_ansible_host: "default"
-
 - name: "preprovision"
   import_playbook: preprovision.yml
   vars:

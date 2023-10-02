@@ -29,6 +29,12 @@ type: docs
       <i class="icon-postgres" aria-hidden="true"></i>
       Ebean ORM
     </a>
+   <li>
+    <a href="../ysql-mybatis/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      MyBatis
+    </a>
+   </li>
   </li>
 </ul>
 

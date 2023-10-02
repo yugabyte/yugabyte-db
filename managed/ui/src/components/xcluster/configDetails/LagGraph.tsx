@@ -1,5 +1,5 @@
-import React, { FC, useState } from 'react';
-import moment from 'moment';
+import { FC, useState } from 'react';
+import moment from 'moment-timezone';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { CartesianGrid, Line, LineChart, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts';
@@ -80,6 +80,7 @@ export const LagGraph: FC<LagGraphProps> = ({ replicationUUID, sourceUniverseUUI
       if (parsedY > maxLagInMetric) {
         maxLagInMetric = parsedY;
       }
+      
       const momentObj = currentUserTimezone
         ? (moment(xAxis) as any).tz(currentUserTimezone)
         : moment(xAxis);

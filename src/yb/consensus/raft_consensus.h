@@ -61,9 +61,6 @@ DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
-typedef std::lock_guard<simple_spinlock> Lock;
-typedef std::unique_ptr<Lock> ScopedLock;
-
 class Counter;
 class HostPort;
 class ThreadPool;
@@ -120,7 +117,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
+    RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
@@ -140,7 +137,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests);
+    RetryableRequestsManager* retryable_requests_manager);
 
   virtual ~RaftConsensus();
 
@@ -295,6 +292,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
   Result<RetryableRequests> GetRetryableRequests() const;
+  Status FlushRetryableRequests();
+  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  OpId GetLastFlushedOpIdInRetryableRequests();
+
+  bool TEST_HasRetryableRequestsOnDisk() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.
@@ -736,7 +738,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::mutex leader_lease_wait_mtx_;
   std::condition_variable leader_lease_wait_cond_;
 
-  scoped_refptr<Histogram> update_raft_config_dns_latency_;
+  scoped_refptr<EventStats> update_raft_config_dns_latency_;
 
   // Used only when TEST_follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
@@ -751,6 +753,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
   const TabletId split_parent_tablet_id_;
+
+  std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

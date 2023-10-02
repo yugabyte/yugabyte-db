@@ -28,10 +28,19 @@ class DocKeyDecoder;
 class DocPath;
 class KeyBytes;
 class KeyEntryValue;
+class PackedValueV1;
+class PackedValueV2;
+class PackedRowDecoderBase;
+class PackedRowDecoderV1;
+class PackedRowDecoderV2;
 class Partition;
 class PartitionSchema;
+class PgKeyDecoder;
+class PgTableRow;
+class PgValue;
 class PrimitiveValue;
-class RowPacker;
+class RowPackerV1;
+class RowPackerV2;
 class SchemaPacking;
 class SchemaPackingStorage;
 class SubDocKey;
@@ -45,6 +54,9 @@ struct ValueControlFields;
 using DocKeyHash = uint16_t;
 using KeyEntryValues = std::vector<KeyEntryValue>;
 
+// TODO(packed_row) Remove after full support for packed row v2 is merged.
+using RowPacker = RowPackerV1;
+
 enum class KeyEntryType;
 enum class ValueEntryType;
 enum class YBHashSchema;
@@ -56,13 +68,5 @@ YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
 
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
-
-// "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
-// we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
-// keys "a" and "a.b".
-//
-// "Strong" intents are written for keys that are being modified. In the example above, we will
-// write a strong snapshot isolation intent for the key a.b.c itself.
-YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 }  // namespace yb::dockv

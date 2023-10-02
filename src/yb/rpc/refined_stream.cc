@@ -27,6 +27,7 @@ RefinedStream::RefinedStream(
     size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker)
     : lower_stream_(std::move(lower_stream)), refiner_(std::move(refiner)),
       read_buffer_(receive_buffer_size, buffer_tracker) {
+  VLOG_WITH_PREFIX(4) << "Receive buffer size: " << receive_buffer_size;
 }
 
 size_t RefinedStream::GetPendingWriteBytes() {
@@ -77,15 +78,15 @@ void RefinedStream::Shutdown(const Status& status) {
 
 Result<size_t> RefinedStream::Send(OutboundDataPtr data) {
   switch (state_) {
-  case RefinedStreamState::kInitial:
-  case RefinedStreamState::kHandshake:
-    pending_data_.push_back(std::move(data));
-    return std::numeric_limits<size_t>::max();
-  case RefinedStreamState::kEnabled:
-    RETURN_NOT_OK(refiner_->Send(std::move(data)));
-    return std::numeric_limits<size_t>::max();
-  case RefinedStreamState::kDisabled:
-    return lower_stream_->Send(std::move(data));
+    case RefinedStreamState::kInitial:
+    case RefinedStreamState::kHandshake:
+      pending_data_.push_back(std::move(data));
+      return kUnknownCallHandle;
+    case RefinedStreamState::kEnabled:
+      RETURN_NOT_OK(refiner_->Send(std::move(data)));
+      return kUnknownCallHandle;
+    case RefinedStreamState::kDisabled:
+      return lower_stream_->Send(std::move(data));
   }
 
   FATAL_INVALID_ENUM_VALUE(RefinedStreamState, state_);
@@ -316,6 +317,11 @@ Result<size_t> RefinedStream::Read() {
         auto temp = VERIFY_RESULT(context_->ProcessReceived(read_buffer_full));
         upper_stream_bytes_to_skip_ = temp;
         VLOG_IF_WITH_PREFIX(3, temp != 0) << "Skip: " << upper_stream_bytes_to_skip_;
+      }
+      // If read buffer was full, then it could happen that refiner already has more data,
+      // so need to retry read.
+      if (read_buffer_full) {
+        continue;
       }
     }
 

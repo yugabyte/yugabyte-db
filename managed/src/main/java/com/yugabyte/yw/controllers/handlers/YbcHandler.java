@@ -9,7 +9,9 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -31,9 +33,11 @@ public class YbcHandler {
 
   @Inject private YbcManager ybcManager;
 
+  @Inject private RuntimeConfGetter confGetter;
+
   public UUID disable(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (!universeDetails.isEnableYbc() || !universeDetails.isYbcInstalled()) {
@@ -70,7 +74,7 @@ public class YbcHandler {
 
   public UUID upgrade(UUID customerUUID, UUID universeUUID, String ybcVersion) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     if (!universeDetails.isYbcInstalled() || !universeDetails.isEnableYbc()) {
@@ -119,7 +123,7 @@ public class YbcHandler {
 
   public UUID install(UUID customerUUID, UUID universeUUID, String ybcVersion) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     if (universe.nodesInTransit()) {
       throw new PlatformServiceException(
@@ -138,12 +142,13 @@ public class YbcHandler {
 
     if (Util.compareYbVersions(
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            Util.YBC_COMPATIBLE_DB_VERSION,
+            confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
             true)
         < 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot install universe with DB version lower than " + Util.YBC_COMPATIBLE_DB_VERSION);
+          "Cannot install universe with DB version lower than "
+              + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();

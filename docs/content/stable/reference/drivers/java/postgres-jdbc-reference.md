@@ -1,7 +1,8 @@
 ---
-title: JDBC Drivers
+title: PostgreSQL JDBC Driver
+headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
-description: JDBC Drivers for YSQL
+description: Java JDBC Driver for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:

@@ -204,7 +204,7 @@ od_frontend_attach(od_client_t *client, char *context,
 	bool wait_for_idle = false;
 	for (;;) {
 		od_router_status_t status;
-		status = od_router_attach(router, client, wait_for_idle);
+		status = od_router_attach(router, client, wait_for_idle, client);
 		if (status != OD_ROUTER_OK) {
 			if (status == OD_ROUTER_ERROR_TIMEDOUT) {
 				od_error(&instance->logger, "router", client,
@@ -806,6 +806,12 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 				return OD_DETACH;
 			case OD_RULE_POOL_TRANSACTION:
 				if (!server->is_transaction) {
+					/* Check for stickiness */
+					if(server->yb_sticky_connection)
+					{
+						od_debug(&instance->logger, "sticky connection", client,
+							server, "sticky connection established");
+					} else
 					return OD_DETACH;
 				}
 				break;
@@ -1647,6 +1653,8 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 				break;
 			}
 
+// Disabled the unnecessary logs
+#ifndef YB_SUPPORT_FOUND
 #if OD_DEVEL_LVL != OD_RELEASE_MODE
 			if (server != NULL && server->is_allocated &&
 			    server->is_transaction &&
@@ -1657,14 +1665,16 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					client->id.id);
 			}
 #endif
-
+#endif
 			/* one minute */
 			if (machine_cond_wait(client->cond, 60000) == 0) {
 				client->time_last_active = machine_time_us();
+#ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
 					1,
 					"change client last active time %lld\n",
 					client->time_last_active);
+#endif
 				break;
 			}
 		}
@@ -1944,6 +1954,59 @@ static void od_application_name_add_host(od_client_t *client)
 		      length + 1); // return code ignored
 }
 
+/*
+ * Clean the shared memory segment which is storing the client's context.
+ * A control connection will be used here.
+ */
+int yb_clean_shmem(od_client_t *client, od_server_t *server)
+{
+	od_instance_t *instance = client->global->instance;
+	od_route_t *route = client->route;
+	machine_msg_t *msg;
+	int rc = 0;
+
+	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
+
+	/* Send `SET SESSION PARAMETER` packet. */
+	rc = od_write(&server->io, msg);
+	if (rc == -1) {
+		od_debug(&instance->logger, "clean shared memory", client, server,
+			 "Unable to send `SET SESSION PARAMETER` packet");
+		return -1;
+	} else {
+		od_debug(&instance->logger, "clean shared memory", client, server,
+			 "Sent `SET SESSION PARAMETER` packet for %d", client->client_id);
+	}
+
+	client->client_id = 0;
+
+	/* Wait for the KIWI_BE_READY_FOR_QUERY packet. */
+	for (;;) {
+		msg = od_read(&server->io, UINT32_MAX);
+		if (msg == NULL) {
+			if (!machine_timedout()) {
+				od_error(&instance->logger, "clean shared memory",
+					 server->client, server,
+					 "read error from server: %s",
+					 od_io_error(&server->io));
+				return -1;
+			}
+		}
+
+		kiwi_be_type_t type;
+		type = *(char *)machine_msg_data(msg);
+		od_debug(&instance->logger, "clean shared memory", server->client,
+			 server, "Got a packet of type: %s",
+			 kiwi_be_type_to_string(type));
+
+		if (type == KIWI_BE_READY_FOR_QUERY) {
+			return 0;
+		} else if (type == KIWI_BE_ERROR_RESPONSE) {
+			return -1;
+		}
+	}
+}
+
 void od_frontend(void *arg)
 {
 	od_client_t *client = arg;
@@ -2168,6 +2231,8 @@ void od_frontend(void *arg)
 		       client_ip, client->startup.database.value,
 		       client->startup.user.value);
 	} else {
+/* For auth passthrough, error message will be directly forwaded to the client */
+#ifndef YB_SUPPORT_FOUND
 		od_error(
 			&instance->logger, "auth", client, NULL,
 			"ip '%s' user '%s.%s': host based authentication rejected",
@@ -2175,6 +2240,7 @@ void od_frontend(void *arg)
 			client->startup.user.value);
 		od_frontend_error(client, KIWI_INVALID_PASSWORD,
 				  "host based authentication rejected");
+#endif
 	}
 
 	if (rc != OK_RESPONSE) {
@@ -2241,8 +2307,110 @@ void od_frontend(void *arg)
 	/* cleanup */
 
 cleanup:
+#ifdef YB_SUPPORT_FOUND
+	/* clean shared memory associated with the client */
+	if (client->client_id != 0)
+		yb_execute_on_control_connection(client, yb_clean_shmem);
+#endif
+
 	/* detach client from its route */
 	od_router_unroute(router, client);
 	/* close frontend connection */
 	od_frontend_close(client);
+}
+
+int yb_execute_on_control_connection(od_client_t *client,
+				     int (*function)(od_client_t *,
+						     od_server_t *))
+{
+	od_global_t *global = client->global;
+	kiwi_var_t *user = &client->startup.user;
+	kiwi_password_t *password = &client->password;
+	od_instance_t *instance = global->instance;
+	od_router_t *router = global->router;
+
+	/* internal client */
+	od_client_t *control_conn_client;
+	control_conn_client =
+		od_client_allocate_internal(global, "control connection");
+	if (control_conn_client == NULL) {
+		od_debug(
+			&instance->logger, "control connection",
+			control_conn_client, NULL,
+			"failed to allocate internal client for the control connection");
+		goto failed_to_acquire_control_connection;
+	}
+
+	/* set control connection route user and database */
+	kiwi_var_set(&control_conn_client->startup.user, KIWI_VAR_UNDEF,
+		     "control_connection_user", 24);
+	kiwi_var_set(&control_conn_client->startup.database, KIWI_VAR_UNDEF,
+		     "control_connection_db", 22);
+
+	/* route */
+	od_router_status_t status;
+	status = od_router_route(router, control_conn_client);
+	if (status != OD_ROUTER_OK) {
+		od_debug(
+			&instance->logger, "control connection query",
+			control_conn_client, NULL,
+			"failed to route internal client for control connection: %s",
+			od_router_status_to_str(status));
+		od_client_free(control_conn_client);
+		goto failed_to_acquire_control_connection;
+	}
+
+	/* attach */
+	status = od_router_attach(router, control_conn_client, false, client);
+	if (status != OD_ROUTER_OK) {
+		od_debug(
+			&instance->logger, "control connection",
+			control_conn_client, NULL,
+			"failed to attach internal client for control connection to route: %s",
+			od_router_status_to_str(status));
+		od_router_unroute(router, control_conn_client);
+		od_client_free(control_conn_client);
+		goto failed_to_acquire_control_connection;
+	}
+
+	od_server_t *server;
+	server = control_conn_client->server;
+
+	od_debug(&instance->logger, "control connection", control_conn_client,
+		 server, "attached to server %s%.*s", server->id.id_prefix,
+		 (int)sizeof(server->id.id), server->id.id);
+
+	/* connect to server, if necessary */
+	int rc;
+	if (server->io.io == NULL) {
+		rc = od_backend_connect(server, "control connection", NULL,
+					control_conn_client);
+		if (rc == NOT_OK_RESPONSE) {
+			od_debug(&instance->logger, "control connection",
+				 control_conn_client, server,
+				 "failed to acquire backend connection: %s",
+				 od_io_error(&server->io));
+			od_router_close(router, control_conn_client);
+			od_router_unroute(router, control_conn_client);
+			od_client_free(control_conn_client);
+			goto failed_to_acquire_control_connection;
+		}
+	}
+
+	rc = function(client, server);
+
+	/* detach and unroute */
+	od_router_detach(router, control_conn_client);
+	od_router_unroute(router, control_conn_client);
+	od_client_free(control_conn_client);
+
+	if (rc == -1)
+		return -1;
+
+	return OK_RESPONSE;
+
+failed_to_acquire_control_connection:
+	od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
+			  "failed to connect to remote server");
+	return NOT_OK_RESPONSE;
 }

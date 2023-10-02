@@ -18,29 +18,13 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  alter_table,
+  alter_table_action,
+  alter_table_constraint,
+  alter_column_constraint,
+  table_expr
+{{%/ebnf%}}
 
 <a name="table-expr-note"></a></br></br>
 {{< note title="Table inheritance is not yet supported" >}}
@@ -152,7 +136,7 @@ This is the result:
  frog | frog-child-c
 ```
 
-The `\d children` metacommand shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
+The `\d children` meta-command shows that it has a foreign key that's a dependent object on the column `b` in the `parents` table:
 
 ```output
 Indexes:
@@ -208,6 +192,20 @@ Drop the named constraint from the table.
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
 
 Rename a column to the specified name.
+
+#### RENAME CONSTRAINT *constraint_name* TO *constraint_name*
+
+Rename a constraint to the specified name.
+
+##### Example
+
+Create a table with a constraint and rename the constraint:
+
+```sql
+CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
+ALTER TABLE test ADD constraint vague_name unique (a);
+ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY
 

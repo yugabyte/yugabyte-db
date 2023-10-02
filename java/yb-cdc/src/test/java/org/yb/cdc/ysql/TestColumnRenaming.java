@@ -112,14 +112,19 @@ public class TestColumnRenaming extends CDCBaseClass {
       };
 
 
+      int expectedRecordCount = 0;
       for (int i = 0; i < outputList.size(); ++i) {
         switch (outputList.get(i).getRowMessage().getOp()) {
           case DDL:
-            verifyColNameInDDLRecord(outputList.get(i), expectedRecords[i]);
+            verifyColNameInDDLRecord(outputList.get(i), expectedRecords[expectedRecordCount]);
+            expectedRecordCount++;
             break;
           case INSERT:
-            verifyColNameInInsertRecord(outputList.get(i), expectedRecords[i]);
+            verifyColNameInInsertRecord(outputList.get(i), expectedRecords[expectedRecordCount]);
+            expectedRecordCount++;
             break;
+          case BEGIN:
+          case COMMIT: break;
         }
       }
 

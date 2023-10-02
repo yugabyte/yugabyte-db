@@ -10,17 +10,17 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
-import io.ebean.annotation.Where;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -40,10 +40,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
-import javax.persistence.JoinColumns;
+import javax.persistence.JoinTable;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -66,8 +65,7 @@ public class XClusterConfig extends Model {
               TableType.YCQL,
               CommonTypes.TableType.YQL_TABLE_TYPE);
 
-  private static final Finder<UUID, XClusterConfig> find =
-      new Finder<UUID, XClusterConfig>(XClusterConfig.class) {};
+  private static final Finder<UUID, XClusterConfig> find = new Finder<>(XClusterConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "XCluster config UUID")
@@ -91,6 +89,22 @@ public class XClusterConfig extends Model {
       value = "Status",
       allowableValues = "Initialized, Running, Updating, DeletedUniverse, DeletionFailed, Failed")
   private XClusterConfigStatusType status;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value = "The replication status of the source universe; used for disaster recover")
+  private SourceUniverseState sourceUniverseState;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value = "The replication status of the target universe; used for disaster recover")
+  private TargetUniverseState targetUniverseState;
 
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),
@@ -144,45 +158,10 @@ public class XClusterConfig extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date modifyTime;
 
-  @OneToMany(
-      mappedBy = "config",
-      cascade = {CascadeType.PERSIST, CascadeType.REFRESH})
-  @Where(clause = "(t0.txn_table_id IS NULL OR t0.txn_table_id <> t1.table_id)")
+  @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
   @ApiModelProperty(value = "Tables participating in this xCluster config")
   @JsonProperty("tableDetails")
   private Set<XClusterTableConfig> tables = new HashSet<>();
-
-  @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
-  @JoinColumns({
-    @JoinColumn(
-        name = "uuid",
-        referencedColumnName = "config_uuid",
-        insertable = false,
-        updatable = false,
-        table = "xcluster_table_config"),
-    @JoinColumn(
-        name = "txn_table_id",
-        referencedColumnName = "table_id",
-        table = "xcluster_config"),
-  })
-  @ApiModelProperty(value = "The transaction status table config")
-  @JsonIgnore
-  private XClusterTableConfig txnTableConfig;
-
-  public XClusterTableConfig getTxnTableConfig() {
-    // Current ebean version loads empty txnTableConfig object in case txn_table_id = null
-    // Tried to debug - but not found how to make it work properly and return null.
-    // In basically happens in AssocOneHelp, where it creates XClusterTableConfigPK with
-    // filled in config uuid and null table id, and then it just creates an empty table bean.
-    // Seems like this kind of mapping
-    // (OneToOne(txnTableConfig) + OneToMany(tables) on one side and ManyToOne on another side)
-    // is not properly supported. It should work in case we put mappedBy = "txnTableConfig" on the
-    // other side of mapping - but we can't do that as it's ManyToOne relationship.
-    if (txnTableConfig == null || txnTableConfig.getTableId() == null) {
-      return null;
-    }
-    return txnTableConfig;
-  }
 
   @ApiModelProperty(value = "Replication group name in DB")
   private String replicationGroupName;
@@ -211,30 +190,37 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether the source is active in txn xCluster")
   private boolean sourceActive;
 
-  @ApiModelProperty(value = "Whether the source is active in txn xCluster")
+  @ApiModelProperty(value = "Whether the target is active in txn xCluster")
   private boolean targetActive;
 
-  @ApiModelProperty(value = "Replication group name that replicates the transaction status table")
-  private String txnTableReplicationGroupName;
+  @ManyToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE, CascadeType.REFRESH})
+  @JoinColumn(name = "dr_config_uuid", referencedColumnName = "uuid")
+  @JsonIgnore
+  private DrConfig drConfig;
+
+  @ApiModelProperty(
+      value = "Whether this xCluster config is used as a secondary config for a DR config")
+  private boolean secondary;
+
+  @OneToMany
+  @JoinTable(
+      name = "xcluster_pitr",
+      joinColumns = @JoinColumn(name = "xcluster_uuid", referencedColumnName = "uuid"),
+      inverseJoinColumns = @JoinColumn(name = "pitr_uuid", referencedColumnName = "uuid"))
+  private List<PitrConfig> pitrConfigs;
+
+  @JsonProperty
+  public boolean isUsedForDr() {
+    return maybeGetDrConfig().isPresent();
+  }
+
+  public void addPitrConfig(PitrConfig pitrConfig) {
+    this.pitrConfigs.add(pitrConfig);
+    this.update();
+  }
 
   @Override
   public String toString() {
-    if (Objects.nonNull(this.getTxnTableConfig())) {
-      return this.getReplicationGroupName()
-          + "(uuid="
-          + this.uuid
-          + ",targetUuid="
-          + this.targetUniverseUUID
-          + ",status="
-          + this.status
-          + ",paused="
-          + this.paused
-          + ",tableType="
-          + this.tableType
-          + ",txnTable="
-          + this.txnTableConfig
-          + ")";
-    }
     return this.getReplicationGroupName()
         + "(uuid="
         + this.getUuid()
@@ -246,14 +232,20 @@ public class XClusterConfig extends Model {
         + this.isPaused()
         + ",tableType="
         + this.getTableType()
+        + ",type="
+        + this.getType()
         + ")";
   }
 
   public Optional<XClusterTableConfig> maybeGetTableById(String tableId) {
     // There will be at most one tableConfig for a tableId within each xCluster config.
-    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    return this.getTableDetails().stream()
         .filter(tableConfig -> tableConfig.getTableId().equals(tableId))
         .findAny();
+  }
+
+  public Optional<DrConfig> maybeGetDrConfig() {
+    return Optional.ofNullable(this.drConfig);
   }
 
   @JsonIgnore
@@ -280,6 +272,14 @@ public class XClusterConfig extends Model {
       return getTableTypeAsCommonType();
     }
     CommonTypes.TableType typeAsCommonType = tableInfoList.get(0).getTableType();
+    // All tables have the same type.
+    if (!tableInfoList.stream()
+        .allMatch(tableInfo -> tableInfo.getTableType().equals(typeAsCommonType))) {
+      throw new IllegalArgumentException(
+          "At least one table has a different type from others. "
+              + "All tables in an xCluster config must have the same type. Please create separate "
+              + "xCluster configs for different table types.");
+    }
     if (!XClusterConfigTableTypeCommonTypesTableTypeBiMap.containsValue(typeAsCommonType)) {
       throw new IllegalArgumentException(
           String.format(
@@ -290,30 +290,6 @@ public class XClusterConfig extends Model {
         XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse().get(typeAsCommonType));
     update();
     return typeAsCommonType;
-  }
-
-  @JsonIgnore
-  public void setTxnTableId(
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
-    Optional<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> txnTableInfoOptional =
-        XClusterConfigTaskBase.getTxnTableInfoIfExists(tableInfoList);
-    if (!txnTableInfoOptional.isPresent()) {
-      throw new IllegalStateException(String.format("TxnTableId for %s could not be found", this));
-    }
-    if (this.getTxnTableConfig() != null
-        && XClusterConfigTaskBase.getTableId(txnTableInfoOptional.get())
-            .equals(this.getTxnTableConfig().getTableId())) {
-      log.info("txnTable with the same id already exists");
-      return;
-    }
-    this.setTxnTableConfig(
-        new XClusterTableConfig(
-            this, XClusterConfigTaskBase.getTableId(txnTableInfoOptional.get())));
-    update();
-    log.info(
-        "txnTable id for xCluster config {} is set to {}",
-        this.uuid,
-        this.getTxnTableConfig().getTableId());
   }
 
   public XClusterTableConfig getTableById(String tableId) {
@@ -328,7 +304,7 @@ public class XClusterConfig extends Model {
 
   public Set<XClusterTableConfig> getTablesById(Set<String> tableIds) {
     Map<String, XClusterTableConfig> tableConfigMap =
-        this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+        this.getTableDetails().stream()
             .collect(
                 Collectors.toMap(
                     tableConfig -> tableConfig.getTableId(), tableConfig -> tableConfig));
@@ -347,41 +323,18 @@ public class XClusterConfig extends Model {
   }
 
   @JsonIgnore
-  public Set<XClusterTableConfig> getTableDetails(boolean includeTxnTableIfExists) {
-    if (includeTxnTableIfExists) {
-      return Stream.concat(
-              this.tables.stream(),
-              Objects.nonNull(this.getTxnTableDetails())
-                  ? Stream.of(this.getTxnTableDetails())
-                  : Stream.empty())
-          .collect(Collectors.toSet());
-    }
+  public Set<XClusterTableConfig> getTableDetails() {
     return tables;
-  }
-
-  @JsonProperty
-  public XClusterTableConfig getTxnTableDetails() {
-    return this.getTxnTableConfig();
-  }
-
-  @JsonIgnore
-  public Set<String> getTableIds(boolean includeTxnTableIfExists) {
-    if (includeTxnTableIfExists) {
-      return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
-          .map(XClusterTableConfig::getTableId)
-          .collect(Collectors.toSet());
-    }
-    return this.tables.stream().map(XClusterTableConfig::getTableId).collect(Collectors.toSet());
   }
 
   @JsonProperty("tables")
   public Set<String> getTableIds() {
-    return getTableIds(false /* includeTxnTableIfExists */);
+    return this.tables.stream().map(XClusterTableConfig::getTableId).collect(Collectors.toSet());
   }
 
   @JsonIgnore
   public Set<String> getTableIdsWithReplicationSetup(Set<String> tableIds, boolean done) {
-    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    return this.getTableDetails().stream()
         .filter(
             table ->
                 tableIds.contains(table.getTableId()) && table.isReplicationSetupDone() == done)
@@ -461,8 +414,7 @@ public class XClusterConfig extends Model {
     }
     Set<String> nonExistingTableIds =
         tableIds.stream()
-            .filter(
-                tableId -> !this.getTableIds(true /* includeTxnTableIfExists */).contains(tableId))
+            .filter(tableId -> !this.getTableIds().contains(tableId))
             .collect(Collectors.toSet());
     Set<String> nonExistingTableIdsNeedBootstrap = null;
     if (tableIdsNeedBootstrap != null) {
@@ -510,8 +462,8 @@ public class XClusterConfig extends Model {
   @JsonIgnore
   public Set<String> getStreamIdsWithReplicationSetup() {
     return this.getTables().stream()
-        .filter(table -> table.isReplicationSetupDone())
-        .map(table -> table.getStreamId())
+        .filter(XClusterTableConfig::isReplicationSetupDone)
+        .map(XClusterTableConfig::getStreamId)
         .collect(Collectors.toSet());
   }
 
@@ -557,6 +509,21 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void syncTables(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds);
+    removeExtraTables(tableIds);
+  }
+
+  @Transactional
+  public void removeExtraTables(Set<String> tableIds) {
+    Set<String> extraTableIds =
+        this.getTableIds().stream()
+            .filter(tableId -> !tableIds.contains(tableId))
+            .collect(Collectors.toSet());
+    removeTables(extraTableIds);
+  }
+
+  @Transactional
   public void removeTables(Set<String> tableIds) {
     if (this.getTables() == null) {
       log.debug("No tables is set for xCluster config {}", this.getUuid());
@@ -576,7 +543,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateBackupForTables(Set<String> tableIds, Backup backup) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setBackup(backup));
     update();
@@ -585,7 +552,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateRestoreForTables(Set<String> tableIds, Restore restore) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setRestore(restore));
     update();
@@ -594,7 +561,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateRestoreTimeForTables(Set<String> tableIds, Date restoreTime, UUID taskUUID) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(
             tableConfig -> {
@@ -607,7 +574,7 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateNeedBootstrapForTables(Collection<String> tableIds, boolean needBootstrap) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setNeedBootstrap(needBootstrap));
     update();
@@ -616,16 +583,29 @@ public class XClusterConfig extends Model {
   @Transactional
   public void updateIndexTableForTables(Collection<String> tableIds, boolean indexTable) {
     ensureTableIdsExist(tableIds);
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setIndexTable(indexTable));
     update();
   }
 
+  public void updateIndexTablesFromMainTableIndexTablesMap(
+      Map<String, List<String>> mainTableIndexTablesMap) {
+    Set<String> tableIdsInConfig = this.getTableIds();
+    mainTableIndexTablesMap.forEach(
+        (mainTableId, indexTableIds) -> {
+          if (this.maybeGetTableById(mainTableId).isPresent()) {
+            List<String> indexTableIdsInConfig = new ArrayList<>(indexTableIds);
+            indexTableIdsInConfig.retainAll(tableIdsInConfig);
+            this.updateIndexTableForTables(indexTableIdsInConfig, true /* indexTable */);
+          }
+        });
+  }
+
   @Transactional
   public void updateBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setBootstrapCreateTime(moment));
     update();
@@ -635,7 +615,7 @@ public class XClusterConfig extends Model {
   public void updateStatusForTables(
       Collection<String> tableIds, XClusterTableConfig.Status status) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setStatus(status));
     update();
@@ -651,7 +631,7 @@ public class XClusterConfig extends Model {
   public Set<String> getTableIdsInStatus(
       Collection<String> tableIds, Collection<XClusterTableConfig.Status> statuses) {
     ensureTableIdsExist(new HashSet<>(tableIds));
-    return this.getTableDetails(true /* includeTxnTableIfExists */).stream()
+    return this.getTableDetails().stream()
         .filter(
             tableConfig ->
                 tableIds.contains(tableConfig.getTableId())
@@ -744,6 +724,8 @@ public class XClusterConfig extends Model {
     xClusterConfig.setTargetActive(
         XClusterConfigTaskBase.TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT);
     xClusterConfig.setReplicationGroupName(name);
+    xClusterConfig.setSourceUniverseState(SourceUniverseState.Unconfigured);
+    xClusterConfig.setTargetUniverseState(TargetUniverseState.Unconfigured);
     xClusterConfig.save();
     return xClusterConfig;
   }
@@ -773,12 +755,10 @@ public class XClusterConfig extends Model {
             sourceUniverseUUID,
             targetUniverseUUID,
             XClusterConfigStatusType.Initialized,
-            imported /* imported */);
+            imported);
     // The default type is Basic. If it is set to be txn, then save it in the object.
     if (Objects.equals(type, ConfigType.Txn)) {
       xClusterConfig.setType(ConfigType.Txn);
-      xClusterConfig.setTxnTableReplicationGroupName(
-          XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_REPLICATION_GROUP_NAME);
     }
     if (Objects.nonNull(tableIds) && Objects.nonNull(tableIdsToBootstrap)) {
       xClusterConfig.updateTables(tableIds, tableIdsToBootstrap);
@@ -833,15 +813,9 @@ public class XClusterConfig extends Model {
   @Transactional
   public static XClusterConfig create(
       XClusterConfigCreateFormData createFormData,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
-      Set<String> indexTableIdSet) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList) {
     XClusterConfig xClusterConfig = create(createFormData);
     xClusterConfig.updateTableType(requestedTableInfoList);
-    if (xClusterConfig.type.equals(ConfigType.Txn)) {
-      xClusterConfig.setTxnTableId(requestedTableInfoList);
-      // We always to check whether bootstrapping is required for txn table.
-      xClusterConfig.getTxnTableConfig().setNeedBootstrap(true);
-    }
     return xClusterConfig;
   }
 
@@ -860,40 +834,7 @@ public class XClusterConfig extends Model {
   @Override
   public void update() {
     this.setModifyTime(new Date());
-
-    // Auto orphanRemoval is disabled for the children tables. Manually delete the orphan tables.
-    SqlUpdate orphanRemovalSqlQuery =
-        Ebean.createSqlUpdate("DELETE FROM xcluster_table_config WHERE config_uuid = :uuid");
-    Set<XClusterTableConfig> allTableConfigs =
-        this.getTableDetails(true /* includeTxnTableIfExists */);
-    if (!allTableConfigs.isEmpty()) {
-      orphanRemovalSqlQuery =
-          Ebean.createSqlUpdate(
-              "DELETE FROM xcluster_table_config WHERE config_uuid = :uuid "
-                  + "AND NOT ( table_id IN (:nonOrphanTableIds) )");
-      orphanRemovalSqlQuery.setParameter(
-          "nonOrphanTableIds",
-          allTableConfigs.stream()
-              .map(XClusterTableConfig::getTableId)
-              .collect(Collectors.toList()));
-    }
-    int numRowsDeleted = orphanRemovalSqlQuery.setParameter("uuid", this.uuid).execute();
-    log.trace(
-        "{} rows got deleted from xcluster_table_config table because they were removed "
-            + "from the xClusterConfig object",
-        numRowsDeleted);
-
     super.update();
-  }
-
-  @Override
-  public boolean delete() {
-    // Remove the txnTable from xcluster_table_config table.
-    if (Objects.nonNull(this.getTxnTableDetails())) {
-      this.setTxnTableConfig(null);
-      super.update();
-    }
-    return super.delete();
   }
 
   public static XClusterConfig getValidConfigOrBadRequest(
@@ -918,48 +859,27 @@ public class XClusterConfig extends Model {
       log.info("Cannot find XClusterConfig {}", xClusterConfigUUID);
       return Optional.empty();
     }
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    if (Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-      xClusterConfig.getTxnTableConfig().getBackupUuid();
-    }
     return Optional.of(xClusterConfig);
   }
 
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {
-    List<XClusterConfig> xClusterConfigs =
-        find.query()
-            .fetch("tables")
-            .where()
-            .eq("target_universe_uuid", targetUniverseUUID)
-            .findList();
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    xClusterConfigs.forEach(
-        xClusterConfig -> {
-          if (Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-            xClusterConfig.getTxnTableConfig().getBackupUuid();
-          }
-        });
-    return xClusterConfigs;
+    return find.query()
+        .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
+        .where()
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findList();
   }
 
   public static List<XClusterConfig> getBySourceUniverseUUID(UUID sourceUniverseUUID) {
-    List<XClusterConfig> xClusterConfigs =
-        find.query()
-            .fetch("tables")
-            .where()
-            .eq("source_universe_uuid", sourceUniverseUUID)
-            .findList();
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    xClusterConfigs.forEach(
-        xClusterConfig -> {
-          if (Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-            xClusterConfig.getTxnTableConfig().getBackupUuid();
-          }
-        });
-    return xClusterConfigs;
+    return find.query()
+        .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
+        .where()
+        .eq("source_universe_uuid", sourceUniverseUUID)
+        .findList();
   }
 
   public static List<XClusterConfig> getByUniverseUuid(UUID universeUuid) {
@@ -971,60 +891,38 @@ public class XClusterConfig extends Model {
 
   public static List<XClusterConfig> getBetweenUniverses(
       UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    List<XClusterConfig> xClusterConfigs =
-        find.query()
-            .fetch("tables")
-            .where()
-            .eq("source_universe_uuid", sourceUniverseUUID)
-            .eq("target_universe_uuid", targetUniverseUUID)
-            .findList();
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    xClusterConfigs.forEach(
-        xClusterConfig -> {
-          if (Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-            xClusterConfig.getTxnTableConfig().getBackupUuid();
-          }
-        });
-    return xClusterConfigs;
+    return find.query()
+        .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
+        .where()
+        .eq("source_universe_uuid", sourceUniverseUUID)
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findList();
   }
 
   public static XClusterConfig getByNameSourceTarget(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    XClusterConfig xClusterConfig =
-        find.query()
-            .fetch("tables")
-            .where()
-            .eq("config_name", name)
-            .eq("source_universe_uuid", sourceUniverseUUID)
-            .eq("target_universe_uuid", targetUniverseUUID)
-            .findOne();
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    if (Objects.nonNull(xClusterConfig) && Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-      xClusterConfig.getTxnTableConfig().getBackupUuid();
-    }
-    return xClusterConfig;
+    return find.query()
+        .fetch("tables")
+        .where()
+        .eq("config_name", name)
+        .eq("source_universe_uuid", sourceUniverseUUID)
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findOne();
   }
 
   public static XClusterConfig getByReplicationGroupNameTarget(
       String replicationGroupName, UUID targetUniverseUUID) {
-    XClusterConfig xClusterConfig =
-        find.query()
-            .fetch("tables")
-            .where()
-            .eq("replication_group_name", replicationGroupName)
-            .eq("target_universe_uuid", targetUniverseUUID)
-            .findOne();
-    // Phony call to force ORM to load the txnTableConfig object eagerly. It looks like an Ebean bug
-    // because although Eagerly fetch is selected, it still loads the object lazily.
-    if (Objects.nonNull(xClusterConfig) && Objects.nonNull(xClusterConfig.getTxnTableConfig())) {
-      xClusterConfig.getTxnTableConfig().getBackupUuid();
-    }
-    return xClusterConfig;
+    return find.query()
+        .fetch("tables")
+        .where()
+        .eq("replication_group_name", replicationGroupName)
+        .eq("target_universe_uuid", targetUniverseUUID)
+        .findOne();
   }
 
-  private static void checkXClusterConfigInCustomer(
+  public static void checkXClusterConfigInCustomer(
       XClusterConfig xClusterConfig, Customer customer) {
     Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
     if ((xClusterConfig.getSourceUniverseUUID() != null
@@ -1052,7 +950,7 @@ public class XClusterConfig extends Model {
     if (tableIds.isEmpty()) {
       return;
     }
-    Set<String> tableIdsInXClusterConfig = getTableIds(true /* includeTxnTableIfExists */);
+    Set<String> tableIdsInXClusterConfig = getTableIds();
     tableIds.forEach(
         tableId -> {
           if (!tableIdsInXClusterConfig.contains(tableId)) {

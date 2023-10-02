@@ -93,12 +93,13 @@ int2recv(PG_FUNCTION_ARGS)
 Datum
 int2send(PG_FUNCTION_ARGS)
 {
-	int16		arg1 = PG_GETARG_INT16(0);
-	StringInfoData buf;
+	uint16 arg1 = pg_hton16(PG_GETARG_INT16(0));
 
-	pq_begintypsend(&buf);
-	pq_sendint16(&buf, arg1);
-	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+	bytea* data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+	memcpy(data->vl_dat, &arg1, sizeof(arg1));
+	SET_VARSIZE(data, VARHDRSZ + sizeof(arg1));
+
+	PG_RETURN_BYTEA_P(data);
 }
 
 /*
@@ -298,14 +299,61 @@ int4recv(PG_FUNCTION_ARGS)
 Datum
 int4send(PG_FUNCTION_ARGS)
 {
-	int32		arg1 = PG_GETARG_INT32(0);
-	StringInfoData buf;
+	uint32 arg1 = pg_hton32(PG_GETARG_INT32(0));
 
-	pq_begintypsend(&buf);
-	pq_sendint32(&buf, arg1);
-	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+	bytea* data = (bytea *) palloc(VARHDRSZ + sizeof(arg1));
+	memcpy(data->vl_dat, &arg1, sizeof(arg1));
+	SET_VARSIZE(data, VARHDRSZ + sizeof(arg1));
+
+	PG_RETURN_BYTEA_P(data);
 }
 
+#ifdef WORDS_BIGENDIAN
+
+#error Not implemented!!!
+
+#else
+
+/*
+ *		int2send_direct			- sends int2 directly to buf in binary format
+ */
+void
+int2send_direct(StringInfo buf, Datum value)
+{
+	uint64 encoded = ((uint64)pg_hton16(value) << 32) | (2ULL << 24);
+	pq_sendbytes(buf, (const char*) &encoded, 6);
+}
+
+/*
+ *		int4send_direct			- sends int4 directly to buf in binary format
+ */
+void
+int4send_direct(StringInfo buf, Datum value)
+{
+	uint64 encoded = ((uint64)pg_hton32(value) << 32) | (4ULL << 24);
+	pq_sendbytes(buf, (const char*) &encoded, sizeof(encoded));
+}
+
+#endif
+
+/*
+ *		int8send_direct			- sends int8 directly to buf in binary format
+ */
+void
+int8send_direct(StringInfo buf, Datum value)
+{
+	enlargeStringInfo(buf, 12);
+
+	char* out = buf->data + buf->len;
+	buf->len += 12;
+
+	uint32 size = pg_hton32(8);
+	memcpy(out, &size, sizeof(size));
+	out += sizeof(size);
+
+	uint64 be_value = pg_hton64(value);
+	memcpy(out, &be_value, sizeof(be_value));
+}
 
 /*
  *		===================

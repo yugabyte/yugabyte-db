@@ -55,7 +55,7 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
     // 5 or 6 reads are expected, they are:
     // - PERFORM makes one read from tbl table for SERIALIZABLE level. Two in case of REPEATABLE
     //   READ even though we specify pk because a separate RPC is used to lock tuples.
-    //   TODO(Piyush): Optimize to ensure we use only 1 rpc for locking if pk is specified in
+    //   TODO(foucher): Optimize to ensure we use only 1 rpc for locking if pk is specified in
     //   REPEATABLE READ level.
     // - DELETE makes 3 reads:
     //   - first read from 'tbl' to get row's ybctid as it is not single row update (due to FK)

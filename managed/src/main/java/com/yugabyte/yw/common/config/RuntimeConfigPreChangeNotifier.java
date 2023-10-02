@@ -15,7 +15,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
+import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzValidator;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,9 +43,11 @@ public class RuntimeConfigPreChangeNotifier {
   @Inject
   public RuntimeConfigPreChangeNotifier(
       SSH2EnabledKeyValidator ssh2EnabledKeyValidator,
-      MetricCollectionLevelValidator metricCollectionLevelValidator) {
+      MetricCollectionLevelValidator metricCollectionLevelValidator,
+      UseNewRbacAuthzValidator useNewRbacAuthzValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
+    addListener(useNewRbacAuthzValidator);
   }
 
   public void notifyListeners(UUID scopeUUID, String path, String newValue) {
@@ -51,7 +55,7 @@ public class RuntimeConfigPreChangeNotifier {
     if (keyMetaData.containsKey(path)) {
       maybeValidateMetadata(scopeUUID, path, newValue);
     } else {
-      log.warn("No metadata for key %s being set", path);
+      log.warn("No metadata for key {} being set", path);
     }
 
     if (!listenerMap.containsKey(path)) {
@@ -64,13 +68,18 @@ public class RuntimeConfigPreChangeNotifier {
       Customer customer = Customer.get(scopeUUID);
       if (customer != null) {
         listener.validateConfigCustomer(customer, scopeUUID, path, newValue);
-      } else {
-        Universe.maybeGet(scopeUUID)
-            .ifPresent(
-                universe -> {
-                  listener.validateConfigUniverse(universe, scopeUUID, path, newValue);
-                });
+        return;
       }
+      Provider provider = Provider.get(scopeUUID);
+      if (provider != null) {
+        listener.validateConfigProvider(provider, scopeUUID, path, newValue);
+        return;
+      }
+      Universe.maybeGet(scopeUUID)
+          .ifPresent(
+              universe -> {
+                listener.validateConfigUniverse(universe, scopeUUID, path, newValue);
+              });
     }
   }
 

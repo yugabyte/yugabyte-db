@@ -14,11 +14,12 @@
 #include <stdlib.h>
 #include <string>
 
-#include "yb/cdc/cdc_util.h"
-#include "yb/tserver/xcluster_output_client_interface.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/tserver/xcluster_async_executor.h"
+#include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/rpc/rpc.h"
 #include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
@@ -45,62 +46,71 @@ namespace tserver {
 
 class XClusterConsumer;
 
-class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
+class XClusterPoller : public XClusterAsyncExecutor {
  public:
   XClusterPoller(
       const cdc::ProducerTabletInfo& producer_tablet_info,
-      const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      ThreadPool* thread_pool,
-      rpc::Rpcs* rpcs,
+      const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
       const std::shared_ptr<XClusterClient>& local_client,
-      const std::shared_ptr<XClusterClient>& producer_client,
-      XClusterConsumer* xcluster_consumer,
-      bool use_local_tserver,
-      const std::vector<TabletId>& global_transaction_status_tablets,
-      bool enable_replicate_transaction_status_table,
-      SchemaVersion last_compatible_consumer_schema_version);
+      const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
+      SchemaVersion last_compatible_consumer_schema_version,
+      std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
-  void Shutdown();
+  void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+
+  void StartShutdown() override;
+  void CompleteShutdown() override;
+
+  bool IsFailed() const { return is_failed_.load(); }
 
   // Begins poll process for a producer tablet.
-  void Poll();
+  void SchedulePoll();
 
-  bool IsPolling() { return is_polling_; }
+  void ScheduleSetSchemaVersionIfNeeded(
+      SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version);
 
-  void SetSchemaVersion(SchemaVersion cur_version,
-                        SchemaVersion last_compatible_consumer_schema_version);
-
-  void UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions);
+  void UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions)
+      EXCLUDES(schema_version_lock_);
 
   void UpdateColocatedSchemaVersionMap(
-      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map);
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map)
+      EXCLUDES(schema_version_lock_);
 
-  std::string LogPrefixUnlocked() const;
+  std::string LogPrefix() const override;
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
   cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
 
+  bool IsStuck() const;
+  std::string State() const;
+
+  XClusterPollerStats GetStats() const;
+
  private:
-  bool CheckOffline();
+  bool IsOffline() override;
 
-  void DoSetSchemaVersion(SchemaVersion cur_version,
-                          SchemaVersion current_consumer_schema_version);
+  void DoSetSchemaVersion(SchemaVersion cur_version, SchemaVersion current_consumer_schema_version)
+      EXCLUDES(data_mutex_);
 
-  void DoPoll();
-  // Does the work of sending the changes to the output client.
-  void HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp);
-  void DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp);
-  // Async handler for the response from output client.
-  void HandleApplyChanges(XClusterOutputClientResponse response);
-  // Does the work of polling for new changes.
-  void DoHandleApplyChanges(XClusterOutputClientResponse response);
+  void DoPoll() EXCLUDES(data_mutex_);
+
+  void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
+      EXCLUDES(data_mutex_);
+  void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
+  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
+      EXCLUDES(data_mutex_);
+  void ApplyChangesCallback(XClusterOutputClientResponse response);
+  void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
-  void UpdateSchemaVersionsForApply();
+  void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
+  bool IsLeaderTermValid() REQUIRES(data_mutex_);
 
-  cdc::ProducerTabletInfo producer_tablet_info_;
-  cdc::ConsumerTabletInfo consumer_tablet_info_;
+  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
+
+  const cdc::ProducerTabletInfo producer_tablet_info_;
+  const cdc::ConsumerTabletInfo consumer_tablet_info_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
@@ -113,29 +123,33 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::mutex data_mutex_;
 
   std::atomic<bool> shutdown_ = false;
+  // In failed state we do not poll for changes and are awaiting shutdown.
+  std::atomic<bool> is_failed_ = false;
+  std::mutex shutdown_mutex_;
+  std::condition_variable shutdown_cv_;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
   std::atomic<SchemaVersion> validated_schema_version_;
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
+  std::function<int64_t(const TabletId&)> get_leader_term_;
 
-  Status status_ GUARDED_BY(data_mutex_);
-  std::shared_ptr<cdc::GetChangesResponsePB> resp_ GUARDED_BY(data_mutex_);
-
-  std::shared_ptr<XClusterOutputClientIf> output_client_;
+  const std::shared_ptr<XClusterClient> local_client_;
+  std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
 
-  ThreadPool* thread_pool_;
-  rpc::Rpcs* rpcs_;
-  rpc::Rpcs::Handle poll_handle_ GUARDED_BY(data_mutex_);
   XClusterConsumer* xcluster_consumer_ GUARDED_BY(data_mutex_);
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
-  std::atomic<bool> is_polling_{true};
-  int poll_failures_ GUARDED_BY(data_mutex_){0};
-  int apply_failures_ GUARDED_BY(data_mutex_){0};
-  int idle_polls_ GUARDED_BY(data_mutex_){0};
+  std::atomic<bool> is_polling_ = true;
+  std::atomic<uint32> poll_failures_ = 0;
+  std::atomic<uint32> apply_failures_ = 0;
+  std::atomic<uint32> idle_polls_ = 0;
+
+  int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
+
+  PollStatsHistory poll_stats_history_;
 };
 
 } // namespace tserver

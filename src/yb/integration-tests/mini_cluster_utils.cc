@@ -49,7 +49,7 @@ size_t CountRunningTransactions(MiniCluster* cluster) {
     if (!tablet)
       continue;
     auto participant = tablet->transaction_participant();
-    result += participant ? participant->TEST_GetNumRunningTransactions() : 0;
+    result += participant ? participant->GetNumRunningTransactions() : 0;
   }
   return result;
 }
@@ -87,16 +87,15 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
       if (!tablet) continue;
       auto participant = tablet->transaction_participant();
       if (participant) {
-        auto status = Wait([participant, max_remaining_txns_per_tablet] {
-              return participant->TEST_GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
+        auto status = Wait(
+            [participant, max_remaining_txns_per_tablet] {
+              return participant->GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
             },
-            deadline,
-            "Wait until no transactions are running");
+            deadline, "Wait until no transactions are running");
         if (!status.ok()) {
           LOG(ERROR) << Format(
-              "T $1 P $0: Transactions: $2",
-              server->permanent_uuid(), peer->tablet_id(),
-              participant->TEST_GetNumRunningTransactions());
+              "T $1 P $0: Transactions: $2", server->permanent_uuid(), peer->tablet_id(),
+              participant->GetNumRunningTransactions());
           has_bad = true;
         }
       }
@@ -115,13 +114,14 @@ void CreateTabletForTesting(MiniCluster* cluster,
                             std::string* tablet_id,
                             std::string* table_id) {
   auto* mini_master = cluster->mini_master();
+  auto epoch = mini_master->catalog_manager().GetLeaderEpochInternal();
   {
     master::CreateNamespaceRequestPB req;
     master::CreateNamespaceResponsePB resp;
     req.set_name(table_name.resolved_namespace_name());
 
     const Status s = mini_master->catalog_manager().CreateNamespace(
-        &req, &resp,  /* rpc::RpcContext* */ nullptr);
+        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch);
     ASSERT_TRUE(s.ok() || s.IsAlreadyPresent()) << " status=" << s.ToString();
   }
   {
@@ -133,7 +133,7 @@ void CreateTabletForTesting(MiniCluster* cluster,
 
     SchemaToPB(schema, req.mutable_schema());
     ASSERT_OK(mini_master->catalog_manager().CreateTable(
-        &req, &resp, /* rpc::RpcContext* */ nullptr));
+        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch));
   }
 
   int wait_time = 1000;

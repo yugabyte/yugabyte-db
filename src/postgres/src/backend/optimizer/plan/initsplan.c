@@ -2709,9 +2709,6 @@ check_batchable(RestrictInfo *restrictinfo)
 			 !(IsA(inner, RelabelType)
 				&& IsA(((RelabelType *) inner)->arg, Var)))
 			continue;
-		
-		if (bms_num_members(pull_varnos(outer)) > 1)
-			continue;
 
 		Oid outerType = exprType(outer);
 

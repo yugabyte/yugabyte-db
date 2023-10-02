@@ -18,7 +18,6 @@ import (
 	"node-agent/model"
 	"node-agent/util"
 	"os"
-	"os/user"
 	"path/filepath"
 
 	"node-agent/cmux"
@@ -385,23 +384,14 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	filename := fileInfo.GetFilename()
 	username := req.GetUser()
 	chmod := req.GetChmod()
-	userAcc, err := user.Current()
+	userDetail, err := util.UserInfo(username)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	var uid, gid uint32
-	var changeOwner = false
-	if username != "" && userAcc.Username != username {
-		userAcc, uid, gid, err = util.UserInfo(username)
-		if err != nil {
-			return status.Error(codes.Internal, err.Error())
-		}
-		util.FileLogger().Infof(ctx, "Using user: %s, uid: %d, gid: %d",
-			userAcc.Username, uid, gid)
-		changeOwner = true
-	}
+	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
+		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	if !filepath.IsAbs(filename) {
-		filename = filepath.Join(userAcc.HomeDir, filename)
+		filename = filepath.Join(userDetail.User.HomeDir, filename)
 	}
 	if chmod == 0 {
 		// Do not care about file perm.
@@ -423,8 +413,8 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		return status.Error(codes.Internal, err.Error())
 	}
 	defer file.Close()
-	if changeOwner {
-		err = file.Chown(int(uid), int(gid))
+	if !userDetail.IsCurrent {
+		err = file.Chown(int(userDetail.UserID), int(userDetail.GroupID))
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -468,20 +458,13 @@ func (server *RPCServer) DownloadFile(
 	res := &pb.DownloadFileResponse{ChunkData: make([]byte, 1024)}
 	if !filepath.IsAbs(filename) {
 		username := in.GetUser()
-		userAcc, err := user.Current()
+		userDetail, err := util.UserInfo(username)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
-		var uid, gid uint32
-		if username != "" && userAcc.Username != username {
-			userAcc, uid, gid, err = util.UserInfo(username)
-			if err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-			util.FileLogger().Infof(ctx, "Using user: %s, uid: %d, gid: %d",
-				userAcc.Username, uid, gid)
-		}
-		filename = filepath.Join(userAcc.HomeDir, filename)
+		util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
+			userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
+		filename = filepath.Join(userDetail.User.HomeDir, filename)
 	}
 	file, err := os.Open(filename)
 	if err != nil {

@@ -15,6 +15,7 @@ import {
   HelmOverridesError,
   UniverseResource
 } from './dto';
+import { EditGflagPayload } from '../../universe-actions/edit-gflags/GflagHelper';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -31,7 +32,8 @@ export enum QUERY_KEY {
   fetchGlobalRunTimeConfigs = 'fetchGlobalRunTimeConfigs',
   fetchCustomerRunTimeConfigs = 'fetchCustomerRunTimeConfigs',
   fetchProviderRunTimeConfigs = 'fetchProviderRunTimeConfigs',
-  validateHelmYAML = 'validateHelmYAML'
+  validateHelmYAML = 'validateHelmYAML',
+  editGflag = 'upgradeGflags'
 }
 
 const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
@@ -183,6 +185,11 @@ class ApiService {
   validateHelmYAML = (data: UniverseConfigure): Promise<HelmOverridesError> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/validate_kubernetes_overrides`;
     return axios.post<HelmOverridesError>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  upgradeGflags = (data: EditGflagPayload, universeId: string): Promise<EditGflagPayload> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/gflags`;
+    return axios.post<EditGflagPayload>(requestUrl, data).then((resp) => resp.data);
   };
 
   // check if exception was caused by canceling previous request

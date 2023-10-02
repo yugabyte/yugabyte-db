@@ -19,8 +19,13 @@ import subprocess
 import sys
 import ruamel.yaml  # type: ignore
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python'))
-from yb.common_util import YB_SRC_ROOT, create_temp_dir, init_logging, shlex_join  # noqa: E402
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'python/yugabyte'))
+from common_util import (
+    YB_SRC_ROOT,
+    create_temp_dir,
+    init_logging,
+    shlex_join,
+)  # noqa: E402
 
 
 def main() -> None:

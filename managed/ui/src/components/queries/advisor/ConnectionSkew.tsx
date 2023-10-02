@@ -1,17 +1,17 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
-import { CpuMeasureRecommendation } from '../../../redesign/utils/dtos';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
+import { PerfRecommendationProps } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
-export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
+export const ConnectionSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
   const { t } = useTranslation();
   const previousData = usePrevious(data);
   const maxNodeConnections = {
@@ -79,8 +79,10 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
           </span>
         </div>
       </div>
-      <span className="queryText">{t('clusterDetail.performance.chartTitle.Connections')}</span>
-      <div id="connectionsSkewGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">{t('clusterDetail.performance.chartTitle.Connections')}</span>
+        <div id="connectionsSkewGraph"></div>
+      </div>
     </div>
   );
 };

@@ -348,7 +348,8 @@ public class Provider extends Model {
   public enum UsabilityState {
     READY,
     UPDATING,
-    ERROR
+    ERROR,
+    DELETING
   }
 
   /** Query Helper for Provider with uuid */
@@ -426,6 +427,7 @@ public class Provider extends Model {
     provider.setCode(code.toString());
     provider.setName(name);
     provider.setDetails(providerDetails);
+    provider.setUsabilityState(UsabilityState.UPDATING);
     provider.save();
     return provider;
   }

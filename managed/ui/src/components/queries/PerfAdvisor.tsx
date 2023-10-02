@@ -10,7 +10,7 @@ import { YBLoading } from '../../components/common/indicators';
 import { YBButton } from '../common/forms/fields';
 import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
 import { formatPerfRecommendationsData } from './helpers/utils';
-import { EXTERNAL_LINKS } from './helpers/const';
+import { EXTERNAL_LINKS } from './helpers/constants';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import {
@@ -20,12 +20,15 @@ import {
   SortDirection,
   LastRunData
 } from '../../redesign/utils/dtos';
+import { UniverseState, getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { YBSelect } from '../../redesign/components';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
 import WarningIcon from './images/warning.svg';
 
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
@@ -68,6 +71,7 @@ const DATABASE_TYPE_SUGGESTIONS = [
 
 export const PerfAdvisor: FC = () => {
   // Initialize state variables
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const [isLoading, setIsLoading] = useState<Boolean>(true);
   const [lastScanTime, setLastScanTime] = useState('');
   const [isLastRunCompleted, setIsLastRunCompleted] = useState<boolean>(false);
@@ -87,7 +91,9 @@ export const PerfAdvisor: FC = () => {
   // Get universe UUID and check status of Universe
   const currentUniverse = useSelector((state: any) => state.universe.currentUniverse);
   const universeUUID = currentUniverse?.data?.universeUUID;
-  const isUniversePaused: boolean = currentUniverse?.data?.universeDetails?.universePaused;
+  const universeStatus = getUniverseStatus(currentUniverse?.data);
+  const isUniversePaused = universeStatus.state === UniverseState.PAUSED;
+  const isUniverseUpdating = universeStatus.state === UniverseState.PENDING;
 
   const { isFetched: isLastRunFetched, data: lastRunData, refetch: lastRunRefetch } = useQuery(
     QUERY_KEY.fetchPerfLastRun,
@@ -312,7 +318,7 @@ export const PerfAdvisor: FC = () => {
   });
   const recommendationTypes = Object.keys(recommendationTypeList);
   const recommendationLabel =
-    displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
+    displayedRecomendations?.length > 1 ? 'Recommendations' : 'Recommendation';
 
   if (isLoading) {
     return (
@@ -345,10 +351,16 @@ export const PerfAdvisor: FC = () => {
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
-                    disabled={!!isUniversePaused}
+                    disabled={isUniversePaused || isUniverseUpdating}
                     onClick={handleScan}
                     data-placement="left"
-                    title={isUniversePaused ? 'Universe Paused' : ''}
+                    title={
+                      isUniversePaused
+                        ? 'Universe Paused'
+                        : isUniverseUpdating
+                          ? 'Universe Updating'
+                          : ''
+                    }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
                     {t('clusterDetail.performance.advisor.ScanBtn')}
@@ -393,13 +405,27 @@ export const PerfAdvisor: FC = () => {
                   </p>
                   <Button
                     bsClass="btn btn-orange rescanBtn"
-                    disabled={!!isUniversePaused}
+                    disabled={isUniversePaused || isUniverseUpdating}
                     onClick={handleScan}
                     data-placement="left"
-                    title={isUniversePaused ? 'Universe Paused' : ''}
+                    title={
+                      isUniversePaused
+                        ? 'Universe Paused'
+                        : isUniverseUpdating
+                          ? 'Universe Updating'
+                          : ''
+                    }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
-                    {t('clusterDetail.performance.advisor.ReScanBtn')}
+                    <RbacValidator
+                      isControl
+                      accessRequiredOn={{
+                        onResource: universeUUID,
+                        ...UserPermissionMap.rescan
+                      }}
+                    >
+                      {t('clusterDetail.performance.advisor.ReScanBtn')}
+                    </RbacValidator>
                   </Button>
                 </div>
               </div>
@@ -428,17 +454,27 @@ export const PerfAdvisor: FC = () => {
             <p className="scanTime">
               {t('clusterDetail.performance.advisor.ScanTime')}
               {t('clusterDetail.performance.advisor.Separator')}
-              {ybFormatDate(lastScanTime)}
+              {ybFormatDate(new Date())}
             </p>
-            <YBButton
-              btnClass="btn btn-orange rescanBtnRecPage"
-              disabled={!!isUniversePaused}
-              btnText="Re-Scan"
-              btnIcon="fa fa-search-minus"
-              onClick={handleScan}
-              data-placement="left"
-              title={isUniversePaused ? 'Universe Paused' : ''}
-            />
+            <RbacValidator
+              isControl
+              accessRequiredOn={{
+                onResource: universeUUID,
+                ...UserPermissionMap.rescan
+              }}
+            >
+              <YBButton
+                btnClass="btn btn-orange rescanBtnRecPage"
+                disabled={isUniversePaused || isUniverseUpdating}
+                btnText="Re-Scan"
+                btnIcon="fa fa-search-minus"
+                onClick={handleScan}
+                data-placement="left"
+                title={
+                  isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
+                }
+              />
+            </RbacValidator>
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">
             <YBSelect

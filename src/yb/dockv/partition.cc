@@ -396,7 +396,7 @@ Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
@@ -421,7 +421,7 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
     }
   }
 
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
     int32_t bucket;
     RETURN_NOT_OK(BucketForRow(row, hash_bucket_schema, &bucket));
@@ -457,27 +457,41 @@ uint16_t PartitionSchema::DecodeMultiColumnHashRightBound(Slice partition_key) {
   return value - 1;
 }
 
-Result<std::string> PartitionSchema::GetEncodedKeyPrefix(
-    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
-  if (partition_schema.has_hash_schema()) {
-    const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+namespace {
 
-    // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
-    // in order to be guarded from any possible future update in the flow.
-    KeyBytes prefix_bytes;
-    DocKeyEncoderAfterTableIdStep(&prefix_bytes)
-        .Hash(doc_key_hash, KeyEntryValues());
-    const auto prefix_size = VERIFY_RESULT(DocKey::EncodedSize(
-        prefix_bytes, DocKeyPart::kUpToHashCode));
-    if (PREDICT_FALSE((prefix_size == 0))) {
-      // Sanity check, should not happen for normal state.
-      return STATUS(IllegalState,
-          Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
-    }
-    prefix_bytes.Truncate(prefix_size);
-    return prefix_bytes.ToStringBuffer();
+Result<std::string> GetEncodedHashPartitionKey(const std::string& partition_key) {
+  const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+
+  // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
+  // in order to be guarded from any possible future update in the flow.
+  KeyBytes prefix_bytes;
+  DocKeyEncoderAfterTableIdStep(&prefix_bytes).Hash(doc_key_hash, KeyEntryValues());
+  const auto prefix_size =
+      VERIFY_RESULT(DocKey::EncodedSize(prefix_bytes, DocKeyPart::kUpToHashCode));
+  if (PREDICT_FALSE((prefix_size == 0))) {
+    // Sanity check, should not happen for normal state.
+    return STATUS(IllegalState,
+        Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
   }
-  return partition_key;
+  prefix_bytes.Truncate(prefix_size);
+  return prefix_bytes.ToStringBuffer();
+}
+
+} // namespace
+
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(const std::string& partition_key) {
+  if (!IsHashPartitioning() || partition_key.empty()) {
+    return partition_key;
+  }
+  return GetEncodedHashPartitionKey(partition_key);
+}
+
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(
+    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
+  if (!IsHashPartitioning(partition_schema) || partition_key.empty()) {
+    return partition_key;
+  }
+  return GetEncodedHashPartitionKey(partition_key);
 }
 
 Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,
@@ -574,6 +588,16 @@ bool PartitionSchema::HasOverlap(
          (key_end.empty() || other_key_start < key_end);
 }
 
+std::pair<uint16_t, uint16_t> PartitionSchema::GetHashPartitionBounds(const Partition& partition) {
+  const auto start_hash_code = partition.partition_key_start().empty()
+      ? 0
+      : DecodeMultiColumnHashValue(partition.partition_key_start());
+  const auto end_hash_code = partition.partition_key_end().empty()
+      ? kMaxPartitionKey
+      : DecodeMultiColumnHashValue(partition.partition_key_end()) - 1;
+  return std::make_pair(start_hash_code, end_hash_code);
+}
+
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
   // Create the start range keys.
   // NOTE: When converting FromPB to partition schema, we already error-check, so we don't need
@@ -619,7 +643,7 @@ boost::optional<std::pair<Partition, Partition>> PartitionSchema::SplitHashParti
 
 Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
                                              vector<Partition> *partitions,
-                                             int32_t max_partition_key) const {
+                                             uint16_t max_partition_key) const {
   DCHECK_GT(max_partition_key, 0);
   DCHECK_LE(max_partition_key, kMaxPartitionKey);
 
@@ -641,13 +665,14 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
 
   // Allocate the partitions.
   partitions->resize(num_tablets);
-  const uint16_t partition_interval = max_partition_key / num_tablets;
 
-  uint16_t pstart;
   uint16_t pend = 0;
-  for (int partition_index = 0; partition_index < num_tablets; partition_index++) {
-    pstart = pend;
-    pend = (partition_index + 1) * partition_interval;
+  for (int32_t partition_index = 0; partition_index < num_tablets; partition_index++) {
+    const auto pstart = pend;
+    // We don't cache (max_partition_key + 1) / num_tablets into additional variable, because
+    // we want to avoid uneven distribution due to floating number truncation and still use integer
+    // calculations.
+    pend = (partition_index + 1) * (max_partition_key + 1) / num_tablets;
 
     // For the first tablet, start key is open-ended:
     if (partition_index != 0) {
@@ -702,7 +727,7 @@ Status PartitionSchema::CreatePartitions(int32_t num_tablets, vector<Partition> 
 Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
                                          const Schema& schema,
                                          vector<Partition>* partitions) const {
-  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
+  const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(DataType::UINT32));
 
   // Create a partition per hash bucket combination.
   *partitions = vector<Partition>(1);

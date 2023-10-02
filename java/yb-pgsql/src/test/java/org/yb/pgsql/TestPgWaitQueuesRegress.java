@@ -18,16 +18,15 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgWaitQueuesRegress extends BasePgSQLTest {
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "true");
-    flagMap.put("enable_deadlock_detection", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("auto_promote_nonlocal_transactions_to_global", "false");
     return flagMap;

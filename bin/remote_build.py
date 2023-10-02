@@ -18,6 +18,7 @@ import sys
 import os
 import argparse
 import logging
+import shlex
 
 from typing import List, Optional, Set, Dict, Union
 
@@ -26,8 +27,8 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'python'))  # noqa
 
 
-from yb import remote
-from yb.common_util import init_logging
+from yugabyte import remote
+from yugabyte.common_util import init_logging
 
 
 def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> List[str]:
@@ -50,10 +51,18 @@ def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> 
 def main() -> None:
     parser = argparse.ArgumentParser(prog=sys.argv[0])
 
+    remote_build_args_file = 'YB_REMOTE_BUILD_ARGS_FILE'
+    if remote_build_args_file in os.environ:
+        with open(os.environ[remote_build_args_file], "wt") as out:
+            for arg in sys.argv[1:]:
+                out.write(" " + shlex.quote(arg))
+
     parser.add_argument('build_args', nargs=argparse.REMAINDER,
                         help='arguments for yb_build.sh')
 
     remote.add_common_args(parser)
+    parser.add_argument('--patch-path', action='store_true',
+                        help='Patch file path to get CLion friendly navigation.')
     remote.handle_yb_build_cmd_line()
     args = parser.parse_args()
     init_logging(verbose=args.verbose)
@@ -89,7 +98,8 @@ def main() -> None:
         script_name='yb_build.sh',
         script_args=remote_args,
         should_quote_args=True,
-        extra_ssh_args=remote.process_extra_ssh_args(args.extra_ssh_args))
+        extra_ssh_args=remote.process_extra_ssh_args(args.extra_ssh_args),
+        patch_path=args.patch_path)
 
 
 if __name__ == '__main__':

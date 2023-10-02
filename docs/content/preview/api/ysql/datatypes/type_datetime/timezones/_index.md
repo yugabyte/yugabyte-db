@@ -17,7 +17,7 @@ To understand when, and why, you should specify the timezone (or, more carefully
 {{< /tip >}}
 
 {{< note title="The single word spelling, 'timezone' is used throughout the prose of the YSQL documentation." >}}
-The two spellings _"timezone"_, as one word, and _"time zone"_, as two words, both occur in SQL syntax. For example both _set timezone = \<arg\>_  and _set time zone \<arg\>_ are legal. On the other hand, you can decorate a plain _timestamp_ or a _timestamptz_ value with the _at time zone_ operator—but here spelling it as the single word _"timezone"_ causes an error. In contrast, the name of the session variable, as is used in the invocation of the built-in function, must be spelled as a single word: _current_setting('timezone')_.
+The two spellings _"timezone"_, as one word, and _"time zone"_, as two words, both occur in SQL syntax. For example both _set timezone = \<arg\>_  and _set time zone \<arg\>_ are legal. On the other hand, you can decorate a plain _timestamp_ or a _timestamptz_ value with the _at time zone_ operator—but here spelling it as the single word _"timezone"_ causes an error. In contrast, the name of the run-time parameter, as is used in the invocation of the built-in function, must be spelled as a single word: _current_setting('timezone')_.
 
 Usually, the spelling of both the single word and the two separate words is case insensitive. Exceptionally, the column in the catalog view _pg_settings.name_ includes the value _'TimeZone'_. Of course, SQL queries against this view must respect this mixed case spelling.
 

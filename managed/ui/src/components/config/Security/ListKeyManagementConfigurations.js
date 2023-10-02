@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -8,6 +8,8 @@ import { YBPanelItem } from '../../panels';
 import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
 import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
@@ -30,14 +32,38 @@ export class ListKeyManagementConfigurations extends Component {
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         {isAdmin && (
-          <MenuItem onClick={() => onEdit(row)}>
+          <MenuItem
+            disabled={!hasNecessaryPerm({
+              onResource: "CUSTOMER_ID",
+              ...UserPermissionMap.createEncryptionAtRest
+            })}
+            onClick={() => {
+              if (!hasNecessaryPerm({
+                onResource: "CUSTOMER_ID",
+                ...UserPermissionMap.createEncryptionAtRest
+              })) {
+                return;
+              }
+              onEdit(row);
+            }}>
             <i className="fa fa-pencil"></i> Edit Configuration
           </MenuItem>
         )}
         <MenuItem
           title={'Delete provider'}
-          disabled={inUse}
+          disabled={inUse || !hasNecessaryPerm({
+            onResource: "CUSTOMER_ID",
+            ...UserPermissionMap.deleteEncryptionAtRest
+          })}
           onClick={() => {
+            
+            if (!hasNecessaryPerm({
+              onResource: "CUSTOMER_ID",
+              ...UserPermissionMap.deleteEncryptionAtRest
+            })) {
+              return;
+            }
+
             !inUse && this.setState({ deleteConfig: row });
           }}
         >
@@ -104,9 +130,17 @@ export class ListKeyManagementConfigurations extends Component {
               <h2 className="table-container-title pull-left">List Configurations</h2>
               <FlexContainer className="pull-right">
                 <FlexShrink>
-                  <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>
-                    Create New Config
-                  </Button>
+                  <RbacValidator
+                    accessRequiredOn={{
+                      onResource: "CUSTOMER_ID",
+                      ...UserPermissionMap.createEncryptionAtRest
+                    }}
+                    isControl
+                  >
+                    <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>
+                      Create New Config
+                    </Button>
+                  </RbacValidator>
                 </FlexShrink>
               </FlexContainer>
             </Fragment>

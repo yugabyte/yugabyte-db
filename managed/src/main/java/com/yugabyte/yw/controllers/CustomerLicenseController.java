@@ -4,12 +4,22 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerLicenseManager;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CustomerLicenseFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerLicense;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -34,13 +44,22 @@ public class CustomerLicenseController extends AuthenticatedController {
 
   @Inject CustomerLicenseManager cLicenseManager;
 
+  @Inject FileHelperService fileHelperService;
+
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseController.class);
 
   @ApiOperation(
       nickname = "upload_license",
       value = "Uploads the license",
       response = CustomerLicense.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result upload(UUID customerUUID, Http.Request request) throws IOException {
+    Customer.getOrBadRequest(customerUUID);
     CustomerLicenseFormData formData =
         formFactory.getFormDataOrBadRequest(request, CustomerLicenseFormData.class).get();
 
@@ -70,7 +89,7 @@ public class CustomerLicenseController extends AuthenticatedController {
     } else if (licenseContent != null && !licenseContent.isEmpty()) {
       String fileName = licenseType + ".txt";
       // Create temp file and fill with content
-      Path tempFile = Files.createTempFile(UUID.randomUUID().toString(), ".txt");
+      Path tempFile = fileHelperService.createTempFile(UUID.randomUUID().toString(), ".txt");
       Files.write(tempFile, licenseContent.getBytes());
 
       // Upload temp file to upload the license and return success/failure
@@ -93,7 +112,14 @@ public class CustomerLicenseController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a license", response = YBPSuccess.class, nickname = "deleteLicense")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID licenseUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     cLicenseManager.delete(customerUUID, licenseUUID);
     auditService()
         .createAuditEntry(

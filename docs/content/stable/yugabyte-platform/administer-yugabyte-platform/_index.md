@@ -46,7 +46,19 @@ type: indexpage
         <div class="title">Enable high availability</div>
       </div>
       <div class="body">
-        Enable YugabyteDB Anywhere's high-availability features.
+        Configure standby instances of YugabyteDB Anywhere.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="manage-runtime-config/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Manage runtime configuration settings</div>
+      </div>
+      <div class="body">
+        Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers.
       </div>
     </a>
   </div>

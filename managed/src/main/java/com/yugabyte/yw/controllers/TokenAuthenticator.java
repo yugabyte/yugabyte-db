@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
@@ -25,7 +27,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -37,7 +38,6 @@ import play.mvc.Http.Cookie;
 import play.mvc.Result;
 import play.mvc.Results;
 
-@Slf4j
 public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
@@ -53,7 +53,8 @@ public class TokenAuthenticator extends Action.Simple {
           "/schedules/page",
           "/fetch_package",
           "/performance_recommendations/page",
-          "/performance_recommendation_state_change/page");
+          "/performance_recommendation_state_change/page",
+          "/node_agents/page");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -81,6 +82,8 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  private final RuntimeConfigCache runtimeConfigCache;
+
   private final JWTVerifier jwtVerifier;
 
   @Inject
@@ -89,11 +92,13 @@ public class TokenAuthenticator extends Action.Simple {
       PlaySessionStore sessionStore,
       UserService userService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
   }
 
@@ -144,6 +149,10 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
+    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+    if (useNewAuthz) {
+      return delegate.call(request);
+    }
     try {
       String endPoint = "";
       String path = request.path();
@@ -174,20 +183,22 @@ public class TokenAuthenticator extends Action.Simple {
       if (user != null) {
         cust = Customer.get(user.getCustomerUUID());
       } else {
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
       // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
       if (cust != null && (custUUID == null || custUUID.equals(cust.getUuid()))) {
-        if (!checkAccessLevel(endPoint, user, requestType)) {
+        if (!checkAccessLevel(endPoint, user, requestType, path)) {
           return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
         }
         RequestContext.put(CUSTOMER, cust);
         RequestContext.put(USER, userService.getUserWithFeatures(cust, user));
       } else {
-        // Send Forbidden Response if Authentication Fails.
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        // Send Unauthorized Response if Authentication Fails.
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
       return delegate.call(request);
     } finally {
@@ -230,7 +241,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   public void adminOrThrow(Http.Request request) {
     if (!adminAuthentication(request)) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
+      throw new PlatformServiceException(FORBIDDEN, "Only Admins can perform this operation.");
     }
   }
 
@@ -238,7 +249,7 @@ public class TokenAuthenticator extends Action.Simple {
   public void superAdminOrThrow(Http.Request request) {
     if (!superAdminAuthentication(request)) {
       throw new PlatformServiceException(
-          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+          FORBIDDEN, "Only Super Admins can perform this operation.");
     }
   }
 
@@ -262,13 +273,29 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   // Check role, and if the API call is accessible.
-  private boolean checkAccessLevel(String endPoint, Users user, String requestType) {
+  private boolean checkAccessLevel(String endPoint, Users user, String requestType, String path) {
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.
     if (endPoint.endsWith("/change_password")) {
       UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
       return userUUID.equals(user.getUuid());
+    }
+
+    if (requestType.equals("GET")
+        && (endPoint.endsWith("/users/" + user.getUuid())
+            || path.endsWith("/customers/" + user.getCustomerUUID()))) {
+      return true;
+    }
+
+    // If the user is ConnectOnly, then don't get any further access
+    if (user.getRole() == Role.ConnectOnly) {
+      return false;
+    }
+
+    // Allow only superadmins to change LDAP Group Mappings.
+    if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
+      return user.getRole() == Role.SuperAdmin;
     }
 
     // All users have access to get, metrics and setting an API token.
@@ -295,6 +322,7 @@ public class TokenAuthenticator extends Action.Simple {
     // Enable New backup and restore endPoints for backup admins.
     if (endPoint.contains("/backups")
         || endPoint.endsWith("create_backup_schedule")
+        || endPoint.endsWith("create_backup_schedule_async")
         || endPoint.contains("/schedules")
         || endPoint.endsWith("/restore")) {
       return true;

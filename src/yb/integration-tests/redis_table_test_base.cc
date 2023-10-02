@@ -68,13 +68,14 @@ RedisClientCommand SlicesFromString(const vector<string>& args) {
   return vector_slice;
 }
 
-void RedisTableTestBase::PutKeyValue(string key, string value) {
+void RedisTableTestBase::PutKeyValue(const string& key, const string& value) {
   auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(), SlicesFromString({"set", key, value})));
   ASSERT_OK(session_->TEST_ApplyAndFlush(set_op));
 }
 
-void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int64_t ttl_msec) {
+void RedisTableTestBase::PutKeyValueWithTtlNoFlush(
+    const string& key, const string& value, int64_t ttl_msec) {
   auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
@@ -85,7 +86,7 @@ void RedisTableTestBase::GetKeyValue(
     const string& key, const string& value, bool expect_not_found) {
   auto get_op = std::make_shared<YBRedisReadOp>(table_->shared_from_this());
   ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
-  ASSERT_OK(session_->TEST_ReadSync(get_op));
+  ASSERT_OK(session_->TEST_ApplyAndFlush(get_op));
   if (expect_not_found) {
     ASSERT_EQ(RedisResponsePB_RedisStatusCode_NIL, get_op->response().code());
   } else {

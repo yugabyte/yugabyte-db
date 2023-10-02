@@ -182,6 +182,10 @@ extern RegProcedure index_getprocid(Relation irel, AttrNumber attnum,
 extern FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
 				  uint16 procnum);
 
+extern bool yb_index_might_recheck(Relation heapRelation,
+								   Relation indexRelation, bool xs_want_itup,
+								   ScanKey keys, int nkeys);
+
 /*
  * index access method support routines (in genam.c)
  */

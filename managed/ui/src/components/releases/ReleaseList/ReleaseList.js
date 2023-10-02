@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton } from 'react-bootstrap';
 
@@ -14,7 +14,11 @@ import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
-// Sort descending
+/**
+ * Sort YB software versions in decsending order for UI displays.
+ *
+ * This function sorts b{n} tags before custom build tags.
+ */
 export const sortVersion = (a, b) => {
   const matchA = versionReg.exec(a);
   const matchB = versionReg.exec(b);

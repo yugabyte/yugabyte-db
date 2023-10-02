@@ -63,7 +63,7 @@ public class CloudAPITest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "us-west-2", "US West 2", "yb-image-1");
 
-    awsCloudImpl = spy(new AWSCloudImpl());
+    awsCloudImpl = spy(new AWSCloudImpl(null));
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), any());
     Mockito.doReturn(mockELBClient).when(awsCloudImpl).getELBClient(any(), any());
     mockJsonString =

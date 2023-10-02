@@ -113,14 +113,13 @@ DEFINE_UNKNOWN_bool(ycql_serial_operation_in_transaction_block, true,
 
 extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
-Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
-                   const QLMetrics* ql_metrics)
+Executor::Executor(
+    QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       audit_logger_(*audit_logger),
       rescheduler_(rescheduler),
-      session_(ql_env_->NewSession()),
-      ql_metrics_(ql_metrics) {
-}
+      session_(ql_env_->NewSession(rescheduler->GetDeadline())),
+      ql_metrics_(ql_metrics) {}
 
 Executor::~Executor() {
   LOG_IF(DFATAL, HasAsyncCalls())
@@ -543,9 +542,8 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   for (const auto& column : tnode->primary_columns()) {
     b.AddColumn(column->coldef_name().c_str())
       ->Type(column->ql_type())
-      ->PrimaryKey()
-      ->Order(column->order())
-      ->SetSortingType(column->sorting_type());
+      ->PrimaryKey(column->sorting_type())
+      ->Order(column->order());
     RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
@@ -1434,7 +1432,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
       columns->emplace_back("[message]", DataType::STRING);
       columns->insert(columns->end(), schema.columns().begin(), schema.columns().end());
 
-      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      qlexpr::QLRowBlock result_row_block{Schema(*columns)};
       auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
       row.mutable_column(1)->set_string_value(
@@ -1449,7 +1447,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
         std::make_shared<std::vector<ColumnSchema>>();
       columns->emplace_back("[applied]", DataType::BOOL);
 
-      qlexpr::QLRowBlock result_row_block(Schema(*columns, 0));
+      qlexpr::QLRowBlock result_row_block{Schema(*columns)};
       auto& row = result_row_block.Extend();
       row.mutable_column(0)->set_bool_value(false);
 
@@ -1583,10 +1581,10 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
   const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
-  ColumnSchema explainColumn("QUERY PLAN", STRING);
+  ColumnSchema explainColumn("QUERY PLAN", DataType::STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
-  auto explainSchema = std::make_shared<Schema>(*explainColumns, 0);
+  auto explainSchema = std::make_shared<Schema>(*explainColumns);
   qlexpr::QLRowBlock row_block(*explainSchema);
   ExplainPlanPB explain_plan = dmlStmt->AnalysisResultToPB();
   switch (explain_plan.plan_case()) {
@@ -1807,7 +1805,7 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
     if (exec_context != nullptr) {
       s = ProcessAsyncStatus(op_errors, exec_context);
       if (!s.ok()) {
-        std::lock_guard<std::mutex> lock(status_mutex_);
+        std::lock_guard lock(status_mutex_);
         async_status_ = s;
       }
     } else {
@@ -1815,14 +1813,14 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
         if (!exec_context.HasTransaction()) {
           s = ProcessAsyncStatus(op_errors, &exec_context);
           if (!s.ok()) {
-            std::lock_guard<std::mutex> lock(status_mutex_);
+            std::lock_guard lock(status_mutex_);
             async_status_ = s;
           }
         }
       }
     }
   } else {
-    std::lock_guard<std::mutex> lock(status_mutex_);
+    std::lock_guard lock(status_mutex_);
     async_status_ = s;
   }
 
@@ -1847,7 +1845,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
     if (ShouldRestart(s, rescheduler_)) {
       exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
-      std::lock_guard<std::mutex> lock(status_mutex_);
+      std::lock_guard lock(status_mutex_);
       async_status_ = s;
     }
   }
@@ -2541,7 +2539,7 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
       ColumnSchemaToPB(column, column_schemas->Add());
     }
 
-    qlexpr::QLRowBlock result_row_block(Schema(columns, 0));
+    qlexpr::QLRowBlock result_row_block{Schema(columns)};
     auto& row = result_row_block.Extend();
     row.mutable_column(0)->set_bool_value(false);
     row.mutable_column(1)->set_string_value(resp.error_message());
@@ -2702,7 +2700,8 @@ Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
 }
 
 void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
-  Perform();
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
   num_async_calls_ = rhs.num_async_calls_;
   rhs.num_async_calls_ = nullptr;
   LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
@@ -2710,6 +2709,7 @@ void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
 }
 
 void Executor::ResetAsyncCalls::Cancel() {
+  std::lock_guard guard(num_async_calls_mutex_);
   num_async_calls_ = nullptr;
 }
 
@@ -2718,6 +2718,11 @@ Executor::ResetAsyncCalls::~ResetAsyncCalls() {
 }
 
 void Executor::ResetAsyncCalls::Perform() {
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
+}
+
+void Executor::ResetAsyncCalls::PerformUnlocked() {
   if (!num_async_calls_) {
     return;
   }

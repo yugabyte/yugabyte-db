@@ -49,7 +49,7 @@ void TestEncodeDecode(const VersionEdit &edit) {
   ASSERT_EQ(encoded, encoded2);
 }
 
-const uint64_t kBig = 1ull << 50;
+constexpr uint64_t kBig = 1ull << 50;
 
 } // namespace
 
@@ -87,8 +87,6 @@ TEST_F(VersionEditTest, EncodeDecode) {
 }
 
 TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
-  static const uint64_t kBig = 1ull << 50;
-
   VersionEdit edit;
   edit.AddTestFile(3,
                    FileDescriptor(300, 3, 100, 30),
@@ -127,7 +125,6 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 }
 
 TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
-  static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
   edit.AddTestFile(3,
                    FileDescriptor(300, 3, 100, 30),
@@ -160,7 +157,6 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 }
 
 TEST_F(VersionEditTest, NewFile4NotSupportedField) {
-  static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
   edit.AddTestFile(3,
                    FileDescriptor(300, 3, 100, 30),

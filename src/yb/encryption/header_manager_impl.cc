@@ -77,7 +77,8 @@ class HeaderManagerImpl : public HeaderManager {
   }
 
   Result<EncryptionParamsPtr>
-  DecodeEncryptionParamsFromEncryptionMetadata(const Slice& s) override {
+  DecodeEncryptionParamsFromEncryptionMetadata(
+      const Slice& s, std::string* universe_key_id_output) override {
     Slice s_mutable(s);
     // 1. Get the size of the universe key id.
     RETURN_NOT_OK(CheckSliceCanBeDecoded(s_mutable, sizeof(uint32_t), "universe key id size"));
@@ -87,6 +88,9 @@ class HeaderManagerImpl : public HeaderManager {
     // 2. Get the universe key id.
     RETURN_NOT_OK(CheckSliceCanBeDecoded(s_mutable, universe_key_size, "universe key id"));
     std::string universe_key_id(s_mutable.cdata(), universe_key_size);
+    if (universe_key_id_output) {
+      *universe_key_id_output = universe_key_id;
+    }
     s_mutable.remove_prefix(universe_key_size);
 
     // 3. Create an encryption stream from the universe key.
@@ -125,6 +129,11 @@ class HeaderManagerImpl : public HeaderManager {
       status.header_size = BigEndian::Load32(s.data() + kEncryptionMagic.size());
     }
     return status;
+  }
+
+  Result<std::string> GetLatestUniverseKeyId() override {
+    auto universe_params = VERIFY_RESULT(universe_key_manager_->GetLatestUniverseParams());
+    return universe_params.version_id;
   }
 
   Result<bool> IsEncryptionEnabled() override {

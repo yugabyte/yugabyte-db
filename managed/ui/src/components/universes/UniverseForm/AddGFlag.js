@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { Field } from 'formik';
 import clsx from 'clsx';
@@ -9,18 +10,17 @@ import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
 import { GFlagsConf } from './GFlagsConf';
-import { GFLAG_EDIT } from '../../../utils/UniverseUtils';
+import { GFLAG_EDIT, MULTILINE_GFLAGS_ARRAY } from '../../../utils/UniverseUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
+// Styles
+import './UniverseForm.scss';
 
-const ConfKeys = {
-  HBA_CONF: 'ysql_hba_conf_csv'
-};
-
-const AddGFlag = ({ formProps, gFlagProps }) => {
+const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
-  const { mode, server, dbVersion } = gFlagProps;
+  const { mode, server, dbVersion, existingFlags } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -30,9 +30,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [apiError, setAPIError] = useState(null);
 
-  // HBA Conf GFlag
-  const enableGFlagHBAConf =
-    featureFlags.test.enableGFlagHBAConf || featureFlags.released.enableGFlagHBAConf;
+  // Multiline Conf GFlag
+  const isGFlagMultilineConfEnabled =
+    featureFlags.test.enableGFlagMultilineConf || featureFlags.released.enableGFlagMultilineConf;
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));
@@ -40,6 +40,10 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
+    const existingFlagValue = _.get(
+      existingFlags.find((f) => f.Name === flag?.name),
+      server
+    );
     // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
@@ -51,7 +55,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
     formProps.setValues({
       ...gFlagProps,
       flagname: flag?.name,
-      flagvalue,
+      flagvalue: isDefinedNotNull(existingFlagValue) ? existingFlagValue : flagvalue,
       tags: flag?.tags
     });
   };
@@ -152,7 +156,12 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   //renderers
   const renderFormComponent = (flag) => {
     // eslint-disable-next-line no-prototype-builtins
-    const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
+    const defaultKey = selectedFlag?.hasOwnProperty('current')
+      ? 'current'
+      : selectedFlag?.hasOwnProperty('default')
+      ? 'default'
+      : 'target';
+
     switch (flag?.type) {
       case 'bool':
         return (
@@ -181,8 +190,16 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         );
 
       case 'string':
-        if (flag?.name === 'ysql_hba_conf_csv' && enableGFlagHBAConf) {
-          return <GFlagsConf formProps={formProps} mode={mode} />;
+        if (MULTILINE_GFLAGS_ARRAY.includes(flag?.name) && isGFlagMultilineConfEnabled) {
+          return (
+            <GFlagsConf
+              dbVersion={dbVersion}
+              formProps={formProps}
+              serverType={server}
+              flagName={flag?.name}
+              updateJWKSDialogStatus={updateJWKSDialogStatus}
+            />
+          );
         } else {
           return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
         }
@@ -288,7 +305,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             </div>
           </div>
           <div className="gflag-form">{renderFormComponent(selectedFlag)}</div>
-          {selectedFlag.name !== ConfKeys.HBA_CONF && <span className="gflag-form-separator" />}
+          {!MULTILINE_GFLAGS_ARRAY.includes(selectedFlag.name) && (
+            <span className="gflag-form-separator" />
+          )}
         </>
       );
     } else return infoText;

@@ -53,6 +53,7 @@ export const COMMUNICATION_PORTS_FIELD = 'advancedConfig.communicationPorts';
 
 //Gflags
 export const GFLAGS_FIELD = 'gFlags';
+export const INHERIT_FLAGS_FROM_PRIMARY = 'inheritFlagsFromPrimary';
 
 //Tags
 export const USER_TAGS_FIELD = 'instanceTags';
@@ -139,7 +140,8 @@ export const ASYNC_FIELDS = [
   ROOT_CERT_FIELD,
   EAR_FIELD,
   MASTER_PLACEMENT_FIELD,
-  USER_TAGS_FIELD
+  USER_TAGS_FIELD,
+  INHERIT_FLAGS_FROM_PRIMARY
 ];
 
 export const INHERITED_FIELDS_FROM_PRIMARY = [

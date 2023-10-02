@@ -20,7 +20,6 @@ EOT
 }
 
 export DEVOPS_HOME="${BASH_SOURCE%/*}"/../devops
-export YB_MANAGED_DEVOPS_USE_PYTHON3=1
 
 . "$DEVOPS_HOME/bin/"/common.sh
 
@@ -54,6 +53,7 @@ if [[ "$local" == "true" ]]; then
   pre_release="--pre_release"
   if [[ ! -d $destination ]]; then
     destination="/opt/yugabyte/node-agent/releases"
+    mkdir -p "$destination"
   fi
 elif [[ ! -d $destination ]]; then
   fatal "No destination directory found ('$destination')"

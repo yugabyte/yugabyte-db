@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.NodeAgentPoller.PollerTask;
 import com.yugabyte.yw.commissioner.NodeAgentPoller.PollerTaskParam;
+import com.yugabyte.yw.commissioner.NodeAgentPoller.PollerTaskState;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
@@ -38,12 +40,13 @@ import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.ServerInfo;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Date;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -60,6 +63,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
 
+  private CertificateHelper certificateHelper;
+
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentPoller nodeAgentPoller;
@@ -70,21 +75,20 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
         .thenReturn(Duration.ofSeconds(3));
-    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.maxParallelNodeAgentUpgrades)))
-        .thenReturn(1);
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
+    certificateHelper = new CertificateHelper(mockConfGetter);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
+    nodeAgentHandler =
+        new NodeAgentHandler(mockCommissioner, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(
-            mockConfigHelper,
             mockConfGetter,
             mockPlatformExecutorFactory,
             mockPlatformScheduler,
             nodeAgentManager,
-            mockNodeAgentClient);
+            mockNodeAgentClient,
+            mockSwamperHelper);
     nodeAgentPoller.init();
     nodeAgentHandler.enableConnectionValidation(false);
-    when(mockAppConfig.getString(eq("yb.storage.path"))).thenReturn("/tmp");
   }
 
   private NodeAgent register(NodeAgentForm payload) {
@@ -130,7 +134,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             .build();
     // Sleep to run after the expiry time.
     Thread.sleep(1000);
-    nodeAgentPoller.createPollerTask(param).run();
+    PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
+    pollerTask.run();
     assertThrows(
         "Cannot find node agent",
         PlatformServiceException.class,
@@ -157,6 +163,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             .build();
 
     PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
     Thread.sleep(1000);
     // Run to just heartbeat.
     pollerTask.run();
@@ -168,7 +175,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpgrade() throws IOException {
+  public void testUpgrade() throws Exception {
     PingResponse pingResponse1 = mock(PingResponse.class);
     PingResponse pingResponse2 = mock(PingResponse.class);
     Path nodeAgentPackage = Paths.get("/tmp/node_agent-2.13.0.0-b12-linux-amd64.tar.gz");
@@ -186,6 +193,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         .thenReturn(ImmutableMap.of("version", "2.13.0.0"));
     when(mockAppConfig.getString(eq(NodeAgentManager.NODE_AGENT_RELEASES_PATH_PROPERTY)))
         .thenReturn(nodeAgentPackage.getParent().toString());
+    ExecutorService upgrader = Executors.newSingleThreadExecutor();
+    nodeAgentPoller.setUpgradeExecutor(upgrader);
     NodeAgentForm payload = new NodeAgentForm();
     payload.version = "2.12.0.0";
     payload.name = "node1";
@@ -202,14 +211,18 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             .lifetime(Duration.ofMinutes(5))
             .build();
     PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
+    pollerTask.setState(PollerTaskState.SCHEDULED);
     pollerTask.run();
+    pollerTask.waitForUpgrade();
     nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     Path newCertDirPath = nodeAgent.getCertDirPath();
     Path mergedCertFile = nodeAgent.getMergedCaCertFilePath();
     // Restart was set, it is not live yet.
     assertEquals(State.UPGRADED, nodeAgent.getState());
     assertTrue("Merged cert file does not exist", mergedCertFile.toFile().exists());
+    pollerTask.setState(PollerTaskState.SCHEDULED);
     pollerTask.run();
+    pollerTask.waitForUpgrade();
     nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     // Restart done after running again.
     assertEquals(State.READY, nodeAgent.getState());

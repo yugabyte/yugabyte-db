@@ -52,8 +52,15 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
     "Pg client heartbeat interval in ms.");
 
+DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
+   "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
+   "and report it.");
+
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
+
+extern int yb_locks_min_txn_age;
+extern int yb_locks_max_transactions;
 
 using namespace std::literals;
 
@@ -61,10 +68,6 @@ namespace yb {
 namespace pggate {
 
 namespace {
-
-// Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism
-// and report it.
-const auto kExtraTimeout = 2s;
 
 struct PerformData {
   PgsqlOps operations;
@@ -169,6 +172,8 @@ class PgClient::Impl {
     proxy_ = nullptr;
   }
 
+  uint64_t SessionID() { return session_id_; }
+
   void Heartbeat(bool create) {
     {
       bool expected = false;
@@ -204,7 +209,7 @@ class PgClient::Impl {
   }
 
   void SetTimeout(MonoDelta timeout) {
-    timeout_ = timeout + kExtraTimeout;
+    timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -435,7 +440,7 @@ class PgClient::Impl {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
-    if (exchange_) {
+    if (exchange_ && exchange_->ReadyToSend()) {
       PerformData data(&arena, std::move(*operations), callback);
       ProcessPerformResponse(&data, ExecutePerform(&data, req));
     } else {
@@ -443,7 +448,7 @@ class PgClient::Impl {
       data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
       proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-        ProcessPerformResponse(data.get(), data->controller.response());
+        ProcessPerformResponse(data.get(), data->controller.CheckedResponse());
       });
     }
   }
@@ -455,7 +460,7 @@ class PgClient::Impl {
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
     CHECK_EQ(end - out, size);
 
-    auto res = VERIFY_RESULT(exchange_->SendRequest(nullptr, CoarseMonoClock::now() + timeout_));
+    auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
 
     rpc::CallData call_data(res.size());
     res.CopyTo(call_data.data());
@@ -500,9 +505,6 @@ class PgClient::Impl {
           req->set_write_time(write_op.write_time().ToUint64());
         }
         union_op.ref_write(&write_op.write_request());
-      }
-      if (op->read_time()) {
-        op->read_time().AddToPB(req->mutable_options());
       }
     }
   }
@@ -602,6 +604,26 @@ class PgClient::Impl {
     return Status::OK();
   }
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id) {
+    tserver::PgGetLockStatusRequestPB req;
+    tserver::PgGetLockStatusResponsePB resp;
+
+    if (!table_id.empty()) {
+      req.set_table_id(table_id);
+    }
+    if (!transaction_id.empty()) {
+      req.set_transaction_id(transaction_id);
+    }
+    req.set_min_txn_age_ms(yb_locks_min_txn_age);
+    req.set_max_num_txns(yb_locks_max_transactions);
+
+    RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return resp;
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -662,6 +684,78 @@ class PgClient::Impl {
     return resp.is_pitr_active();
   }
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id) {
+    tserver::PgIsObjectPartOfXReplRequestPB req;
+    tserver::PgIsObjectPartOfXReplResponsePB resp;
+    table_id.ToPB(req.mutable_table_id());
+    RETURN_NOT_OK(proxy_->IsObjectPartOfXRepl(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp.is_object_part_of_xrepl();
+  }
+
+  Status EnumerateActiveTransactions(
+      const ActiveTransactionCallback& callback, bool for_current_session_only) {
+    tserver::PgGetActiveTransactionListRequestPB req;
+    tserver::PgGetActiveTransactionListResponsePB resp;
+    if (for_current_session_only) {
+      req.mutable_session_id()->set_value(session_id_);
+    }
+
+    RETURN_NOT_OK(proxy_->GetActiveTransactionList(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    const auto& entries = resp.entries();
+    if (entries.empty()) {
+      return Status::OK();
+    }
+
+    for (auto i = entries.begin(), end = entries.end();;) {
+      const auto& entry = *i;
+      const auto is_last = (++i == end);
+      RETURN_NOT_OK(callback(entry, is_last));
+      if (is_last) {
+        break;
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
+      uint32_t max_key_length) {
+    tserver::PgGetTableKeyRangesRequestPB req;
+    tserver::PgGetTableKeyRangesResponsePB resp;
+    req.set_session_id(session_id_);
+    table_id.ToPB(req.mutable_table_id());
+    if (!lower_bound_key.empty()) {
+      req.mutable_lower_bound_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+    }
+    if (!upper_bound_key.empty()) {
+      req.mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
+    }
+    req.set_max_num_ranges(max_num_ranges);
+    req.set_range_size_bytes(range_size_bytes);
+    req.set_is_forward(is_forward);
+    req.set_max_key_length(max_key_length);
+
+    auto* controller = PrepareController();
+
+    RETURN_NOT_OK(proxy_->GetTableKeyRanges(req, &resp, controller));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+
+    boost::container::small_vector<RefCntSlice, 2> result;
+    for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
+      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+    }
+    return result;
+  }
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
@@ -692,6 +786,14 @@ class PgClient::Impl {
   }
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_IMPL, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+  Status CancelTransaction(const unsigned char* transaction_id) {
+    tserver::PgCancelTransactionRequestPB req;
+    req.set_transaction_id(transaction_id, kUuidSize);
+    tserver::PgCancelTransactionResponsePB resp;
+    RETURN_NOT_OK(proxy_->CancelTransaction(req, &resp, PrepareController(CoarseTimePoint())));
+    return ResponseStatus(resp);
+  }
 
  private:
   std::string LogPrefix() const {
@@ -753,6 +855,8 @@ void PgClient::SetTimeout(MonoDelta timeout) {
   impl_->SetTimeout(timeout);
 }
 
+uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
+
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
   return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
@@ -807,6 +911,11 @@ Status PgClient::GetIndexBackfillProgress(
     const std::vector<PgObjectId>& index_ids,
     uint64_t** backfill_statuses) {
   return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
+}
+
+Result<yb::tserver::PgGetLockStatusResponsePB> PgClient::GetLockStatusData(
+    const std::string& table_id, const std::string& transaction_id) {
+  return impl_->GetLockStatusData(table_id, transaction_id);
 }
 
 Result<int32> PgClient::TabletServerCount(bool primary_only) {
@@ -901,9 +1010,26 @@ Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
 }
 
+Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return impl_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgClient::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  return impl_->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
+}
+
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
     bool size_only, uint32_t db_oid) {
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
+}
+
+Status PgClient::EnumerateActiveTransactions(
+    const ActiveTransactionCallback& callback, bool for_current_session_only) const {
+  return impl_->EnumerateActiveTransactions(callback, for_current_session_only);
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \
@@ -914,6 +1040,10 @@ Status PgClient::method( \
 }
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
+  return impl_->CancelTransaction(transaction_id);
+}
 
 }  // namespace pggate
 }  // namespace yb

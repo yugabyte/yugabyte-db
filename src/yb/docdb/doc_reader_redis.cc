@@ -20,12 +20,14 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/deadline_info.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -99,13 +101,16 @@ Status BuildSubDocument(
     int64* num_values_observed) {
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
-  while (!iter->IsOutOfRecords()) {
-    if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
-      return STATUS(Expired, "Deadline for query passed.");
+  for (;;) {
+    auto key_data = VERIFY_RESULT_REF(iter->Fetch());
+    if (!key_data) {
+      break;
+    }
+    if (data.deadline_info) {
+      RETURN_NOT_OK(data.deadline_info->CheckDeadlinePassed());
     }
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    auto key_data = VERIFY_RESULT(iter->FetchKey());
     auto key = key_data.key;
     const auto write_time = VERIFY_RESULT(key_data.write_time.Decode());
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
@@ -117,7 +122,7 @@ Status BuildSubDocument(
     // Key could be invalidated because we could move iterator, so back it up.
     dockv::KeyBytes key_copy(key);
     key = key_copy.AsSlice();
-    rocksdb::Slice value = iter->value();
+    Slice value = key_data.value;
     // Checking that IntentAwareIterator returns an entry with correct time.
     DCHECK(key_data.same_transaction ||
            iter->read_time().global_limit >= write_time.hybrid_time())
@@ -190,6 +195,7 @@ Status BuildSubDocument(
                 : write_time.hybrid_time().GetPhysicalValueMicros());
         if (!data.high_index->CanInclude(current_values_observed)) {
           iter->SeekOutOfSubDoc(&key_copy);
+          DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
           return Status::OK();
         }
         if (data.low_index->CanInclude(*num_values_observed)) {
@@ -198,6 +204,7 @@ Status BuildSubDocument(
         (*num_values_observed)++;
         VLOG(3) << "SeekOutOfSubDoc: " << SubDocKey::DebugSliceToString(key);
         iter->SeekOutOfSubDoc(&key_copy);
+        DCHECK(iter->Fetch().ok()); // Enforce call to Fetch in debug mode
         return Status::OK();
       } else {
         return STATUS_FORMAT(Corruption, "Expected primitive value type, got $0", value_type);
@@ -207,12 +214,14 @@ Status BuildSubDocument(
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
-      IntentAwareIteratorPrefixScope prefix_scope(key, iter);
+      char highest = dockv::KeyEntryTypeAsChar::kHighest;
+      KeyBuffer upperbound_buffer(key, Slice(&highest, 1));
+      IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter);
       RETURN_NOT_OK(BuildSubDocument(
           iter, data.Adjusted(key, &descendant), low_ts,
           num_values_observed));
-
     }
+    iter->Revalidate();
     if (descendant.value_type() == ValueEntryType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -300,7 +309,7 @@ Status FindLastWriteTime(
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
-  if (iter->IsOutOfRecords()) {
+  if (!VERIFY_RESULT_REF(iter->Fetch())) {
     return Status::OK();
   }
 
@@ -333,19 +342,19 @@ Status FindLastWriteTime(
   // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
   // original value/init marker.
   if (control_fields.merge_flags == ValueControlFields::kTtlFlag) {
-    EncodedDocHybridTime new_ht;
-    RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
+    auto key_data = VERIFY_RESULT(iter->NextFullValue());
+    value = key_data.value;
 
     // There could be a case where the TTL row exists, but the value has been
     // compacted away. Then, it is treated as a Tombstone written at the time
     // of the TTL row.
-    if (iter->IsOutOfRecords() && !new_exp.ttl.IsNegative()) {
+    if (!key_data && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
       RETURN_NOT_OK(dockv::Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
-      doc_ht = VERIFY_RESULT(new_ht.Decode());
+      doc_ht = VERIFY_RESULT(key_data.write_time.Decode());
     }
   }
 
@@ -370,20 +379,19 @@ Status FindLastWriteTime(
 
 }  // namespace
 
-yb::Status GetRedisSubDocument(
+Status GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time) {
+    const ReadOperationData& read_operation_data) {
   auto iter = CreateIntentAwareIterator(
-      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id,
-      txn_op_context, deadline, read_time);
+      doc_db, BloomFilterMode::USE_BLOOM_FILTER, data.subdocument_key, query_id, txn_op_context,
+      read_operation_data);
   return GetRedisSubDocument(iter.get(), data, nullptr /* projection */, SeekFwdSuffices::kFalse);
 }
 
-yb::Status GetRedisSubDocument(
+Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
     const dockv::KeyEntryValues* projection,
@@ -409,10 +417,12 @@ yb::Status GetRedisSubDocument(
   auto dockey_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(
       data.subdocument_key, dockv::DocKeyPart::kWholeDocKey));
 
-  Slice key_slice(data.subdocument_key.data(), dockey_size);
+  Slice key_slice = data.subdocument_key.Prefix(dockey_size);
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(key_slice, Slice(&highest, 1));
   // First, check the descendants of the ID level for TTL or more recent writes.
-  IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), db_iter);
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
   } else {
@@ -427,7 +437,7 @@ yb::Status GetRedisSubDocument(
         break;
       }
       RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp));
-      key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
+      key_slice = Slice(key_slice.data(), temp_key.data());
     }
   }
 
@@ -456,7 +466,11 @@ yb::Status GetRedisSubDocument(
   if (projection == nullptr) {
     *data.result = SubDocument(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
-    IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
+    upperbound_buffer.PopBack();
+    upperbound_buffer.Append(key_slice.WithoutPrefix(upperbound_buffer.size()));
+    upperbound_buffer.PushBack(dockv::KeyEntryTypeAsChar::kHighest);
+    IntentAwareIteratorUpperboundScope upperbound_scope2(upperbound_buffer.AsSlice(), db_iter);
+    db_iter->Revalidate();
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
                                    &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueEntryType::kInvalid;
@@ -486,14 +500,15 @@ yb::Status GetRedisSubDocument(
     // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
     // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
     subkey.AppendToKey(&key_bytes);
-    key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
+    key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kHighest);
     // This seek is to initialize the iterator for BuildSubDocument call.
-    IntentAwareIteratorPrefixScope prefix_scope(key_bytes, db_iter);
-    db_iter->SeekForward(&key_bytes);
+    IntentAwareIteratorUpperboundScope subkey_upperbound_scope(key_bytes, db_iter);
+    auto key = key_bytes.AsSlice().WithoutSuffix(1);
+    db_iter->SeekForward(key);
     SubDocument descendant(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(key_bytes, &descendant), max_overwrite_ht,
+        db_iter, data.Adjusted(key, &descendant), max_overwrite_ht,
         &num_values_observed));
     *data.doc_found = descendant.value_type() != ValueEntryType::kInvalid;
     data.result->SetChild(subkey, std::move(descendant));

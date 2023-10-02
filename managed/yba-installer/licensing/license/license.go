@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // ErrorInvalidLicenseFormat for incorrectly formatted license files
@@ -27,7 +28,12 @@ type License struct {
 // FromFile will create a license from the given license file.
 func FromFile(filePath string) (*License, error) {
 	var lic *License = &License{}
-
+	// If the path is not absolute, covert it to an absolute filepath
+	filePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return lic, fmt.Errorf("failed parsing license filepath: %w", err)
+	}
+	log.Debug("installing license from " + filePath)
 	if _, err := os.Stat(filePath); errors.Is(err, fs.ErrNotExist) {
 		return lic, err
 	}

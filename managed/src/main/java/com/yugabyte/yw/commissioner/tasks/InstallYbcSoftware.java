@@ -9,8 +9,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -63,7 +63,8 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
               });
 
       // We will need to setup server again in case of systemd to register yb-controller service.
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      if (!universe.isYbcEnabled()
+          && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
         // We assume that user has provisioned nodes again with new service files in case of
         // on-prem manual provisioned universe.
         if (!Util.isOnPremManualProvisioning(universe)) {

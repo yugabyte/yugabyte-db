@@ -13,6 +13,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/value.messages.h"
 #include "yb/common/ql_datatype.h"
 
 namespace yb {

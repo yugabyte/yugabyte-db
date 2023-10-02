@@ -1,9 +1,9 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS } from '../helpers/const';
+import { EXTERNAL_LINKS } from '../helpers/constants';
 import { IndexSchemaRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 

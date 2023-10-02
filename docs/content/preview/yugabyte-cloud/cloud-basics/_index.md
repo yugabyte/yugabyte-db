@@ -12,7 +12,7 @@ menu:
 type: indexpage
 ---
 
-Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple availability zones and regions.
+Deploy single- and multi-region production clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
 ### Prepare
 
@@ -45,7 +45,7 @@ Using YugabyteDB Managed, you can create single- and multi-region clusters that 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-vpcs/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">VPC networks</div>
       </div>
       <div class="body">

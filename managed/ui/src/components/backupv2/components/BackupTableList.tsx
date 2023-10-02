@@ -9,13 +9,8 @@
 
 import React, { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import {
-  Backup_States,
-  fetchIncrementalBackup,
-  IBackup,
-  ICommonBackupInfo,
-  deleteIncrementalBackup
-} from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, Keyspace_Table } from '..';
+import { fetchIncrementalBackup, deleteIncrementalBackup } from '../../backupv2/common/BackupAPI';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
@@ -28,6 +23,7 @@ import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { IncrementalBackupProps } from './BackupDetails';
 import './BackupTableList.scss';
 
 export enum BackupTypes {
@@ -36,7 +32,7 @@ export enum BackupTypes {
 }
 export interface YSQLTableProps {
   keyspaceSearch?: string;
-  onRestore: Function;
+  onRestore: (tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => void;
   backup: IBackup;
   backupType?: BackupTypes;
   hideRestore?: boolean;
@@ -91,7 +87,14 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
                   }
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
-                    onRestore([row]);
+                    onRestore([row], {
+                      isRestoreEntireBackup: false,
+                      singleKeyspaceRestore: true,
+                      incrementalBackupUUID:
+                        backupType === BackupTypes.INCREMENT_BACKUP
+                          ? incrementalBackup?.backupUUID
+                          : backup.commonBackupInfo.backupUUID
+                    });
                   }}
                 />
               )}
@@ -151,9 +154,13 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList ?? []).filter((e) => {
-    return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
-  });
+  const filteredDBList = (dbList ?? [])
+    .filter((e) => {
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
+    })
+    .map((t, index) => {
+      return { ...t, index };
+    });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
@@ -168,7 +175,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         trClassName="clickable"
         tableHeaderClass="table-list-header"
       >
-        <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField="tablesList" dataFormat={(cell) => cell.length}>
           Tables
@@ -188,7 +195,14 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
                   className="restore-detail-button"
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
-                    onRestore([row]);
+                    onRestore([row], {
+                      isRestoreEntireBackup: false,
+                      singleKeyspaceRestore: true,
+                      incrementalBackupUUID:
+                        backupType === BackupTypes.INCREMENT_BACKUP
+                          ? incrementalBackup?.backupUUID
+                          : backup.commonBackupInfo.backupUUID
+                    });
                   }}
                 />
               )}
@@ -372,7 +386,14 @@ const IncrementalBackupCard = ({
             onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
               const { onRestore } = rest;
               e.stopPropagation();
-              onRestore(incrementalBackup.responseList);
+              const incrementalBackupProps: IncrementalBackupProps = {
+                isRestoreEntireBackup: false,
+                incrementalBackupUUID: incrementalBackup.backupUUID,
+                singleKeyspaceRestore: false
+              };
+              if (incrementalBackup.kmsConfigUUID)
+                incrementalBackupProps.kmsConfigUUID = incrementalBackup.kmsConfigUUID;
+              onRestore(incrementalBackup.responseList, incrementalBackup);
             }}
           />
         )}

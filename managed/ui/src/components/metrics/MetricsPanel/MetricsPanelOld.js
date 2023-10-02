@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 
 import {
@@ -186,7 +186,10 @@ export default class MetricsPanelOld extends Component {
         Metric graph in Prometheus
       </Tooltip>
     );
-    const getMetricsUrl = (internalUrl) => {
+    const getMetricsUrl = (internalUrl, metricsLinkUseBrowserFqdn) => {
+      if (!metricsLinkUseBrowserFqdn) {
+        return internalUrl;
+      }
       const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
@@ -200,7 +203,8 @@ export default class MetricsPanelOld extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={getMetricsUrl(this.props.metric.directURLs[0])}
+              href={getMetricsUrl(this.props.metric.directURLs[0],
+               this.props.metric.metricsLinkUseBrowserFqdn)}
             >
               <img
                 className="prometheus-link-icon"

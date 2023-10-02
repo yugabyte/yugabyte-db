@@ -4,7 +4,6 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React from 'react';
 import clsx from 'clsx';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { useFieldArray, useFormContext } from 'react-hook-form';
@@ -15,7 +14,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBInputField } from '../../../../../redesign/components';
 
 interface ConfigureAvailabilityZoneFieldProps {
-  isSubmitting: boolean;
+  isFormDisabled: boolean;
   className?: string;
 }
 
@@ -47,7 +46,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const ConfigureOnPremAvailabilityZoneField = ({
-  isSubmitting,
+  isFormDisabled,
   className
 }: ConfigureAvailabilityZoneFieldProps) => {
   const classes = useStyles();
@@ -69,12 +68,14 @@ export const ConfigureOnPremAvailabilityZoneField = ({
                 control={control}
                 name={`zones.${index}.code`}
                 placeholder="Enter..."
+                disabled={isFormDisabled}
                 fullWidth
               />
               <YBButton
                 className={classes.removeZoneButton}
                 btnIcon="fa fa-trash-o"
                 onClick={() => remove(index)}
+                disabled={isFormDisabled}
               />
             </Box>
           </div>
@@ -86,7 +87,8 @@ export const ConfigureOnPremAvailabilityZoneField = ({
           btnClass="btn btn-default"
           btnType="button"
           onClick={addZoneField}
-          disabled={isSubmitting}
+          disabled={isFormDisabled}
+          data-testid="ConfigureOnPremAvailabilityZonField-AddZoneButton"
         />
       </div>
     </div>

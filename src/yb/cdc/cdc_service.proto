@@ -37,6 +37,7 @@ option java_package = "org.yb.cdc";
 
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
@@ -100,8 +101,9 @@ message CDCErrorPB {
 
 enum CDCRecordType {
   CHANGE = 1;
-  AFTER = 2;
   ALL = 3;
+  FULL_ROW_NEW_IMAGE = 4;
+  MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
 }
 
 enum CDCRecordFormat {
@@ -128,6 +130,8 @@ message CreateCDCStreamRequestPB {
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
   optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional bool transactional = 7; // [default = false]
+  optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
 }
 
 message CreateCDCStreamResponsePB {
@@ -211,6 +215,9 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
 
   optional int64 safe_hybrid_time = 11 [default = -1];
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 12 [default = 0];
 }
 
 message KeyValuePairPB {
@@ -225,8 +232,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
-    TRANSACTION_COMMITTED = 6;
-    TRANSACTION_CREATED = 7;
+    // Reserved for deprecated TRANSACTION_COMMITTED and TRANSACTION_CREATED fields.
+    reserved 6, 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -250,6 +257,10 @@ message CDCRecordPB {
 
   // If operation type is a CHANGE_METADATA_OP, then include the tablet payload for it.
   optional tablet.ChangeMetadataRequestPB change_metadata_request = 11;
+
+  // For intents, what subtransaction, if any, they are part of.
+  // Omitted in cases where the subtransaction ID is kMinSubTransactionId.
+  optional uint32 subtransaction_id = 12;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -381,6 +392,8 @@ message CDCSDKProtoRecordPB {
 
   // Op id information to identify duplicate entries
   optional CDCSDKOpIdPB cdc_sdk_op_id = 2;
+
+  optional CDCSDKOpIdPB from_op_id = 3;
 }
 
 message GetChangesResponsePB {
@@ -406,6 +419,9 @@ message GetChangesResponsePB {
 
   // The safe time to be used on the target for this tablet.
   optional int64 safe_hybrid_time = 10;
+
+  // index used to filter out the records we've already streamed.
+  optional int32 wal_segment_index = 11 [default = 0];
 }
 
 message GetCheckpointRequestPB {

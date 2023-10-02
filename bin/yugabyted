@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 import argparse
-import shlex
 import atexit
 import json
 import logging
@@ -11,6 +10,7 @@ import os
 import re
 import resource
 import shutil
+from distutils.spawn import find_executable
 import subprocess
 import sys
 import time
@@ -92,7 +92,6 @@ SAMPLE_DATA_LINKS = {
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
-REQUIRED_TRANSPARENT_HUGEPAGES_LINUX = "always"
 REQUIRED_LOOPBACK_ADDRESSES = [
     '127\.0\.0\.2',
     '127\.0\.0\.3',
@@ -118,14 +117,6 @@ QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
     'linux' : 'https://docs.yugabyte.com/preview/quick-start/linux/',
 }
-LINUX_PREREQS_CMDS = {
-    'transparent_hugepages' : 'cat /sys/kernel/mm/transparent_hugepage/enabled',
-    'ntp' : 'which ntpd',
-    'chrony' : 'which chronyd',
-    'openssl' : 'which openssl',
-}
-MAC_PREREQS_CMDS = {
-}
 CONFIG_LINK = "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config"
 
 # Help Message Constants
@@ -143,6 +134,10 @@ PREFIX = {
     'configure data_placement': "",
     'configure encrypt_at_rest': "",
     'configure admin_operation': "",
+    'configure_read_replica' : "",
+    'configure_read_replica new': "",
+    'configure_read_replica modify': "",
+    'configure_read_replica delete': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -164,7 +159,11 @@ USAGE = {
     'configure' : "yugabyted configure [command] [flags]",
     'configure data_placement': "yugabyted configure data_placement [flags]",
     'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
-    'configure admin_operation' : "yugabyted admin_operation [flags]",
+    'configure admin_operation' : "yugabyted configure admin_operation [flags]",
+    'configure_read_replica' : "yugabyted configure_read_replica [command] [flags]",
+    'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
+    'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
+    'configure_read_replica delete' : "yugabyted configure_read_replica delete",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -190,17 +189,35 @@ EXAMPLE = {
     'collect_logs' : "",
     'cert' : "# Create node sever certificates:\n" +
              "yugabyted cert generate_server_certs --hostnames=<comma_seperated_hostnames>\n\n",
+    'configure_read_replica' : "# Configure a new read replica cluster:\n" +
+                  "yugabyted configure_read_replica new --rf=<replication_factor> " +
+                  "--data_placement_constraint=<placement_policy_for_rr_cluster>\n\n" +
+                  "# Modify an existing read replica cluster:\n" +
+                  "yugabyted configure_read_replica modify --rf=<new_replication_factor> " +
+                  "--data_placement_constraint=<new_placement_policy_for_rr_cluster>\n\n" +
+                  "# Delete an existing read replica cluster:\n" +
+                  "yugabyted configure_read_replica delete\n\n",
+    "new" : "# Configure a new read replica cluster:\n" +
+            "yugabyted configure_read_replica new --rf=<replication_factor> " +
+            "--data_placement_constraint=<placement_policy_for_rr_cluster>",
+    "modify" : "# Modify an existing read replica cluster:\n" +
+               "yugabyted configure_read_replica modify --rf=<new_replication_factor> " +
+               "--data_placement_constraint=<new_placement_policy_for_rr_cluster>",
+    "delete" : "# Delete an existing read replica cluster:\n" +
+               "yugabyted configure_read_replica delete",
     'configure' : "# Configure a multi-zone cluster:\n" +
                   "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                   "# Enable encryption at rest:\n" +
                   "yugabyted configure encrypt_at_rest --enable\n\n" +
-                  "For more examples use 'yugabyted configure [command] -h'",
+                  "For more examples use 'yugabyted configure [command] -h'\n\n" +
+                  "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+                  "yugabyted configure admin_operation --command <yb-admin_coomand>",
     'data_placement' : "# Configure a multi-zone cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
-                       "yugabyted configure --fault_tolerance=region\n\n" +
-                       "# Configure a multi-zone cluster with specified placemenrt info and rf:\n" +
-                       "yugabyted configure --fault_tolerance=zone " +
+                       "yugabyted configure data_placement --fault_tolerance=region\n\n" +
+                       "# Configure a multi-zone cluster with specified placement info and rf:\n" +
+                       "yugabyted configure data_placement --fault_tolerance=zone " +
                        "--constraint_value=cloud1.region1.zone1,cloud2.region2.zone2," +
                        "cloud3.region3.zon3 --rf=3\n\n",
     'encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
@@ -396,7 +413,10 @@ class ControlScript(object):
         atexit.register(self.kill_children)
         Output.script_exit_func = self.kill_children
 
-        self.start_processes()
+        if self.configs.saved_data.get("read_replica"):
+            self.start_rr_process()
+        else:
+            self.start_processes()
 
     # Kills all processes related to yugabyted
     def kill_all_procs(self):
@@ -448,6 +468,12 @@ class ControlScript(object):
         datapath = self.configs.saved_data.get("data_dir")
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
+        config_path = os.path.dirname(self.conf_file)
+        is_config_passed=False
+        for arg in sys.argv[1:]:
+            if (arg.startswith("--config")):
+                is_config_passed=True
+                break
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -470,9 +496,14 @@ class ControlScript(object):
             shutil.rmtree(certs_dir)
             Output.print_out("Deleted certs at {}.".format(certs_dir))
 
-        if os.path.exists(self.conf_file):
-            os.remove(self.conf_file)
-            Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        if is_config_passed:
+            if os.path.exists(self.conf_file):
+                os.remove(self.conf_file)
+                Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        else:
+            if os.path.isdir(config_path):
+                shutil.rmtree(config_path)
+                Output.print_out("Deleted conf at {}.".format(config_path))
 
         sys.exit(0)
 
@@ -530,6 +561,10 @@ class ControlScript(object):
                 "{0} is not running. Please run `{0} start` before starting a demo.".format(
                     SCRIPT_NAME))
 
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use demo commands " +
+                                      "from a read replica node.")
+
         db_name = DEMO_DB_PREFIX + self.configs.temp_data.get("demo_db")
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(db_name):
@@ -554,6 +589,10 @@ class ControlScript(object):
             Output.log_error_and_exit(
                 "{0} is not running. Please run `{0} start` before starting a demo.".format(
                     SCRIPT_NAME))
+
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use demo commands " +
+                                      "from a read replica node.")
 
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
@@ -585,6 +624,10 @@ class ControlScript(object):
                 "{0} is not running. Please run `{0} start` before starting a demo.".format(
                     SCRIPT_NAME))
 
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use demo commands " +
+                                      "from a read replica node.")
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
@@ -607,6 +650,10 @@ class ControlScript(object):
                 "{0} is not running. Please run `{0} start` before starting a demo.".format(
                     SCRIPT_NAME))
 
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use demo commands " +
+                                      "from a read replica node.")
+
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
@@ -616,16 +663,29 @@ class ControlScript(object):
         Output.print_and_log(msg)
 
     def collect_logs(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
         logpath = self.configs.saved_data.get("log_dir")
+        collect_at_dir=self.configs.temp_data.get("collect_at_dir")
         if not os.path.exists(logpath):
             Output.print_and_log("No logs directory at {}".format(logpath))
             return
-        tmpprefix = "yugabyted-{}.tar.gz".format(str(datetime.now()).replace(" ", "-"))
-        tarpath = os.path.join(os.path.expanduser('~'), tmpprefix)
+        tmpprefix = "yugabyted-{}s.tar.gz".format(datetime.now().strftime("%Y-%m-%d-%Hh%Mm%S.%f"))
+        tarpath = os.path.join(collect_at_dir, tmpprefix)
         with tarfile.open(name=tarpath, mode='w:gz', dereference=True) as archive:
-            archive.add(logpath)
-
+            for item in os.listdir(logpath):
+                item_path = os.path.join(logpath, item)
+                arcname = os.path.relpath(item_path, logpath)
+                archive.add(item_path, arcname=arcname)
+        status_details = [
+                (Output.make_yellow("Status"),"Logs collected successfully.")
+        ]
         if self.configs.temp_data.get("collect_logs_stdout"):
+            status_details = [
+                (Output.make_yellow("Status"), "Logs collected successfully." + \
+                    "Find the displayed logs below.")
+            ]
             Output.log("Logs are packaged into {}".format(tarpath))
             if tarfile.is_tarfile(tarpath):
                 with open(tarpath, 'rb') as tar_fd:
@@ -633,14 +693,23 @@ class ControlScript(object):
                         sys.stdout.buffer.write(tar_fd.read())
                     else:
                         sys.stdout.write(tar_fd.read())
-        else:
-            Output.print_and_log("Logs are packaged into {}".format(tarpath))
+        display_msg= "Collected logs can be found at: {}".format(tarpath)
+        status_details.extend([
+                (Output.make_yellow("Collected logs path"), display_msg)
+        ])
+        Output.print_and_log(self.get_status_string_common(status_details))
 
-    # Configuring the data placement policy
+    # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
         if not self.script.is_running():
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use `yugabyted " +
+                                      "configure data_placement` command from a read replica " +
+                                      "node. Please use `yugabyted configure_read_replica " +
+                                      "[new/modify/delete]` instead.")
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
         replication_factor = self.configs.temp_data.get("replication_factor")
@@ -648,26 +717,32 @@ class ControlScript(object):
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
 
-        current_masters = self.get_all_masters()
-        current_masters = [ master.split(':')[0] for master in current_masters ]
+        current_masters_with_port_list = self.get_all_masters()
+        current_masters_without_port_list = [ master.split(':')[0] for
+                                             master in current_masters_with_port_list ]
         leader_master = self.get_leader_master().split(':')[0]
         master_addr = "{}:{}".format(leader_master,
                                         self.configs.saved_data.get("master_rpc_port"))
 
         leader_master_http_endpoint = "{}:{}".format(leader_master,
                         self.configs.saved_data.get("master_webserver_port"))
-        placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
+        placement_uuid = self.configs.saved_data.get("placement_uuid")
+
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+        placement_locations = self.get_all_nodes_locations(all_tserver_info, placement_uuid)
 
         if len(placement_locations) < int(replication_factor):
             Output.print_and_log(msg = Output.make_red("ERROR") + ": not enough nodes to set-up " +
                                 "a RF-{} cluster".format(replication_factor), level=logging.ERROR)
             sys.exit(1)
 
-        new_masters = self.get_new_valid_masters(current_masters,
+        new_masters = self.get_new_valid_masters(current_masters_without_port_list,
                 leader_master, placement_locations)
 
-        masters_to_remove = [ master for master in current_masters if master not in new_masters ]
-        masters_to_add = [ master for master in new_masters if master not in current_masters ]
+        masters_to_remove = [ master for master in current_masters_without_port_list
+                             if master not in new_masters ]
+        masters_to_add = [ master for master in new_masters
+                          if master not in current_masters_without_port_list ]
 
         if not masters_to_remove and not masters_to_add:
             Output.log("Desired fault tolerance is already setup. No Masters to move.")
@@ -688,24 +763,26 @@ class ControlScript(object):
                 for master in track_masters_to_remove:
                     self.remove_master_for_data_placement(master_addr, master)
 
-        current_masters = self.get_all_masters()
+        current_masters_with_port_list = self.get_all_masters()
         placement_info = self.configs.temp_data.get("constraint_value")
         if not placement_info:
             placement_info = []
-            for master in current_masters:
+            for master in current_masters_with_port_list:
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
 
         if not self.is_placement_constraint_valid_length(placement_info):
-            Output.log_error_and_exit("FAILED: Invalid number of placement constraint specified.")
+            Output.log_error_and_exit(Output.make_red("FAILED") + ": Invalid number of " +
+                                      "placement constraint specified.")
 
         if not self.is_placement_constraint_valid_values(placement_locations, placement_info):
-            Output.log_error_and_exit("FAILED: Invalid values provided for placement constraint.")
+            Output.log_error_and_exit(Output.make_red("FAILED") + ": Invalid values provided " +
+                                      "for placement constraint.")
 
-        master_addresses = ",".join(current_masters)
+        master_addresses = ",".join(current_masters_with_port_list)
 
-        if not YBAdminProxy.modify_placement_info(master_addresses,
-                                                    placement_info, replication_factor):
+        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info,
+                                                  placement_uuid, replication_factor):
             Output.log_error_and_exit("FAILED: Setting of placement info of masters")
         else:
             Output.log("Configure step was successful.")
@@ -719,6 +796,11 @@ class ControlScript(object):
         if self.check_openssl():
             Output.log_error_and_exit(Output.make_red("Error") + ": openssl not installed. " +
                 "Can't create certificates.")
+
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use `yugabyted cert " +
+                                      "generate_server_certs` command from a read replica node. " +
+                                      "Please use a primary cluster node to generate certs.")
 
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         root_certs_dir = os.path.join(gen_certs_dir, "root-ca")
@@ -860,7 +942,7 @@ class ControlScript(object):
             masters_with_key[i] = master
 
         ret = True
-        if masters_with_key < len(master_ips):
+        if len(masters_with_key) < len(master_ips):
             ret = False
 
         for master in master_ips:
@@ -887,6 +969,11 @@ class ControlScript(object):
         if not self.script.is_running():
             Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
                 "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.saved_data.get("read_replica"):
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": Cannot use `yugabyted " +
+                                      "configure encrypt_at_rest` command from a read replica " +
+                                      "node. Please use a primary cluster node to enable EAR.")
 
         status_details = []
         has_errors = False
@@ -1062,11 +1149,171 @@ class ControlScript(object):
           Output.log(err)
           Output.print_out(Output.make_red(err))
 
-    # Check for openssl
+    # Checks if the read replica cluster has been already configured or not.
+    def is_read_replica_configured(self, cluster_config):
+        if cluster_config and "replicationInfo" in cluster_config:
+            if "readReplicas" in cluster_config["replicationInfo"]:
+                return True
+
+        return False
+
+    # Configuring the read replica cluster data placement policy
+    def configure_read_replica_new(self):
+        # Check if a node is running or not
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        # Check if read replica cluster has been already configured?
+        current_masters_with_port_list = self.get_all_masters()
+        master_addresses = ",".join(current_masters_with_port_list)
+        cluster_config = YBAdminProxy.get_cluster_config(master_addresses)
+        if self.is_read_replica_configured(cluster_config):
+            Output.print_and_log(Output.make_red("ERROR") + ": Read replica cluster has already " +
+                                 "been configured. If you want to change the configuration " +
+                                 "please use 'yugabyted configure_read_replica modify' command.")
+            sys.exit(1)
+
+        leader_master = self.get_leader_master().split(':')[0]
+        leader_master_http_endpoint = "{}:{}".format(leader_master,
+                        self.configs.saved_data.get("master_webserver_port"))
+
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+
+        placement_uuid = self.configs.saved_data.get("placement_uuid")
+        # Use read replica placement UUID if yugabyted is not running in a read replica node.
+        if not self.configs.saved_data.get("read_replica"):
+            placement_uuid = [uuid for uuid in list(all_tserver_info.keys())
+                              if uuid!=placement_uuid][0]
+
+        placement_locations = self.get_all_nodes_locations(all_tserver_info, placement_uuid)
+
+        rf_and_placement_policy_list = self.get_rr_rf_and_placement_constraint(placement_locations)
+        rr_replication_factor = rf_and_placement_policy_list[0]
+        rr_placement_constraint = rf_and_placement_policy_list[1]
+
+        status_details = list()
+        if not YBAdminProxy.set_read_replica_placement(master_addresses, rr_placement_constraint,
+                                                  placement_uuid, rr_replication_factor):
+            display_msg = "FAILED: Setting of cluster config of read replica cluster."
+            status_details.extend([
+                (Output.make_yellow("Status"), display_msg)
+            ])
+        else:
+            display_msg = [
+                "Configuration successful.",
+                "The primary cluster will begin asynchronous replication with " +
+                "the read replica cluster.",
+            ]
+            status_details.extend([
+                (Output.make_yellow("Status"), display_msg[0]),
+                (Output.make_yellow(""), display_msg[1]),
+            ])
+
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # Configuring the read replica cluster data placement policy
+    def configure_read_replica_modify(self):
+        # Check if a node is running or not
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        # Check if read replica cluster has been already configured?
+        current_masters_with_port_list = self.get_all_masters()
+        master_addresses = ",".join(current_masters_with_port_list)
+        cluster_config = YBAdminProxy.get_cluster_config(master_addresses)
+        if not self.is_read_replica_configured(cluster_config):
+            Output.print_and_log(Output.make_red("ERROR") + ": Read replica cluster has not " +
+                                 "been configured. Please set the read replica cluster " +
+                                 "configuration using 'yugabyted configure_read_replica new' " +
+                                 "command before modifying it.")
+            sys.exit(1)
+
+        leader_master = self.get_leader_master().split(':')[0]
+        leader_master_http_endpoint = "{}:{}".format(leader_master,
+                        self.configs.saved_data.get("master_webserver_port"))
+
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+
+        placement_uuid = self.configs.saved_data.get("placement_uuid")
+        # Use read replica placement UUID if yugabyted is not running in a read replica node.
+        if not self.configs.saved_data.get("read_replica"):
+            placement_uuid = [uuid for uuid in list(all_tserver_info.keys())
+                              if uuid!=placement_uuid][0]
+
+        placement_locations = self.get_all_nodes_locations(all_tserver_info, placement_uuid)
+
+        self.validate_new_config_for_rr_modify(cluster_config)
+
+        rf_and_placement_policy_list = self.get_rr_rf_and_placement_constraint(placement_locations)
+        rr_replication_factor = rf_and_placement_policy_list[0]
+        rr_placement_constraint = rf_and_placement_policy_list[1]
+
+        status_details = list()
+        if not YBAdminProxy.modify_read_replica_placement(master_addresses, rr_placement_constraint,
+                                                  placement_uuid, rr_replication_factor):
+            display_msg = "FAILED: Modifying of cluster config of read replica cluster."
+            status_details.extend([
+                (Output.make_yellow("Status"), display_msg)
+            ])
+        else:
+            display_msg = [
+                "Configuration successful.",
+                "The primary cluster will begin asynchronous replication with " +
+                "the read replica cluster.",
+            ]
+            status_details.extend([
+                (Output.make_yellow("Status"), display_msg[0]),
+                (Output.make_yellow(""), display_msg[1]),
+            ])
+
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # Configuring the read replica cluster data placement policy
+    def configure_read_replica_delete(self):
+        # Check if a node is running or not
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        # Check if read replica cluster has been already configured?
+        current_masters_with_port_list = self.get_all_masters()
+        master_addresses = ",".join(current_masters_with_port_list)
+        cluster_config = YBAdminProxy.get_cluster_config(master_addresses)
+        if not self.is_read_replica_configured(cluster_config):
+            Output.print_and_log(Output.make_red("ERROR") + ": Read replica cluster has not " +
+                                 "been configured.")
+            sys.exit(1)
+
+        status_details = list()
+        if not YBAdminProxy.delete_read_replica_placement(master_addresses):
+            display_msg = "FAILED: Deletion of read replica cofiguration."
+            status_details.extend([
+                (Output.make_yellow("Status"), display_msg)
+            ])
+        else:
+            status_details.extend([
+                    (Output.make_yellow("Status"), "Configure delete step was successful."),
+            ])
+
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # Check that `openssl` binary is in our PATH
+    # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        openssl_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('openssl')))
-        openssl_exit_code = openssl_check[2]
-        return openssl_exit_code != 0
+        return find_executable('openssl') == None
+
+    # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
+    # /sys/kernel/mm/transparent_hugepage before checking enabled
+    def linux_transparent_hugepage_check(self):
+        thp_dir = "/sys/kernel/mm/transparent_hugepage"
+        thp_mode = "disabled"
+        if os.path.exists(thp_dir):
+            with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
+                thp_enabled = thp_enabled.read()
+                thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
+        return thp_mode == 'always'
 
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
@@ -1075,18 +1322,13 @@ class ControlScript(object):
         prereqs_failed_flag = False
         prereqs_warn_flag = False
 
-        transparent_hugepages_check = run_process(shlex
-                .split(LINUX_PREREQS_CMDS.get('transparent_hugepages')))
-        transparent_hugepages = re.search("\[(.*)\]", transparent_hugepages_check[0]).group(1)
-        if transparent_hugepages != REQUIRED_TRANSPARENT_HUGEPAGES_LINUX:
+        if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('ntp')))
-        chrony_check = run_process(shlex.split(LINUX_PREREQS_CMDS.get('chrony')))
-        ntp_exit_code = ntp_check[2]
-        chrony_exit_code = chrony_check[2]
-        if ntp_exit_code != 0 and chrony_exit_code != 0:
+        ntp_check = find_executable('ntpd')
+        chrony_check = find_executable('chronyd')
+        if not ntp_check and not chrony_check:
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
@@ -1104,6 +1346,7 @@ class ControlScript(object):
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
         help_msg = ""
+        # Check pre-reqs as per machine OS
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
             help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
@@ -1113,17 +1356,24 @@ class ControlScript(object):
             help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
                 "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
 
+        # Get pre-req failures and warnings
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
 
         msg = " System checks. Following pre-reqs are not met:\n"
+
+        # Display message for failures
         failed_msg = ""
         for prereq in prereqs_failed:
             failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+
+        # Display message for warnings
         warning_msg = ""
-        warnings = []
+        warnings = dict()
         for prereq in prereqs_warn:
             warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
-            warnings.append(PREREQS_ERROR_MSGS[prereq])
+            warnings[str(prereq)] = str(PREREQS_ERROR_MSGS[prereq])
+
+        # Ulimits display message
         ulimit_msg = {
             'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
             'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
@@ -1131,6 +1381,7 @@ class ControlScript(object):
 
         final_msg = ""
         check_status = None
+        # Final display message in case of failures
         if prereqs_failed_flag:
             final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
             final_msg += (failed_msg+warning_msg)
@@ -1139,19 +1390,22 @@ class ControlScript(object):
                     final_msg+=ulimit_msg[ulimit]
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
+        # Final display message in case of warnings
         elif prereqs_warn_flag:
             final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
-                    final_msg.append(PREREQS_ERROR_MSGS[ulimit])
-            final_msg.append(help_msg)
+                    final_msg[str(ulimit)] = str(PREREQS_ERROR_MSGS[ulimit])
+            final_msg["help_msg"] = help_msg
             check_status = Output.ANIMATION_WARNING
+        # Final display message in case of Ulimits failures
         elif ulimits:
-            final_msg = []
+            final_msg = dict()
             for ulimit in ulimits:
-                final_msg.append(PREREQS_ERROR_MSGS[ulimit])
-            final_msg.append(help_msg)
+                final_msg[str(ulimit)] = str(PREREQS_ERROR_MSGS[ulimit])
+            final_msg["help_msg"] = help_msg
             check_status = Output.ANIMATION_WARNING
+        # All pre-reqs passsed
         else:
             final_msg = Output.ANIMATION_SUCCESS + " " + "System checks"
             check_status = Output.ANIMATION_SUCCESS
@@ -1167,10 +1421,17 @@ class ControlScript(object):
     # TODO: Check postmaster.pid.
     def get_failed_node_processes(self):
         failed_processes = []
-        for process in ("master", "tserver"):
+        for process in ["tserver",]:
             if not ProcessManager.is_process_running(
                     process, self.configs.saved_data.get("data_dir")):
                 failed_processes.append("yb-{}".format(process))
+
+        if not self.configs.saved_data.get("read_replica"):
+            for process in ["master",]:
+                if not ProcessManager.is_process_running(
+                        process, self.configs.saved_data.get("data_dir")):
+                    failed_processes.append("yb-{}".format(process))
+
         return failed_processes
 
     # Called after receiving certain signals or on exit. Kills all subprocesses.
@@ -1207,7 +1468,7 @@ class ControlScript(object):
         # exit no matter what
         os._exit(os.EX_OK)
 
-    def start_first_master_tserver(self, master_addresses):
+    def start_first_master_tserver(self):
         self.processes.get("master").start()
 
         was_already_setup = self.configs.saved_data.get("cluster_member", False)
@@ -1224,7 +1485,26 @@ class ControlScript(object):
         if was_already_setup:
             Output.log("Node was a member of some cluster before. "
                     "Skipping tserver setup")
-        elif not self.wait_tserver():
+        elif not self.wait_tserver(cluster_type="primary"):
+            return "Failed to start tserver {}".format(SCRIPT_NAME)
+
+        if not was_already_setup:
+            master_addresses = self.configs.saved_data.get("current_masters")
+            universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
+            if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
+                self.configs.saved_data["universe_uuid"] = universe_uuid
+                self.configs.save_configs()
+
+        return None
+
+    def start_first_read_replica_tserver(self):
+        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        self.processes.get("tserver").start()
+        if was_already_setup:
+            Output.log("Node was a member of some cluster before. "
+                    "Skipping tserver setup")
+        elif not self.wait_tserver(cluster_type="read_replica"):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
@@ -1244,151 +1524,16 @@ class ControlScript(object):
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
-        fault_tolerance = self.configs.saved_data.get("fault_tolerance")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
-        tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
-        certs_dir = self.configs.saved_data.get("certs_dir")
         was_already_setup = self.configs.saved_data.get("cluster_member", False)
 
-        common_gflags = [
-            "--stop_on_parent_termination",
-            "--undefok=stop_on_parent_termination",
-            "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--webserver_interface={}".format(bind_ip),
-            "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
-                ",".join(METRICS_SNAPSHOT_LIST)),
-            "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
-            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
-            "--placement_cloud={}".format(self.configs.saved_data.get("cloud_provider")),
-            "--placement_region={}".format(self.configs.saved_data.get("cloud_region")),
-            "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
-        ]
+        common_gflags = self.get_common_flags()
 
-        if fault_tolerance == "region":
-            common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
+        yb_master_cmd = self.get_master_cmd(common_gflags)
 
-        if self.configs.saved_data.get("secure"):
-            common_gflags.extend(["--certs_dir={}".format(certs_dir),
-            "--allow_insecure_connections=false",
-            "--use_node_to_node_encryption=true",])
-
-        yb_master_cmd = [find_binary_location("yb-master")] + \
-            common_gflags + \
-            [
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
-                "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
-                "--replication_factor=1",
-                "--use_initial_sys_catalog_snapshot",
-                "--server_dump_info_path={}".format(
-                    os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
-                "--master_enable_metrics_snapshotter=true",
-                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.35",
-                "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
-            ]
-        # if a join ip is specified, bring up a shell mode master
-        if not join_ip:
-            yb_master_cmd.append("--master_addresses={}".format(master_addresses))
-            yb_master_cmd.append("--cluster_uuid={}".format(
-                self.configs.saved_data.get("universe_uuid")))
-
-        if self.configs.saved_data.get("master_flags"):
-            yb_master_cmd.extend(
-                ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("master_flags").split(",")])
-
-        yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_gflags + \
-            [
-                "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
-                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
-                "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
-                "--cql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ycql_port")),
-                "--server_dump_info_path={}".format(
-                    os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
-                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ysql_port")),
-                "--tserver_enable_metrics_snapshotter=true",
-                "--metrics_snapshotter_interval_ms=11000",
-                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.6",
-                "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
-                "--start_redis_proxy=false",
-            ]
-
-        tserver_flags = self.configs.saved_data.get("tserver_flags")
-
-        # If ysql_hba_conf_csv is present
-        # Extract the value of ysql_hba_conf_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_hba_conf_csv") != -1:
-            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
-            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
-            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
-                    ysql_hba_conf_csv_end_index]
-            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
-
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-
-            # Remove the flag present in tserver_flags
-            if ysql_hba_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_hba_conf_csv_end_index:]
-
-            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
-
-        # If ysql_pg_conf_csv is present
-        # Extract the value of ysql_pg_conf_csv given through CLI
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_pg_conf_csv") != -1:
-            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
-            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
-            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
-                    ysql_pg_conf_csv_end_index]
-            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
-
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-
-            # Remove the flag present in tserver_flags
-            if ysql_pg_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_pg_conf_csv_end_index:]
-
-            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
-
-        if tserver_flags:
-            yb_tserver_cmd.extend(
-                ["--{}".format(flag) for flag in tserver_flags.split(",")])
-
-        # Add authentication flags in tserver
-        if self.configs.saved_data.get("secure"):
-            yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
-                "--certs_for_client_dir={}".format(certs_dir),])
-
-        if self.configs.saved_data.get("ysql_enable_auth"):
-            yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
-
-        if self.configs.saved_data.get("use_cassandra_authentication"):
-            yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
-
-        if self.configs.saved_data.get("dns_enabled"):
-            yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
+        yb_tserver_cmd = self.get_tserver_cmd(common_gflags)
 
         self.processes = {
             "master": YBProcessManager(
@@ -1438,6 +1583,7 @@ class ControlScript(object):
             if is_first_run:
                 # Output.init_animation("Running system checks...")
                 warnings = []
+                warnings_for_ui = []
                 warning_help_msg=""
                 ulimits_failed = self.script.set_rlimits(print_info=True)
                 if ulimits_failed:
@@ -1453,17 +1599,24 @@ class ControlScript(object):
                 if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
                     Output.print_out(prereqs_check_result['msg'])
                 elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-                    warnings.extend(prereqs_check_result['msg'][:-1])
-                    warning_help_msg = prereqs_check_result['msg'][-1]
+
+                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
+
+                    prereqs_check_result['msg'].pop("help_msg")
+                    warnings_for_ui = []
+                    for k in prereqs_check_result['msg'].keys():
+                        warnings_for_ui.extend([k])
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
                     Output.log(msg=prereqs_check_result['msg'],
                         level=logging.ERROR)
+
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
                 self.post_install_yb()
 
-                ret = self.start_first_master_tserver(master_addresses)
+                ret = self.start_first_master_tserver()
                 if ret:
                     Output.update_animation("Database failed to start",
                         status=Output.ANIMATION_FAIL)
@@ -1487,9 +1640,11 @@ class ControlScript(object):
                     Output.update_animation("Encryption in Transit and " +
                         "Password Authentication enabled")
                 else:
-                    warnings.append("Cluster started in an insecure mode without " +
-                        "authentication and encryption enabled. For non-production use only, " +
-                        "not to be used without firewalls blocking the internet traffic.")
+                    insecure_msg = "Cluster started in an insecure mode without " + \
+                        "authentication and encryption enabled. For non-production use only, " + \
+                        "not to be used without firewalls blocking the internet traffic."
+                    warnings.append(insecure_msg)
+                    warnings_for_ui.extend(["insecure"])
 
                 # Persist the config after successful start
                 self.configs.save_configs()
@@ -1510,7 +1665,12 @@ class ControlScript(object):
                 if self.configs.saved_data.get("ui"):
                     yugabyted_ui_cmd = [ find_binary_location("yugabyted-ui")] + \
                         [
-                            "-database_host={}".format(bind_ip)
+                            "-database_host={}".format(bind_ip),
+                            "-master_ui_port={}".format(self.configs.saved_data.
+                                                        get("master_webserver_port")),
+                            "-tserver_ui_port={}".format(self.configs.saved_data.
+                                                        get("tserver_webserver_port")),
+                            "-warnings={}".format("|".join(warnings_for_ui))
                         ]
                     if self.configs.saved_data.get("secure"):
                         yugabyted_ui_cmd.extend(["-secure=true",
@@ -1547,10 +1707,18 @@ class ControlScript(object):
                         Output.make_underline(SLACK_LINK), Output.SHIRT,
                         Output.make_underline(COMMUNITY_REWARDS_LINK))
 
-                if self.configs.saved_data.get("secure") and not join_ip:
-                    status += "\n{} is stored at {}\n".format(Output.make_cyan("Credentials File"),
-                    os.path.join(self.configs.saved_data.get("data_dir"),
-                        "{}_credentials.txt".format(SCRIPT_NAME)))
+                if self.configs.saved_data.get("secure"):
+                    if not join_ip:
+                        status += "\n{} is saved in the {}.\n{} is stored at {}\n".format(
+                            Output.make_cyan("DB_PASSWORD"),
+                            Output.make_cyan("Credentials File"),
+                            Output.make_cyan("Credentials File"),
+                            os.path.join(self.configs.saved_data.get("data_dir"),
+                                "{}_credentials.txt".format(SCRIPT_NAME)))
+                    else:
+                        status += "\n{} is saved in ".format(Output.make_cyan("DB_PASSWORD")) + \
+                            "the {} which has been generated on the 1st node.\n".format(
+                                Output.make_cyan("Credentials File"))
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
@@ -1629,6 +1797,387 @@ class ControlScript(object):
                 animation_status = Output.ANIMATION_FAIL if err else Output.ANIMATION_SUCCESS
                 # Output.update_animation("UI status", status=animation_status)
         return (err, was_started)
+
+    def start_rr_process(self):
+        bind_ip = self.configs.saved_data.get("advertise_address")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+        was_already_setup = self.configs.saved_data.get("cluster_member", False)
+
+        common_gflags = self.get_common_flags()
+
+        yb_tserver_cmd = self.get_tserver_cmd(common_gflags)
+
+        self.processes = {
+            "tserver": YBProcessManager(
+                "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
+                self.configs.saved_data.get("data_dir")),
+        }
+
+        for p in self.processes.values():
+            pid = p.get_pid()
+            if pid:
+                Output.print_out(
+                    "{} is already running... Is there an existing {} process?".format(
+                        p.name, SCRIPT_NAME))
+                # Clear self.processes so kill_children() doesn't kill existing processes.
+                self.processes = {}
+                return
+
+        is_first_run = True
+        callhome_thread = None
+        masters_list_update_thread = None
+        self.stop_callhome = False
+        while True:
+            should_callhome = False
+
+            is_first_install = is_first_run and not self.is_yb_initialized()
+
+            # Create data directory.
+            data_dir = self.configs.saved_data.get("data_dir")
+            if not os.path.exists(data_dir):
+                Output.log(
+                    "Creating data directory {}.".format(data_dir))
+                os.makedirs(data_dir)
+
+            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
+            pid_file_name = os.path.basename(self.script.pidfile)
+            data_dir_files = [ x for x in os.listdir(data_dir) if x != pid_file_name ]
+            if is_first_install and data_dir_files:
+                Output.print_and_log(
+                    ("Found files {} in data dir {} from possibly failed initialization."
+                    " Removing...").format(data_dir_files, data_dir))
+                rmcontents(data_dir, exclude_names=[pid_file_name])
+
+            # Start or initialize yb-master and yb-tserver.
+            if is_first_run:
+                warnings = []
+                warning_help_msg=""
+                ulimits_failed = self.script.set_rlimits(print_info=True)
+                if ulimits_failed:
+                    msg = "Failed to meet recommended settings. Ulimits too low - {}.\n".format(
+                    ", ".join(ulimits_failed))
+                    ulimit_warn_msg = msg + "Note {} will still run, although it may fail for " \
+                        "larger workloads. For more info, see {}".format(SCRIPT_NAME, CONFIG_LINK)
+                    self.alerts.append((ALERT_WARNING, ULIMIT_ERR_CODE, ulimit_warn_msg))
+
+                prereqs_check_result = self.prereqs_check(ulimits=ulimits_failed)
+                if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
+                    Output.print_out(prereqs_check_result['msg'])
+                elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
+                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
+                elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
+                    Output.log(msg=prereqs_check_result['msg'],
+                        level=logging.ERROR)
+
+                Output.init_animation("Starting the YugabyteDB Processes...")
+
+                self.post_install_yb()
+
+                ret = self.start_first_read_replica_tserver()
+                if ret:
+                    Output.update_animation("Database failed to start",
+                        status=Output.ANIMATION_FAIL)
+                    Output.log_error_and_exit(ret)
+
+                Output.update_animation("YugabyteDB Started")
+
+                if join_ip:
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " Read Replica node joined a running cluster with UUID {}"
+                            .format(self.configs.saved_data.get("universe_uuid")))
+
+                if self.configs.saved_data.get("secure"):
+                    Output.init_animation("Enabling Encryption in Transit and " +
+                        "Password Authentication...")
+                    Output.update_animation("Encryption in Transit and " +
+                        "Password Authentication enabled")
+                else:
+                    warnings.append("Cluster started in an insecure mode without " +
+                        "authentication and encryption enabled. For non-production use only, " +
+                        "not to be used without firewalls blocking the internet traffic.")
+
+                # Persist the config after successful start
+                self.configs.save_configs()
+            else:
+                for name in ("tserver",):
+                    process = self.processes.get(name)
+                    process.remove_error_logs()
+                    if not process.is_running():
+                        Output.log(
+                            "{} died unexpectedly. Restarting...".format(process.name),
+                            logging.ERROR)
+                        self.update_tserver_master_addrs()
+                        process.start()
+                        should_callhome = True
+
+            if warnings:
+                warning_msg = "\n" + Output.make_yellow(Output.ANIMATION_WARNING +
+                    " WARNINGS") + ":\n"
+
+                for msg in warnings:
+                    warning_msg += "- " + msg + "\n"
+                if warning_help_msg:
+                    warning_msg += warning_help_msg
+
+            if is_first_run:
+                status = self.get_status_string() + \
+                    "{} YugabyteDB started successfully! To load a sample dataset, " \
+                    "try '{} demo'.\n" \
+                    "{} Join us on Slack at {}\n" \
+                    "{} Claim your free t-shirt at {}\n".format(
+                        Output.ROCKET, SCRIPT_NAME, Output.PARTY,
+                        Output.make_underline(SLACK_LINK), Output.SHIRT,
+                        Output.make_underline(COMMUNITY_REWARDS_LINK))
+
+                if len(self.setup_env_init.get_ysql_password()) > 99:
+                    status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
+
+                if warnings:
+                    Output.print_out(warning_msg)
+
+                Output.print_out(status)
+
+                if self.configs.temp_data.get("background"):
+                    # Let original process know daemon was successful so it can exit.
+                    # This is to display the initial status message.
+                    self.script.daemon_success.put(1)
+                    # Ignore any console output as important information will be logged.
+                    with open('/dev/null', 'r+') as dev_null:
+                        Output.console_access = False
+                        sys.stderr.flush()
+                        sys.stdout.flush()
+                        os.dup2(dev_null.fileno(), sys.stdin.fileno())
+                        os.dup2(dev_null.fileno(), sys.stderr.fileno())
+                        os.dup2(dev_null.fileno(), sys.stdout.fileno())
+
+                Diagnostics.first_run_secs = time.time() - start_time_sec
+                Diagnostics.first_install = is_first_install
+
+                if self.configs.saved_data.get("callhome"):
+                    callhome_thread = Thread(target=self.callhome_loop)
+                    callhome_thread.daemon = True
+                    callhome_thread.start()
+
+                masters_list_update_thread = Thread(target=self.update_masters_list_loop)
+                masters_list_update_thread.daemon = True
+                masters_list_update_thread.start()
+
+            is_first_run = False
+            if should_callhome:
+                self.callhome()
+
+            time.sleep(int(self.configs.saved_data.get("polling_interval")))
+
+    def get_common_flags(self):
+        bind_ip = self.configs.saved_data.get("advertise_address")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
+        fault_tolerance = self.configs.saved_data.get("fault_tolerance")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+        certs_dir = self.configs.saved_data.get("certs_dir")
+
+        common_gflags = [
+            "--stop_on_parent_termination",
+            "--undefok=stop_on_parent_termination",
+            "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
+            "--webserver_interface={}".format(bind_ip),
+            "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
+                ",".join(METRICS_SNAPSHOT_LIST)),
+            "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
+            "--ysql_num_shards_per_tserver={}".format(YSQL_NUM_SHARDS_PER_TSERVER),
+            "--placement_cloud={}".format(self.configs.saved_data.get("cloud_provider")),
+            "--placement_region={}".format(self.configs.saved_data.get("cloud_region")),
+            "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
+        ]
+
+        if fault_tolerance == "region":
+            common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
+
+        if self.configs.saved_data.get("secure"):
+            common_gflags.extend(["--certs_dir={}".format(certs_dir),
+            "--allow_insecure_connections=false",
+            "--use_node_to_node_encryption=true",])
+
+        return common_gflags
+
+
+    def get_master_cmd(self, common_flags):
+        bind_ip = self.configs.saved_data.get("advertise_address")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+
+        yb_master_cmd = [find_binary_location("yb-master")] + \
+            common_flags + \
+            [
+                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
+                "--replication_factor=1",
+                "--use_initial_sys_catalog_snapshot",
+                "--server_dump_info_path={}".format(
+                    os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
+                "--master_enable_metrics_snapshotter=true",
+                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.35",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
+            ]
+        # if a join ip is specified, bring up a shell mode master
+        if not join_ip:
+            yb_master_cmd.append("--master_addresses={}".format(master_addresses))
+            yb_master_cmd.append("--cluster_uuid={}".format(
+                self.configs.saved_data.get("universe_uuid")))
+
+        if self.configs.saved_data.get("master_flags"):
+            yb_master_cmd.extend(
+                ["--{}".format(flag) for flag in \
+                    self.configs.saved_data.get("master_flags").split(",")])
+
+        return yb_master_cmd
+
+    def get_tserver_cmd(self, common_flags):
+        bind_ip = self.configs.saved_data.get("advertise_address")
+        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        master_rpc_port = self.configs.saved_data.get("master_rpc_port")
+        join_ip = self.configs.saved_data.get("join")
+        master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
+        if join_ip:
+            master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
+        tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
+        certs_dir = self.configs.saved_data.get("certs_dir")
+
+        yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_flags + \
+            [
+                "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
+                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
+                "--cql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ycql_port")),
+                "--server_dump_info_path={}".format(
+                    os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
+                "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
+                    bind_ip, self.configs.saved_data.get("ysql_port")),
+                "--tserver_enable_metrics_snapshotter=true",
+                "--metrics_snapshotter_interval_ms=11000",
+                "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
+                "--default_memory_limit_to_ram_ratio=0.6",
+                "--instance_uuid_override={}".format(self.configs.saved_data.get("tserver_uuid")),
+                "--start_redis_proxy=false",
+                "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
+            ]
+
+        tserver_flags = self.configs.saved_data.get("tserver_flags")
+
+        # If ysql_hba_conf_csv is present
+        # Extract the value of ysql_hba_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_hba_conf_csv") != -1:
+            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
+            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
+            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
+                    ysql_hba_conf_csv_end_index]
+            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
+                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_hba_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_hba_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+
+        # If ysql_ident_conf_csv is present
+        # Extract the value of ysql_ident_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_ident_conf_csv") != -1:
+            ysql_ident_conf_csv_start_index = tserver_flags.find('ysql_ident_conf_csv')
+            ysql_ident_conf_csv_end_index = \
+                tserver_flags.find('}', ysql_ident_conf_csv_start_index) + 1
+            ysql_ident_conf_csv_flag = tserver_flags[ysql_ident_conf_csv_start_index:\
+                    ysql_ident_conf_csv_end_index]
+            ysql_ident_conf_csv_flag = \
+                ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+            elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_ident_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_ident_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
+
+        # If ysql_pg_conf_csv is present
+        # Extract the value of ysql_pg_conf_csv given through CLI
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_pg_conf_csv") != -1:
+            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
+            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
+            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
+                    ysql_pg_conf_csv_end_index]
+            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
+                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_pg_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_pg_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
+
+        if tserver_flags:
+            yb_tserver_cmd.extend(
+                ["--{}".format(flag) for flag in tserver_flags.split(",")])
+
+        # Add authentication flags in tserver
+        if self.configs.saved_data.get("secure"):
+            yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
+                "--certs_for_client_dir={}".format(certs_dir),])
+
+        if self.configs.saved_data.get("ysql_enable_auth"):
+            yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
+
+        if self.configs.saved_data.get("use_cassandra_authentication"):
+            yb_tserver_cmd.extend(["--use_cassandra_authentication=true"])
+
+        if self.configs.saved_data.get("dns_enabled"):
+            yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
+
+        return yb_tserver_cmd
 
     # Returns (error string, yw_started).
     # yw_started is True if YW was actually started
@@ -2035,28 +2584,31 @@ class ControlScript(object):
 
         Output.log_error_and_exit("Couldn't get Leader master")
 
-    # Get all masters placement locations
-    def get_all_masters_locations(self, master_hostport):
-
+    # Get all tservers details
+    def get_all_tserver_info(self, master_hostport):
         try:
             leaderMasterURL = "http://{}/api/v1/tablet-servers".format(master_hostport)
             response = urlopen(Request(leaderMasterURL))
             jsonResponseFromMaster = json.load(response)
-            dictOfAllNodes = jsonResponseFromMaster.get("")
-
-            placementInfoOfEveryNode = {}
-            for node in dictOfAllNodes:
-                hostname = node.split(":")[0]
-                cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
-                    dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
-                placementInfoOfEveryNode[hostname] = cloudLocationOfHost
-
-            return placementInfoOfEveryNode
-
+            return jsonResponseFromMaster
         except HTTPError as http_err:
-            print('HTTP error occurred while fetching cloud location: {}', http_err)
+            Output.print_and_log('HTTP error occurred while fetching cloud location: {}'.format(
+                http_err), level=logging.ERROR)
         except Exception as err:
-            print('Other error occurred while fetching cloud location: {}', err)
+            Output.print_and_log('Other error occurred while fetching cloud location: {}'.format(
+                err), level=logging.ERROR)
+
+    # Get all masters placement locations
+    def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
+        dictOfAllNodes = all_tserver_info.get(placement_uuid)
+        placementInfoOfEveryNode = {}
+        for node in dictOfAllNodes:
+            hostname = node.split(":")[0]
+            cloudLocationOfHost = "{}.{}.{}".format(dictOfAllNodes[node]["cloud"],
+                dictOfAllNodes[node]["region"], dictOfAllNodes[node]["zone"])
+            placementInfoOfEveryNode[hostname] = cloudLocationOfHost
+
+        return placementInfoOfEveryNode
 
     # Get the location of a master in accordance to the fault tolerance
     def get_cloud_location_per_fault_tolerance(self, master_location):
@@ -2193,11 +2745,11 @@ class ControlScript(object):
             if replication_factor == 1:
                 if fault_tolerance == "zone":
                     final_status = "Configuration successful."
-                    ft_status = "Universe cannot survive even 1 availability zone failure"
+                    ft_status = "Primary Cluster cannot survive even 1 availability zone failure"
                 elif fault_tolerance == "region":
                     final_status = "Configuration successful. Primary data placement is " + \
                         "not geo-redundant."
-                    ft_status = "Universe cannot survive even 1 region failure."
+                    ft_status = "Primary Cluster cannot survive even 1 region failure."
 
                 status_details = [
                     (Output.make_yellow("Status"), final_status),
@@ -2210,12 +2762,12 @@ class ControlScript(object):
             else:
                 if fault_tolerance == "zone":
                     final_status = "Configuration successful."
-                    ft_status = "Universe can survive at most any " + \
+                    ft_status = "Primary Cluster can survive at most any " + \
                         "{} availability zone failure".format(replication_factor//2)
                 elif fault_tolerance == "region":
                     final_status = "Configuration successful. Primary data placement is " + \
                         "geo-redundant."
-                    ft_status = "Universe can survive at most any " + \
+                    ft_status = "Primary Cluster can survive at most any " + \
                         "{} region failure.".format(replication_factor//2)
 
                 status_details = [
@@ -2232,11 +2784,11 @@ class ControlScript(object):
 
             if fault_tolerance == "zone":
                 final_status = "Configuration successful."
-                ft_status = "Universe cannot survive even 1 availability zone failure."
+                ft_status = "Primary Cluster cannot survive even 1 availability zone failure."
             elif fault_tolerance == "region":
                 final_status = "Configuration successful. Primary data placement is " + \
                     "not geo-redundant."
-                ft_status = "Universe cannot survive even 1 region failure."
+                ft_status = "Primary Cluster cannot survive even 1 region failure."
 
             status_details = [
                 (Output.make_yellow("Status"), final_status),
@@ -2254,7 +2806,7 @@ class ControlScript(object):
                 ft_status = [
                     "For specified Replication factor (rf) {},".format(replication_factor) + \
                         " not enough availability zones.",
-                    "Universe can survive the failure of only {} availability zone.".format(
+                    "Primary Cluster can survive the failure of only {} availability zone.".format(
                         [k for k, v in placement_location_map.items()
                             if v<=number_of_failure_node_tolerance][0]),
                     "Following are number of nodes in each availability zone."
@@ -2265,7 +2817,7 @@ class ControlScript(object):
                 ft_status = [
                     "For specified Replication factor (rf) {},".format(replication_factor) + \
                         " not enough regions.",
-                    "Universe can survive the failure of only {} region.".format(
+                    "Primary Cluster can survive the failure of only {} region.".format(
                         [k for k, v in placement_location_map.items()
                             if v<=number_of_failure_node_tolerance][0]),
                     "Following are number of nodes in each region."
@@ -2300,10 +2852,10 @@ class ControlScript(object):
                 ft_status = [
                     "For specified Replication factor (rf) {},".format(replication_factor) + \
                         " not enough availability zones.",
-                    "Universe can survive the failure of availability zones,",
+                    "Primary Cluster can survive the failure of availability zones,",
                     "if the total number of down nodes in the YugabyteDB cluster doesn't " + \
                         "exceed {}.".format(replication_factor//2),
-                    "Following are number of nodes in each availability zone."
+                    "Following are number of replicas in each availability zone."
                 ]
             elif fault_tolerance == "region":
                 final_status = "Configuration successful. Primary data placement is " + \
@@ -2311,10 +2863,10 @@ class ControlScript(object):
                 ft_status = [
                     "For specified Replication factor (rf) {},".format(replication_factor) + \
                         " not enough regions.",
-                    "Universe can survive the failure of regions,",
+                    "Primary Cluster can survive the failure of regions,",
                     "if the total number of down nodes in the YugabyteDB cluster doesn't " + \
                         "exceed {}.".format(replication_factor//2),
-                    "Following are number of nodes in each region."
+                    "Following are number of replicas in each region."
                 ]
 
             status_details += [
@@ -2364,6 +2916,345 @@ class ControlScript(object):
 
         return is_valid
 
+    # az_to_num_rr_nodes_map is map in the form of {az: num_of_rr_nodes}.
+    # Here az means the availability zone in form of cloud.region.zone.
+    # num_of_rr_nodes is the number of all the nodes present in that az.
+    def get_az_to_num_rr_nodes_map(self, placement_locations):
+        az_to_num_rr_nodes_map = dict()
+        for location in list(placement_locations.values()):
+            if location not in az_to_num_rr_nodes_map.keys():
+                az_to_num_rr_nodes_map[location] = 1
+            else:
+                az_to_num_rr_nodes_map[location] += 1
+
+        return az_to_num_rr_nodes_map
+
+    # Validates whether the new configuration provided by the user for modifying
+    # rr cluster is different from the currently set configuration.
+    def validate_new_config_for_rr_modify(self, cluster_config):
+        rr_replication_factor = self.configs.temp_data.get("rr_replication_factor")
+        rr_placement_constraint = self.configs.temp_data.get("rr_data_placement_constraint")
+
+        old_rr_replication_factor = cluster_config["replicationInfo"] \
+                                                ["readReplicas"][0].get("numReplicas")
+        old_rr_placement_constraint = []
+        for replica_info in cluster_config["replicationInfo"]["readReplicas"][0]. \
+                                                                get("placementBlocks"):
+            cloud_info = replica_info["cloudInfo"]
+            old_rr_placement_constraint.append("{}.{}.{}:{}".format(cloud_info["placementCloud"],
+                                                                  cloud_info["placementRegion"],
+                                                                  cloud_info["placementZone"],
+                                                                  replica_info["minNumReplicas"]))
+        old_rr_placement_constraint = ",".join(old_rr_placement_constraint)
+
+        def is_replication_factor_same():
+            return int(rr_replication_factor) == old_rr_replication_factor
+
+        def is_placement_constraint_same():
+            rr_placement_constraint_list = rr_placement_constraint.split(',')
+            old_rr_placement_constraint_list = old_rr_placement_constraint.split(',')
+            placement_location_to_add = [location for location in rr_placement_constraint_list
+                                            if location not in old_rr_placement_constraint_list]
+            return len(placement_location_to_add) == 0
+
+        if rr_replication_factor and is_replication_factor_same() and rr_placement_constraint \
+                                                            and is_placement_constraint_same():
+            Output.print_and_log(Output.make_red("ERROR") + ": You have provided the " +
+                                        "same data_placement_constraint and replication_factor " +
+                                        "as the ones that are currently set. Please provide " +
+                                        "any new configuration to run " +
+                                        "`yugabyted configure_read_replica modify` command.")
+            sys.exit(1)
+        elif rr_replication_factor and is_replication_factor_same():
+            if rr_placement_constraint:
+                msg = "You have provided the same replication_factor as the one that is " + \
+                    "currently set."
+            else:
+                msg = "You have provided the same replication_factor as the one that is " + \
+                    "currently set and no new data_placement_constraint was provided."
+
+            msg += " Please provide any new configuration to " + \
+                                    "run `yugabyted configure_read_replica modify` command."
+            Output.print_and_log(Output.make_red("ERROR") + ": " + msg)
+            sys.exit(1)
+        elif rr_placement_constraint and is_placement_constraint_same():
+            if rr_replication_factor:
+                msg = "You have provided the same data_placement_constraint as the one that " + \
+                    "is currently set."
+            else:
+                msg = "You have provided the same data_placement_constraint as the one that " + \
+                    "is currently set and no new replication factor was provided."
+
+            msg += " Please provide any new configuration to " + \
+                                    "run `yugabyted configure_read_replica modify` command."
+            Output.print_and_log(Output.make_red("ERROR") + ": " + msg)
+            sys.exit(1)
+
+    # Find/Validate the rr_replication_factor and data_placement_policy for read replica cluster
+    def get_rr_rf_and_placement_constraint(self, placement_locations):
+        rr_replication_factor = self.configs.temp_data.get("rr_replication_factor")
+        rr_placement_constraint = self.configs.temp_data.get("rr_data_placement_constraint")
+
+        az_to_num_rr_nodes_map = self.get_az_to_num_rr_nodes_map(placement_locations)
+
+        if not rr_replication_factor:
+            # CASE 1
+            # When both rf and placement constraint was not provided by the user
+            # rf = num of different zones
+            if not rr_placement_constraint:
+                rr_replication_factor = str(len(az_to_num_rr_nodes_map))
+                rr_placement_constraint = self.get_rr_placement_constraint(az_to_num_rr_nodes_map)
+
+            # CASE 2
+            # When rf was not given but placement constraint was given
+            # Validate the given data placement constraint against multiple checks
+            # rf = total number of replicas mentioned in the constraint
+            else:
+                self.validate_rr_data_placement_constraint(az_to_num_rr_nodes_map,
+                                                           rr_placement_constraint)
+
+                # If all checks pass for the data plcamenet constraint, then extract rf from it.
+                # rf = total number of replicas mentioned in the constraint.
+                rr_replication_factor = str(self.extract_total_replicas_from_constraint(
+                                                                        rr_placement_constraint))
+        # CASE 3
+        # When rf is given but placement constraint is not provided
+        # Validate rf and extract data placement constraint
+        elif not rr_placement_constraint:
+
+                # CHECK 1
+                # Check if the given rr_replication_faction is <= total num of read replica nodes.
+                if len(placement_locations) < int(rr_replication_factor):
+                    Output.print_and_log(msg = Output.make_red("ERROR") + ": Not enough nodes " +
+                            "to set-up a RF-{} read replica cluster".format(rr_replication_factor),
+                            level=logging.ERROR)
+                    sys.exit(1)
+
+                # CHECK 2
+                # Check if the number of AZs which has read
+                # replica nodes is <= rr_replication_factor
+                if len(az_to_num_rr_nodes_map) > int(rr_replication_factor):
+                    Output.print_and_log(msg = Output.make_red("ERROR") + ": There needs to be " +
+                            "a replica in each AZ which contains a read replica node. There " +
+                            "are {} AZs which hosts read ".format(len(az_to_num_rr_nodes_map)) +
+                            "replica nodes whereas the replication factor provided " +
+                            "was only {}".format(rr_replication_factor), level=logging.ERROR)
+                    sys.exit(1)
+
+                # If all checks pass for the provided replication factor,
+                # then get the optimal data_placement_constraint
+                rr_placement_constraint = self.get_rr_placement_constraint(az_to_num_rr_nodes_map)
+
+        # CASE 4
+        # When both rf and placemnet constraint is provided by the user
+        # Validate the given data placement constraint against multiple checks
+        # Validate rf with the num of replicas mentioned in the placement constraint
+        else:
+            self.validate_rr_data_placement_constraint(az_to_num_rr_nodes_map,
+                                                       rr_placement_constraint)
+
+            # CHECK 4
+            # Check if the total number of replicas mentioned in the placement constraint is
+            # equal to the replication factor provided by the user.
+            if not self.is_total_num_of_replicas_valid_for_rr(rr_placement_constraint,
+                                                                    rr_replication_factor):
+                Output.log_error_and_exit(Output.make_red("FAILED") + ": The total number of " +
+                                          "replicas mentioned in the placement constraint does " +
+                                          "not match the given replication factor.")
+
+        return [rr_replication_factor, rr_placement_constraint]
+
+    # Validate data placement constraint provided by the user against multiple checks
+    def validate_rr_data_placement_constraint(self, az_to_num_rr_nodes_map,
+                                              rr_placement_constraint):
+
+        # CHECK 1
+        # Check if all the placement locations in which read replica nodes are present has
+        # been provided by the user or not.
+        az_not_present_in_constraint_list = self.are_all_locations_present_in_constraint(
+                                        az_to_num_rr_nodes_map, rr_placement_constraint)
+
+        if az_not_present_in_constraint_list:
+            error_msg = Output.make_red("FAILED") + ": Invalid placement location " + \
+                    "values provided for placement constraint. There needs to be " + \
+                    "at least 1 replica in each AZ that contains a read replica node. "
+
+            if len(az_not_present_in_constraint_list) == 1:
+                error_msg += "The following AZ is not mentioned in placement constraint.\n"
+            else:
+                error_msg += "The following AZs are not mentioned in placement " + \
+                    "constraint.\n"
+
+
+            for az in az_not_present_in_constraint_list:
+                error_msg += Output.make_red("* " + az) + "\n"
+
+            Output.log_error_and_exit(error_msg)
+
+        # CHECK 2
+        # Check if the placement locations mentioned in the constraint mentioned by the
+        # user has read replica nodes in them.
+        az_in_constraint_not_present_list = self.is_placement_constraint_valid_values_for_rr(
+                                            az_to_num_rr_nodes_map, rr_placement_constraint)
+
+        if az_in_constraint_not_present_list:
+            error_msg = Output.make_red("FAILED") + ": Invalid placement location " + \
+                "values provided for placement constraint. Cloud locations mentioned " + \
+                "in the placement constraint should contain read replica nodes."
+
+            if len(az_in_constraint_not_present_list) == 1:
+                error_msg += "The following AZ mentioned in placement constraint does " + \
+                                                "not contain any read replica nodes.\n"
+            else:
+                error_msg += "The following AZs mentioned in placement constraint " + \
+                                            "does not contain any read replica nodes.\n"
+
+
+            for az in az_in_constraint_not_present_list:
+                error_msg += Output.make_red("* " + az) + "\n"
+
+            Output.log_error_and_exit(error_msg)
+
+        # CHECK 3
+        # Check if the nodes present for each cloud location is >=
+        # number of replicas mentioned for that cloud location.
+        invalid_num_replica_locations = self.is_num_replicas_for_each_az_valid_for_rr(
+                                        az_to_num_rr_nodes_map, rr_placement_constraint)
+
+        # print(invalid_num_replica_locations)
+        if invalid_num_replica_locations:
+            msg = Output.make_red("FAILED") + ": Invalid number of replicas mentioned.\n"
+
+
+            for invalid_num_replica_location in invalid_num_replica_locations:
+
+                if int(invalid_num_replica_location[1]) == 1:
+                    msg += "* There is only 1 node in the " + \
+                            "{} ".format(invalid_num_replica_location[0]) + \
+                            "but {} ".format(invalid_num_replica_location[2]) + \
+                            "replicas were mentioned.\n"
+                else:
+                    msg += "* There are only {} nodes".format(invalid_num_replica_location[1]) + \
+                            " in the {}".format(invalid_num_replica_location[0]) + \
+                            " but {} ".format(invalid_num_replica_location[2]) + \
+                            "replicas were mentioned.\n"
+
+            Output.log_error_and_exit(msg)
+
+    # Deduce the optimal placement constraint for read replica cluster
+    def get_rr_placement_constraint(self, az_to_num_rr_nodes_map):
+
+        rr_replication_factor = self.configs.temp_data.get("rr_replication_factor")
+        if not rr_replication_factor:
+            rr_replication_factor = len(az_to_num_rr_nodes_map)
+        else:
+            rr_replication_factor = int(rr_replication_factor)
+
+        az_to_num_replicas_map = dict()
+        total_replicas = 0
+        while total_replicas < rr_replication_factor:
+            for location, num_nodes in az_to_num_rr_nodes_map.items():
+                if num_nodes != 0:
+                    if location not in az_to_num_replicas_map.keys():
+                        az_to_num_replicas_map[location] = 1
+                    else:
+                        az_to_num_replicas_map[location] += 1
+
+                    az_to_num_rr_nodes_map[location] -= 1
+                    total_replicas += 1
+
+                if total_replicas == rr_replication_factor:
+                    break
+
+        rr_placement_constraint = [ "{}:{}".format(location, num_of_replicas)
+                          for location, num_of_replicas in
+                          az_to_num_replicas_map.items()]
+
+        rr_placement_constraint = ",".join(rr_placement_constraint)
+
+        return rr_placement_constraint
+
+    # Extracts rr_replication_factor from the data_placement_constraint mentioned by the user.
+    def extract_total_replicas_from_constraint(self, placement_constraint):
+
+        placement_constraint_list = placement_constraint.split(',')
+        num_replicas_list = [ int(location_with_replicas.split(':')[1]) for
+                             location_with_replicas in placement_constraint_list ]
+        total_replicas = sum(num_replicas_list)
+
+        return total_replicas
+
+    # This functions is used to determine if the placement locations in which read replica
+    # nodes are present has been provided by the user or not.
+    def are_all_locations_present_in_constraint(self, az_to_num_rr_nodes_map,
+                                                    rr_placement_constraint):
+
+        placement_constraint_list = rr_placement_constraint.split(',')
+        placement_constraint_list = [ location_with_replicas.split(':')[0] for
+                                     location_with_replicas in placement_constraint_list ]
+
+        placement_locations_list = list(az_to_num_rr_nodes_map.keys())
+
+        az_not_present_list = list()
+
+        for location in placement_locations_list:
+            if location not in placement_constraint_list:
+                az_not_present_list.append(location)
+
+        return None if len(az_not_present_list) == 0 else \
+                                        az_not_present_list
+
+    # This functions is used to determine if the placement locations mentioned in the constraint
+    # mentioned by the user has read replica nodes in them.
+    def is_placement_constraint_valid_values_for_rr(self, az_to_num_rr_nodes_map,
+                                                    rr_placement_constraint):
+        placement_constraint_list = rr_placement_constraint.split(',')
+        placement_constraint_list = [ location_with_replicas.split(':')[0] for
+                                     location_with_replicas in placement_constraint_list ]
+
+        placement_locations_list = list(az_to_num_rr_nodes_map.keys())
+
+        az_not_present_list = list()
+
+        for location in placement_constraint_list:
+            if location not in placement_locations_list:
+                az_not_present_list.append(location)
+
+        return None if len(az_not_present_list) == 0 else \
+                                        az_not_present_list
+
+    # Checks if the total number of replicas mentioned in the placement constraint is
+    # equal to the replication factor provided by the user.
+    def is_total_num_of_replicas_valid_for_rr(self, placement_constraint,
+                                                      rr_replication_factor):
+        total_replicas = self.extract_total_replicas_from_constraint(placement_constraint)
+        is_valid = True
+        if total_replicas != int(rr_replication_factor):
+            is_valid = False
+
+        return is_valid
+
+    # Checks if the nodes present for each cloud location is at least equal or more
+    # than the number of replicas mentioned for that cloud location.
+    def is_num_replicas_for_each_az_valid_for_rr(self, az_to_num_rr_nodes_map,
+                                                 placement_constraint):
+        placement_constraint_list = placement_constraint.split(',')
+
+        invalid_num_replica_locations = list()
+        for location_with_replicas in placement_constraint_list:
+            location_with_replicas = location_with_replicas.split(':')
+            location, replicas = location_with_replicas[0], location_with_replicas[1]
+            # print(location, replicas)
+            if az_to_num_rr_nodes_map.get(location) < int(replicas):
+                invalid_num_replica_locations.append([location,
+                                                str(az_to_num_rr_nodes_map.get(location)),
+                                                replicas])
+        # print(invalid_num_replica_locations)
+        return invalid_num_replica_locations if \
+                        len(invalid_num_replica_locations) > 0 else None
+
+
+
     # Updating the database user passwords for postgres and cassandra
     def update_db_passwords(self, new_password):
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
@@ -2406,11 +3297,13 @@ class ControlScript(object):
 
     # When the 3rd node joins, this method will set the placement location and rf to 3
     def setup_first_cluster_config(self):
+        placement_uuid = self.configs.saved_data.get("placement_uuid")
         leader_master = self.get_leader_master().split(':')[0]
         leader_master_http_endpoint = "{}:{}".format(leader_master,
                         self.configs.saved_data.get("master_webserver_port"))
 
-        placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+        placement_locations = self.get_all_nodes_locations(all_tserver_info, placement_uuid)
         placement_info = list(placement_locations.values())
         placement_info.append("{}.{}.{}".format(self.configs.saved_data.get("cloud_provider"),
                                                 self.configs.saved_data.get("cloud_region"),
@@ -2423,7 +3316,8 @@ class ControlScript(object):
                                            for master in master_addresses]
         master_addresses = ",".join(master_addresses)
 
-        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info):
+        if not YBAdminProxy.modify_placement_info(master_addresses,
+                                                  placement_info, placement_uuid):
             Output.log_error_and_exit(Output.make_red("FAILED") + ": Setting of default " +
                                       "data placement policy on the cluster.")
 
@@ -2452,7 +3346,23 @@ class ControlScript(object):
             # it is a hard failure.
             if current_node_master_uuid in master_uuids:
                 self.configs.saved_data["cluster_member"] = True
-                return True
+                if not join_ip:
+                    placement_uuid = self.configs.saved_data.get("placement_uuid")
+                    placement_info = list()
+                    placement_info = "{}.{}.{}".format(
+                                                self.configs.saved_data.get("cloud_provider"),
+                                                self.configs.saved_data.get("cloud_region"),
+                                                self.configs.saved_data.get("cloud_zone"))
+
+                    master_addresses = "{}:{}".format(
+                                                self.configs.saved_data.get("advertise_address"),
+                                                self.configs.saved_data.get("master_rpc_port"))
+
+                    if not YBAdminProxy.modify_placement_info(master_addresses, placement_info,
+                                                        placement_uuid, replication_factor="1"):
+                        Output.log_error_and_exit(Output.make_red("FAILED") + ": Setting of " +
+                                                "default data placement policy on the cluster.")
+                    return True
             if not join_ip:
                 return False
         except RuntimeError:
@@ -2492,18 +3402,26 @@ class ControlScript(object):
         Output.log("Failed to setup master, did add_master succeed?")
         return False
 
-    def is_tserver_up(self):
+    def is_tserver_up(self, cluster_type):
+        join_ip = self.configs.saved_data.get("join")
 
-        master_addr = self.configs.saved_data.get("current_masters")
+        if cluster_type == "primary":
+            master_addr = self.configs.saved_data.get("current_masters")
+        else:
+            master_addr = self.get_current_masters_from_api(join_ip)
+
         if not master_addr:
-            join_ip = self.configs.saved_data.get("join")
             master_ip = join_ip if join_ip else self.advertise_ip()
             master_addr = "{}:{}".format(master_ip,
                                      self.configs.saved_data.get("master_rpc_port"))
+        self.configs.saved_data["current_masters"] = master_addr
 
-        if (not self.processes.get("master").is_running()
-                or not self.processes.get("tserver").is_running()):
-            Output.log("Failed waiting for yb-master/tserver... process died.", logging.ERROR)
+        if (cluster_type == "primary" and not self.processes.get("master").is_running()):
+            Output.log("Failed waiting for yb-master... process died.", logging.ERROR)
+            raise RuntimeError("process not running")
+
+        if not self.processes.get("tserver").is_running():
+            Output.log("Failed waiting for yb-tserver... process died.", logging.ERROR)
             raise RuntimeError("process not running")
 
         cur_tservers = YBAdminProxy.get_tservers(master_addr)
@@ -2515,10 +3433,10 @@ class ControlScript(object):
             tserver_uuid, cur_tservers))
         return True
 
-    def wait_tserver(self, timeout=180):
+    def wait_tserver(self, cluster_type, timeout=180):
         Output.log("Waiting for tserver ...")
         try:
-            if retry_op(self.is_tserver_up, timeout):
+            if retry_op_with_argument(self.is_tserver_up, cluster_type, timeout):
                 Output.log("Completed waiting for tserver.")
                 return True
         except RuntimeError:
@@ -2602,6 +3520,7 @@ class ControlScript(object):
         ysql_username, ysql_password, ysql_db = self.setup_env_init.get_ysql_credentials()
 
         status_info = []
+        status_display_info = dict()
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red(SCRIPT_NAME))
@@ -2702,9 +3621,18 @@ class ControlScript(object):
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
+        jdbc_string = "jdbc:postgresql://{}:{}/{}?user={}&password=".format(advertise_ip,
+                                                                            ysql_port,
+                                                                            ysql_db,
+                                                                            ysql_username)
+        if self.configs.saved_data.get("secure"):
+            jdbc_string += Output.make_cyan("<DB_PASSWORD>")
+        else:
+            jdbc_string += "yugabyte"
+        status_display_info[jdbc_string] = Output.make_cyan
+
         status_info += [
-            (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/{}?user={}&password={}".
-                format(advertise_ip, ysql_port, ysql_db, ysql_username, ysql_password)),
+            (Output.make_yellow("JDBC"), jdbc_string),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
             (Output.make_yellow("YCQL"), "bin/ycqlsh{}".format(ycql_flags)),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
@@ -2717,10 +3645,17 @@ class ControlScript(object):
          + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
+            func = None
+            if status_display_info is not None and v in status_display_info.keys():
+                func = status_display_info.get(v)
+
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k,
-                                                                              v if v is not None
-                                                                              else "None")
+            status += ("| {:" + str(20 + extra_len) + "}: ").format(k)
+            if func is not None:
+                status += ("{:<" + str(82 + len(func(""))) + "} |\n").format(v)
+            else:
+                status += ("{:<" + str(82) + "} |\n").format(v if v is not None else "None")
+
         status += div_line
         return status
 
@@ -2907,9 +3842,11 @@ class ControlScript(object):
             return encryptionFlag[0].get("value") == "true"
 
         except HTTPError as http_err:
-            print('HTTP error occurred while checking for security of leader master: {}', http_err)
+            Output.log_error_and_exit("HTTP error occurred while checking for security of " +
+                                    "leader master: {}".format(http_err))
         except Exception as err:
-            print('Other error occurred while checking for security of leader master: {}', err)
+            Output.log_error_and_exit("Other error occurred while checking for security of " +
+                                    "leader master: {}".format(err))
 
     # Parse the config file and input parent flags to validate and set them.
     # Parent flags: --config, --data_dir, --log_dir
@@ -2989,7 +3926,8 @@ class ControlScript(object):
     def validate_security_configs(self, args):
         home_dir = os.path.expanduser("~")
         default_base_dir = os.path.join(home_dir, "var")
-        base_dir = os.path.abspath(args.base_dir) if args.base_dir else default_base_dir
+        base_dir = os.path.abspath(os.path.expanduser(args.base_dir)) if args.base_dir \
+            else default_base_dir
 
         default_certs_dir = os.path.join(base_dir, "certs")
 
@@ -3002,7 +3940,7 @@ class ControlScript(object):
                     "node."+args.advertise_address+".key"]
 
         if args.certs_dir is not None:
-            args.certs_dir = os.path.expanduser(args.certs_path)
+            args.certs_dir = os.path.expanduser(args.certs_dir)
 
             if not os.path.exists(args.certs_dir):
                 # Case Scenario: When the directory provided by the user through
@@ -3159,6 +4097,16 @@ class ControlScript(object):
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
+            if args.collect_at_dir is not None:
+                args.collect_at_dir = \
+                os.path.realpath(
+                os.path.abspath(
+                os.path.expanduser(args.collect_at_dir)))
+                self.configs.temp_data["collect_at_dir"]=args.collect_at_dir
+
+            collect_at_dir=self.configs.temp_data.get("collect_at_dir")
+            if not os.path.isdir(collect_at_dir):
+                os.makedirs(collect_at_dir)
 
         if args.parser == "admin_operation":
             if not args.command:
@@ -3200,8 +4148,7 @@ class ControlScript(object):
                     Output.print_out(
                         "Incorrect value specified for constraint_value. " +
                         "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone".format(
-                            args.constraint_value))
+                        "- cloudprovider.region.zone")
                 else:
                     self.configs.temp_data[
                         "constraint_value"] = args.constraint_value
@@ -3249,7 +4196,78 @@ class ControlScript(object):
             elif args.disable:
                 self.configs.temp_data["disable_encrypt_at_rest"] = args.disable
 
+        if args.parser == "new":
+            if args.data_placement_constraint is not None:
+                data_constraints = args.data_placement_constraint.split(",")
+                has_errors = False
+                for constraint in data_constraints:
+                    cloud_info = constraint.split(":")[0].split(".")
+                    if (len(cloud_info) == 3):
+                        for value in cloud_info:
+                            if not value:
+                                has_errors=True
+                    else:
+                        has_errors = True
+
+                if has_errors:
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": Incorrect value specified for --data_placement_constraint. " +
+                        "Please specify comma sperated value with format " +
+                        "- cloudprovider.region.zone")
+                else:
+                    self.configs.temp_data[
+                        "rr_data_placement_constraint"] = args.data_placement_constraint
+
+            if args.rf is not None:
+                if int(args.rf) > 0:
+                    self.configs.temp_data["rr_replication_factor"] = str(args.rf)
+                else:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") + ": Please provide a valid " +
+                                 "--rf flag. Replication factor cannot be less than 1.")
+
+        if args.parser == "modify":
+            if args.data_placement_constraint is None and args.rf is None:
+                has_errors = True
+                Output.print_out(Output.make_red("ERROR") + ": Please provide " +
+                                 "either --data_placement_constraint or --rf flag " +
+                                 "for modifying the read replica cluster.")
+
+            if args.data_placement_constraint is not None:
+                data_constraints = args.data_placement_constraint.split(",")
+                has_errors = False
+                for constraint in data_constraints:
+                    cloud_info = constraint.split(".")
+                    if (len(cloud_info) == 3):
+                        for value in cloud_info:
+                            if not value:
+                                has_errors=True
+                    else:
+                        has_errors = True
+
+                if has_errors:
+                    Output.print_out(
+                        "Incorrect value specified for --data_placement_constraint. " +
+                        "Please specify comma sperated value with format " +
+                        "- cloudprovider.region.zone".format(
+                            args.data_placement_constraint))
+                else:
+                    self.configs.temp_data[
+                        "rr_data_placement_constraint"] = args.data_placement_constraint
+
+            if args.rf is not None:
+                if int(args.rf) > 0:
+                    self.configs.temp_data["rr_replication_factor"] = str(args.rf)
+                else:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") + ": Please provide a valid " +
+                                 "--rf flag. Replication factor cannot be less than 1.")
+
         if args.parser == "start":
+            if args.read_replica and not args.join:
+                Output.print_out(Output.make_red("ERROR") + ": read_replica neds to be " +
+                                 "started with --join flag.")
+
             if args.cloud_location is not None:
                 cloud_location = args.cloud_location.split(".")
                 if len(cloud_location) == 3:
@@ -3263,6 +4281,8 @@ class ControlScript(object):
                     has_errors = True
 
             if args.fault_tolerance is not None:
+                if args.fault_tolerance == "cloud":
+                    Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
                 if args.fault_tolerance.lower() in START_FAULT_TOLERANCE_CHOICES:
                     self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
                 else:
@@ -3315,16 +4335,30 @@ class ControlScript(object):
 
             if args.join is not None:
                 try:
-                    leaderMasterURL = "http://{}:7000/api/v1/varz".format(args.join)
+                    leaderMasterURL = "http://{}:7000/api/v1/tablet-servers".format(args.join)
                     response = urlopen(Request(leaderMasterURL))
+                    jsonResponseFromMaster = dict(json.load(response))
+                    if args.read_replica:
+                        for uuid, nodes in jsonResponseFromMaster.items():
+                            nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                            if args.join in nodes_list:
+                                continue
+                            if len(nodes) != 0:
+                                self.configs.saved_data["placement_uuid"] = uuid
+                    else:
+                        for uuid, nodes in jsonResponseFromMaster.items():
+                            nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                            if args.join in nodes_list:
+                                self.configs.saved_data["placement_uuid"] = uuid
+
                 except HTTPError as http_err:
                     Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/varz: {}".format(args.join, http_err))
+                        "http://{}:7000/api/v1/tablet-servers: {}".format(args.join, http_err))
                     Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
                         "provided is not reachable.")
                 except Exception as err:
                     Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/varz: {}".format(args.join, err))
+                        "http://{}:7000/api/v1/tablet-servers: {}".format(args.join, err))
                     Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
                         "provided is not reachable.")
 
@@ -3428,19 +4462,20 @@ class ControlScript(object):
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
-            "--data_dir", help="Directory where {} will store data.".format(SCRIPT_NAME),
-                metavar="")
+            "--data_dir", help=argparse.SUPPRESS)
         common_parser.add_argument(
             "--base_dir", help="Directory under which {} will store data, conf and logs".format(
                 SCRIPT_NAME), metavar="")
         common_parser.add_argument(
-            "--log_dir", help="Directory to store {} logs.".format(SCRIPT_NAME), metavar="")
+            "--log_dir", help=argparse.SUPPRESS)
 
         start_msg = "To start YugabyteDB cluster, run '{}'.\n\n".format(
             Output.make_green("{} start".format(SCRIPT_NAME)))
         start_msg += "Find more information at: {}".format(Output.make_underline(YUGABYTED_LINK))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
+
+        # Top Level Commands: start, stop, destroy, status, version, collect_logs
         subparsers = parser.add_subparsers(dest="parser", metavar="")
         subparsers.required = True
         for cmd, description in (
@@ -3451,7 +4486,7 @@ class ControlScript(object):
                 ("version", "Release version of YugabyteDB cluster."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
             example = ""
-            if EXAMPLE[cmd]:
+            if EXAMPLE.get(cmd):
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
             subparser = subparsers.add_parser(cmd, description=example,
                                                 help=description, parents=[common_parser])
@@ -3460,10 +4495,12 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[cmd] = subparser
 
-        # Add ysql and ycql CLI options
+        # Top Level command: connect
         connect = subparsers.add_parser("connect",
                     help="Connect to YugabyteDB cluster through the CLI.")
         all_parsers["connect"] = connect
+
+        # Sub-commands for top level `connect` command: ysql, ycql
         connect_subparser = connect.add_subparsers(dest="parser", metavar="")
         connect_subparser.required = True
         for api in YUGABYTE_API_CLIENT_PROGRAMS:
@@ -3473,10 +4510,11 @@ class ControlScript(object):
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
 
-        # Add demo commands to create, connect, and destroy.
-
+        # Top Level command: demo
         demo_parser = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
         all_parsers["demo"] = demo_parser
+
+        # Sub-commands for top level `demo` command: connect, destroy
         demo_subparsers = demo_parser.add_subparsers(dest="parser", metavar="")
         demo_subparsers.required = True
         for cmd, description in (
@@ -3488,10 +4526,10 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
 
-        # Add cert generation options
+        # Top Level command: cert
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
         cert_parser = subparsers.add_parser("cert", description=example,
-                                                help="Generate SSL cerificates")
+                                                help="Generate SSL certificates")
         all_parsers["cert"] = cert_parser
         cert_subparsers = cert_parser.add_subparsers(dest="parser", metavar="")
         cert_subparsers.required = True
@@ -3503,13 +4541,14 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
 
-        # Generate node server certs of given hostname
+        # Sub-commands for top level `cert` command: generate_server_certs
         for cmd in ("cert_generate_server_certs",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
                 "--hostnames", help="Hostnames of the nodes to be added in the cluster. " +
                 "Mandatory flag.", metavar="")
 
+        # Flags for top level `collect_logs` command
         # Docker: Redirect the logs.tar.gz to stdout
         for cmd in ("collect_logs",):
             cur_parser = all_parsers[cmd]
@@ -3517,12 +4556,19 @@ class ControlScript(object):
                 "--stdout", help="Redirect the logs.tar.gz file's content to stdout. Ex: "+
                 "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
+            cur_parser.add_argument(
+                "--collect_at_dir", help="Directory under which {} will store logs.tar.gz file"
+                .format(SCRIPT_NAME),metavar="")
 
+        # Top Level command: configure
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
         configure_parser = subparsers.add_parser("configure", description=example,
                                                 help="Configure data placement or " +
                                                 "toggle encryption at rest for " +
                                                 "the cluster.", parents=[common_parser])
+
+        # Sub-commands for top level `configure` command: data_placement,
+        # encrypt_at_rest, admin_operation
         all_parsers["configure"] = configure_parser
         configure_subparsers = configure_parser.add_subparsers(dest="parser", metavar="")
         configure_subparsers.required = True
@@ -3531,7 +4577,7 @@ class ControlScript(object):
                 ("encrypt_at_rest", "Enable or disable encryption at rest."),
                 ("admin_operation", "Run yb-admin command on the YugabyteDB cluster.")):
             example = ""
-            if EXAMPLE[cmd]:
+            if EXAMPLE.get(cmd):
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
             subparser = configure_subparsers.add_parser(cmd, help=description, description=example,
                                 parents=[common_parser])
@@ -3540,6 +4586,7 @@ class ControlScript(object):
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
 
+        # Flags for sub-command: data_placement
         # Flags for muti-zone/multi-region configuration.
         for cmd in ("configure_data_placement",):
             cur_parser = all_parsers[cmd]
@@ -3555,7 +4602,7 @@ class ControlScript(object):
                 "--rf", help="Set the replication factor for each tablet",
                 metavar="")
 
-        # Flags for encryption at rest
+        # Flags for sub-command: encrypt_at_rest
         for cmd in ("configure_encrypt_at_rest",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
@@ -3569,7 +4616,7 @@ class ControlScript(object):
                 "features on a YugabyteDB cluster.",
                 action="store_true")
 
-        # flags for admin operations
+        # Flags for sub-command: admin_operation
         for cmd in ("configure_admin_operation",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
@@ -3581,6 +4628,52 @@ class ControlScript(object):
                 "masters of the cluster.",
                 metavar=""
             )
+
+        # Top Level command: configure_read_replica
+        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure_read_replica"]
+        configure_read_replica_parser = subparsers.add_parser("configure_read_replica",
+                                                description=example, help="Configure/Modify/" +
+                                                "Delete a read replica cluster.",
+                                                parents=[common_parser])
+
+        # Sub-commands for top level `configure_read_replica` command: new, modify, delete
+        all_parsers["configure_read_replica"] = configure_read_replica_parser
+        configure_read_replica_subparsers = configure_read_replica_parser.add_subparsers(
+                                                                    dest="parser", metavar="")
+        configure_read_replica_subparsers.required = True
+        for cmd, description in (
+                ("new", "Configure a new read replica cluster."),
+                ("modify", "Modify an existing new read replica cluster."),
+                ("delete", "Delete an existing new read replica cluster.")):
+            example = ""
+            if EXAMPLE.get(cmd):
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            subparser = configure_read_replica_subparsers.add_parser(cmd, help=description,
+                                description=example, parents=[common_parser])
+            parser_name = "configure_read_replica_" + cmd
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Flags for sub-command: new
+        for cmd in ("configure_read_replica_new",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--rf", help="Replication factor for read replica cluster.",
+                metavar="")
+            cur_parser.add_argument(
+                "--data_placement_constraint", help="Placement policy for the read replica " +
+                "cluster.", metavar="")
+
+        # Flags for sub-command: modify
+        for cmd in ("configure_read_replica_modify",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--rf", help="Replication factor for read replica cluster.",
+                metavar="")
+            cur_parser.add_argument(
+                "--data_placement_constraint", help="Placement policy for the read replica " +
+                "cluster.", metavar="")
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -3606,8 +4699,11 @@ class ControlScript(object):
                 help="IP address or local hostname on which {} will listen.".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
+                "--join", help="IP address to which this process will join",
                 metavar="")
+            cur_parser.add_argument(
+                "--read_replica", help="Use this flag to start a read replica node.",
+                action="store_true", default=None)
             cur_parser.add_argument(
                 "--secure", help="Start a YugabyteDB cluster in secure mode with encryption in " +
                 "transit and password authentication enabled. No need to set a value for the " +
@@ -3621,14 +4717,11 @@ class ControlScript(object):
                 "need to set a value for the flag. Use --secure or --insecure flag to toggle " +
                 "security features on a YugabyteDB cluster.", action="store_true", default=None)
             cur_parser.add_argument(
-                "--certs_dir", help="Path to the certificates to be used for secure deployment.",
-                metavar="")
+                "--certs_dir", help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
             cur_parser.add_argument(
-                "--background", choices=BOOL_CHOICES, metavar="",
-                help="Runs {} in the background as a daemon. Does not persist on restart. "
-                     "Default true.".format(SCRIPT_NAME))
+                "--background", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--callhome", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
@@ -3783,6 +4876,7 @@ class Configs(object):
             "node_uuid": str(uuid.uuid4()),
             "tserver_uuid": str(uuid.uuid4()).replace("-", ""),
             "master_uuid": str(uuid.uuid4()).replace("-", ""),
+            "placement_uuid": str(uuid.uuid4()),
             "polling_interval": "5",
             "callhome": DEFAULT_CALLHOME,
             "master_flags": "",
@@ -3802,6 +4896,7 @@ class Configs(object):
             "current_masters": "",
             "ui": True,
             "dns_enabled": False,
+            "read_replica": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -3817,6 +4912,9 @@ class Configs(object):
             "disable_encrypt_at_rest": False,
             "admin_command": "",
             "admin_operation_master_addresses":"",
+            "rr_data_placement_constraint": "",
+            "rr_replication_factor": "",
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
         }
         self.config_file = config_file
 
@@ -3840,8 +4938,10 @@ class Configs(object):
         paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
         for k, v in configs.saved_data.items():
             if v is not None and k in paths:
-                configs.saved_data[k] = os.path.expanduser(v)
-
+                if "$" in v:
+                    configs.saved_data[k] = os.path.expanduser(os.path.expandvars(v))
+                else:
+                    configs.saved_data[k] = os.path.expanduser(v)
         return configs
 
     @staticmethod
@@ -4271,8 +5371,7 @@ class YBAdminProxy(object):
         cluster_config = YBAdminProxy.get_cluster_config(master_addrs)
         if cluster_config:
             if "replicationInfo" in cluster_config:
-
-                return cluster_config["replicationInfo"]["liveReplicas"]["numReplicas"]
+                return cluster_config["replicationInfo"].get("liveReplicas").get("numReplicas")
             else:
                 return 1
         else:
@@ -4305,10 +5404,38 @@ class YBAdminProxy(object):
 
     # Sets placement info
     @staticmethod
-    def modify_placement_info(master_addrs, placement_locations, replication_factor = "3",
-                              timeout=10):
+    def modify_placement_info(master_addrs, placement_locations, placement_uuid,
+                              replication_factor = "3", timeout=10):
         cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "modify_placement_info",
-                placement_locations, replication_factor]
+                placement_locations, replication_factor, placement_uuid]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Sets placement info of read replicas
+    @staticmethod
+    def set_read_replica_placement(master_addrs, placement_locations, placement_uuid,
+                              replication_factor, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                        "add_read_replica_placement_info",placement_locations,
+                        replication_factor, placement_uuid]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Modify placement info of read replicas
+    @staticmethod
+    def modify_read_replica_placement(master_addrs, placement_locations, placement_uuid,
+                              replication_factor, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                        "modify_read_replica_placement_info",placement_locations,
+                        replication_factor, placement_uuid]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Delete placement info of read replicas
+    @staticmethod
+    def delete_read_replica_placement(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                        "delete_read_replica_placement_info"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)
 
@@ -5058,6 +6185,7 @@ class PrettyHelpFormatter(argparse.RawTextHelpFormatter):
 
     # Remove the help under "Command" section which had all command inside curly braces
     def _format_action(self, action):
+        self._max_help_position = self._action_max_length + 2
         result = super(PrettyHelpFormatter,
                        self)._format_action(action)
         if isinstance(action, argparse._SubParsersAction):

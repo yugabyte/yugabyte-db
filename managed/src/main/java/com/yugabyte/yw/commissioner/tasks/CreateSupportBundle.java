@@ -6,8 +6,10 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -41,6 +43,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
+  @Inject private KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -59,8 +62,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
+      kubernetesStatusUpdater.markSupportBundleFinished(supportBundle, gzipPath);
     } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
+      kubernetesStatusUpdater.markSupportBundleFailed(supportBundle);
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
     } finally {
@@ -96,27 +101,6 @@ public class CreateSupportBundle extends AbstractTaskBase {
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
     }
 
-    // Downloads each type of global level support bundle component type into the bundle path
-    for (BundleDetails.ComponentType componentType :
-        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
-      SupportBundleComponent supportBundleComponent =
-          supportBundleComponentFactory.getComponent(componentType);
-      try {
-        // Call the downloadComponentBetweenDates() function for all global level components with
-        // node = null.
-        // Each component verifies if the dates are required and calls the downloadComponent().
-        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
-        Files.createDirectories(globalComponentsDirPath);
-        supportBundleComponent.downloadComponentBetweenDates(
-            customer, universe, globalComponentsDirPath, startDate, endDate, null);
-      } catch (Exception e) {
-        throw new RuntimeException(
-            String.format(
-                "Error while trying to download the global level component files : %s",
-                e.getMessage()));
-      }
-    }
-
     // Downloads each type of node level support bundle component type into the bundle path
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
     for (NodeDetails node : nodes) {
@@ -134,11 +118,34 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
+          log.error("Error occurred in support bundle collection", e);
           throw new RuntimeException(
               String.format(
                   "Error while trying to download the node level component files : %s",
                   e.getMessage()));
         }
+      }
+    }
+
+    // Downloads each type of global level support bundle component type into the bundle path
+    for (BundleDetails.ComponentType componentType :
+        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
+      SupportBundleComponent supportBundleComponent =
+          supportBundleComponentFactory.getComponent(componentType);
+      try {
+        // Call the downloadComponentBetweenDates() function for all global level components with
+        // node = null.
+        // Each component verifies if the dates are required and calls the downloadComponent().
+        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+        Files.createDirectories(globalComponentsDirPath);
+        supportBundleComponent.downloadComponentBetweenDates(
+            customer, universe, globalComponentsDirPath, startDate, endDate, null);
+      } catch (Exception e) {
+        log.error("Error occurred in support bundle collection", e);
+        throw new RuntimeException(
+            String.format(
+                "Error while trying to download the global level component files : %s",
+                e.getMessage()));
       }
     }
 
@@ -158,7 +165,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   }
 
   private Path generateBundlePath(Universe universe) {
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String storagePath = AppConfigHelper.getStoragePath();
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
     String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);

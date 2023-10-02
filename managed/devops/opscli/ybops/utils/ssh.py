@@ -23,6 +23,7 @@ import tempfile
 
 from Crypto.PublicKey import RSA
 
+from scp import SCPClient
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 
 SSH2 = 'ssh2'
@@ -280,7 +281,8 @@ def generate_rsa_keypair(key_name, destination='/tmp'):
 
 def scp_to_tmp(filepath, host, user, port, private_key, retries=3,
                retry_delay=SSH_RETRY_DELAY, **kwargs):
-    dest_path = os.path.join("/tmp", os.path.basename(filepath))
+    remote_tmp_dir = kwargs.get("remote_tmp_dir", "/tmp")
+    dest_path = os.path.join(remote_tmp_dir, os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
     ssh2_enabled = kwargs.get('ssh2_enabled', False)
@@ -371,7 +373,6 @@ class SSHClient(object):
         self.key = None
         self.port = ''
         self.client = None
-        self.sftp_client = None
         self.ssh_type = SSH2 if ssh2_enabled and check_ssh2_bin_present() else SSH
 
     @retry_ssh_errors(retry_delay=CONNECTION_RETRY_DELAY_SEC)
@@ -496,11 +497,14 @@ class SSHClient(object):
             remote_file_name: Path to the shell script on remote machine
         '''
         if self.ssh_type == SSH:
-            self.sftp_client = self.client.open_sftp()
+            scp_client = SCPClient(self.client.get_transport())
             try:
-                self.sftp_client.get(remote_file_name, local_file_name)
+                scp_client.get(remote_file_name, local_file_name)
+            except Exception as e:
+                logging.warning('Caught exception on file transfer', e)
+                raise e
             finally:
-                self.sftp_client.close()
+                scp_client.close()
         else:
             cmd = self.__generate_shell_command(self.hostname, self.port,
                                                 self.username, self.key,
@@ -518,17 +522,14 @@ class SSHClient(object):
             remote_file_name: Path to the shell script on remote machine
         '''
         if self.ssh_type == SSH:
-            self.sftp_client = self.client.open_sftp()
+            scp_client = SCPClient(self.client.get_transport())
             try:
-                self.sftp_client.put(local_file_name, remote_file_name)
-                chmod = kwargs.get('chmod', 0)
-                if chmod != 0:
-                    self.sftp_client.chmod(remote_file_name, chmod)
+                scp_client.put(local_file_name, remote_file_name)
             except Exception as e:
                 logging.warning('Caught exception on file transfer', e)
                 raise e
             finally:
-                self.sftp_client.close()
+                scp_client.close()
         else:
             cmd = self.__generate_shell_command(self.hostname, self.port,
                                                 self.username, self.key,

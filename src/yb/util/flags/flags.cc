@@ -38,9 +38,10 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/util/flags/flag_tags.h"
 
-#if defined(YB_GPERFTOOLS_TCMALLOC)
+#if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
-#elif defined(YB_GOOGLE_TCMALLOC)
+#endif
+#if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
 #endif
 
@@ -51,6 +52,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
@@ -70,23 +72,6 @@ DEFINE_UNKNOWN_bool(dump_metrics_json, false,
             "by this binary.");
 TAG_FLAG(dump_metrics_json, hidden);
 
-DEFINE_NON_RUNTIME_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
-    "profiling for the lifetime of the process. If Gperftools TCMalloc is being used, profile "
-    "output will be stored in the directory specified by -heap_profile_path, and enabling this "
-    "option will disable the on-demand profiling in /pprof/heap. If Google TCMalloc is being used, "
-    "the sample rate will be set to profiler_sample_freq_bytes.");
-TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
-TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
-DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at which Google "
-    "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
-    "true).");
-
-DEFINE_RUNTIME_string(heap_profile_path, "",
-    "Output path to store heap profiles. If not set, profiles are stored in the directory "
-    "specified by the tmp_dir flag as $FLAGS_tmp_dir/<process-name>.<pid>.<n>.heap.");
-TAG_FLAG(heap_profile_path, stable);
-TAG_FLAG(heap_profile_path, advanced);
-
 DEPRECATE_FLAG(int32, svc_queue_length_default, "11_2022");
 
 // This provides a more accurate representation of default gFlag values for application like
@@ -102,6 +87,11 @@ DEFINE_UNKNOWN_bool(help_auto_flag_json, false,
     "Dump a JSON document describing all of the AutoFlags available in this binary.");
 TAG_FLAG(help_auto_flag_json, stable);
 TAG_FLAG(help_auto_flag_json, advanced);
+
+DEFINE_RUNTIME_string(allowed_preview_flags_csv, "",
+    "CSV formatted list of Preview flag names. Flags that are tagged Preview cannot be modified "
+    "unless they have been added to this list. By adding flags to this list, you acknowledge any "
+    "risks associated with modifying them.");
 
 DEFINE_NON_RUNTIME_string(tmp_dir, "/tmp",
     "Directory to store temporary files. By default, the value of '/tmp' is used.");
@@ -263,8 +253,7 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
-DEFINE_UNKNOWN_string(
-    dynamically_linked_exe_suffix, "",
+DEFINE_UNKNOWN_string(dynamically_linked_exe_suffix, "",
     "Suffix to appended to executable names, such as yb-master and yb-tserver during the "
     "generation of Link Time Optimized builds.");
 TAG_FLAG(dynamically_linked_exe_suffix, advanced);
@@ -434,6 +423,34 @@ void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_inf
   }
 }
 
+bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
+  std::unordered_set<string> allowed_flags = strings::Split(allowed_flags_csv, ",");
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  for (const auto& flag : flag_infos) {
+    unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+
+    if (ContainsKey(tags, FlagTag::kPreview) && (flag.current_value != flag.default_value)) {
+      if (!ContainsKey(allowed_flags, flag.name)) {
+        (*err_msg) = Format("Preview flag '$0' not found in the allow list", flag.name);
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool IsPreviewFlagAllowed(const CommandLineFlagInfo& flag_info, const string& new_value) {
+  if (new_value != flag_info.default_value) {
+    std::unordered_set<string> allowed_flags = strings::Split(FLAGS_allowed_preview_flags_csv, ",");
+    return ContainsKey(allowed_flags, flag_info.name);
+  }
+  return true;
+}
+
 }  // anonymous namespace
 
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
@@ -448,6 +465,14 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     SetFlagDefaultsToCurrent(flag_infos);
 
     google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+
+    // Ensure all preview flags overridden are in allow list before invoking any callbacks.
+    string err_msg;
+    if (!ValidateAllPreviewFlags(&err_msg, FLAGS_allowed_preview_flags_csv)) {
+      LOG(FATAL) << err_msg;
+      return;
+    }
+
     InvokeAllCallbacks(flag_infos);
 
     // flag_infos is no longer valid as default and current values have changed.
@@ -480,21 +505,6 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     LOG(FATAL) << "tmp_dir must be an absolute path, found value to be " << FLAGS_tmp_dir;
   }
 
-  if (FLAGS_heap_profile_path.empty()) {
-    const auto path = strings::Substitute(
-        "$0/$1.$2", FLAGS_tmp_dir, google::ProgramInvocationShortName(), getpid());
-    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(heap_profile_path, path));
-  }
-
-  if (FLAGS_enable_process_lifetime_heap_profiling) {
-#ifdef YB_GPERFTOOLS_TCMALLOC
-    HeapProfilerStart(FLAGS_heap_profile_path.c_str());
-#elif defined(YB_GOOGLE_TCMALLOC)
-    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
-        FLAGS_profiler_sample_freq_bytes);
-    tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
-#endif
-  }
 }
 
 bool RefreshFlagsFile(const std::string& filename) {
@@ -690,6 +700,22 @@ SetFlagResult SetFlag(
     }
   }
 
+  // Only allowed preview flags can be changed.
+  if (flag_name == "allowed_preview_flags_csv") {
+    string err_msg;
+    if (!ValidateAllPreviewFlags(&err_msg, new_value)) {
+      *output_msg = err_msg;
+      return SetFlagResult::BAD_VALUE;
+    }
+  } else if (ContainsKey(tags, FlagTag::kPreview)) {
+    if (!IsPreviewFlagAllowed(flag_info, new_value)) {
+      *output_msg =
+          "Cannot modify Preview flags unless you acknowledge the risks "
+          "by adding their name to allowed_preview_flags_csv flag.";
+      return SetFlagResult::BAD_VALUE;
+    }
+  }
+
   string ret = flags_internal::SetFlagInternal(
       flag_info.flag_ptr, flag_name.c_str(), new_value, google::SET_FLAGS_VALUE);
 
@@ -713,5 +739,18 @@ SetFlagResult SetFlag(
   return SetFlagResult::SUCCESS;
 }
 }  // namespace flags_internal
+
+bool ValidatePercentageFlag(const char* flag_name, int value) {
+  if (value >= 0 && value <= 100) {
+    return true;
+  }
+  LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
+  return false;
+}
+
+bool IsUsageMessageSet() {
+  // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
+  return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
+}
 
 } // namespace yb

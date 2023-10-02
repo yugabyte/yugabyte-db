@@ -15,6 +15,8 @@
 
 #include "yb/bfql/directory.h"
 
+#include "yb/common/value.messages.h"
+
 namespace yb {
 namespace bfql {
 

@@ -1,14 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import HelpItemContainer from '../components/help/HelpItem/HelpItemContainer';
+import { Component, Suspense, lazy } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const HelpItemComponent = lazy(() => import('../components/help/HelpItem/HelpItemContainer'));
 
 export default class Help extends Component {
   render() {
     return (
-      <div>
-        <HelpItemContainer />
-      </div>
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <div>
+          <HelpItemComponent />
+        </div>
+      </Suspense>
     );
   }
 }

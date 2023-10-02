@@ -12,15 +12,15 @@ menu:
 type: docs
 ---
 
-A virtual private cloud (VPC) is a virtual network where you can deploy clusters that you want to connect with services hosted with the same provider. The VPC reserves a range of IP addresses with the cloud provider you select. You must set up a dedicated VPC before deploying your cluster. A VPC must be created before you can configure a peering connection or private service endpoint.
+A virtual private cloud (VPC) is a virtual network where you can deploy clusters that you want to connect with services hosted with the same provider. The VPC reserves a range of IP addresses with the cloud provider you select.
 
 - To learn about VPCs in YugabyteDB Managed, refer to [VPC overview](../cloud-vpc-intro/).
-- To learn how to peer VPCs, refer to [Peer VPCs](../cloud-add-vpc-aws/).
-- To learn how to configure a private service endpoint (AWS only), refer to [Private service endpoints](../cloud-add-endpoint/).
+- To learn how to peer VPCs, refer to [Peering connections](../cloud-add-peering/).
+- To learn how to configure a private service endpoint to use with a private link service, refer to [Private service endpoints](../cloud-add-endpoint/).
 
-For lowest latencies, create your VPC in the same region(s) as your applications. If you are connecting to your application via a private service endpoint (AWS only), your VPC must be located in the same region as the endpoint to which you are linking.
+For lowest latencies, create your VPC in the same region(s) as your applications. If you are connecting to your application via a private service endpoint, your cluster VPC must be located in the same region as the VPC endpoint to which you are linking.
 
-**VPCs** on the **VPC Network** tab of the **Network Access** page displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
+**VPCs** on the **VPC Network** tab of the **Networking** page displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
 
 ![VPCs](/images/yb-cloud/cloud-vpc.png)
 
@@ -36,7 +36,7 @@ To create a VPC, do the following:
 
   {{% tab header="AWS" lang="aws" %}}
 
-1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
+1. On the **Networking** page, select **VPC Network**, then **VPCs**.
 1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
@@ -49,9 +49,20 @@ To create a VPC, do the following:
 
   {{% /tab %}}
 
+  {{% tab header="Azure" lang="azure" %}}
+
+1. On the **Networking** page, select **VPC Network**, then **VPCs**.
+1. Click **Create VPC** to display the **Create VPC** sheet.
+1. Enter a name for the VPC.
+1. Choose the provider (Azure).
+1. Select the [region](../cloud-vpc-intro/#choose-the-region-for-your-vpc).
+1. Click **Save**.
+
+  {{% /tab %}}
+
   {{% tab header="GCP" lang="gcp" %}}
 
-1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
+1. On the **Networking** page, select **VPC Network**, then **VPCs**.
 1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (GCP).

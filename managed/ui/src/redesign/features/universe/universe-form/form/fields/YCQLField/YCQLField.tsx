@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -103,7 +103,7 @@ export const YCQLField = ({ disabled, enforceAuth }: YCQLFieldProps): ReactEleme
             </Box>
           )}
 
-          {ycqlAuthEnabled && !disabled && (
+          {(ycqlAuthEnabled || enforceAuth) && !disabled && (
             <Box display="flex" mt={3}>
               <Grid container spacing={3}>
                 <Grid item sm={12} lg={10}>

@@ -21,7 +21,7 @@ public class BasePgSQLTestWithRpcMetric  extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_export_intentdb_metrics", "true");
+    flagMap.put("export_intentdb_metrics", "true");
     return flagMap;
   }
 
@@ -41,11 +41,14 @@ public class BasePgSQLTestWithRpcMetric  extends BasePgSQLTest {
 
   protected static class OperationsCounter {
     public Map<String, Counter> tableWrites = new HashMap<>();
+    public Map<String, Counter> intentdbSeeks = new HashMap<>();
+
     public Counter rpc = new Counter();
 
     public OperationsCounter(String... tableNames) {
       for (String table : tableNames) {
         tableWrites.put(table, new Counter());
+        intentdbSeeks.put(table, new Counter());
       }
     }
   }
@@ -64,6 +67,11 @@ public class BasePgSQLTestWithRpcMetric  extends BasePgSQLTest {
         Counter writes = counter.tableWrites.get(tableName);
         if (writes != null) {
           writes.update(new Metrics(obj).getCounter("intentsdb_rocksdb_write_self").value);
+        }
+
+        Counter seeks = counter.intentdbSeeks.get(tableName);
+        if (seeks != null) {
+          seeks.update(new Metrics(obj).getCounter("intentsdb_rocksdb_number_db_seek").value);
         }
       }
     }

@@ -20,6 +20,13 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
+#include "yb/yql/pggate/pg_gate_fwd.h"
+
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
+
 namespace yb {
 namespace pggate {
 
@@ -30,19 +37,17 @@ class PgColumn {
 
   // Bindings for write requests.
   LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req);
-  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlWriteRequestPB *write_req);
+  Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlWriteRequestPB* write_req, PgExpr* expr);
 
   // Bindings for read requests.
   LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlReadRequestPB *write_req);
-  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlReadRequestPB *read_req);
+  Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlReadRequestPB* read_req, PgExpr* expr);
 
   // Bindings for read requests.
   LWPgsqlExpressionPB *AllocBindConditionExprPB(LWPgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
   LWPgsqlExpressionPB *AllocAssignPB(LWPgsqlWriteRequestPB *write_req);
-
-  void ResetBindPB();
 
   // Access functions.
   const ColumnSchema& desc() const;
@@ -54,6 +59,20 @@ class PgColumn {
   LWPgsqlExpressionPB *bind_pb() {
     return bind_pb_;
   }
+
+  bool ValueBound() const;
+
+  void MoveBoundValueTo(LWPgsqlExpressionPB* out);
+  void UnbindValue();
+
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue(LWQLValuePB** dest) const;
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue() const;
+  Result<dockv::KeyEntryValue> BuildSubExprKeyColumnValue(size_t idx) const;
+
+  Status MoveBoundKeyInOperator(LWPgsqlReadRequestPB *read_req);
+
+  Status SetSubExprs(PgDml* stmt, PgExpr **value, size_t count);
+  size_t SubExprsCount() const;
 
   LWPgsqlExpressionPB *assign_pb() {
     return assign_pb_;
@@ -110,6 +129,11 @@ class PgColumn {
   }
 
  private:
+  template <class Req>
+  Result<LWPgsqlExpressionPB*> DoAllocBindPB(Req* req, PgExpr* expr);
+  template <class Req>
+  LWPgsqlExpressionPB *DoAllocPrimaryBindPB(Req *req);
+
   const Schema& schema_;
   const size_t index_;
 

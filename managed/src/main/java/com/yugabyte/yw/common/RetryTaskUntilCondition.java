@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  * This utility helps in retrying a task until a stop condition is met, or a timeout is reached,
  * whichever is earlier.
  */
-class RetryTaskUntilCondition<T> {
+public class RetryTaskUntilCondition<T> {
   private Supplier<T> task;
   private Predicate<T> stopCondition;
   private Duration delayBetweenRetrySecs;
@@ -49,6 +49,6 @@ class RetryTaskUntilCondition<T> {
       stopRetry = stopCondition.test(result);
     }
 
-    return !stopRetry;
+    return stopRetry;
   }
 }

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import _ from 'lodash';
 import PropTypes from 'prop-types';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
@@ -45,7 +45,6 @@ export default class NodeAction extends Component {
       showModal: false
     });
   }
-
 
   openOverridesModal = (currentRow) => {
     this.setState({
@@ -166,11 +165,14 @@ export default class NodeAction extends Component {
       disableRemove,
       disabled,
       clusterType,
-      isKubernetes
+      isKubernetes,
+      isOnPremManuallyProvisioned
     } = this.props;
-    const allowedActions = isKubernetes
-      ? currentRow.allowedActions.filter((actionType) => actionType !== 'REBOOT')
-      : currentRow.allowedActions;
+
+    const allowedActions =
+      isKubernetes || isOnPremManuallyProvisioned
+        ? currentRow.allowedActions.filter((actionType) => actionType !== 'REBOOT')
+        : currentRow.allowedActions;
     const actionButtons = allowedActions.map((actionType) => {
       const btnId = _.uniqueId('node_action_btn_');
       const isDisabled =
@@ -229,8 +231,8 @@ export default class NodeAction extends Component {
       </MenuItem>
     );
 
-    if(isKubernetes) {
-      const nodeOverridesID = _.uniqueId("k8s_override_action_");
+    if (isKubernetes) {
+      const nodeOverridesID = _.uniqueId('k8s_override_action_');
       actionButtons.push(
         <MenuItem
           key={nodeOverridesID}
@@ -264,12 +266,14 @@ export default class NodeAction extends Component {
             />
           </Fragment>
         ) : null}
-        {this.state.overridesModal && <NodeOverridesModal
-          visible={this.state.overridesModal}
-          onClose={this.closeOverridesModal}
-          nodeId={this.state.currentNode}
-          universeId={universeUUID}
-        />}
+        {this.state.overridesModal && (
+          <NodeOverridesModal
+            visible={this.state.overridesModal}
+            onClose={this.closeOverridesModal}
+            nodeId={this.state.currentNode}
+            universeId={universeUUID}
+          />
+        )}
       </DropdownButton>
     );
   }

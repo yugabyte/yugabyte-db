@@ -21,6 +21,8 @@
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
+#include "yb/util/operation_counter.h"
+
 namespace yb {
 namespace docdb {
 
@@ -120,10 +122,10 @@ class QLWriteOperation :
                            std::unique_ptr<qlexpr::QLRowBlock>* rowblock);
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
+  Result<bool> HasDuplicateUniqueIndexValueBackward(
+      const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data, yb::docdb::Direction direction);
-  Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data, ReadHybridTime read_time);
+      const DocOperationApplyData& data, const ReadHybridTime& read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter, const dockv::SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
@@ -138,7 +140,7 @@ class QLWriteOperation :
       const DocOperationApplyData& data, const ColumnSchema& column_schema,
       const QLColumnValuePB& column_value, ColumnId column_id);
   Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
-                   const ReadHybridTime& read_ht, CoarseTimePoint deadline);
+                   const ReadOperationData& read_operation_data);
 
   Result<bool> IsRowDeleted(
       const qlexpr::QLTableRow& current_row, const qlexpr::QLTableRow& new_row) const;
@@ -220,9 +222,9 @@ class QLReadOperation : public DocExprExecutor {
       : request_(request), txn_op_context_(txn_op_context) {}
 
   Status Execute(const YQLStorageIf& ql_storage,
-                 CoarseTimePoint deadline,
-                 const ReadHybridTime& read_time,
+                 const ReadOperationData& read_operation_data,
                  const DocReadContext& doc_read_context,
+                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                  qlexpr::QLResultSet* result_set,
                  HybridTime* restart_read_ht);
 

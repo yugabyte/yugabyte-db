@@ -123,6 +123,26 @@ void CloseProcFdDir(DIR* dir) {
 
 } // anonymous namespace
 
+namespace util {
+
+void LogWaitCode(int ret_code, const std::string &process_name) {
+  std::ostringstream msg;
+  msg << process_name << " server returned with code " << ret_code;
+  // Status handling based on https://linux.die.net/man/2/waitpid
+  if (WIFEXITED(ret_code)) {
+    msg << ", exited with status " << WEXITSTATUS(ret_code);
+  }
+  if (WIFSIGNALED(ret_code)) {
+    msg << ", terminated with signal " << WTERMSIG(ret_code);
+  }
+  if (WIFSTOPPED(ret_code)) {
+    msg << ", stopped with signal " << WSTOPSIG(ret_code);
+  }
+  LOG(WARNING) << msg.str();
+}
+
+} // namespace util
+
 Subprocess::Subprocess(string program, vector<string> argv)
     : program_(std::move(program)),
       argv_(std::move(argv)),
@@ -227,7 +247,7 @@ static int pipe2(int pipefd[2], int flags) {
 #endif
 
 Status Subprocess::Start() {
-  std::lock_guard<std::mutex> l(state_lock_);
+  std::lock_guard l(state_lock_);
   SCHECK_EQ(state_, SubprocessState::kNotStarted, IllegalState,
             "Incorrect state when starting the process");
   EnsureSigPipeDisabled();

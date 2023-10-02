@@ -12,6 +12,7 @@
 should_create_package="0"
 should_use_package="0"
 use_dynamic_paths="0"
+should_use_pex="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -44,11 +45,21 @@ while [[ $# -gt 0 ]]; do
     --use_dynamic_paths)
       use_dynamic_paths="1"
     ;;
+    --use_pex)
+      should_use_pex="1"
+    ;;
     *)
       fatal "Invalid option: $1"
   esac
   shift
 done
+
+if [[ "$should_use_pex" == "1" ]]; then
+  log "Activating pex environment $pex_venv_dir"
+  activate_pex
+  rm $pex_lock
+  exit
+fi
 
 if [[ "$should_create_package" == "1" ]]; then
   log "Creating wheels package $YB_PYTHON_MODULES_PACKAGE"
@@ -72,11 +83,8 @@ if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
   log "Found virtualenv package $YB_PYTHON_MODULES_PACKAGE"
   tar -xf $YB_PYTHON_MODULES_PACKAGE
 else
-  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
-    # looks like there is some issue with setuptools and virtualenv on python2.
-    # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
-    pip_install "setuptools<45"
-  fi
+
+  run_pip install --upgrade pip > /dev/null
 
   # faster pip install of yb-cassandra-driver without a full compilation
   # https://docs.datastax.com/en/developer/python-driver/3.16/installation/

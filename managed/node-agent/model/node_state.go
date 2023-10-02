@@ -12,7 +12,6 @@ const (
 	Registering NodeState = "REGISTERING"
 	Ready       NodeState = "READY"
 	Upgrade     NodeState = "UPGRADE"
-	Upgrading   NodeState = "UPGRADING"
 	Upgraded    NodeState = "UPGRADED"
 )
 

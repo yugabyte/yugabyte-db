@@ -26,7 +26,6 @@ DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(force_global_transactions);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -323,6 +322,16 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
   }
 };
 
+class GeoTransactionsFailOnConflictTest : public GeoTransactionsPromotionTest {
+ public:
+  void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    GeoTransactionsPromotionTest::SetUp();
+  }
+};
+
 class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
  protected:
   // Disabling query statement timeout for GeoPartitionedDeadlockTest tests
@@ -332,7 +341,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     GeoTransactionsPromotionTest::SetUp();
   }
@@ -586,14 +594,16 @@ TEST_F(GeoTransactionsPromotionTest,
   CheckPromotion(TestTransactionType::kCommit, TestTransactionSuccess::kTrue, pre_commit_hook);
 }
 
-TEST_F(GeoTransactionsPromotionTest,
-       YB_DISABLE_TEST_IN_TSAN(TestNoPromotionFromAbortedState)) {
+TEST_F_EX(GeoTransactionsPromotionTest,
+          YB_DISABLE_TEST_IN_TSAN(TestNoPromotionFromAbortedState),
+          GeoTransactionsFailOnConflictTest) {
   // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
   PerformConflictTest(FLAGS_transaction_heartbeat_usec /* delay_before_promotion_us */);
 }
 
-TEST_F(GeoTransactionsPromotionTest,
-       YB_DISABLE_TEST_IN_TSAN(TestPromotionReturningToAbortedState)) {
+TEST_F_EX(GeoTransactionsPromotionTest,
+          YB_DISABLE_TEST_IN_TSAN(TestPromotionReturningToAbortedState),
+          GeoTransactionsFailOnConflictTest) {
   // Wait for heartbeat for conn1 to be informed about abort due to conflict before promotion.
   PerformConflictTest(0 /* delay_before_promotion_us */);
 }

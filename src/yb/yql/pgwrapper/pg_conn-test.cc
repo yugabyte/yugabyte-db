@@ -35,7 +35,7 @@ class PgConnTest : public LibPqTestBase {
 };
 
 // Test libpq connection to various database names.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
+TEST_F(PgConnTest, DatabaseNames) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& db_name : names) {
@@ -45,7 +45,7 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(DatabaseNames)) {
 }
 
 // Test libpq connection to various user names.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
+TEST_F(PgConnTest, UserNames) {
   PGConn conn = ASSERT_RESULT(Connect());
 
   for (const std::string& user_name : names) {
@@ -55,56 +55,37 @@ TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UserNames)) {
 }
 
 // Test libpq connection using URI connection string.
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(Uri)) {
-  const std::string& host = pg_ts->bind_host();
-  const uint16_t port = pg_ts->pgsql_rpc_port();
+TEST_F(PgConnTest, Uri) {
+  const auto& host = pg_ts->bind_host();
+  const auto port = pg_ts->pgsql_rpc_port();
   {
-    const std::string& conn_str = Format("postgres://yugabyte@$0:$1", host, port);
+    const auto conn_str = Format("postgres://yugabyte@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
-    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "yugabyte");
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_user"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "yugabyte");
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("show listen_addresses"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, host);
-    }
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("show port"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, std::to_string(port));
-    }
+    auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("select current_user")), "yugabyte");
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show listen_addresses")), host);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>("show port")), std::to_string(port));
   }
   // Supply database name.
   {
-    const std::string& conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
+    const auto conn_str = Format("postgres://yugabyte@$0:$1/template1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
-    PGConn conn = ASSERT_RESULT(ConnectUsingString(conn_str));
-    {
-      auto res = ASSERT_RESULT(conn.Fetch("select current_database()"));
-      auto answer = ASSERT_RESULT(GetString(res.get(), 0, 0));
-      ASSERT_EQ(answer, "template1");
-    }
+    auto conn = ASSERT_RESULT(ConnectUsingString(conn_str));
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchValue<std::string>("select current_database()")), "template1");
   }
   // Supply an incorrect password.  Since HBA config gives the yugabyte user trust access, postgres
   // won't request a password, our client won't send this password, and the authentication should
   // succeed.
   {
-    const std::string& conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
+    const auto conn_str = Format("postgres://yugabyte:monkey123@$0:$1", host, port);
     LOG(INFO) << "Connecting using string: " << conn_str;
     ASSERT_OK(ConnectUsingString(conn_str));
   }
 }
 
-TEST_F(PgConnTest, YB_DISABLE_TEST_IN_TSAN(PastDeadline)) {
+TEST_F(PgConnTest, PastDeadline) {
   const std::string conn_str = Format("host=$0 port=$1 dbname=yugabyte user=yugabyte",
                                       pg_ts->bind_host(), pg_ts->pgsql_rpc_port());
   Result<PGConn> res = PGConn::Connect(
@@ -158,7 +139,7 @@ class PgConnTestAuthPassword : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UriPassword), PgConnTestAuthPassword) {
+TEST_F_EX(PgConnTest, UriPassword, PgConnTestAuthPassword) {
   TestUriAuth();
 }
 
@@ -170,7 +151,7 @@ class PgConnTestAuthMd5 : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgConnTestAuthMd5) {
+TEST_F_EX(PgConnTest, UriMd5, PgConnTestAuthMd5) {
   TestUriAuth();
 }
 
@@ -181,7 +162,7 @@ class PgConnTestLimit : public PgConnTest {
   }
 };
 
-TEST_F_EX(PgConnTest, YB_DISABLE_TEST_IN_TSAN(ConnectionLimit), PgConnTestLimit) {
+TEST_F_EX(PgConnTest, ConnectionLimit, PgConnTestLimit) {
   LOG(INFO) << "First connection";
   PGConn conn = ASSERT_RESULT(Connect());
 

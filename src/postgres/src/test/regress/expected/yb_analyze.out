@@ -50,7 +50,7 @@ EXPLAIN SELECT DISTINCT b FROM y;
 EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
                               QUERY PLAN
 -----------------------------------------------------------------------
- Nested Loop  (cost=0.00..213.89 rows=1000 width=72)
+ Nested Loop  (cost=0.00..224.00 rows=1000 width=72)
    ->  Seq Scan on x  (cost=0.00..100.00 rows=1000 width=36)
    ->  Index Scan using y_pkey on y  (cost=0.00..0.11 rows=1 width=36)
          Index Cond: (a = x.a)
@@ -59,7 +59,7 @@ EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
 EXPLAIN SELECT * FROM y, x WHERE x.a = y.a;
                               QUERY PLAN
 -----------------------------------------------------------------------
- Nested Loop  (cost=0.00..213.89 rows=1000 width=72)
+ Nested Loop  (cost=0.00..224.00 rows=1000 width=72)
    ->  Seq Scan on y  (cost=0.00..100.00 rows=1000 width=36)
    ->  Index Scan using x_pkey on x  (cost=0.00..0.11 rows=1 width=36)
          Index Cond: (a = y.a)
@@ -112,7 +112,7 @@ EXPLAIN SELECT DISTINCT b FROM y;
 EXPLAIN SELECT * FROM x, y WHERE x.a = y.a;
                               QUERY PLAN
 -----------------------------------------------------------------------
- Nested Loop  (cost=0.00..9.25 rows=25 width=72)
+ Nested Loop  (cost=0.00..9.50 rows=25 width=72)
    ->  Seq Scan on x  (cost=0.00..2.50 rows=25 width=36)
    ->  Index Scan using y_pkey on y  (cost=0.00..0.27 rows=1 width=36)
          Index Cond: (a = x.a)

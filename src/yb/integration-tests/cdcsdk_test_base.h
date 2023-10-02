@@ -29,7 +29,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
-DECLARE_bool(cdc_enable_replicate_intents);
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(cdc_max_apply_batch_num_records);
@@ -39,6 +38,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_bool(cdc_populate_safepoint_record);
 
 namespace yb {
 using client::YBClient;
@@ -89,11 +89,12 @@ class CDCSDKTestBase : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_write_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
 
-    FLAGS_TEST_check_broadcast_address = false;
-    FLAGS_flush_rocksdb_on_shutdown = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+    google::SetVLOGLevel("cdc*", 4);
   }
 
   void TearDown() override;
@@ -120,9 +121,8 @@ class CDCSDKTestBase : public YBTest {
   Status InitPostgres(Cluster* cluster);
 
   Status SetUpWithParams(
-      uint32_t replication_factor,
-      uint32_t num_masters = 1,
-      bool colocated = false);
+      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
+      bool cdc_populate_safepoint_record = false);
 
   Result<YBTableName> GetTable(
       Cluster* cluster,
@@ -185,7 +185,7 @@ class CDCSDKTestBase : public YBTest {
       const CDCRecordType& record_type = CDCRecordType::CHANGE,
       const std::string& namespace_name = kNamespaceName);
 
-  Result<std::string> CreateDBStream(
+  Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 

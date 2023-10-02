@@ -117,7 +117,7 @@ class HdrHistogram {
   uint64_t TotalCount() const { return base::subtle::NoBarrier_Load(&total_count_); }
 
   // Count of all events recorded since last Reset. Resets to 0 after
-  // ResetPercentiles.
+  // Reset().
   uint64_t CurrentCount() const {
     return base::subtle::NoBarrier_Load(&current_count_);
   }
@@ -126,7 +126,7 @@ class HdrHistogram {
   uint64_t TotalSum() const { return base::subtle::NoBarrier_Load(&total_sum_); }
 
   // Sum of all events recorded since last Reset. Resets to 0 after
-  // ResetPercentiles.
+  // Reset().
   uint64_t CurrentSum() const {
     return base::subtle::NoBarrier_Load(&current_sum_);
   }
@@ -182,7 +182,7 @@ class HdrHistogram {
 
   // Resets the counts_ array to reset the percentiles information.
   // Preserves the values for TotalSum and TotalCount.
-  void ResetPercentiles();
+  void Reset();
 
   // Get the percentile at a given value
   // TODO: implement
@@ -195,6 +195,8 @@ class HdrHistogram {
 
   // Dump a formatted, multiline string describing this histogram to 'out'.
   void DumpHumanReadable(std::ostream* out) const;
+
+  size_t DynamicMemoryUsage() const;
 
  private:
   friend class AbstractHistogramIterator;

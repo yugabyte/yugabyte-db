@@ -22,7 +22,6 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -31,6 +30,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb {
 namespace pggate {
@@ -60,6 +60,8 @@ enum class StmtOp {
   STMT_CREATE_TABLEGROUP,
   STMT_DROP_TABLEGROUP,
   STMT_SAMPLE,
+  STMT_DROP_SEQUENCE,
+  STMT_DROP_DB_SEQUENCES
 };
 
 class PgStatement : public PgMemctx::Registrable {

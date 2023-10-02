@@ -81,52 +81,33 @@ find_inheritance_children(Oid parentrelId, LOCKMODE lockmode)
 	 */
 	oidarr = NULL;
 	numoids = 0;
+	maxoids = 32;
+	oidarr = (Oid *) palloc(maxoids * sizeof(Oid));
 
-	if (IsYugaByteEnabled())
+	relation = heap_open(InheritsRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_inherits_inhparent,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(parentrelId));
+
+	scan = systable_beginscan(relation, InheritsParentIndexId, true,
+							  NULL, 1, key);
+
+	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
-		/*
-		* In a Yugabyte cluster, the pg_inherits table is cached, hence the
-		* relevant information can be fetched from the SysCache.
-		*/
-		CatCList *inhlist = SearchSysCacheList1(INHERITSRELID,
-		ObjectIdGetDatum(parentrelId));
-		oidarr = (Oid *) palloc(inhlist->n_members * sizeof(Oid));
-		for (i = 0; i < inhlist->n_members; i++)
+		inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
+		if (numoids >= maxoids)
 		{
-			HeapTuple inheritsTuple = &inhlist->members[i]->tuple;
-			oidarr[numoids++] =
-				((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
+			maxoids *= 2;
+			oidarr = (Oid *) repalloc(oidarr, maxoids * sizeof(Oid));
 		}
-		ReleaseCatCacheList(inhlist);
-	} else {
-		maxoids = 32;
-		oidarr = (Oid *) palloc(maxoids * sizeof(Oid));
-
-		relation = heap_open(InheritsRelationId, AccessShareLock);
-
-		ScanKeyInit(&key[0],
-					Anum_pg_inherits_inhparent,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(parentrelId));
-
-		scan = systable_beginscan(relation, InheritsParentIndexId, true,
-								  NULL, 1, key);
-
-		while ((inheritsTuple = systable_getnext(scan)) != NULL)
-		{
-			inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
-			if (numoids >= maxoids)
-			{
-				maxoids *= 2;
-				oidarr = (Oid *) repalloc(oidarr, maxoids * sizeof(Oid));
-			}
-			oidarr[numoids++] = inhrelid;
-		}
-
-		systable_endscan(scan);
-
-		heap_close(relation, AccessShareLock);
+		oidarr[numoids++] = inhrelid;
 	}
+
+	systable_endscan(scan);
+
+	heap_close(relation, AccessShareLock);
 
 	/*
 	 * If we found more than one child, sort them by OID.  This ensures

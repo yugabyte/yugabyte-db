@@ -16,8 +16,21 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network (unless you explicitly enable public access). Resources that can be included in the network fall into two categories:
 
-- peered application VPCs. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
-- privately linked services. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
+- Peered application VPCs.
+  - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
+  - AWS and GCP only.
+  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+  - You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/).
+- Privately linked services.
+  - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
+  - AWS and Azure only.
+  - Smart load balancing features aren't supported. Smart driver falls back to upstream driver connection instead.
+  - No need to add the IP address of your application to the cluster IP allow list.
+
+|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed) |
+| :--- | :--- | :--- | :--- | :--- |
+| Peering | AWS, GCP | Yes | Yes | Yes |
+| Private link | AWS, Azure | Yes | No | No |
 
 ## Advantages
 
@@ -31,13 +44,14 @@ Deploying your cluster in a VPC has the following advantages:
 
 There's no additional charge for using a VPC, peering, or private service endpoints. In most cases, using a VPC network will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
-Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) does incur charges from AWS. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/).
+Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) or [Azure Private Link](https://azure.microsoft.com/en-us/products/private-link/) does incur charges from the cloud provider in your own account. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/) or [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/).
 
 ## Limitations
 
 - You assign a VPC when you create a cluster. You can't switch VPCs after cluster creation.
 - You can't change the [size of your VPC](#set-the-cidr-and-size-your-vpc) once it is created.
 - You can create a maximum of 3 AWS VPCs per region.
+- You can create a maximum of 3 Azure VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
 - VPCs are not supported on Sandbox clusters.
 
@@ -70,7 +84,11 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 
 ### Set the CIDR and size your VPC
 
-The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, such as any application VPC you will peer, or other VPCs you have created.
+The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing).
+
+In Azure, the CIDR range is selected for you when you create the VPC.
+
+In AWS and GCP, because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, such as any application VPC you will peer, or other VPCs you have created.
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 

@@ -184,11 +184,41 @@ test_set_cmake_build_type_and_compiler_type   release    darwin    clang      re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu clang      release    clang   0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        release    gcc     0
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
-test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang15 0
-test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang15 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang15 0
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang15 0
-test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang15 0
+test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang16 0
+test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang16 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang16 0
+test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang16 0
+
+# -------------------------------------------------------------------------------------------------
+# Test existence of scripts pointed to by specical "script path" variables.
+# -------------------------------------------------------------------------------------------------
+
+list_yb_script_path_var_names() {
+  env | grep -E '^YB_SCRIPT_PATH_' | sed 's/=.*//g'
+}
+
+# Unset all script path variables in case some of them are set from outside.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  unset "${script_path_var_name}"
+done
+
+# Then set them again from scratch.
+yb_script_paths_are_set=false
+set_script_paths
+
+# Verify that the script pointed to by each of these variables exists.
+for script_path_var_name in $( list_yb_script_path_var_names ); do
+  script_path_var_value=${!script_path_var_name}
+  if [[ ! -f ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-existent file: " \
+          "'$script_path_var_value'"
+  fi
+  if [[ ! -x ${script_path_var_value} ]]; then
+    fatal "Script path variable '$script_path_var_name' points to a non-executable file: " \
+          "'$script_path_var_value'"
+  fi
+done
 
 # -------------------------------------------------------------------------------------------------
 

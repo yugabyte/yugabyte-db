@@ -19,9 +19,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/yb_table_name.h"
-
-#include "yb/common/ybc_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
@@ -47,12 +44,15 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
@@ -60,7 +60,9 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -71,6 +73,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(enable_wait_queues);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -104,8 +107,10 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
-namespace yb {
-namespace pgwrapper {
+METRIC_DECLARE_entity(tablet);
+METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
+
+namespace yb::pgwrapper {
 namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
@@ -154,18 +159,32 @@ class PgMiniTest : public PgMiniTestBase {
   void VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables);
 
   void RunManyConcurrentReadersTest();
+
+  void ValidateAbortedTxnMetric();
 };
 
-class PgMiniPgClientServiceCleanupTest : public PgMiniTest {
- public:
-  void SetUp() override {
-    FLAGS_pg_client_session_expiration_ms = 5000;
-    FLAGS_pg_client_heartbeat_interval_ms = 2000;
-    PgMiniTestBase::SetUp();
-  }
-
+class PgMiniTestSingleNode : public PgMiniTest {
   size_t NumTabletServers() override {
     return 1;
+  }
+};
+
+class PgMiniTestFailOnConflict : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgMiniTest::SetUp();
+  }
+};
+
+class PgMiniPgClientServiceCleanupTest : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) = 2000;
+    PgMiniTestBase::SetUp();
   }
 };
 
@@ -187,7 +206,7 @@ TEST_F_EX(PgMiniTest, VerifyPgClientServiceCleanupQueue, PgMiniPgClientServiceCl
 }
 
 // Try to change this to test follower reads.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
+TEST_F(PgMiniTest, FollowerReads) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (key int PRIMARY KEY, word TEXT, phrase TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t2 (key, word, phrase) VALUES (1, 'old', 'old is gold')"));
@@ -340,7 +359,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_READ_ONLY_SQL_TRANSACTION) << status;
     ASSERT_STR_CONTAINS(status.ToString(), "cannot execute UPDATE in a read-only transaction");
 
-    auto value =
+    value =
         ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
                                                    "SELECT value FROM t WHERE key = 1"));
     ASSERT_EQ(value, "old");
@@ -362,7 +381,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
   ASSERT_EQ(value, "NEW is fine");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
+TEST_F(PgMiniTest, MultiColFollowerReads) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, c1 TEXT, c2 TEXT)"));
   ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
@@ -386,9 +405,9 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
   auto result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only off) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   const int32_t kOpDurationMs = 10;
   auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
@@ -396,18 +415,18 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 
   SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
 
@@ -416,12 +435,12 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
   result =
       ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
                                "SELECT * FROM t WHERE k = 1"));
-  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
-  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+  ASSERT_EQ(1, ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetValue<std::string>(result.get(), 0, 2)));
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+TEST_F(PgMiniTest, Simple) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
@@ -431,8 +450,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   ASSERT_EQ(value, "hello");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Tracing)) {
-  FLAGS_enable_tracing = false;
+TEST_F(PgMiniTest, Tracing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
@@ -455,10 +474,11 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Tracing)) {
   value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_OK(conn.Execute("ABORT"));
   LOG(INFO) << "Done block transaction";
+  ValidateAbortedTxnMetric();
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TracingSushant)) {
-  FLAGS_enable_tracing = false;
+TEST_F(PgMiniTest, TracingSushant) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
   auto conn = ASSERT_RESULT(Connect());
 
   LOG(INFO) << "Setting yb_enable_docdb_tracing";
@@ -471,7 +491,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TracingSushant)) {
   LOG(INFO) << "Done Insert";
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
+TEST_F(PgMiniTest, WriteRetry) {
   constexpr int kKeys = 100;
   auto conn = ASSERT_RESULT(Connect());
 
@@ -490,7 +510,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
-    auto fetched_key = ASSERT_RESULT(GetInt32(result.get(), key, 0));
+    auto fetched_key = ASSERT_RESULT(GetValue<int32_t>(result.get(), key, 0));
     ASSERT_EQ(fetched_key, key);
   }
 
@@ -500,7 +520,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(WriteRetry)) {
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(With)) {
+TEST_F(PgMiniTest, With) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
@@ -585,13 +605,14 @@ void PgMiniTest::TestReadRestart(const bool deferrable) {
       << num_reads;
   ASSERT_EQ(num_read_restarts.load(std::memory_order_acquire), 0);
   ASSERT_GT(num_read_successes.load(std::memory_order_acquire), kRequiredNumReads);
+  ValidateAbortedTxnMetric();
 }
 
 class PgMiniLargeClockSkewTest : public PgMiniTest {
  public:
   void SetUp() override {
     server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
     PgMiniTestBase::SetUp();
   }
@@ -607,7 +628,7 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartSnapshot),
   TestReadRestart(false /* deferrable */);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
+TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
   PGConn read_conn = ASSERT_RESULT(Connect());
   PGConn setup_conn = ASSERT_RESULT(Connect());
   PGConn write_conn = ASSERT_RESULT(Connect());
@@ -634,23 +655,16 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
 
   // SHOW for READ ONLY should show serializable
   ASSERT_OK(read_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY"));
-  Result<PGResultPtr> result = read_conn.Fetch("SHOW transaction_isolation");
-  ASSERT_TRUE(result.ok()) << result.status();
-  string value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "serializable");
+  ASSERT_EQ(ASSERT_RESULT(read_conn.FetchValue<std::string>("SHOW transaction_isolation")),
+            "serializable");
   ASSERT_OK(read_conn.Execute("COMMIT"));
 
   // SHOW for READ WRITE to READ ONLY should show serializable and read_only
   ASSERT_OK(write_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE"));
   ASSERT_OK(write_conn.Execute("SET TRANSACTION READ ONLY"));
-  result = write_conn.Fetch("SHOW transaction_isolation");
-  ASSERT_TRUE(result.ok()) << result.status();
-  value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "serializable");
-  result = write_conn.Fetch("SHOW transaction_read_only");
-  ASSERT_TRUE(result.ok()) << result.status();
-  value = ASSERT_RESULT(GetString(result.get().get(), 0, 0));
-  ASSERT_EQ(value, "on");
+  ASSERT_EQ(ASSERT_RESULT(write_conn.FetchValue<std::string>("SHOW transaction_isolation")),
+            "serializable");
+  ASSERT_EQ(ASSERT_RESULT(write_conn.FetchValue<std::string>("SHOW transaction_read_only")), "on");
   ASSERT_OK(write_conn.Execute("COMMIT"));
 
   // SERIALIZABLE, READ ONLY to READ WRITE should not use snapshot isolation
@@ -660,20 +674,17 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadOnly)) {
   ASSERT_OK(write_conn.Execute("UPDATE t SET i = i + 1"));
   // The result of the following statement is probabilistic.  If it does not fail now, then it
   // should fail during COMMIT.
-  result = read_conn.Fetch("SELECT * FROM t");
-  if (result.ok()) {
+  auto s = ResultToStatus(read_conn.Fetch("SELECT * FROM t"));
+  if (s.ok()) {
     ASSERT_OK(read_conn.Execute("COMMIT"));
     Status status = write_conn.Execute("COMMIT");
     ASSERT_NOK(status);
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(
-        result.status().ToString(), "could not serialize access due to concurrent update");
-    ASSERT_STR_CONTAINS(result.status().ToString(), "conflicts with higher priority transaction");
+    ASSERT_TRUE(s.IsNetworkError()) << s;
+    ASSERT_TRUE(IsSerializeAccessError(s)) << s;
+    ASSERT_STR_CONTAINS(s.ToString(), "conflicts with higher priority transaction");
   }
 }
 
@@ -682,7 +693,7 @@ void AssertAborted(const Status& status) {
   ASSERT_STR_CONTAINS(status.ToString(), "aborted");
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SelectModifySelect)) {
+TEST_F_EX(PgMiniTest, SelectModifySelect, PgMiniTestFailOnConflict) {
   {
     auto read_conn = ASSERT_RESULT(Connect());
     auto write_conn = ASSERT_RESULT(Connect());
@@ -710,25 +721,25 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SelectModifySelect)) {
 class PgMiniSmallWriteBufferTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 256_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 256_KB;
     PgMiniTest::SetUp();
   }
 };
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
+TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // Simulate truncating a big colocated table with multiple sst files flushed to disk.
   // To repro issue https://github.com/yugabyte/yugabyte-db/issues/15206
   // When using bloom filter, it might fail to find the table tombstone because it's stored in
   // a different sst file than the key is currently seeking.
 
-  FLAGS_rocksdb_disable_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("create tablegroup tg1"));
   ASSERT_OK(conn.Execute("create table t1(k int primary key) tablegroup tg1"));
   const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   tablet::TabletPeerPtr tablet_peer = nullptr;
   for (auto peer : peers) {
-    if (peer->shared_tablet()->doc_db().regular) {
+    if (peer->shared_tablet()->regular_db()) {
       tablet_peer = peer;
       break;
     }
@@ -746,7 +757,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
 
   // Check if the row still visible.
-  auto res = conn.FetchValue<int>("select k from t1 where k = 1");
+  auto res = conn.FetchValue<int32_t>("select k from t1 where k = 1");
   ASSERT_NOK(res);
   ASSERT_TRUE(res.status().message().Contains("Fetched 0 rows, while 1 expected"));
 
@@ -754,7 +765,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TruncateColocatedBigTable)) {
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
 }
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BulkCopyWithRestart), PgMiniSmallWriteBufferTest) {
+TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
   const std::string kTableName = "key_value";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
@@ -851,15 +862,15 @@ void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
   }, 15s, "Intents cleanup"));
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySerializable)) {
+TEST_F(PgMiniTest, ForeignKeySerializable) {
   TestForeignKey(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ForeignKeySnapshot)) {
+TEST_F(PgMiniTest, ForeignKeySnapshot) {
   TestForeignKey(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
+TEST_F(PgMiniTest, ConcurrentSingleRowUpdate) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, counter INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 0)"));
@@ -879,14 +890,11 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentSingleRowUpdate)) {
       });
     }
   }
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT counter FROM t WHERE k = 1"));
-  ASSERT_EQ(1, PQnfields(res.get()));
-  ASSERT_EQ(1, PQntuples(res.get()));
-  auto counter = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto counter = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT counter FROM t WHERE k = 1"));
   ASSERT_EQ(thread_count * increment_per_thread, counter);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
+TEST_F(PgMiniTest, DropDBUpdateSysTablet) {
   const std::string kDatabaseName = "testdb";
   PGConn conn = ASSERT_RESULT(Connect());
   std::array<int, 4> num_tables;
@@ -920,7 +928,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   ASSERT_EQ(num_tables[0], num_tables[3]);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
+TEST_F(PgMiniTest, DropDBMarkDeleted) {
   const std::string kDatabaseName = "testdb";
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
@@ -944,7 +952,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
+TEST_F(PgMiniTest, DropDBWithTables) {
   const std::string kDatabaseName = "testdb";
   const std::string kTablePrefix = "testt";
   constexpr auto kSleepTime = 500ms;
@@ -986,7 +994,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_EQ(num_tables_before, num_tables_after);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
+TEST_F(PgMiniTest, BigSelect) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
@@ -1006,7 +1014,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigSelect)) {
   ASSERT_EQ(res, kRows);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
+TEST_F(PgMiniTest, MoveMaster) {
   ShutdownAllMasters(cluster_.get());
   cluster_->mini_master(0)->set_pass_master_addresses(false);
   ASSERT_OK(StartAllMasters(cluster_.get()));
@@ -1020,9 +1028,9 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MoveMaster)) {
   }, 15s, "Create table"));
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
+TEST_F(PgMiniTest, DDLWithRestart) {
   SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
-  FLAGS_TEST_force_master_leader_resolution = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_leader_resolution) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -1039,8 +1047,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DDLWithRestart)) {
   ASSERT_EQ(res, 0);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CreateDatabase)) {
-  FLAGS_flush_rocksdb_on_shutdown = false;
+TEST_F(PgMiniTest, CreateDatabase) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   auto conn = ASSERT_RESULT(Connect());
   const std::string kDatabaseName = "testdb";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
@@ -1049,7 +1057,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CreateDatabase)) {
 
 void PgMiniTest::TestBigInsert(bool restart) {
   constexpr int64_t kNumRows = RegularBuildVsSanitizers(100000, 10000);
-  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / 10;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1108,7 +1116,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    auto db = peer->tablet()->TEST_db();
+    auto db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }
@@ -1124,19 +1132,19 @@ void PgMiniTest::TestBigInsert(bool restart) {
   }
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsert)) {
+TEST_F(PgMiniTest, BigInsert) {
   TestBigInsert(/* restart= */ false);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithRestart)) {
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+TEST_F(PgMiniTest, BigInsertWithRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
   TestBigInsert(/* restart= */ true);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithDropTable)) {
+TEST_F(PgMiniTest, BigInsertWithDropTable) {
   constexpr int kNumRows = 10000;
-  FLAGS_txn_max_apply_batch_records = kNumRows / 10;
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(id int) SPLIT INTO 1 TABLETS"));
   ASSERT_OK(conn.ExecuteFormat(
@@ -1156,35 +1164,33 @@ void PgMiniTest::TestConcurrentDeleteRowAndUpdateColumn(bool select_before_updat
   ASSERT_OK(conn2.Execute("DELETE FROM t WHERE i = 2"));
   auto status = conn1.Execute("UPDATE t SET j = 21 WHERE i = 2");
   if (select_before_update) {
-    ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(
-        status.message().ToBuffer(), "could not serialize access due to concurrent update");
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
     ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Value write after transaction start");
     return;
   }
   ASSERT_OK(status);
   ASSERT_OK(conn1.CommitTransaction());
   auto result = ASSERT_RESULT(conn1.FetchMatrix("SELECT * FROM t ORDER BY i", 2, 2));
-  auto value = ASSERT_RESULT(GetInt32(result.get(), 0, 0));
+  auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 0));
   ASSERT_EQ(value, 1);
-  value = ASSERT_RESULT(GetInt32(result.get(), 0, 1));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 0, 1));
   ASSERT_EQ(value, 10);
-  value = ASSERT_RESULT(GetInt32(result.get(), 1, 0));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 0));
   ASSERT_EQ(value, 3);
-  value = ASSERT_RESULT(GetInt32(result.get(), 1, 1));
+  value = ASSERT_RESULT(GetValue<int32_t>(result.get(), 1, 1));
   ASSERT_EQ(value, 30);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumn)) {
+TEST_F(PgMiniTest, ConcurrentDeleteRowAndUpdateColumn) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ false);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentDeleteRowAndUpdateColumnWithSelect)) {
+TEST_F(PgMiniTest, ConcurrentDeleteRowAndUpdateColumnWithSelect) {
   TestConcurrentDeleteRowAndUpdateColumn(/* select_before_update= */ true);
 }
 
 // The test checks catalog version is updated only in case of changes in sys catalog.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
+TEST_F(PgMiniTest, CatalogVersionUpdateIfNeeded) {
   auto conn = ASSERT_RESULT(Connect());
   const auto schema_ddl = "CREATE SCHEMA IF NOT EXISTS test";
   const auto first_create_schema = ASSERT_RESULT(
@@ -1205,8 +1211,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CatalogVersionUpdateIfNeeded)) {
 
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
-  FLAGS_max_clock_skew_usec = 1000000000LL * kTimeMultiplier;
+TEST_F(PgMiniTest, NoRestartSecondRead) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
@@ -1239,7 +1245,7 @@ YB_DEFINE_ENUM(KeyColumnType, (kHash)(kAsc)(kDesc));
 class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
  protected:
   void SetUp() override {
-    FLAGS_TEST_index_read_multiple_partitions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_index_read_multiple_partitions) = true;
     PgMiniTest::SetUp();
   }
 
@@ -1282,16 +1288,15 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
                                       ToPostgresKeyType(key_type),
                                       TableSplitOptions(key_type)));
     RETURN_NOT_OK(conn->Execute("CREATE TABLE ref_t (k INT,"
-                                "                    fk_1 INT REFERENCES t2(k),"
+                                "                    fk_1 INT REFERENCES t1(k),"
                                 "                    fk_2 INT REFERENCES t2(k))"));
     constexpr int kNumRows = 100;
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t1 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
     RETURN_NOT_OK(conn->ExecuteFormat(
         "INSERT INTO t2 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
-    RETURN_NOT_OK(conn->ExecuteFormat(
-        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows));
-    return Status::OK();
+    return conn->ExecuteFormat(
+        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows);
   }
 
  private:
@@ -1351,21 +1356,26 @@ TEST_F_EX(
 class PgMiniTabletSplitTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_yb_num_shards_per_tserver = 1;
-    FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
-    FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
-    FLAGS_tablet_force_split_threshold_bytes = 30_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes / 4;
-    FLAGS_db_block_size_bytes = 2_KB;
-    FLAGS_db_filter_block_size_bytes = 2_KB;
-    FLAGS_db_index_block_size_bytes = 2_KB;
-    FLAGS_heartbeat_interval_ms = 1000;
-    FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
-    FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
-    yb_fetch_row_limit = 32;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 30_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
+        FLAGS_tablet_force_split_threshold_bytes / 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms) = 4000;
     PgMiniTest::SetUp();
+  }
+
+  Status SetupConnection(PGConn* conn) const override {
+    return conn->Execute("SET yb_fetch_row_limit = 32");
   }
 };
 
@@ -1408,7 +1418,7 @@ void PgMiniTest::StartReadWriteThreads(const std::string table_name,
                                                    table_name));
       std::vector<int> sort_check;
       for(int x = 0; x < PQntuples(result.get()); x++) {
-        auto value = ASSERT_RESULT(GetInt32(result.get(), x, 2));
+        auto value = ASSERT_RESULT(GetValue<int32_t>(result.get(), x, 2));
         sort_check.push_back(value);
       }
       ASSERT_TRUE(std::is_sorted(sort_check.begin(), sort_check.end()));
@@ -1468,6 +1478,20 @@ TEST_F_EX(
   end_num_tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size();
   ASSERT_GT(end_num_tablets, start_num_tablets);
   DestroyTable(table_name);
+}
+
+void PgMiniTest::ValidateAbortedTxnMetric() {
+  auto tablet_peers = cluster_->GetTabletPeers(0);
+  for(size_t i = 0; i < tablet_peers.size(); ++i) {
+    auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
+    const auto& metric_map = tablet->GetTabletMetricsEntity()->UnsafeMetricsMapForTests();
+    std::reference_wrapper<const MetricPrototype> metric =
+        METRIC_aborted_transactions_pending_cleanup;
+    auto item = metric_map.find(&metric.get());
+    if (item != metric_map.end()) {
+      EXPECT_EQ(0, down_cast<const AtomicGauge<uint64>&>(*item->second).value());
+    }
+  }
 }
 
 void PgMiniTest::RunManyConcurrentReadersTest() {
@@ -1542,20 +1566,21 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
                 << "Expected to fetch (" << read_start << ") and (" << read_end << "). "
                 << "Instead, got the following results:";
             for (int i = 0; i < fetched_rows; ++i) {
-              auto fetched_val = CHECK_RESULT(GetInt32(res.get(), i, 0));
+              auto fetched_val = CHECK_RESULT(GetValue<int32_t>(res.get(), i, 0));
               LOG(INFO) << "Result " << i << " - " << fetched_val;
             }
           }
           EXPECT_EQ(fetched_rows, 2);
-          auto first_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+          auto first_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
           EXPECT_EQ(read_start, first_fetched_val);
-          auto second_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 1, 0));
+          auto second_fetched_val = ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0));
           EXPECT_EQ(read_start + 4, second_fetched_val);
         }
         reader_latch.CountDown(1);
       }
       reader_threads_are_stopped.CountDown(1);
     });
+    ValidateAbortedTxnMetric();
   }
 
   std::this_thread::sleep_for(60s);
@@ -1570,13 +1595,13 @@ void PgMiniTest::RunManyConcurrentReadersTest() {
   EXPECT_GE(num_non_empty_reads, kMinNumNonEmptyReads);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart)) {
-  FLAGS_apply_intents_task_injected_delay_ms = 200;
+TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 200;
 
   constexpr int64_t kRowNumModToAbort = 7;
   constexpr int64_t kNumBatches = 10;
   constexpr int64_t kNumRows = RegularBuildVsSanitizers(10000, 1000);
-  FLAGS_txn_max_apply_batch_records = kNumRows / kNumBatches;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kNumRows / kNumBatches;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY) SPLIT INTO 1 TABLETS"));
@@ -1611,12 +1636,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart
 
     auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", row_num));
     if (should_abort) {
-      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << row_num;
+      EXPECT_EQ(0, PQntuples(res.get())) << "Did not expect to find value for: " << row_num;
     } else {
-      int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
+      auto value = EXPECT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
       EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";
     }
   }
+  ValidateAbortedTxnMetric();
 }
 
 TEST_F(
@@ -1624,7 +1650,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithApplyDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_apply_intents_task_injected_delay_ms = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_apply_intents_task_injected_delay_ms) = 10000;
   RunManyConcurrentReadersTest();
 }
 
@@ -1633,7 +1659,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithResponseDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_TEST_inject_random_delay_on_txn_status_response_ms = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_random_delay_on_txn_status_response_ms) = 30;
   RunManyConcurrentReadersTest();
 }
 
@@ -1642,7 +1668,7 @@ TEST_F(
     YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithUpdateDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
-  FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms) = 30;
   RunManyConcurrentReadersTest();
 }
 
@@ -1673,6 +1699,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
       << "fail.\n"
       << "Commit status: " << commit_status << ".\n"
       << "Update status: " << update_status << ".\n";
+  ValidateAbortedTxnMetric();
 }
 
 void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_tables) {
@@ -1697,9 +1724,9 @@ void PgMiniTest::VerifyFileSizeAfterCompaction(PGConn* conn, const int num_table
   ASSERT_GE(new_files_size * 3, files_size);
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompaction)) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+TEST_F(PgMiniTest, ColocatedCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   const std::string kDatabaseName = "testdb";
   const auto kNumTables = 3;
@@ -1748,9 +1775,9 @@ void PgMiniTest::CreateDBWithTablegroupAndTables(
   }
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompaction)) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+TEST_F(PgMiniTest, TablegroupCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   PGConn conn = ASSERT_RESULT(Connect());
   CreateDBWithTablegroupAndTables(
@@ -1763,9 +1790,9 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompaction)) {
 }
 
 // Ensure that after restart, there is no data loss in compaction.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
   const auto num_tables = 3;
   constexpr int keys = 100;
 
@@ -1787,14 +1814,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TablegroupCompactionWithRestart)) {
   }
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
+TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   const std::string kDatabaseName = "testdb";
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto sys_catalog_tablet = catalog_manager.sys_catalog()->tablet_peer()->tablet();
 
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
-      rocksdb::CompactionReason::kManualCompaction));
+  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
   uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
 
   PGConn conn = ASSERT_RESULT(Connect());
@@ -1803,15 +1829,13 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
   ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
-      rocksdb::CompactionReason::kManualCompaction));
+  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
 
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_timestamp_syscatalog_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
-  ASSERT_OK(sys_catalog_tablet->ForceFullRocksDBCompact(
-      rocksdb::CompactionReason::kManualCompaction));
+  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
 
   uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
   LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
@@ -1819,7 +1843,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(CompactionAfterDBDrop)) {
 }
 
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
+TEST_F(PgMiniTest, NoWaitForRPCOnTermination) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
   constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
@@ -1862,5 +1886,25 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
   ASSERT_LT(termination_duration, RegularBuildVsDebugVsSanitizers(3000, 5000, 5000));
 }
 
-} // namespace pgwrapper
-} // namespace yb
+TEST_F_EX(
+    PgMiniTest, CacheRefreshWithDroppedEntries, PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  constexpr size_t kNumViews = 30;
+  for (size_t i = 0; i < kNumViews; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE VIEW v_$0 AS SELECT * FROM t", i));
+  }
+  // Trigger catalog version increment
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v INT"));
+  // New connection will load all the entries (tables and views) into catalog cache
+  auto aux_conn = ASSERT_RESULT(Connect());
+  for (size_t i = 0; i < kNumViews; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("DROP VIEW v_$0", i));
+  }
+  // Wait for update of catalog version in shared memory to trigger catalog refresh on next query
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+  // Check that connection can handle query (i.e. the catalog cache was updated without an issue)
+  ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+}
+
+} // namespace yb::pgwrapper

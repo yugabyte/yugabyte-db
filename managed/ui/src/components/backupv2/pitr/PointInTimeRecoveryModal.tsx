@@ -41,7 +41,8 @@ interface PointInTimeRecoveryModalProps {
 
 enum RECOVERY_MODE {
   'RELATIVE',
-  'EXACT'
+  'EXACT',
+  'TIMESTAMP'
 }
 
 const DATE_FORMAT = 'YYYY/MM/DD';
@@ -50,23 +51,29 @@ const DURATION_OPTIONS = [
   {
     label: 'Day',
     value: 'DAY',
-    seconds: 24 * 60 * 60 * 1000 //milli-secs in a day
+    milliSeconds: 24 * 60 * 60 * 1000 //milli-secs in a day
   },
   {
     label: 'Hour',
     value: 'HOUR',
-    seconds: 60 * 60 * 1000 //milli-secs in an hour
+    milliSeconds: 60 * 60 * 1000 //milli-secs in an hour
   },
   {
     label: 'Minute',
     value: 'MINUTE',
-    seconds: 60 * 1000 //milli-secs in a minute
+    milliSeconds: 60 * 1000 //milli-secs in a minute
+  },
+  {
+    label: 'Second',
+    value: 'SECOND',
+    milliSeconds: 1000 //milli-secs in a sec
   }
 ];
 
 interface Form_Values {
   recovery_time_mode: RECOVERY_MODE;
   recovery_interval: number;
+  unix_time?: number;
   recovery_duration: Record<string, string | number>;
   customDate?: string;
   customTime?: string;
@@ -77,8 +84,6 @@ const initialValues: Form_Values = {
   recovery_duration: DURATION_OPTIONS[0],
   recovery_interval: 1
 };
-
-const TOAST_AUTO_CLOSE_INTERVAL = 3000;
 
 export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
   visible,
@@ -98,15 +103,14 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
             here
           </a>
           &nbsp; for task details.
-        </span>,
-        { autoClose: TOAST_AUTO_CLOSE_INTERVAL }
+        </span>
       );
 
       queryClient.invalidateQueries(['scheduled_sanpshots']);
       onHide();
     },
     onError: () => {
-      toast.error(`Failed to recover ${config.dbName}.`, { autoClose: TOAST_AUTO_CLOSE_INTERVAL });
+      toast.error(`Failed to recover ${config.dbName}.`);
       onHide();
     }
   });
@@ -121,6 +125,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       recovery_time_mode,
       recovery_duration,
       recovery_interval,
+      unix_time,
       customDate,
       customTime
     } = values;
@@ -128,7 +133,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
     if (recovery_time_mode === RECOVERY_MODE.RELATIVE) {
       const secsInSelectedDuration = DURATION_OPTIONS.find(
         (duration: any) => duration.value === recovery_duration.value
-      )?.seconds;
+      )?.milliSeconds;
       const currentTimeStamp = moment.now();
 
       if (secsInSelectedDuration) {
@@ -157,6 +162,10 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       }
     }
 
+    if (recovery_time_mode === RECOVERY_MODE.TIMESTAMP) {
+      finalTimeStamp = unix_time;
+    }
+
     return finalTimeStamp;
   };
 
@@ -169,8 +178,13 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
       customTime
     } = values;
     const errors = {
-      recovery_time_mode: 'Please select a time within your retention period'
+      recovery_time_mode:
+        recovery_time_mode === RECOVERY_MODE.RELATIVE
+          ? 'Please select a time within your retention period'
+          : 'Please enter time within your retention period'
     };
+
+    const delay = recovery_time_mode === RECOVERY_MODE.TIMESTAMP ? 0 : 60000; // delay of 1 min in case if min and max time are the same
 
     if (recovery_time_mode === RECOVERY_MODE.RELATIVE && !(recovery_duration && recovery_interval))
       return errors;
@@ -178,7 +192,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
     if (recovery_time_mode === RECOVERY_MODE.EXACT && !(customDate && customTime)) return errors;
 
     const finalTimeStamp = getFinalTimeStamp(values);
-    const delay = 60000; // delay of 1 min in case if min and max time are the same
+
     if (!(finalTimeStamp >= minTime - delay && finalTimeStamp <= maxTime + delay)) return errors;
 
     return {};
@@ -355,7 +369,67 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                 </Field>
               </Col>
             </Row>
-            <Row></Row>
+            <Row>
+              <Col lg={6} className="no-padding">
+                <Field
+                  name="recovery_time_mode"
+                  checked={values['recovery_time_mode'] === RECOVERY_MODE.TIMESTAMP}
+                  type="radio"
+                >
+                  {() => (
+                    <div
+                      className={clsx('pitr-custom-radio center-align', {
+                        active: values['recovery_time_mode'] === RECOVERY_MODE.TIMESTAMP
+                      })}
+                    >
+                      <input
+                        type="radio"
+                        checked={values['recovery_time_mode'] === RECOVERY_MODE.TIMESTAMP}
+                        onClick={() => {
+                          setFieldValue('recovery_time_mode', RECOVERY_MODE.TIMESTAMP, true);
+                        }}
+                        id="PitrTimeStampRecovery"
+                      />
+                      <div className="relative-time-mode">
+                        <Field
+                          name="unix_time"
+                          component={YBNumericInput}
+                          input={{
+                            onChange: (val: number) => setFieldValue('unix_time', val, true),
+                            value: values['unix_time'],
+                            id: 'PitrRecoveryTimeStamp',
+                            placeHolder: 'Eg:- 1686155477601'
+                          }}
+                          minwidth="80px"
+                          minVal={1}
+                        />
+                        <span>Milliseconds since epoch</span>
+                        <div className="break" />
+                        {values['recovery_time_mode'] === RECOVERY_MODE.TIMESTAMP && error ? (
+                          // eslint-disable-next-line react/jsx-indent
+                          <div className="pitr-error-text">
+                            <CautionIcon />
+                            &nbsp;{error}
+                          </div>
+                        ) : (
+                          values['unix_time'] && (
+                            <div className="pitr-info-text">
+                              Will recover to:{' '}
+                              {ybFormatDate(
+                                getFinalTimeStamp({
+                                  ...values,
+                                  recovery_time_mode: RECOVERY_MODE.TIMESTAMP
+                                })
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </Field>
+              </Col>
+            </Row>
           </>
         );
       }}

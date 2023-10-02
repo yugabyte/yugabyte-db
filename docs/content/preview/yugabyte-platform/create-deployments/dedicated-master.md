@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-The default behavior when creating a universe is to colocate [YB-Master](../../../architecture/concepts/yb-master/) and [YB-TServer](../../../architecture/concepts/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
+The default behavior when creating a universe is to locate [YB-Master](../../../architecture/concepts/yb-master/) and [YB-TServer](../../../architecture/concepts/yb-tserver/) processes on the same node. However, in some situations it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
 
-To place YB-Masters on dedicated nodes, you use the [Place Masters on dedicated nodes](#colocated-to-dedicated-node-placement) option when creating a universe.
+To place YB-Masters on dedicated nodes, you use the [Place Masters on dedicated nodes](#shared-and-dedicated-node-placement) option when creating a universe.
 
 ## Use cases
 
@@ -31,11 +31,11 @@ For example, the following use cases may benefit from placing masters on dedicat
 
 A YugabyteDB universe requires a number of YB-Master servers equal to the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF). A YugabyteDB universe with an RF of `N` requires `N` YB-Masters, and therefore `N` dedicated nodes for YB-Masters.
 
-## Colocated and dedicated node placement
+## Shared and dedicated node placement
 
 When creating a universe, you have the following two options for YB-Master process placement:
 
-- **Place Masters on the same nodes as T-Servers** (Colocated): In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. The memory allocation can be overridden using the `default_memory_limit_to_ram_ratio` flag.
+- **Place Masters on the same nodes as T-Servers** (Shared): In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. The memory allocation can be overridden using the `default_memory_limit_to_ram_ratio` flag.
 
 - **Place Masters on dedicated nodes** (Dedicated Masters): In this mode, nodes dedicated to Master processes are selected at the time of "Create Universe" (or equivalently, during the `/universe_configure` REST API call). Placing YB-Masters on dedicated nodes eliminates the need to configure or share memory.
 
@@ -45,12 +45,12 @@ For an existing universe, assigning new YB-Masters will start the new YB-master 
 The dedicated master placement feature:
 
 - applies to universes created via most cloud providers (such as AWS, GCP, Azure, and On-Premises), except the Kubernetes cloud provider.
-- does not apply to Read Replicas, which have only YB-TServers.
+- does not apply to read replicas, which have only YB-TServers.
 {{< /note >}}
 
 ### Enable the Enable dedicated nodes configuration option
 
-By default, YB-Masters are colocated with YB-TServers. To change this behavior, you first need to enable the **Enable dedicated nodes** configuration option in YugabyteDB Anywhere so that the option is available when creating universes.
+By default, YB-Masters are located with YB-TServers. To change this behavior, you first need to enable the **Enable dedicated nodes** configuration option in YugabyteDB Anywhere so that the option is available when creating universes.
 
 Configure YugabyteDB Anywhere to display the **Enable dedicated nodes** option as follows:
 

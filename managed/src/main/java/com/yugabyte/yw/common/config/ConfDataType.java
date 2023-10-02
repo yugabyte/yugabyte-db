@@ -19,9 +19,12 @@ import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.time.Period;
 import java.util.List;
@@ -30,6 +33,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.directory.api.ldap.model.message.SearchScope;
 import play.libs.Json;
 
 @Getter
@@ -56,7 +60,7 @@ public class ConfDataType<T> {
           String.class,
           Config::getString,
           (s) -> {
-            return parseStringAndApply(s, Config::getString);
+            return parseString(s);
           });
   static ConfDataType<Long> LongType =
       new ConfDataType<>(
@@ -98,6 +102,23 @@ public class ConfDataType<T> {
           (s) -> {
             return parseStringAndApply(s, Config::getStringList);
           });
+  static ConfDataType<List> IntegerListType =
+      new ConfDataType<List>(
+          "Integer List",
+          List.class,
+          (config, path) -> {
+            return config.getIntList(path);
+          },
+          (s) -> {
+            try {
+              List<Integer> list =
+                  Json.mapper().readValue(s, new TypeReference<List<Integer>>() {});
+              return list;
+            } catch (Exception e) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Not a valid list of integers. " + e.getMessage());
+            }
+          });
   static ConfDataType<Long> BytesType =
       new ConfDataType<>(
           "Bytes",
@@ -123,6 +144,20 @@ public class ConfDataType<T> {
           (config, path) -> getSetMultimap(config.getStringList(path)),
           ConfDataType::parseSetMultimap);
 
+  static ConfDataType<Protocol> ProtocolEnum =
+      new ConfDataType<>(
+          "Protocol",
+          Protocol.class,
+          new EnumGetter<>(Protocol.class),
+          (s) -> {
+            try {
+              return Protocol.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
           "VersionCheckMode",
@@ -146,6 +181,51 @@ public class ConfDataType<T> {
               return SkipCertValidationType.valueOf(s);
             } catch (Exception e) {
               String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<SearchScope> LdapSearchScopeEnum =
+      new ConfDataType<>(
+          "LdapSearchScope",
+          SearchScope.class,
+          new EnumGetter<>(SearchScope.class),
+          (s) -> {
+            try {
+              return SearchScope.valueOf(s);
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a valid LDAP Search Scope\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<Role> LdapDefaultRoleEnum =
+      new ConfDataType<>(
+          "LdapDefaultRole",
+          Role.class,
+          new EnumGetter<>(Role.class),
+          (s) -> {
+            try {
+              Role defaultRole = Role.valueOf(s);
+              if (defaultRole != Role.ConnectOnly && defaultRole != Role.ReadOnly) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format("%s role cannot be set as default LDAP role!", defaultRole));
+              }
+              return defaultRole;
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a valid Default LDAP role!\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<TlsProtocol> LdapTlsProtocol =
+      new ConfDataType<>(
+          "LdapTlsProtocol",
+          TlsProtocol.class,
+          new EnumGetter<>(TlsProtocol.class),
+          (s) -> {
+            try {
+              return TlsProtocol.valueOf(s);
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a supported LDAP TLS protocol\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });
@@ -229,5 +309,10 @@ public class ConfDataType<T> {
       String failMsg = String.format("%s is not a valid value for desired key\n", s);
       throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
     }
+  }
+
+  private static String parseString(String s) {
+    if (s.isEmpty()) return s;
+    return parseStringAndApply(s, Config::getString);
   }
 }

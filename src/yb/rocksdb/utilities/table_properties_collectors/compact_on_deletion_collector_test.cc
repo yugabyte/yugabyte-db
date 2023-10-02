@@ -21,26 +21,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-
-
 #include <algorithm>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/utilities/table_properties_collectors.h"
 
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-int main(int argc, char** argv) {
+namespace rocksdb {
+
+class CompactOnDeletionCollectorTest : public yb::YBTest {
+};
+
+TEST_F(CompactOnDeletionCollectorTest, TestCompactOnDeletionCollector) {
   const int kWindowSizes[] =
       {1000, 10000, 10000, 127, 128, 129, 255, 256, 257, 2, 10000};
   const int kDeletionTriggers[] =
       {500, 9500, 4323, 47, 61, 128, 250, 250, 250, 2, 2};
-  rocksdb::TablePropertiesCollectorFactory::Context context;
+  TablePropertiesCollectorFactory::Context context;
   context.column_family_id =
-      rocksdb::TablePropertiesCollectorFactory::Context::kUnknownColumnFamily;
+      TablePropertiesCollectorFactory::Context::kUnknownColumnFamily;
 
   std::vector<int> window_sizes;
   std::vector<int> deletion_triggers;
@@ -55,7 +61,7 @@ int main(int argc, char** argv) {
   constexpr int kNumRandomTests = yb::NonTsanVsTsan(100, 20);
 
   // randomize tests
-  rocksdb::Random rnd(301);
+  Random rnd(301);
   const int kMaxTestSize = 100000l;
   for (int random_test = 0; random_test < kNumRandomTests; random_test++) {
     int window_size = rnd.Uniform(kMaxTestSize) + 1;
@@ -75,8 +81,8 @@ int main(int argc, char** argv) {
     const int kBias = (kNumDeletionTrigger + kBucketSize - 1) / kBucketSize;
     // Simple test
     LOG_TIMING(INFO, "TEST1") {
-      std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
-      auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
+      std::unique_ptr<TablePropertiesCollector> collector;
+      auto factory = NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
       collector.reset(factory->CreateTablePropertiesCollector(context));
       const int kSample = 10;
@@ -85,11 +91,11 @@ int main(int argc, char** argv) {
         for (int i = 0; i < kPaddedWindowSize; ++i) {
           if (i % kSample < delete_rate) {
             CHECK_OK(collector->AddUserKey(
-                "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
+                "hello", "rocksdb", kEntryDelete, 0, 0));
             deletions++;
           } else {
             CHECK_OK(collector->AddUserKey(
-                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
+                "hello", "rocksdb", kEntryPut, 0, 0));
           }
         }
         if (collector->NeedCompact() !=
@@ -107,8 +113,8 @@ int main(int argc, char** argv) {
 
     // Only one section of a file satisfies the compaction trigger
     LOG_TIMING(INFO, "TEST2") {
-      std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
-      auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
+      std::unique_ptr<TablePropertiesCollector> collector;
+      auto factory = NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
       collector.reset(factory->CreateTablePropertiesCollector(context));
       const int kSample = 10;
@@ -118,24 +124,24 @@ int main(int argc, char** argv) {
           int initial_entries = rnd.Uniform(kWindowSize) + kWindowSize;
           for (int i = 0; i < initial_entries; ++i) {
             CHECK_OK(collector->AddUserKey(
-                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
+                "hello", "rocksdb", kEntryPut, 0, 0));
           }
         }
         for (int i = 0; i < kPaddedWindowSize; ++i) {
           if (i % kSample < delete_rate) {
             CHECK_OK(collector->AddUserKey(
-                "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
+                "hello", "rocksdb", kEntryDelete, 0, 0));
             deletions++;
           } else {
             CHECK_OK(collector->AddUserKey(
-                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
+                "hello", "rocksdb", kEntryPut, 0, 0));
           }
         }
         for (int section = 0; section < 5; ++section) {
           int ending_entries = rnd.Uniform(kWindowSize) + kWindowSize;
           for (int i = 0; i < ending_entries; ++i) {
             CHECK_OK(collector->AddUserKey(
-               "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
+               "hello", "rocksdb", kEntryPut, 0, 0));
           }
         }
         if (collector->NeedCompact() != (deletions >= kNumDeletionTrigger) &&
@@ -154,8 +160,8 @@ int main(int argc, char** argv) {
     // TEST 3:  Issues a lots of deletes, but their density is not
     // high enough to trigger compaction.
     LOG_TIMING(INFO, "TEST3") {
-      std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
-      auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
+      std::unique_ptr<TablePropertiesCollector> collector;
+      auto factory = NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
       collector.reset(factory->CreateTablePropertiesCollector(context));
       assert(collector->NeedCompact() == false);
@@ -167,10 +173,10 @@ int main(int argc, char** argv) {
           for (int i = 0; i < kPaddedWindowSize; ++i) {
             if (i < kDeletionsPerSection) {
               CHECK_OK(collector->AddUserKey(
-                  "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
+                  "hello", "rocksdb", kEntryDelete, 0, 0));
             } else {
               CHECK_OK(collector->AddUserKey(
-                  "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
+                  "hello", "rocksdb", kEntryPut, 0, 0));
             }
           }
         }
@@ -185,5 +191,6 @@ int main(int argc, char** argv) {
       }
     }
   }
-  fprintf(stderr, "PASSED\n");
 }
+
+}  // namespace rocksdb

@@ -37,6 +37,12 @@ public class ConfigHelper {
     GCPInstanceTypeMetadata(null, "configs/gcp-instance-type-metadata.yml"),
     AZURegionMetadata("Azure Region Metadata", "configs/azu-region-metadata.yml"),
     AZUInstanceTypeMetadata(null),
+    EKSKubernetesRegionMetadata(
+        "EKS Kubernetes Region Metadata", "configs/kubernetes/eks-region-metadata.yml"),
+    AKSKubernetesRegionMetadata(
+        "AKS Kubernetes Region Metadata", "configs/kubernetes/aks-region-metadata.yml"),
+    GKEKubernetesRegionMetadata(
+        "GKE Kubernetes Region Metadata", "configs/kubernetes/gke-region-metadata.yml"),
     DockerRegionMetadata("Docker Region Metadata", "configs/docker-region-metadata.yml"),
     DockerInstanceTypeMetadata(null, "configs/docker-instance-type-metadata.yml"),
     SoftwareReleases("Software Releases"),
@@ -44,7 +50,8 @@ public class ConfigHelper {
     SoftwareVersion("Software Version"),
     YugawareMetadata("Yugaware Metadata"),
     Security("Security Level"),
-    FileDataSync("Sync File System Data in the DB");
+    FileDataSync("Sync File System Data in the DB"),
+    YBADefaultAMI("Default AMIs version for YBA");
 
     private final String description;
     private final String configFile;
@@ -107,7 +114,7 @@ public class ConfigHelper {
     String version = getCurrentVersion(environment);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
-    // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
+    // TODO: Version added to Yugaware metadata, now slowly decommission SoftwareVersion property
     Map<String, Object> ywMetadata = new HashMap<>();
     // Assign a new Yugaware UUID if not already present in the DB i.e. first install
     Object ywUUID =

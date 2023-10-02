@@ -66,7 +66,7 @@ public class TestMasterMetrics extends BasePgSQLTest {
     String line = null;
     int count = 0;
     while ((line = br.readLine()) != null) {
-      if (line.contains(metric + "_count")) {
+      if (line.contains(metric + "_count{")) {
         String inp[] = line.split(" ");
         int val = Integer.parseInt(inp[inp.length - 2].trim());
         count += val;

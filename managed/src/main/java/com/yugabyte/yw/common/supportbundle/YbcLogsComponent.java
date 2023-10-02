@@ -9,8 +9,6 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -98,40 +96,23 @@ class YbcLogsComponent implements SupportBundleComponent {
     }
 
     if (ybcLogFilePaths.size() > 0) {
-      Path targetFile =
-          universeInfoHandler.downloadNodeFile(
-              customer,
-              universe,
-              node,
-              nodeHomeDir,
-              String.join(
-                  ";",
-                  ybcLogFilePaths.stream()
-                      .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
-                      .map(Path::toString)
-                      .collect(Collectors.toList())),
-              nodeTargetFile);
-      try {
-        if (Files.exists(targetFile)) {
-          File unZippedFile =
-              supportBundleUtil.unGzip(
-                  new File(targetFile.toAbsolutePath().toString()),
-                  new File(bundlePath.toAbsolutePath().toString()));
-          Files.delete(targetFile);
-          supportBundleUtil.unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-          unZippedFile.delete();
-        } else {
-          log.debug(
-              String.format(
-                  "No ybc files downloaded from the source path '%s' for universe '%s'.",
-                  nodeHomeDir, universe.getName()));
-        }
-      } catch (Exception e) {
-        log.error(
-            "Something went wrong while trying to untar the files from "
-                + "component 'YbcLogsComponent' in the DB node: ",
-            e);
-      }
+      List<String> ybcLogFilePathString =
+          ybcLogFilePaths.stream()
+              .map(filePath -> Paths.get(nodeHomeDir).relativize(filePath))
+              .map(Path::toString)
+              .collect(Collectors.toList());
+
+      // Download all logs batch wise
+      supportBundleUtil.batchWiseDownload(
+          universeInfoHandler,
+          customer,
+          universe,
+          bundlePath,
+          node,
+          nodeTargetFile,
+          nodeHomeDir,
+          ybcLogFilePathString,
+          this.getClass().getSimpleName());
     } else {
       log.debug(
           "Found no matching YB-Controller logs for node: {}, source path: {}, target path: {}, "

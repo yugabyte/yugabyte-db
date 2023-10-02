@@ -13,6 +13,9 @@ import static com.yugabyte.yw.common.TableSpaceStructures.HashedTimestampColumnF
 import static com.yugabyte.yw.common.TableSpaceStructures.UnusedIndexFinderResponse;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
 import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
@@ -20,6 +23,11 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.QueryDistributionSuggestionResponse;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -50,9 +58,15 @@ public class UniversePerfController extends AuthenticatedController {
       value = "Get query distribution improvement suggestion for a universe",
       nickname = "getQueryDistributionSuggestions",
       response = QueryDistributionSuggestionResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getQueryDistributionSuggestions(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     return PlatformResults.withData(
         universePerfHandler.universeQueryDistributionSuggestion(universe));
   }
@@ -69,9 +83,15 @@ public class UniversePerfController extends AuthenticatedController {
       notes = "Returns list of hash indexes on timestamp columns.",
       nickname = "getRangeHash",
       response = HashedTimestampColumnFinderResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getRangeHash(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<HashedTimestampColumnFinderResponse> result =
         hashedTimestampColumnFinder.getHashedTimestampColumns(universe);
@@ -91,9 +111,15 @@ public class UniversePerfController extends AuthenticatedController {
       notes = "Returns list of unused indexes, along with their database and table.",
       nickname = "getUnusedIndexes",
       response = UnusedIndexFinderResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getUnusedIndexes(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     List<UnusedIndexFinderResponse> result = unusedIndexFinder.getUniverseUnusedIndexes(universe);
 

@@ -14,12 +14,16 @@ type MemTrackersFuture struct {
     Error       error
 }
 
-func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTrackersFuture) {
-    port := "9000"
+func (h *HelperContainer) GetMemTrackersFuture(
+    hostName string,
+    isMaster bool,
+    future chan MemTrackersFuture,
+) {
+    port := TserverUIPort
     if isMaster {
-        port = "7000"
+        port = MasterUIPort
     }
-    memTrackers := MemTrackersFuture {
+    memTrackers := MemTrackersFuture{
         Consumption: 0,
         Limit:       0,
         Error:       nil,
@@ -42,19 +46,20 @@ func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTracker
         return
     }
     // parse raw mem trackers response
-    regex, err := regexp.Compile(`<td>root<\/td><td>(.*)<\/td><td>(.*)<\/td><td>(.*)<\/td>`)
+    regex, err := regexp.Compile(`<td><span class=\"toggle collapse\">` +
+        `<\/span>root<\/td><td>(.*)<\/td><td>(.*)<\/td><td>(.*)<\/td>`)
     if err != nil {
         memTrackers.Error = err
         future <- memTrackers
         return
     }
     match := regex.FindSubmatch(body)
-    memTrackers.Consumption, err = GetBytesFromString(string(match[1]))
+    memTrackers.Consumption, err = h.GetBytesFromString(string(match[1]))
     if err != nil {
         memTrackers.Error = err
         future <- memTrackers
         return
     }
-    memTrackers.Limit, memTrackers.Error = GetBytesFromString(string(match[3]))
+    memTrackers.Limit, memTrackers.Error = h.GetBytesFromString(string(match[3]))
     future <- memTrackers
 }

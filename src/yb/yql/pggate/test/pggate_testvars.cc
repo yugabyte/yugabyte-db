@@ -125,35 +125,35 @@ Datum YBCTestFloat8ToDatum(const void *void_data, int64 bytes, const YBCPgTypeAt
  * Conversion Table
  **************************************************************************************************/
 static const YBCPgTypeEntity YBCTestTypeEntityTable[] = {
-  { BOOLOID, YB_YQL_DATA_TYPE_BOOL, true, 1,
+  { BOOLOID, YB_YQL_DATA_TYPE_BOOL, true, 1, false,
     (YBCPgDatumToData)YBCTestDatumToBool,
     (YBCPgDatumFromData)YBCTestBoolToDatum },
 
-  { INT2OID, YB_YQL_DATA_TYPE_INT16, true, 2,
+  { INT2OID, YB_YQL_DATA_TYPE_INT16, true, 2, false,
     (YBCPgDatumToData)YBCTestDatumToInt16,
     (YBCPgDatumFromData)YBCTestInt16ToDatum },
 
-  { INT4OID, YB_YQL_DATA_TYPE_INT32, true, 4,
+  { INT4OID, YB_YQL_DATA_TYPE_INT32, true, 4, false,
     (YBCPgDatumToData)YBCTestDatumToInt32,
     (YBCPgDatumFromData)YBCTestInt32ToDatum },
 
-  { INT8OID, YB_YQL_DATA_TYPE_INT64, true, 8,
+  { INT8OID, YB_YQL_DATA_TYPE_INT64, true, 8, false,
     (YBCPgDatumToData)YBCTestDatumToInt64,
     (YBCPgDatumFromData)YBCTestInt64ToDatum },
 
-  { TEXTOID, YB_YQL_DATA_TYPE_STRING, true, -1,
+  { TEXTOID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
     (YBCPgDatumToData)YBCTestDatumToStr,
     (YBCPgDatumFromData)YBCTestStrToDatum },
 
-  { OIDOID, YB_YQL_DATA_TYPE_INT32, true, 4,
+  { OIDOID, YB_YQL_DATA_TYPE_INT32, true, 4, false,
     (YBCPgDatumToData)YBCTestDatumToInt32,
     (YBCPgDatumFromData)YBCTestInt32ToDatum },
 
-  { FLOAT4OID, YB_YQL_DATA_TYPE_FLOAT, true, 8,
+  { FLOAT4OID, YB_YQL_DATA_TYPE_FLOAT, true, 8, false,
     (YBCPgDatumToData)YBCTestDatumToFloat4,
     (YBCPgDatumFromData)YBCTestFloat4ToDatum },
 
-  { FLOAT8OID, YB_YQL_DATA_TYPE_DOUBLE, true, 8,
+  { FLOAT8OID, YB_YQL_DATA_TYPE_DOUBLE, true, 8, false,
     (YBCPgDatumToData)YBCTestDatumToFloat8,
     (YBCPgDatumFromData)YBCTestFloat8ToDatum },
 };

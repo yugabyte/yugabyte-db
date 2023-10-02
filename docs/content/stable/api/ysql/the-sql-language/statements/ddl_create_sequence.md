@@ -18,13 +18,13 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -32,25 +32,25 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-### *create_sequence*
-
-#### CREATE SEQUENCE *sequence_name* [ IF NOT EXISTS ]
-
 Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
 
 The sequence name must be distinct from any other sequences, tables, indexes, views, or foreign tables in the same schema.
 
 ### *sequence_options*
+
+#### TEMPORARY or TEMP
+
+Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 #### INCREMENT BY *increment*
 
@@ -173,7 +173,7 @@ Create a sequence that starts at 0. MINVALUE also has to be changed from its def
 CREATE SEQUENCE s3 START 0 MINVALUE 0;
 ```
 
-```sql
+```output
 CREATE SEQUENCE
 ```
 

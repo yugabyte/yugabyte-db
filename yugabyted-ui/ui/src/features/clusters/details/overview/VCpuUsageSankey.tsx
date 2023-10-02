@@ -5,7 +5,7 @@ import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
 import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
-import { getInterval, RelativeInterval } from '@app/helpers';
+import { getInterval, RelativeInterval, roundDecimal } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
@@ -48,16 +48,25 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
   const { t } = useTranslation();
   const { data: nodesResponse, isFetching } = useGetClusterNodesQuery();
 
-  const [{ nodeName }] = useQueryParams({
+  const [{ nodeName, clusterType }] = useQueryParams({
     nodeName: withDefault(StringParam, 'all'),
+    clusterType: StringParam,
   });
+
   const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName; 
+  const isReadReplica = clusterType === 'READ_REPLICA';
 
-  const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
+  const nodeList = React.useMemo(() => 
+    clusterType ?
+      nodesResponse?.data.filter(node => (isReadReplica && node.is_read_replica) || (!isReadReplica && !node.is_read_replica))
+      :
+      nodesResponse?.data,
+  [nodesResponse, clusterType]);
+  const totalCores = roundDecimal((cluster.spec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0))
 
-  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>([]);
+  const [nodeCpuUsage, setNodeCpuUsage] = React.useState<number[]>();
   React.useEffect(() => {
-    if (!nodesResponse) {
+    if (!nodeList) {
       return;
     }
 
@@ -87,8 +96,8 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
       }
 
       const cpuUsage: number[] = [];
-      for (let i = 0; i < nodesResponse.data.length; i++) {
-        const node = nodesResponse.data[i].name;
+      for (let i = 0; i < nodeList.length; i++) {
+        const node = nodeList[i].name;
         // Fetch the cpu usage of all nodes
         const nodeCPU = await getNodeCpu(node);
         cpuUsage.push(nodeCPU);
@@ -98,9 +107,13 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     }
 
     populateCpu();
-  }, [nodesResponse])
+  }, [nodeList])
 
   const data = useMemo(() => {
+    if (nodeCpuUsage === undefined) {
+      return undefined;
+    }
+
     const data =  {
       nodes: [
         // Usage node
@@ -108,11 +121,11 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         // Available node
         { "name": "Available" },
         // Nodes
-        ...(nodesResponse?.data.map(({ name, cloud_info: { zone } }) => ({ name, zone })) ?? []),
+        ...(nodeList?.map(({ name, cloud_info: { zone }, is_read_replica: isReadReplica }) => ({ name, zone, isReadReplica })) ?? []),
         // Dummy node for available cores
         { "name": "" }, 
       ],
-      links: [ ...(nodesResponse?.data.map((_, index) => ({ 
+      links: [ ...(nodeList?.map((_, index) => ({ 
         // Start all links from the usage node
         "source": 0,
         // Target the corresponding node
@@ -121,7 +134,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         "value": !nodeCpuUsage[index] || nodeCpuUsage[index] < 1 ? 1 : Math.round(nodeCpuUsage[index] * 100) / 100 }
       )) ?? []),
       // Dummy link for the available cores node
-      { "source": 1, "target": (nodesResponse ? nodesResponse.data.length : 0) + 2, value: 0 }
+      { "source": 1, "target": (nodeList ? nodeList.length : 0) + 2, value: 0 }
     ],
     }
 
@@ -136,9 +149,9 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
   
     return data;
-  }, [nodeCpuUsage, nodesResponse])
+  }, [nodeCpuUsage, nodeList])
 
-  if (nodeCpuUsage.length === 0 || isFetching) {
+  if (isFetching || data === undefined) {
     return (
       <Box textAlign="center" pt={9} pb={9} width="100%">
         <LinearProgress />
@@ -176,6 +189,7 @@ function CpuSankeyNode(props: any) {
   const { x, y, width, height, index, payload, filteredNode } = props;
   const isLeftNode = index <= 1;
 
+  const { isReadReplica } = payload;
   const splitPayload = payload.name.split(' ') as string[];
   const cpuTextPrefix = splitPayload[0].toUpperCase();
   const cpuValue = Number(splitPayload[1])
@@ -195,7 +209,8 @@ function CpuSankeyNode(props: any) {
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
       {!isLeftNode ? 
         // Right node
-        <Link className={classes.link} component={RouterLink} to={`/performance/metrics?nodeName=${payload.name}`}>
+        <Link className={classes.link} component={RouterLink} 
+          to={`/performance/metrics?nodeName=${payload.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <text
             textAnchor={'start'}
             x={x + width + 15}
@@ -237,6 +252,8 @@ class CpuSankeyLink extends Component<any, any> {
     if (!payload.target.name) {
       return null;
     }
+      
+    const { isReadReplica } = payload.target;
 
     const gradientID = `linkGradient${index}`;
     const fill = this.state?.fill ?? `url(#${gradientID})`;
@@ -251,7 +268,8 @@ class CpuSankeyLink extends Component<any, any> {
           </linearGradient>
         </defs>
         
-        <Link component={RouterLink} to={`/performance/metrics?nodeName=${payload.target.name}`}>
+        <Link component={RouterLink}
+          to={`/performance/metrics?nodeName=${payload.target.name}&clusterType=${isReadReplica ? 'READ_REPLICA' : 'PRIMARY'}`}>
           <path
             d={`
               M${sourceX},${sourceY + linkWidth / 2}

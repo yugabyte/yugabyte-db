@@ -1,6 +1,6 @@
 module node-agent
 
-go 1.18
+go 1.20
 
 require (
 	github.com/apex/log v1.9.0
@@ -9,7 +9,7 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/mux v1.8.0
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/prometheus/client_golang v1.15.0
+	github.com/prometheus/client_golang v1.15.1
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.12.0
 	github.com/thoas/go-funk v0.9.2

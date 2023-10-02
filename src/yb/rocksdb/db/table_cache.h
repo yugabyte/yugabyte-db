@@ -33,6 +33,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 
 namespace rocksdb {
@@ -77,7 +78,8 @@ class TableCache {
   InternalIterator* NewIterator(
       const ReadOptions& options, const EnvOptions& toptions,
       const InternalKeyComparatorPtr& internal_comparator,
-      const FileDescriptor& file_fd, const Slice& filter, TableReader** table_reader_ptr = nullptr,
+      const FileDescriptor& file_fd, Slice filter,
+      TableReader** table_reader_ptr = nullptr,
       HistogramImpl* file_read_hist = nullptr, bool for_compaction = false,
       Arena* arena = nullptr, bool skip_filters = false);
 
@@ -91,10 +93,12 @@ class TableCache {
       bool skip_filters = false);
 
   // Version of NewIterator which uses provided table reader instead of getting it by
-  // itself.
+  // itself. Releases TableReaderWithHandle before return.
   InternalIterator* NewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
       bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
+  InternalIterator* NewIndexIterator(
+      const ReadOptions& options, TableReaderWithHandle* trwh);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value) repeatedly until
@@ -179,7 +183,7 @@ class TableCache {
       bool skip_filters = false);
 
   InternalIterator* DoNewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
       bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
 
   const ImmutableCFOptions& ioptions_;

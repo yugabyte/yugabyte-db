@@ -9,8 +9,14 @@
 - name: Test ansible remote command - ls
   shell: ls
 
-- name: Create sudo password file
+- name: Create sudo password file in tmp directory
   copy:
-    dest: "{{ yb_sudo_pass_file | default('/tmp/.yb_sudo_pass.sh') }}"
+    dest: "{{ remote_tmp_dir | default('/tmp') ~ '/.yb_sudo_pass.sh' }}"
     content: "export YB_SUDO_PASS={{ ansible_become_pass }}"
-  when: ansible_become_pass is defined
+  when: ansible_become_pass is defined and yb_sudo_pass_file is not defined
+
+- name: Create sudo password file at yb_sudo_pass_file
+  copy:
+    dest: "{{ yb_sudo_pass_file }}"
+    content: "export YB_SUDO_PASS={{ ansible_become_pass }}"
+  when: ansible_become_pass is defined and yb_sudo_pass_file is defined

@@ -1,8 +1,9 @@
 ---
 title: Configure the VMware Tanzu cloud provider
-headerTitle: Configure the VMware Tanzu cloud provider
-linkTitle: Configure cloud providers
-description: Configure the VMware Tanzu cloud provider
+headerTitle: Create provider configuration
+linkTitle: Create provider configuration
+description: Configure the VMware Tanzu provider configuration
+headContent: Configure a VMWare Tanzu provider configuration
 aliases:
   - /deploy/pivotal-cloud-foundry/
   - /preview/deploy/pivotal-cloud-foundry/
@@ -67,107 +68,70 @@ type: docs
 
 </ul>
 
-You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
+A provider configuration describes your cloud environment (its service account, regions and availability zones, NTP server, the certificates that will be used to SSH to VMs, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the YugabyteDB Anywhere UI, navigate to **Dashboard**, and click **Configure a Provider**.
+## Prerequisites
 
-## Configure TKG credentials
+Before you start, ensure that you have created the [kubeconfig file](../kubernetes/#kubeconfig-file) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
-You configure the TKG credentials as follows:
+## Configure TKG
 
-- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:<br>
+To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
 
-  ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
+This lists all currently configured VMWare Tanzu providers.
 
-- Use the **Name** field to provide a meaningful name for your configuration.
+To create a TKG provider, click **Create Kubernetes Config**. For more information, refer to [Create a provider](../kubernetes/#create-a-provider).
 
-- Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
+### Provider settings
 
-  - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
-  - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
+Set the **Kubernetes Provider Type** to VMWare Tanzu.
 
-- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
+For information on the Kubernetes Provider settings, refer to [Provider settings](../kubernetes/#kubernetes-provider-settings).
 
-- Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
+To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 
-- The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
+```yaml
+serviceEndpoints:
+  - name: "yb-master-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-master"
+    ports:
+      ui: "7000"
 
-## Configure region and zones
+  - name: "yb-tserver-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-tserver"
+    ports:
+      ycql-port: "9042"
+      yedis-port: "6379"
+      ysql-port: "5433"
+```
 
-You configure region and zones as follows:
+To disable LoadBalancer, use the following overrides:
 
-- On the **Create VMware Tanzu Configuration** page, click **Add region** to open the **Add new region** dialog.
+```yaml
+enableLoadBalancer: False
+```
 
-- Use the **Region** field to select the region.
+To change the cluster domain name, use the following overrides:
 
-- Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
+```yaml
+domainName: my.cluster
+```
 
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
+To add annotations at the StatefulSet level, use the following overrides:
 
-  - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
-
-  - In the **Storage Class** field, provide the storage class that exists in your Kubernetes cluster and matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is `TKG - Multi Cloud: standard-sc`, `TKG - Service: tkg-vsan-storage-policy`.
-
-  - In the **Namespace** field, specify an existing namespace into which pods in this zone will be deployed.
-
-  - In the **Cluster DNS Domain** field, provide the DNS domain name used in the Kubernetes cluster.
-
-  - Use the **Kube Config** field to upload the kube config file.
-
-  - Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
-
-    To add service-level annotations, use the following overrides:
-
-    ```config
-    serviceEndpoints:
-      - name: "yb-master-service"
-        type: "LoadBalancer"
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-        app: "yb-master"
-        ports:
-          ui: "7000"
-
-      - name: "yb-tserver-service"
-        type: "LoadBalancer"
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-        app: "yb-tserver"
-        ports:
-          ycql-port: "9042"
-          yedis-port: "6379"
-          ysql-port: "5433"
-    ```
-
-    To disable LoadBalancer, use the following overrides:
-
-    ```configuration
-    enableLoadBalancer: False
-    ```
-
-    To change the cluster domain name, use the following overrides:
-
-    ```configuration
-    domainName: my.cluster
-    ```
-
-    To add annotations at the StatefulSet level, use the following overrides:
-
-    ```configuration
-    networkAnnotation:
-      annotation1: 'foo'
-      annotation2: 'bar'
-    ```
-
-  - If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
-
-  - Click **Add Region**.
-
-  - Click **Save**.
-
-  If your configuration is successful, you are redirected to **VMware Tanzu configs**.
+```yaml
+networkAnnotation:
+  annotation1: 'foo'
+  annotation2: 'bar'
+```
 
 ## Appendix: VMware Tanzu application service
 
@@ -176,7 +140,7 @@ VMware Tanzu Application Service is no longer actively supported and the followi
 If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment .
+- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment.
 
 ### Create a YugabyteDB service instance
 
@@ -229,7 +193,7 @@ Depending on the cloud providers configured for your YugabyteDB Anywhere, you ca
 
 To provision in AWS or GCP cloud, your overrides should include the appropriate `provider_type` and `region_codes` as an array, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "gcp", # gcp for Google Cloud, aws for Amazon Web Service
@@ -239,7 +203,7 @@ To provision in AWS or GCP cloud, your overrides should include the appropriate 
 
 To provision in Kubernetes, your overrides should include the appropriate `provider_type` and `kube_provider` type, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "provider_type": "kubernetes",
@@ -251,7 +215,7 @@ To provision in Kubernetes, your overrides should include the appropriate `provi
 
 To override the number of nodes, include the `num_nodes` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "num_nodes": 4 # default is 3 nodes.
@@ -262,7 +226,7 @@ To override the number of nodes, include the `num_nodes` with the desired value,
 
 To override the replication factor, include `replication` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "replication": 5,
@@ -276,7 +240,7 @@ To override the replication factor, include `replication` with the desired value
 
 To override the volume settings, include `num_volumes` with the desired value, as well as `volume_size` with the volume size in GB for each of those volumes. For example, to have two volumes with 100GB each, overrides should be specified as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "num_volumes": 2,
@@ -284,11 +248,11 @@ To override the volume settings, include `num_volumes` with the desired value, a
 }
 ```
 
-#### Override  the YugabyteDB software version
+#### Override the YugabyteDB software version
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 
-```configuration
+```yaml
 {
  "universe_name": "cloud-override-demo",
  "yb_version": "1.1.6.0-b4"

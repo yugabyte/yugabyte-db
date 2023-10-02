@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -33,10 +34,13 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected UpgradeKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected UpgradeKubernetesUniverse(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   public static class Params extends UpgradeParams {}
@@ -48,12 +52,14 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
   @Override
   public void run() {
+    Throwable th = null;
     try {
       checkUniverseVersion();
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
@@ -153,9 +159,10 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           () ->
               createLoadBalancerStateChangeTask(true /*enable*/)
                   .setSubTaskGroupType(getTaskSubGroupType()));
-
+      th = t;
       throw t;
     } finally {
+      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

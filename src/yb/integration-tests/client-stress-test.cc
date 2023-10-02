@@ -359,7 +359,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     item.client = ASSERT_RESULT(cluster_->CreateClient());
     item.table = std::make_unique<client::TableHandle>();
     ASSERT_OK(item.table->Open(TestWorkloadOptions::kDefaultTableName, item.client.get()));
-    item.session = std::make_shared<client::YBSession>(item.client.get());
+    item.session = item.client.get()->NewSession(60s);
     items.push_back(std::move(item));
   }
 
@@ -390,7 +390,8 @@ Result<size_t> GetPeakRootConsumption(const ExternalTabletServer& ts) {
   EXPECT_OK(c.FetchURL(Format("http://$0/mem-trackers?raw=1", ts.bound_http_hostport().ToString()),
                        &buf));
   static const std::regex re(
-      R"#(\s*<td>root</td><td>([0-9.]+\w)(\s+\([0-9.]+\w\))?</td>)#"
+      R"#(\s*<td><span class=\"toggle collapse\"></span>root</td>)#"
+      R"#(<td>([0-9.]+\w)(\s+\([0-9.]+\w\))?</td>)#"
       R"#(<td>([0-9.]+\w)</td><td>([0-9.]+\w)</td>\s*)#");
   const auto str = buf.ToString();
   std::smatch match;

@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -5,7 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -13,6 +17,8 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -22,6 +28,11 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.extended.CertificateInfoExt;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -52,6 +63,8 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject private RuntimeConfGetter runtimeConfGetter;
 
+  @Inject private CertificateHelper certificateHelper;
+
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -60,6 +73,12 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CertificateParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result upload(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Form<CertificateParams> formData =
@@ -118,10 +137,7 @@ public class CertificateController extends AuthenticatedController {
           try {
             UUID certUUID =
                 EncryptionInTransitUtil.createHashicorpCAConfig(
-                    customerUUID,
-                    label,
-                    runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-                    hcVaultParams);
+                    customerUUID, label, AppConfigHelper.getStoragePath(), hcVaultParams);
             auditService()
                 .createAuditEntryWithReqBody(
                     request,
@@ -156,7 +172,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
+            AppConfigHelper.getStoragePath(),
             certContent,
             keyContent,
             certType,
@@ -176,7 +192,14 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "java.lang.String",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createSelfSignedCert(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     ObjectNode formData = (ObjectNode) request.body().asJson();
     JsonNode jsonData = formData.get("label");
     if (jsonData == null) {
@@ -185,7 +208,7 @@ public class CertificateController extends AuthenticatedController {
     String certLabel = jsonData.asText();
     LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
     UUID certUUID =
-        CertificateHelper.createRootCA(runtimeConfGetter.getStaticConf(), certLabel, customerUUID);
+        certificateHelper.createRootCA(runtimeConfGetter.getStaticConf(), certLabel, customerUUID);
 
     if (certUUID == null) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Root certificate creation failed");
@@ -208,6 +231,12 @@ public class CertificateController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.ClientCertParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getClientCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<ClientCertParams> formData =
         formFactory.getFormDataOrBadRequest(request, ClientCertParams.class);
@@ -237,6 +266,12 @@ public class CertificateController extends AuthenticatedController {
 
   // TODO: cleanup raw json
   @ApiOperation(value = "Get a customer's root certificate", response = Object.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getRootCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo.getOrBadRequest(rootCA, customerUUID);
@@ -274,7 +309,14 @@ public class CertificateController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the regions",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
     return PlatformResults.withData(convert(certs));
   }
@@ -284,7 +326,8 @@ public class CertificateController extends AuthenticatedController {
       response = UUID.class,
       nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
-    CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo cert = CertificateInfo.getOrBadRequest(customerUUID, label);
     return PlatformResults.withData(cert.getUuid());
   }
 
@@ -292,6 +335,12 @@ public class CertificateController extends AuthenticatedController {
       value = "Delete a certificate",
       response = YBPSuccess.class,
       nickname = "deleteCertificate")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(UUID customerUUID, UUID reqCertUUID, Http.Request request) {
     CertificateInfo.delete(reqCertUUID, customerUUID);
     auditService()
@@ -305,13 +354,19 @@ public class CertificateController extends AuthenticatedController {
       value = "Edit TLS certificate config details",
       response = YBPSuccess.class,
       nickname = "editCertificate")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result edit(UUID customerUUID, UUID reqCertUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Form<CertificateParams> formData =
         formFactory.getFormDataOrBadRequest(request, CertificateParams.class);
 
     CertConfigType certType = formData.get().certType;
-    CertificateInfo info = CertificateInfo.get(reqCertUUID);
+    CertificateInfo info = CertificateInfo.getOrBadRequest(reqCertUUID, customerUUID);
 
     if (certType != CertConfigType.HashicorpVault
         || info.getCertType() != CertConfigType.HashicorpVault) {
@@ -339,10 +394,7 @@ public class CertificateController extends AuthenticatedController {
       }
 
       EncryptionInTransitUtil.editEITHashicorpConfig(
-          info.getUuid(),
-          customerUUID,
-          runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
-          formParams);
+          info.getUuid(), customerUUID, AppConfigHelper.getStoragePath(), formParams);
     }
     auditService()
         .createAuditEntry(
@@ -352,6 +404,12 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Update an empty certificate", response = CertificateInfoExt.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<CertificateParams> formData =
         formFactory.getFormDataOrBadRequest(request, CertificateParams.class);

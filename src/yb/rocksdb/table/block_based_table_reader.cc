@@ -267,7 +267,7 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
     if (read_options_.total_order_seek || skip_filters_) {
       return true;
     }
-    return table_->PrefixMayMatch(internal_key);
+    return table_->PrefixMayMatch(read_options_, internal_key);
   }
 
  private:
@@ -349,13 +349,16 @@ bool BloomFilterAwareFileFilter::Filter(TableReader* reader) const {
       return true;
     }
     auto filter_entry = table->GetFilter(read_options_.query_id,
-        read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key);
+        read_options_.read_tier == kBlockCacheTier /* no_io */, &filter_key,
+        read_options_.statistics);
     FilterBlockReader* filter = filter_entry.value;
     // If bloom filter was not useful, then take this file into account.
     const bool use_file = table->NonBlockBasedFilterKeyMayMatch(filter, filter_key);
     if (!use_file) {
       // Record that the bloom filter was useful.
-      RecordTick(table->rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
+      auto* statistics =
+          read_options_.statistics ? read_options_.statistics : table->rep_->ioptions.statistics;
+      RecordTick(statistics, BLOOM_FILTER_USEFUL);
     }
     filter_entry.Release(table->rep_->table_options.block_cache.get());
     return use_file;
@@ -897,15 +900,17 @@ Status BlockBasedTable::CreateFilterIndexReader(std::unique_ptr<IndexReader>* fi
 }
 
 FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_handle, Rep* rep,
-    size_t* filter_size) {
+    size_t* filter_size, Statistics* statistics) {
   // TODO: We might want to unify with ReadBlockFromFile() if we start
   // requiring checksum verification in Table::Open.
   if (rep->filter_type == FilterType::kNoFilter) {
     return nullptr;
   }
   BlockContents block;
+  ReadOptions options = ReadOptions::kDefault;
+  options.statistics = statistics;
   if (!ReadBlockContents(
-           rep->base_reader_with_cache_prefix->reader.get(), rep->footer, ReadOptions::kDefault,
+           rep->base_reader_with_cache_prefix->reader.get(), rep->footer, options,
            filter_handle, &block, rep->ioptions.env, rep->mem_tracker, false).ok()) {
     // Error reading the block
     return nullptr;
@@ -979,7 +984,8 @@ Slice BlockBasedTable::GetFilterKeyFromUserKey(const Slice &user_key) const {
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     const QueryId query_id,
     bool no_io,
-    const Slice* filter_key) const {
+    const Slice* filter_key,
+    Statistics* statistics) const {
   const bool is_fixed_size_filter = rep_->filter_type == FilterType::kFixedSizeFilter;
 
   // Key is required for fixed size filter.
@@ -1037,9 +1043,9 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   auto filter_block_cache_key = GetCacheKey(rep_->base_reader_with_cache_prefix->cache_key_prefix,
       *filter_block_handle, cache_key_buffer);
 
-  Statistics* statistics = rep_->ioptions.statistics;
+  Statistics* effective_statistics = statistics ? statistics : rep_->ioptions.statistics;
   auto cache_handle = GetEntryFromCache(block_cache, filter_block_cache_key,
-      BLOCK_CACHE_FILTER_MISS, BLOCK_CACHE_FILTER_HIT, statistics, query_id);
+      BLOCK_CACHE_FILTER_MISS, BLOCK_CACHE_FILTER_HIT, effective_statistics, query_id);
 
   FilterBlockReader* filter = nullptr;
   if (cache_handle != nullptr) {
@@ -1051,13 +1057,13 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     // For fixed-size filter we don't prefetch all filter blocks and ignore no_io parameter always
     // loading necessary filter block through block cache.
     size_t filter_size = 0;
-    filter = ReadFilterBlock(*filter_block_handle, rep_, &filter_size);
+    filter = ReadFilterBlock(*filter_block_handle, rep_, &filter_size, effective_statistics);
     if (filter != nullptr) {
       assert(filter_size > 0);
       Status s = block_cache->Insert(filter_block_cache_key, query_id,
                                      filter, filter_size,
                                      &DeleteCachedEntry<FilterBlockReader>, &cache_handle,
-                                     statistics);
+                                     effective_statistics);
       if (!s.ok()) {
         delete filter;
         return CachableEntry<FilterBlockReader>();
@@ -1102,7 +1108,8 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
     char cache_key[block_based_table::kCacheKeyBufferSize];
     auto key = GetCacheKey(rep_->base_reader_with_cache_prefix->cache_key_prefix,
         rep_->footer.index_handle(), cache_key);
-    Statistics* statistics = rep_->ioptions.statistics;
+    Statistics* statistics =
+        read_options.statistics ? read_options.statistics : rep_->ioptions.statistics;
     auto cache_handle =
         GetEntryFromCache(block_cache, key, BLOCK_CACHE_INDEX_MISS,
             BLOCK_CACHE_INDEX_HIT, statistics, read_options.query_id);
@@ -1130,7 +1137,7 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
       return ReturnNoIOError();
     }
     // Note that we've already performed first check at the beginning of method.
-    std::lock_guard<std::mutex> lock(rep_->data_index_reader_mutex);
+    std::lock_guard lock(rep_->data_index_reader_mutex);
     index_reader = rep_->data_index_reader.get(std::memory_order_relaxed);
     if (!index_reader) {
       // preloaded_meta_index_iter is not needed for kBinarySearch data index which DocDB uses,
@@ -1147,6 +1154,8 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
   }
 }
 
+// TODO: consider allocating index iterator on arena, try and measure potential performance
+// improvements.
 InternalIterator* BlockBasedTable::NewIndexIterator(
     const ReadOptions& read_options, BlockIter* input_iter) {
   const auto index_reader_result = GetIndexReader(read_options);
@@ -1165,6 +1174,10 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   }
 
   return new_iter;
+}
+
+InternalIterator* BlockBasedTable::NewIndexIterator(const ReadOptions& read_options) {
+  return NewIndexIterator(read_options, /* input_iter = */ nullptr);
 }
 
 yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock(
@@ -1186,7 +1199,7 @@ yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock
 
   // If either block cache is enabled, we'll try to read from it.
   if (PREDICT_TRUE(use_cache) && (block_cache != nullptr || block_cache_compressed != nullptr)) {
-    Statistics* statistics = rep_->ioptions.statistics;
+    Statistics* statistics = ro.statistics ? ro.statistics : rep_->ioptions.statistics;
     char cache_key[block_based_table::kCacheKeyBufferSize];
     char compressed_cache_key[block_based_table::kCacheKeyBufferSize];
     Slice key, /* key to the block cache */
@@ -1289,7 +1302,7 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
 // Otherwise, this method guarantees no I/O will be incurred.
 //
 // REQUIRES: this method shouldn't be called while the DB lock is held.
-bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
+bool BlockBasedTable::PrefixMayMatch(const ReadOptions& read_options, const Slice& internal_key) {
   if (!rep_->filter_policy) {
     return true;
   }
@@ -1315,9 +1328,11 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
   // loaded to memory.
   ReadOptions no_io_read_options;
   no_io_read_options.read_tier = kBlockCacheTier;
+  no_io_read_options.statistics = read_options.statistics;
 
   // First check non block-based filter.
-  auto filter_entry = GetFilter(no_io_read_options.query_id, true /* no io */, &filter_key);
+  auto filter_entry = GetFilter(no_io_read_options.query_id, true /* no io */, &filter_key,
+                                read_options.statistics);
   FilterBlockReader* filter = filter_entry.value;
   const bool is_block_based_filter = rep_->filter_type == FilterType::kBlockBasedFilter;
   if (filter != nullptr && !is_block_based_filter) {
@@ -1365,7 +1380,8 @@ bool BlockBasedTable::PrefixMayMatch(const Slice& internal_key) {
     }
   }
 
-  Statistics* statistics = rep_->ioptions.statistics;
+  Statistics* statistics =
+      read_options.statistics ? read_options.statistics : rep_->ioptions.statistics;
   RecordTick(statistics, BLOOM_FILTER_PREFIX_CHECKED);
   if (!may_match) {
     RecordTick(statistics, BLOOM_FILTER_PREFIX_USEFUL);
@@ -1417,7 +1433,8 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
     filter_key = GetFilterKeyFromInternalKey(internal_key);
     if (!filter_key.empty()) {
       filter_entry =
-          GetFilter(read_options.query_id, read_options.read_tier == kBlockCacheTier, &filter_key);
+          GetFilter(read_options.query_id, read_options.read_tier == kBlockCacheTier, &filter_key,
+                    read_options.statistics);
     } else {
       skip_filters = true;
     }

@@ -47,7 +47,9 @@ class TabletSplitManager {
 
   // Perform one round of tablet splitting. This method is not thread-safe.
   void MaybeDoSplitting(
-      const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
+      const std::vector<TableInfoPtr>& tables,
+      const TabletInfoMap& tablet_info_map,
+      const LeaderEpoch& epoch);
 
   Status ProcessSplitTabletResult(
       const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
@@ -55,7 +57,7 @@ class TabletSplitManager {
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
   Status ValidateSplitCandidateTable(
-      const TableInfo& table,
+      const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 
   // Tablet-level checks for splitting that are checked not only as a best-effort
@@ -84,9 +86,13 @@ class TabletSplitManager {
   void DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id);
 
  private:
-  void ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule);
+  void ScheduleSplits(
+      const std::unordered_set<TabletId>& splits_to_schedule, const LeaderEpoch& epoch);
 
-  void DoSplitting(const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map);
+  void DoSplitting(
+      const std::vector<TableInfoPtr>& tables,
+      const TabletInfoMap& tablet_info_map,
+      const LeaderEpoch& epoch);
 
   Status ValidateTableAgainstDisabledLists(const TableId& table_id);
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);

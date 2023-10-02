@@ -1,5 +1,7 @@
 package com.yugabyte.yw.models.helpers.provider;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -9,8 +11,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
-import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
+import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -32,7 +34,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
           "gceProject", "project_id",
           "gceApplicationCredentialsPath", "GOOGLE_APPLICATION_CREDENTIALS",
           "destVpcId", "network",
-          "ybFirewallTags", CloudProviderHandler.YB_FIREWALL_TAGS,
+          "ybFirewallTags", CloudProviderHelper.YB_FIREWALL_TAGS,
           "useHostVPC", "use_host_vpc");
 
   private static final List<String> toRemoveKeyFromConfig =
@@ -57,6 +59,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"host_project_id", "project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
   @ApiModelProperty
+  @EditableInUseProvider(name = "GCP Project", allowed = false)
   private String gceProject;
 
   @JsonAlias({"config_file_path", GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY})
@@ -69,13 +72,16 @@ public class GCPCloudInfo implements CloudInfoInterface {
 
   @JsonAlias({"network", GCPCloudImpl.CUSTOM_GCE_NETWORK_PROPERTY})
   @ApiModelProperty
+  @EditableInUseProvider(name = "Destination VPC ID", allowed = false)
   private String destVpcId;
 
-  @JsonAlias(CloudProviderHandler.YB_FIREWALL_TAGS)
+  @JsonAlias(CloudProviderHelper.YB_FIREWALL_TAGS)
+  @EditableInUseProvider(name = "Firewall Tags", allowed = false)
   @ApiModelProperty
   private String ybFirewallTags;
 
   @JsonAlias("use_host_vpc")
+  @EditableInUseProvider(name = "Switching Host VPC", allowed = false)
   @ApiModelProperty
   private Boolean useHostVPC;
 
@@ -96,7 +102,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
     Map<String, String> envVars = new HashMap<>();
 
     if (ybFirewallTags != null) {
-      envVars.put(CloudProviderHandler.YB_FIREWALL_TAGS, ybFirewallTags);
+      envVars.put(CloudProviderHelper.YB_FIREWALL_TAGS, ybFirewallTags);
     }
     if (gceProject != null) {
       envVars.put(GCPCloudImpl.GCE_PROJECT_PROPERTY, gceProject);
@@ -172,7 +178,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
         this.gceApplicationCredentials = editCredNodeValue;
       } catch (Exception e) {
         // In case error occured parsing the credentials fall back to saved creds in provider.
-        if (this.gceApplicationCredentials.asText().equals(AuditService.SECRET_REPLACEMENT)) {
+        if (this.gceApplicationCredentials.asText().equals(SECRET_REPLACEMENT)) {
           // For handling the case of read-modify-write.
           this.gceApplicationCredentials = gcpCloudInfo.gceApplicationCredentials;
         } else {

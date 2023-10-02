@@ -13,6 +13,9 @@ enableGitInfo = true
   date = [ "lastmod", ":default" ]
 # lastmod = [ ":git", ":default" ]
 
+[params]
+  regenerateDiagrams = false
+
 [module]
   [module.hugoVersion]
     extended = true
@@ -26,3 +29,7 @@ enableGitInfo = true
   [[module.imports]]
     path = "github.com/trunkcode/hugo-seo"
     disable = false
+
+[markup.goldmark.parser.attribute]
+    block = true
+

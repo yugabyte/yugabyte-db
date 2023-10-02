@@ -177,15 +177,15 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if "$root_certs_generation"; then
+if [[ $root_certs_generation == "true" ]]; then
     generate_root_certs
 fi
 
-if "$node_certs_generation"; then
+if [[ $node_certs_generation == "true" ]]; then
     temp_certs_path=$server_certs_path"/temp"
     generate_node_certs
 fi
 
-if "$key_generation"; then
+if [[ $key_generation == "true" ]]; then
     generate_key
 fi

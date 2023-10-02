@@ -187,12 +187,20 @@ struct ExternalMiniClusterOptions {
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
 
+  // Specifies the replication factor for the cluster. If this is not set, default to the number
+  // of masters in the cluster.
+  int replication_factor = 0;
+
+  bool allow_crashes_during_init_db = false;
+
   Status RemovePort(const uint16_t port);
   Status AddPort(const uint16_t port);
 
   // Make sure we have the correct number of master RPC ports specified.
   void AdjustMasterRpcPorts();
 };
+
+YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
 
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
@@ -237,7 +245,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
-  void Shutdown(NodeSelectionMode mode = ALL);
+  void Shutdown(
+      NodeSelectionMode mode = ALL,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   // Waits for the master to finishing running initdb.
   Status WaitForInitDb();
@@ -423,6 +433,8 @@ class ExternalMiniCluster : public MiniClusterBase {
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
+
+  Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
 
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
       const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
@@ -618,11 +630,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
-  bool IsProcessAlive() const;
+  bool IsProcessAlive(RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown(SafeShutdown safe_shutdown = SafeShutdown::kFalse);
+  virtual void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 

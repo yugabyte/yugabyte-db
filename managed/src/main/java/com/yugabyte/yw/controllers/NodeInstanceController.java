@@ -16,6 +16,9 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -42,6 +45,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -86,6 +94,12 @@ public class NodeInstanceController extends AuthenticatedController {
       value = "Get a node instance",
       response = NodeInstance.class,
       nickname = "getNodeInstance")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
@@ -104,9 +118,15 @@ public class NodeInstanceController extends AuthenticatedController {
       value = "Get node details",
       response = NodeDetailsResp.class,
       nickname = "getNodeDetails")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getNodeDetails(UUID customerUUID, UUID universeUUID, String nodeName) {
-    Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
@@ -182,6 +202,12 @@ public class NodeInstanceController extends AuthenticatedController {
       value = "List all of a zone's node instances",
       response = NodeInstance.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listByZone(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
@@ -198,6 +224,12 @@ public class NodeInstanceController extends AuthenticatedController {
       value = "List all of a provider's node instances",
       response = NodeInstance.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listByProvider(UUID customerUUID, UUID providerUUID) {
     List<NodeInstance> regionList;
     try {
@@ -226,6 +258,12 @@ public class NodeInstanceController extends AuthenticatedController {
       required = true,
       dataType = "com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData",
       paramType = "body")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result validate(UUID customerUuid, UUID zoneUuid, Http.Request request) {
     NodeInstanceData nodeData = parseJsonAndValidate(request, NodeInstanceData.class);
     Customer.getOrBadRequest(customerUuid);
@@ -253,6 +291,12 @@ public class NodeInstanceController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.NodeInstanceFormData",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result create(UUID customerUuid, UUID zoneUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
@@ -299,6 +343,20 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Detached node action", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result detachedNodeAction(
       UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     // Validate customer UUID and universe UUID and AWS provider.
@@ -344,6 +402,12 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteInstance(
       UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -371,10 +435,16 @@ public class NodeInstanceController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.NodeActionFormData",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result nodeAction(
       UUID customerUUID, UUID universeUUID, String nodeName, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universe.getNodeOrBadRequest(nodeName);
     NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
 
@@ -385,6 +455,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    boolean force = nodeActionFormData.isForce();
     NodeTaskParams taskParams = new NodeTaskParams();
 
     if (nodeAction == NodeActionType.REBOOT || nodeAction == HARD_REBOOT) {
@@ -392,6 +463,7 @@ public class NodeInstanceController extends AuthenticatedController {
           UniverseControllerRequestBinder.deepCopy(
               universe.getUniverseDetails(), RebootNodeInUniverse.Params.class);
       params.isHardReboot = nodeAction == HARD_REBOOT;
+      params.skipWaitingForMasterLeader = force;
       taskParams = params;
     } else {
       taskParams =
@@ -404,12 +476,12 @@ public class NodeInstanceController extends AuthenticatedController {
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
-    if (nodeAction == NodeActionType.STOP
-        || nodeAction == NodeActionType.REMOVE
-        || nodeAction == NodeActionType.DELETE
-        || nodeAction == NodeActionType.REBOOT
-        || nodeAction == NodeActionType.HARD_REBOOT) {
-      // Always check this?? For now leaving it as is since it breaks many tests
+    if ((nodeAction == NodeActionType.STOP
+            || nodeAction == NodeActionType.REMOVE
+            || nodeAction == NodeActionType.DELETE
+            || nodeAction == NodeActionType.REBOOT
+            || nodeAction == NodeActionType.HARD_REBOOT)
+        && !force) {
       new AllowedActionsHelper(universe, universe.getNode(nodeName))
           .allowedOrBadRequest(nodeAction);
     }

@@ -31,6 +31,10 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 
+DEFINE_RUNTIME_bool(ignore_null_sys_catalog_entries, false,
+                    "Whether we should ignore system catalog entries with NULL value during "
+                    "iteration.");
+
 namespace yb {
 namespace master {
 
@@ -60,9 +64,18 @@ Status ReadNextSysCatalogRow(
   SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
   RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
-  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
-  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
-  return Status::OK();
+  if (metadata.type() != InternalType::kBinaryValue) {
+    auto status = STATUS_FORMAT(
+        Corruption, "Unexpected value type for metadata: $0, row: $1, type: $2, id: $3",
+        metadata.type(), value_map.ToString(), static_cast<SysRowEntryType>(entry_type),
+        Slice(entry_id.binary_value()).ToDebugHexString());
+    if (FLAGS_ignore_null_sys_catalog_entries && IsNull(metadata)) {
+      LOG(DFATAL) << status;
+      return Status::OK();
+    }
+    return status;
+  }
+  return callback(entry_id.binary_value(), metadata.binary_value());
 }
 
 } // namespace
@@ -218,6 +231,46 @@ Status EnumerateSysCatalog(
             type_col_idx, entry_id_col_idx, metadata_col_idx, callback),
         "System catalog snapshot is corrupted or built using different build type");
   }
+  return Status::OK();
+}
+
+Status EnumerateAllSysCatalogEntries(
+    tablet::Tablet* tablet, const Schema& schema, const SysCatalogEntryCallback& callback) {
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection, ReadHybridTime::Max(), /* table_id= */ "",
+      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
+
+  return EnumerateAllSysCatalogEntries(iter.get(), schema, callback);
+}
+
+Status EnumerateAllSysCatalogEntries(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema,
+    const SysCatalogEntryCallback& callback) {
+  const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
+      kSysCatalogTableColMetadata));
+
+  const dockv::KeyEntryValues empty_hash_components;
+  docdb::DocQLScanSpec spec(
+      schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      empty_hash_components, nullptr  /* req */,
+      nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
+  qlexpr::QLTableRow value_map;
+  QLValue found_entry_type, entry_id, metadata;
+  while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption,
+              "System catalog snapshot is corrupted, or is built using different build type");
+    RETURN_NOT_OK(callback(
+        found_entry_type.int8_value(), entry_id.binary_value(), metadata.binary_value()));
+  }
+
   return Status::OK();
 }
 

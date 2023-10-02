@@ -49,6 +49,8 @@ class RateLimiter {
 
   // Total # of requests that go though rate limiter
   virtual int64_t GetTotalRequests(const yb::IOPriority pri = yb::IOPriority::kTotal) const = 0;
+
+  virtual void EnableLoggingWithDescription(std::string description) = 0;
 };
 
 // Create a RateLimiter object, which can be shared among RocksDB instances to

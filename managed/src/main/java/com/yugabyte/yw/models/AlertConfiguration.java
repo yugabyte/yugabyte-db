@@ -402,9 +402,11 @@ public class AlertConfiguration extends Model {
   @JsonIgnore
   @EqualsAndHashCode.Include
   /*
-    This is required, because Ebean creates ModifyAwareMap instead of regular HashMap while
-    reads object from DB. And equals with regular HashMap in just created config fails.
-  */
+   * This is required, because Ebean creates ModifyAwareMap instead of regular
+   * HashMap while
+   * reads object from DB. And equals with regular HashMap in just created config
+   * fails.
+   */
   public Map<Severity, AlertConfigurationThreshold> thresholdsHashMap() {
     if (thresholds == null) {
       return null;

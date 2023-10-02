@@ -51,6 +51,10 @@ DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
 
+DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
+                 "How much time in milliseconds to delay before exporting tablet metadata during "
+                 "snapshot creation.");
+
 namespace yb {
 namespace tablet {
 
@@ -107,7 +111,7 @@ Status TabletSnapshots::Create(SnapshotOperation* operation) {
 Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   LongOperationTracker long_operation_tracker("Create snapshot", 5s);
 
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status s = regular_db().Flush(rocksdb::FlushOptions());
@@ -167,6 +171,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     }
   });
 
+  DisableSchemaGC disable_schema_gc(tablet().metadata());
+
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
@@ -181,8 +187,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
   }
+
+  AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
 
   bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
 
@@ -283,8 +291,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
+  ScopedRWOperation pending_op(&pending_op_counter_blocking_rocksdb_shutdown_start());
   docdb::DocWriteBatch write_batch(
-      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, nullptr);
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, pending_op, nullptr);
 
   auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
       operation->request()->ToGoogleProtobuf(), &write_batch));
@@ -346,9 +355,9 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
@@ -382,7 +391,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
     if (restore_at) {
-      RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+      RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
   }
 
@@ -441,7 +450,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pauses.non_abortable);
+  s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
@@ -473,7 +482,7 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
   }
 
   return dest_dir;
@@ -486,7 +495,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const std::string snapshot_dir = JoinPathSegments(
       top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
 
   if (env->FileExists(snapshot_dir)) {
@@ -519,13 +528,13 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 
 Status TabletSnapshots::CreateCheckpoint(
     const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  ScopedRWOperation scoped_read_operation(&pending_op_counter());
+  ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   auto temp_intents_dir = dir + kIntentsDBSuffix;
   auto final_intents_dir = JoinPathSegments(dir, kIntentsSubdir);
 
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock());
+  std::lock_guard lock(create_checkpoint_lock());
 
   if (!has_regular_db()) {
     LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;

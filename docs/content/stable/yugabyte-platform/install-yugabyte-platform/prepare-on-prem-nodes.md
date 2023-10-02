@@ -1,7 +1,7 @@
 ---
 title: Prepare nodes for on-premises deployment
 headerTitle: Prepare nodes for on-premises deployment
-linkTitle: Prepare nodes
+linkTitle: Prepare on-prem nodes
 description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
   stable_yugabyte-platform:
@@ -41,9 +41,9 @@ For more information on ports used by YugabyteDB, refer to [Default ports](../..
 
 ## Prepare nodes
 
-You can prepare nodes for on premises deployment, as follows:
+You can prepare nodes for on-premises deployment, as follows:
 
-1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#running-on-public-clouds).
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#public-clouds).
 1. Install the prerequisites and verify the system resource limits, as described in [system configuration](/preview/deploy/manual-deployment/system-config).
 1. Ensure you have SSH access to the server and root access (or the ability to run `sudo`; the sudo user can require a password but having passwordless access is desirable for simplicity and ease of use).
 1. Execute the following command to verify that you can `ssh` into this node (from your local machine if the node has a public address):
@@ -87,7 +87,7 @@ For any third-party Cron scheduling tools, you can disable Crontab and add the f
 Disabling Crontab creates alerts after the universe is created, but they can be ignored. You need to ensure Cron jobs are set appropriately for YugabyteDB Anywhere to function as expected.
   {{< /tip >}}
 
-* Verify that Python 2.7 is installed.
+* Verify that Python 3 is installed.
 * Enable core dumps and set ulimits, as follows:
 
     ```sh

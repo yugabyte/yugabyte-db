@@ -223,6 +223,18 @@ body {
     padding-left: 105px;
 }
 
+.collapse .toggle {
+  background: url("images/collapse.png");
+}
+.expand .toggle {
+  background: url("images/expand.png");
+}
+.toggle {
+  height: 9px;
+  width: 9px;
+  display: inline-block;
+}
+
 /*
 Usage for collapsible style on base of checkbox:
   <input type="checkbox" id="uinque-id" class="yb-collapsible-cb"/>

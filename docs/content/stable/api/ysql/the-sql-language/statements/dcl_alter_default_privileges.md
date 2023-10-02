@@ -18,13 +18,13 @@ Use the `ALTER DEFAULT PRIVILEGES` statement to define the default access privil
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -32,10 +32,10 @@ Use the `ALTER DEFAULT PRIVILEGES` statement to define the default access privil
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grant_role_spec.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grant_role_spec.diagram.md" %}}
   </div>
 </div>

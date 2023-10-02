@@ -77,19 +77,40 @@
     color: #ffffff;
   }
 
+  .universe-status {
+    display: flex;
+  }
+
+  .node-agent-modal {
+    width: 1125px;
+    max-width: 1125px;
+  }
+
+  .node-agent-status {
+    height: 19px;
+    font-size: 14px;
+    font-family: 'Inter';
+    align-items: center;
+    padding: 0px !important;
+    text-decoration: underline;
+    margin: -12px 10px 0 4px;
+    text-transform: initial;
+  
+    a:after {
+      content: none !important;
+    }
+  }
+
   .count {
     margin-left: 10px;
+    margin-right: 10px;
 
     i {
       border-radius: 50%;
-      position: relative;
-      display: inline-block;
       height: 19px;
       width: 19px;
-      font-size: 14px;
       top: -2px;
       text-align: center;
-      line-height: 18px;
     }
   }
 
@@ -159,6 +180,10 @@
             color: colors.$YB_VIOLET_TEXT;
           }
           span.count {
+            color: #232329;
+          }
+
+          span.node-agent-status {
             color: #232329;
           }
         }

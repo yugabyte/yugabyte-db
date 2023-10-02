@@ -21,6 +21,8 @@
 
 #include "yb/master/catalog_entity_info.pb.h"
 
+#include "yb/util/memory/memory_usage.h"
+
 namespace yb {
 namespace client {
 
@@ -35,6 +37,23 @@ struct YBTableInfo {
   bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
   boost::optional<master::ReplicationInfoPB> replication_info;
   boost::optional<uint32> wal_retention_secs;
+
+  // Populated and used by GetTableSchema() for YSQL tables.
+  boost::optional<google::protobuf::RepeatedPtrField<yb::master::YsqlDdlTxnVerifierStatePB>>
+      ysql_ddl_txn_verifier_state;
+
+  size_t DynamicMemoryUsage() const {
+    size_t size =
+        sizeof(*this) + DynamicMemoryUsageOf(table_name, table_id, schema, partition_schema);
+    if (index_info) {
+      size += index_info->DynamicMemoryUsage();
+    }
+    size += index_map.DynamicMemoryUsage();
+    if (replication_info) {
+      size += replication_info->SpaceUsedLong();
+    }
+    return size;
+  }
 };
 
 Result<YBTableType> PBToClientTableType(TableType table_type_from_pb);

@@ -11,15 +11,20 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.bettercloud.vault.VaultException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -61,21 +66,84 @@ public class HashicorpEARServiceUtil {
 
       String vaultAddr, vaultToken;
       String vaultSE, sePath;
+      String vaultRoleID, vaultSecretID;
+
+      vaultToken =
+          authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+              ? ""
+              : authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN).asText();
+      vaultRoleID =
+          authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
+              ? ""
+              : authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID).asText();
+      vaultSecretID =
+          authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null
+              ? ""
+              : authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID).asText();
+
+      if (vaultToken.isBlank() && (vaultRoleID.isBlank() || vaultSecretID.isBlank())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Found no valid vault auth details. "
+                + "Please provide either token or appRole authentication.");
+      } else if (!vaultToken.isBlank() && (!vaultRoleID.isBlank() && !vaultSecretID.isBlank())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Please provide one of token or appRole authentication.");
+      }
 
       vaultAddr = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS).asText();
-      vaultToken = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN).asText();
       vaultSE = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE).asText();
       sePath = authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH).asText();
 
       try {
-        LOG.info(
-            "Creating Vault with : {}, {}=>{}, {}",
-            vaultAddr,
-            vaultSE,
-            sePath,
-            CommonUtils.getMaskedValue(HashicorpVaultConfigParams.HC_VAULT_TOKEN, vaultToken));
+        VaultAccessor hcVaultAccessor;
+        if (vaultToken.isBlank()) {
+          LOG.info(
+              "Creating Vault with : {}, {}=>{}, {}, {}",
+              vaultAddr,
+              vaultSE,
+              sePath,
+              CommonUtils.getMaskedValue(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, vaultRoleID),
+              CommonUtils.getMaskedValue(
+                  HashicorpVaultConfigParams.HC_VAULT_SECRET_ID, vaultSecretID));
 
-        VaultAccessor hcVaultAccessor = VaultAccessor.buildVaultAccessor(vaultAddr, vaultToken);
+          String vaultAuthNamespace =
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) != null
+                  ? authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE).asText()
+                  : "";
+
+          if (!vaultAuthNamespace.isBlank()) {
+            // check is vaultAuthNamespace is prefix of the mount path
+            // if true, remove the vaultAuthNamespace substring
+            // if not, throw error
+            if (sePath.startsWith(vaultAuthNamespace)) {
+              // +1 is to remove the / after the auth namespace
+              if (!vaultAuthNamespace.endsWith("/")) {
+                sePath = sePath.substring(vaultAuthNamespace.length() + 1);
+              } else {
+                sePath = sePath.substring(vaultAuthNamespace.length());
+              }
+            } else {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  "Transit engine mount path should be present in the same or child namespaces");
+            }
+          }
+
+          hcVaultAccessor =
+              VaultAccessor.buildVaultAccessorFromAppRole(
+                  vaultAddr, vaultAuthNamespace, vaultRoleID, vaultSecretID);
+
+        } else {
+          LOG.info(
+              "Creating Vault with : {}, {}=>{}, {}",
+              vaultAddr,
+              vaultSE,
+              sePath,
+              CommonUtils.getMaskedValue(HashicorpVaultConfigParams.HC_VAULT_TOKEN, vaultToken));
+          hcVaultAccessor = VaultAccessor.buildVaultAccessor(vaultAddr, vaultToken);
+        }
+
         VaultSecretEngineBase engine =
             buildSecretEngine(hcVaultAccessor, vaultSE, sePath, KeyType.CMK);
         return engine;
@@ -176,12 +244,21 @@ public class HashicorpEARServiceUtil {
         return;
       }
       LOG.debug(
-          "Updating HC_VAULT_TTL_EXPIRY for Decrypt with {} and {}",
+          "Updating HC_VAULT_TTL_EXPIRY for KMS config {} with {} and {}",
+          configUUID,
           ttlInfo.get(0),
           ttlInfo.get(1));
 
       authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL, (long) ttlInfo.get(0));
       authConfig.put(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY, (long) ttlInfo.get(1));
+      KmsConfig result = KmsConfig.updateKMSConfig(configUUID, authConfig);
+      if (result != null) {
+        LOG.debug(
+            "Successfully updated HC_VAULT_TTL_EXPIRY for KMS config {} with {} and {}",
+            configUUID,
+            ttlInfo.get(0),
+            ttlInfo.get(1));
+      }
     } catch (Exception e) {
       LOG.error("Unable to update TTL of token into authConfig, it will not reflect on UI", e);
     }
@@ -278,5 +355,34 @@ public class HashicorpEARServiceUtil {
         HashicorpVaultConfigParams.HC_VAULT_ENGINE,
         HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
         HashicorpVaultConfigParams.HC_VAULT_KEY_NAME);
+  }
+
+  // Test encrypt and decrypt for Hashicorp KMS config with fake data
+  public static void testEncryptDecrypt(
+      VaultSecretEngineBase vaultSecretEngine, String engineKey, UUID configUUID) {
+    // Test if able to encrypt.
+    LOG.info("testEncryptDecrypt called for connfigUUID {}", configUUID);
+    try {
+      byte[] randomUniverseKey = new byte[32];
+      SecureRandom.getInstanceStrong().nextBytes(randomUniverseKey);
+      LOG.info("Testing encrypt");
+      byte[] randomEncryptedBytes = vaultSecretEngine.encryptString(engineKey, randomUniverseKey);
+      // Test if able to decrypt.
+      LOG.info("Testing decrypt");
+      byte[] decryptedBytes = vaultSecretEngine.decryptString(engineKey, randomEncryptedBytes);
+
+      if (!Arrays.equals(decryptedBytes, randomUniverseKey)) {
+        throw new RuntimeException(
+            String.format(
+                "Could not get decrypted bytes in Hashicorp KMS config '%s'.", configUUID));
+      }
+    } catch (Exception e) {
+      final String errMsg =
+          String.format(
+              "Error occurred in testEncryptDecrypt key in Hashicorp KMS with config UUID '%s'.",
+              configUUID);
+      LOG.error(errMsg, e);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
   }
 }

@@ -43,6 +43,7 @@
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
@@ -176,8 +177,7 @@ Master::Master(const MasterOptions& opts)
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
-      mem_tracker()));
+      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
 
   LOG(INFO) << "yb::master::Master created at " << this;
   LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
@@ -245,7 +245,11 @@ Status Master::InitAutoFlags() {
     }
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
@@ -289,9 +293,8 @@ Status Master::RegisterServices() {
   });
 #endif
 
-  std::unique_ptr<ServiceIf> master_backup_service(new MasterBackupServiceImpl(this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_backup_svc_queue_length,
-                                                     std::move(master_backup_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_backup_svc_queue_length, std::make_shared<MasterBackupServiceImpl>(this)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
@@ -302,29 +305,27 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
 
-  std::unique_ptr<ServiceIf> master_tablet_service(
-      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
-                                                     std::move(master_tablet_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_tserver_svc_queue_length,
+      std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
 
-  std::unique_ptr<ServiceIf> consensus_service(
-      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_consensus_svc_queue_length,
+      std::make_shared<ConsensusServiceImpl>(metric_entity(), catalog_manager_.get()),
+      rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(new tserver::RemoteBootstrapServiceImpl(
-      fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
-      &this->proxy_cache()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_remote_bootstrap_svc_queue_length,
+      std::make_shared<tserver::RemoteBootstrapServiceImpl>(
+          fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
+          &this->proxy_cache())));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_master_svc_queue_length,
-      std::make_unique<tserver::PgClientServiceImpl>(
+      std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
-          std::bind(&Master::TransactionPool, this), metric_entity(), &messenger()->scheduler(),
-          std::nullopt /* xcluster_context */)));
+          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
+          &messenger()->scheduler(), std::nullopt /* xcluster_context */)));
 
   return Status::OK();
 }
@@ -569,7 +570,7 @@ scoped_refptr<Histogram> Master::GetMetric(
       (type == TaskMetric ? "Task" : "Attempt"));
   EscapeMetricNameForPrometheus(&temp_metric_identifier);
   {
-    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::lock_guard lock(master_metrics_mutex_);
     std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
     auto it = master_metrics_ptr->find(temp_metric_identifier);
     if (it == master_metrics_ptr->end()) {
@@ -577,7 +578,7 @@ scoped_refptr<Histogram> Master::GetMetric(
           "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
           description, yb::MetricLevel::kInfo, 0, 10000000, 2);
       scoped_refptr<Histogram> temp =
-          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+          metric_entity()->FindOrCreateMetric<Histogram>(std::move(histogram));
       (*master_metrics_ptr)[temp_metric_identifier] = temp;
       return temp;
     }
@@ -628,7 +629,12 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(&versions));
+  // We do not use cache/fingerprint which is only used for filling heartbeat
+  // response. The heartbeat mechanism is already subject to a heartbeat delay.
+  // In other situation where we are not already subject to any delay, we want
+  // the latest reading from the table pg_yb_catalog_version.
+  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
+      false /* use_cache */, &versions, nullptr /* fingerprint */));
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {

@@ -630,6 +630,7 @@ TEST_F(DBTest, IteratorProperty) {
     ASSERT_NOK(iter->GetProperty("non_existing.value", &prop_value));
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("0", prop_value);
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
     ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
@@ -1068,9 +1069,13 @@ TEST_F(DBTest, IterSeekBeforePrev) {
   ASSERT_OK(Put("2", "j"));
   auto iter = db_->NewIterator(ReadOptions());
   iter->Seek(Slice("c"));
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Prev();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Seek(Slice("a"));
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   iter->Prev();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   delete iter;
 }
 
@@ -1296,8 +1301,11 @@ TEST_F(DBTest, IterMulti) {
 
     // Switch from forward to reverse
     iter->SeekToFirst();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Next();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     iter->Prev();
     ASSERT_EQ(IterStatus(iter), "b->vb");
 
@@ -2913,7 +2921,7 @@ TEST_F(DBTest, ComparatorCheck) {
     const char* Name() const override {
       return "rocksdb.NewComparator";
     }
-    int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(Slice a, Slice b) const override {
       return BytewiseComparator()->Compare(a, b);
     }
     virtual void FindShortestSeparator(std::string* s,
@@ -2946,7 +2954,7 @@ TEST_F(DBTest, CustomComparator) {
     const char* Name() const override {
       return "test.NumberComparator";
     }
-    int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(Slice a, Slice b) const override {
       return ToNumber(a) - ToNumber(b);
     }
     virtual void FindShortestSeparator(std::string* s,
@@ -4561,6 +4569,12 @@ class ModelDB: public DB {
     return snapshot;
   }
 
+  std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) override {
+    return nullptr;
+  }
+
   void ReleaseSnapshot(const Snapshot* snapshot) override {
     delete reinterpret_cast<const ModelSnapshot*>(snapshot);
   }
@@ -4722,6 +4736,8 @@ class ModelDB: public DB {
 
   SequenceNumber GetLatestSequenceNumber() const override { return 0; }
 
+  uint64_t GetNextFileNumber() const override { return 0; }
+
   ColumnFamilyHandle* DefaultColumnFamily() const override {
     return nullptr;
   }
@@ -4735,7 +4751,7 @@ class ModelDB: public DB {
     return STATUS(NotSupported, "Not supported in Model DB");
   }
 
-  class ModelIter: public Iterator {
+  class ModelIter final : public Iterator {
    public:
     ModelIter(const KVMap* map, bool owned)
         : map_(map), owned_(owned), iter_(map_->end()) {
@@ -4743,35 +4759,53 @@ class ModelDB: public DB {
     ~ModelIter() {
       if (owned_) delete map_;
     }
-    bool Valid() const override { return iter_ != map_->end(); }
-    void SeekToFirst() override { iter_ = map_->begin(); }
-    void SeekToLast() override {
+    const KeyValueEntry& SeekToFirst() override {
+      iter_ = map_->begin();
+      return Entry();
+    }
+    const KeyValueEntry& SeekToLast() override {
       if (map_->empty()) {
         iter_ = map_->end();
       } else {
         iter_ = map_->find(map_->rbegin()->first);
       }
+      return Entry();
     }
-    void Seek(const Slice& k) override {
+    const KeyValueEntry& Seek(Slice k) override {
       iter_ = map_->lower_bound(k.ToString());
+      return Entry();
     }
-    void Next() override { ++iter_; }
-    void Prev() override {
+    const KeyValueEntry& Next() override {
+      ++iter_;
+      return Entry();
+    }
+    const KeyValueEntry& Prev() override {
       if (iter_ == map_->begin()) {
         iter_ = map_->end();
-        return;
+        return Entry();
       }
       --iter_;
+      return Entry();
     }
 
-    Slice key() const override { return iter_->first; }
-    Slice value() const override { return iter_->second; }
+    const KeyValueEntry& Entry() const override {
+      if (iter_ == map_->end()) {
+        return KeyValueEntry::Invalid();
+      }
+      entry_ = {
+        .key = iter_->first,
+        .value = iter_->second,
+      };
+      return entry_;
+    }
+
     Status status() const override { return Status::OK(); }
 
    private:
     const KVMap* const map_;
     const bool owned_;  // Do we own map_
     KVMap::const_iterator iter_;
+    mutable KeyValueEntry entry_;
   };
   const Options options_;
   KVMap map_;
@@ -6498,7 +6532,7 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
 
   Iterator* itr = db_->NewIterator(ReadOptions());
   itr->SeekToFirst();
-  ASSERT_OK(itr->status());
+  ASSERT_FALSE(ASSERT_RESULT(itr->CheckedValid()));
   // Stopwatch has been removed from compaction iterator. Disable assert below.
   // ASSERT_NE(TestGetTickerCount(options, FILTER_OPERATION_TOTAL_TIME), 0);
   delete itr;
@@ -8489,14 +8523,15 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
 // Test for https://github.com/yugabyte/yugabyte-db/issues/8919.
 // Schedules flush after CancelAllBackgroundWork call.
 TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
-  FLAGS_use_priority_thread_pool_for_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) = true;
   constexpr auto kMaxBackgroundCompactions = 1;
   constexpr auto kWriteBufferSize = 64_KB;
   constexpr auto kValueSize = 2_KB;
 
   for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
     LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
-    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
+        use_priority_thread_pool_for_flushes;
 
     yb::PriorityThreadPool thread_pool(kMaxBackgroundCompactions);
     Options options = CurrentOptions();

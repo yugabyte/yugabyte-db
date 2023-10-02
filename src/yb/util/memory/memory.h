@@ -1019,9 +1019,9 @@ std::shared_ptr<U> FakeSharedPtr(U* u) {
   return std::shared_ptr<U>(std::shared_ptr<U>(), u);
 }
 
-template <class T>
 class LazySharedPtrFactory {
  public:
+  template <class T>
   operator std::shared_ptr<T>() const { return std::make_shared<T>(); }
 };
 

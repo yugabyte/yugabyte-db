@@ -144,6 +144,8 @@ DEFINE_test_flag(bool, dump_docdb_after_tablet_bootstrap, false,
 DEFINE_test_flag(bool, play_pending_uncommitted_entries, false,
                  "Play all the pending entries present in the log even if they are uncommitted.");
 
+DECLARE_bool(enable_flush_retryable_requests);
+
 namespace yb {
 namespace tablet {
 
@@ -472,12 +474,6 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
   if (write_batch.has_transaction()) {
     return true;
   }
-  if (write_batch.enable_replicate_transaction_status_table()) {
-    // For external write batches, multiple transactions are grouped into the same batch and so
-    // the transaction field is not set. Instead, use the enable_replicate_transaction_status_table
-    // flag to indicate that this is an external transactional batch.
-    return true;
-  }
   for (const auto& pair : write_batch.write_pairs()) {
     if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
@@ -552,6 +548,20 @@ class TabletBootstrap {
     }
 
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
+
+    if (data_.retryable_requests_manager) {
+      data_.retryable_requests_manager->retryable_requests().SetMetricEntity(
+          tablet_->GetTabletMetricsEntity());
+    }
+
+    // Load retryable requests after metrics entity has been instantiated.
+    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+          data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
+      Status load_status = data_.retryable_requests_manager->LoadFromDisk();
+      if (!load_status.ok() && !load_status.IsNotFound()) {
+        RETURN_NOT_OK(load_status);
+      }
+    }
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
@@ -642,8 +652,15 @@ class TabletBootstrap {
   // Sets result to true if there was any data on disk for this tablet.
   Result<bool> OpenTablet() {
     CleanupSnapshots();
-
-    auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
+    // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
+    // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
+    // object itself being allocated on the control block.
+    //
+    // Since we create weak_ptr from this shared_ptr and store it in other classes like WriteQuery,
+    // any leaked weak_ptr wouldn't prevent the underlying object's memory deallocation after the
+    // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
+    // the object's memory even after all shared_ptrs go out of scope.
+    std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -654,8 +671,27 @@ class TabletBootstrap {
     // happening concurrently as we haven't opened the tablet yet.
     const bool has_ss_tables = VERIFY_RESULT(tablet->HasSSTables());
 
+    // Tablet meta data may require some updates after tablet is opened.
+    RETURN_NOT_OK(MaybeUpdateMetaAfterTabletHasBeenOpened(*tablet));
+
     tablet_ = std::move(tablet);
     return has_ss_tables;
+  }
+
+  // Makes updates to tablet meta if required.
+  Status MaybeUpdateMetaAfterTabletHasBeenOpened(const Tablet& tablet) {
+    // For backward compatibility: allow old tablets to use benefits of one-file-at-a-time
+    // post split compaction algorithm by explicitly setting the value for
+    // post_split_compaction_file_number_upper_bound.
+    if (tablet.regular_db() && tablet.key_bounds().IsInitialized() &&
+        !meta_->parent_data_compacted() &&
+        !meta_->post_split_compaction_file_number_upper_bound().has_value()) {
+      meta_->set_post_split_compaction_file_number_upper_bound(
+          tablet.regular_db()->GetNextFileNumber());
+      RETURN_NOT_OK(meta_->Flush());
+    }
+
+    return Status::OK();
   }
 
   // Checks if a previous log recovery directory exists. If so, it deletes any files in the log dir
@@ -846,6 +882,7 @@ class TabletBootstrap {
         log_sync_pool_,
         metadata.cdc_min_replicated_index(),
         &log_,
+        data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
         create_new_segment));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
@@ -920,7 +957,7 @@ class TabletBootstrap {
              callback_iter != replay_state_->pending_replicates.end();
              callback_iter++) {
           test_hooks_->Overwritten(
-              yb::OpId::FromPB(callback_iter->second.entry->replicate().id()));
+              OpId::FromPB(callback_iter->second.entry->replicate().id()));
         }
       }
       replay_state_->pending_replicates.erase(iter, replay_state_->pending_replicates.end());
@@ -1014,7 +1051,7 @@ class TabletBootstrap {
   Status PlayHistoryCutoffRequest(consensus::LWReplicateMsg* replicate_msg) {
     HistoryCutoffOperation operation(tablet_, replicate_msg->mutable_history_cutoff());
 
-    return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Apply(/* leader_term= */ OpId::kUnknownTerm);
   }
 
   Status PlaySplitOpRequest(consensus::LWReplicateMsg* replicate_msg) {
@@ -1067,8 +1104,8 @@ class TabletBootstrap {
     if (!replicate.has_write())
       return;
 
-    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
-      data_.retryable_requests->Bootstrap(replicate, entry_time);
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
+      data_.retryable_requests_manager->retryable_requests().Bootstrap(replicate, entry_time);
     }
 
     // In a test, we might not have data_.retryable_requests, but we still want to tell the test
@@ -1187,19 +1224,33 @@ class TabletBootstrap {
 
     // Lower bound on op IDs that need to be replayed. This is the "flushed OpId" that this
     // function's comment mentions.
-    const auto op_id_replay_lowest = replay_state_->GetLowestOpIdToReplay(
+    auto op_id_replay_lowest = replay_state_->GetLowestOpIdToReplay(
         // Determine whether we have an intents DB.
-        tablet_->doc_db().intents || (test_hooks_ && test_hooks_->HasIntentsDB()),
+        tablet_->intents_db() || (test_hooks_ && test_hooks_->HasIntentsDB()),
         kBootstrapOptimizerLogPrefix);
+
+    // OpId::Max() can avoid bootstrapping the retryable requests.
+    OpId last_op_id_in_retryable_requests = OpId::Max();
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
+      // If it is required, bootstrap the retryable requests starting from max replicated op id
+      // in the structure.
+      // If it's OpId::Min(), then should replay all data in last retryable_requests_timeout_secs.
+      last_op_id_in_retryable_requests =
+          data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId();
+    }
 
     SegmentSequence& segments = *segments_ptr;
 
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    RestartSafeCoarseDuration min_duration_to_retain_logs = data_.bootstrap_retryable_requests
-          ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
-          : 0s;
+    boost::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
+
+    RestartSafeCoarseDuration retryable_requests_retain_interval =
+        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
+            ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+            : 0s;
+    RestartSafeCoarseDuration min_duration_to_retain_logs = 0s;
 
     // When lazy superblock flush is enabled, superblock is flushed on a new segment allocation
     // instead of doing it for every CHANGE_METADATA_OP. This reduces the latency of applying
@@ -1263,22 +1314,38 @@ class TabletBootstrap {
 
       if (!replay_from_this_or_earlier_time_was_initialized) {
         replay_from_this_or_earlier_time = first_op_time - const_min_duration_to_retain_logs;
+        retryable_requests_replay_from_this_or_earlier_time =
+            first_op_time - retryable_requests_retain_interval;
       }
 
       const auto is_first_op_id_low_enough = op_id <= op_id_replay_lowest;
       const auto is_first_op_time_early_enough = first_op_time <= replay_from_this_or_earlier_time;
+      const auto is_first_op_id_low_enough_for_retryable_requests =
+          op_id <= last_op_id_in_retryable_requests;
+      const auto is_first_op_time_early_enough_for_retryable_requests =
+          first_op_time <= retryable_requests_replay_from_this_or_earlier_time;
 
       const auto common_details_str = [&]() {
         std::ostringstream ss;
         ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
+           << EXPR_VALUE_FOR_LOG(last_op_id_in_retryable_requests) << ", "
            << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
            << EXPR_VALUE_FOR_LOG(const_min_duration_to_retain_logs) << ", "
-           << EXPR_VALUE_FOR_LOG(replay_from_this_or_earlier_time_was_initialized) << ", "
+           << EXPR_VALUE_FOR_LOG(retryable_requests_retain_interval) << ", "
+           << EXPR_VALUE_FOR_LOG(*retryable_requests_replay_from_this_or_earlier_time) << ", "
            << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
         return ss.str();
       };
 
-      if (is_first_op_id_low_enough && is_first_op_time_early_enough) {
+      if (is_first_op_id_low_enough && is_first_op_time_early_enough &&
+          (is_first_op_id_low_enough_for_retryable_requests ||
+              is_first_op_time_early_enough_for_retryable_requests)) {
+        LOG_IF_WITH_PREFIX(INFO,
+            !is_first_op_id_low_enough_for_retryable_requests &&
+                is_first_op_time_early_enough_for_retryable_requests)
+            << "Retryable requests file is too old, ignore the expired retryable requests. "
+            << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
+            << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests);
         LOG_WITH_PREFIX(INFO)
             << kBootstrapOptimizerLogPrefix
             << "found first mandatory segment op id: " << op_id << ", "
@@ -1296,6 +1363,8 @@ class TabletBootstrap {
                   : "Continuing to earlier segments.")
           << EXPR_VALUE_FOR_LOG(op_id) << ", "
           << common_details_str() << ", "
+          << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
+          << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests) << ","
           << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough) << ", "
           << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough);
     }
@@ -1373,16 +1442,23 @@ class TabletBootstrap {
     // Find the earliest log segment we need to read, so the rest can be ignored.
     auto iter = should_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
 
-    yb::OpId last_committed_op_id;
-    yb::OpId last_read_entry_op_id;
+    OpId last_committed_op_id;
+    OpId last_read_entry_op_id;
+    // All ops covered by retryable requests file are committed.
+    OpId last_op_id_in_retryable_requests =
+        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
+            ? data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId()
+            : OpId::Min();
     RestartSafeCoarseTimePoint last_entry_time;
     for (; iter != segments.end(); ++iter) {
       const scoped_refptr<ReadableLogSegment>& segment = *iter;
 
       auto read_result = segment->ReadEntries();
-      last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
+      last_committed_op_id = std::max(
+          std::max(last_committed_op_id, read_result.committed_op_id),
+          last_op_id_in_retryable_requests);
       if (!read_result.entries.empty()) {
-        last_read_entry_op_id = yb::OpId::FromPB(read_result.entries.back()->replicate().id());
+        last_read_entry_op_id = OpId::FromPB(read_result.entries.back()->replicate().id());
       }
       for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
         const Status s = HandleEntry(
@@ -1485,8 +1561,8 @@ class TabletBootstrap {
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
 
-    if (data_.retryable_requests) {
-      data_.retryable_requests->Clock().Adjust(last_entry_time);
+    if (data_.retryable_requests_manager) {
+      data_.retryable_requests_manager->retryable_requests().Clock().Adjust(last_entry_time);
     }
 
     // Update last_flushed_change_metadata_op_id if invalid so that next tablet bootstrap
@@ -1609,7 +1685,7 @@ class TabletBootstrap {
     operation.set_op_id(op_id);
 
     Status s;
-    RETURN_NOT_OK(operation.Apply(yb::OpId::kUnknownTerm, &s));
+    RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
     return s;
   }
 
@@ -1679,7 +1755,7 @@ class TabletBootstrap {
     auto transaction_participant = tablet_->transaction_participant();
     if (transaction_participant) {
       TransactionParticipant::ReplicatedData replicated_data = {
-        .leader_term = yb::OpId::kUnknownTerm,
+        .leader_term = OpId::kUnknownTerm,
         .state = *operation.request(),
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
@@ -1696,7 +1772,7 @@ class TabletBootstrap {
           "No transaction coordinator or participant, cannot process a transaction update request");
     }
     TransactionCoordinator::ReplicatedData replicated_data = {
-        .leader_term = yb::OpId::kUnknownTerm,
+        .leader_term = OpId::kUnknownTerm,
         .state = *operation.request(),
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
@@ -1817,7 +1893,7 @@ class TabletBootstrap {
   bool TEST_collect_replayed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
-  std::vector<yb::OpId> TEST_replayed_op_ids_;
+  std::vector<OpId> TEST_replayed_op_ids_;
 
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks_;
 

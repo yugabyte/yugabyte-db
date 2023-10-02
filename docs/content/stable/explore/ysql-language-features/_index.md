@@ -13,14 +13,14 @@ menu:
 type: indexpage
 showRightNav: true
 ---
-YugabyteDB's YSQL API reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
+YugabyteDB's [YSQL API](../../api/ysql/) reuses a fork of the query layer of PostgreSQL as its starting point and runs on top of YugabyteDB's distributed storage layer called DocDB. This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on, all of which are expected to work identically on both database systems.
 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YSQL.
 
 {{< /tip >}}
 
-The following diagram shows how YugabyteDB reuses the PostgreSQL query layer, specifically the components that receive the query (_postman_), the query _parser_, _rewriter_, _analyzer_, as well as components responsible for _planning_ and _executing_ the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
+The following diagram shows how YugabyteDB reuses the PostgreSQL query layer, specifically the components that receive the query (_postman_), the query _parser_, _rewriter_, and _analyzer_, as well as components responsible for _planning_ and _executing_ the query. Some of these components have been modified to perform efficiently in a distributed SQL database.
 
 ![Reusing the PostgreSQL query layer in YSQL](/images/section_icons/architecture/Reusing-PostgreSQL-query-layer.png)
 
@@ -64,7 +64,6 @@ Because YugabyteDB is a distributed SQL database, YSQL has a number of features 
 
 | YSQL Feature | Description |
 | :----------- | :---------- |
-| [Data distribution with `HASH`](../linear-scalability/sharding-data/) | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| [`Tablespaces`](going-beyond-sql/tablespaces/) | Enables pinning of data in tables and table partitions to different geographic locations |
-| [`Follower Reads`](going-beyond-sql/follower-reads-ysql/)| Enables more read IOPS with low latencies in YugabyteDB clusters |
-| `Tablegroups` | Enables colocation of multiple smaller tables into one tablet for better performance |
+| [Data distribution with HASH](../../architecture/docdb-sharding/sharding/) | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
+| [Tablespaces](going-beyond-sql/tablespaces/) | Enables pinning of data in tables and table partitions to different geographic locations |
+| [Follower Reads](going-beyond-sql/follower-reads-ysql/)| Enables more read IOPS with low latencies in YugabyteDB clusters |

@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -39,6 +40,7 @@ import play.data.validation.Constraints;
 @ApiModel(description = "Availability zone (AZ) for a region")
 @Getter
 @Setter
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AvailabilityZone extends Model {
 
   @Id
@@ -135,10 +137,12 @@ public class AvailabilityZone extends Model {
   }
 
   @JsonIgnore
-  public boolean shouldBeUpdated(AvailabilityZone zone) {
+  public boolean isUpdateNeeded(AvailabilityZone zone) {
     return !Objects.equals(this.getSubnet(), zone.getSubnet())
         || !Objects.equals(this.getSecondarySubnet(), zone.getSecondarySubnet())
-        || !Objects.equals(this.getDetails(), zone.getDetails());
+        || !Objects.equals(this.getDetails(), zone.getDetails())
+        || !Objects.equals(
+            CloudInfoInterface.fetchEnvVars(this), CloudInfoInterface.fetchEnvVars(zone));
   }
 
   /** Query Helper for Availability Zone with primary key */
@@ -150,7 +154,8 @@ public class AvailabilityZone extends Model {
   @JsonIgnore
   public long getNodeCount() {
     return Customer.get(getRegion().getProvider().getCustomerUUID())
-        .getUniversesForProvider(getRegion().getProvider().getUuid()).stream()
+        .getUniversesForProvider(getRegion().getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> nd.azUuid.equals(getUuid()))
         .count();

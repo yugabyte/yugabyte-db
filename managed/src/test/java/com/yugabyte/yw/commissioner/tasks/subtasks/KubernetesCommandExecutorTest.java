@@ -10,8 +10,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -32,7 +32,10 @@ import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
@@ -77,6 +80,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   Region defaultRegion;
   AvailabilityZone defaultAZ;
   CertificateInfo defaultCert;
+  CertificateHelper certificateHelper;
+  RuntimeConfGetter runtimeConfGetter;
   // TODO: when trying to fetch the cluster UUID directly, we get:
   // javax.persistence.EntityNotFoundException: Bean not found during lazy load or refresh
   //
@@ -126,9 +131,11 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     new File(CERTS_DIR).mkdirs();
     Config spyConf = spy(app.config());
     doReturn(CERTS_DIR).when(spyConf).getString("yb.storage.path");
+    runtimeConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     defaultCert =
         CertificateInfo.get(
-            CertificateHelper.createRootCA(
+            certificateHelper.createRootCA(
                 spyConf,
                 defaultUniverse.getUniverseDetails().nodePrefix,
                 defaultProvider.getCustomerUUID()));
@@ -241,35 +248,51 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
-    tserverResource.put("cpu", instanceType.getNumCores());
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
-    tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
-    resourceOverrides.put(
-        "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
-
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
 
-    if (!instanceType.getInstanceTypeCode().equals("xsmall")
-        && !instanceType.getInstanceTypeCode().equals("dev")) {
-      masterResource.put("cpu", 2);
-      masterResource.put("memory", "4Gi");
-      masterLimit.put("cpu", 2 * burstVal);
-      masterLimit.put("memory", "4Gi");
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      tserverResource.put("cpu", instanceType.getNumCores());
+      tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+      tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+      tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+      resourceOverrides.put(
+          "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
+
+      if (!instanceType.getInstanceTypeCode().equals("xsmall")
+          && !instanceType.getInstanceTypeCode().equals("dev")) {
+        masterResource.put("cpu", 2);
+        masterResource.put("memory", "4Gi");
+        masterLimit.put("cpu", 2 * burstVal);
+        masterLimit.put("memory", "4Gi");
+        resourceOverrides.put(
+            "master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+      }
+
+      if (instanceType.getInstanceTypeCode().equals("dev")) {
+        masterResource.put("cpu", 0.5);
+        masterResource.put("memory", "0.5Gi");
+        masterLimit.put("cpu", 0.5);
+        masterLimit.put("memory", "0.5Gi");
+        resourceOverrides.put(
+            "master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+      }
+    } else {
+      // Instantiate the default and get values from it.
+      K8SNodeResourceSpec k8sResourceSpec = new K8SNodeResourceSpec();
+      masterResource.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      masterResource.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+      tserverResource.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      tserverResource.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+      masterLimit.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      masterLimit.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+      tserverLimit.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      tserverLimit.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
       resourceOverrides.put(
           "master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
-    }
-
-    if (instanceType.getInstanceTypeCode().equals("dev")) {
-      masterResource.put("cpu", 0.5);
-      masterResource.put("memory", "0.5Gi");
-      masterLimit.put("cpu", 0.5);
-      masterLimit.put("memory", "0.5Gi");
       resourceOverrides.put(
-          "master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
+          "tserver", ImmutableMap.of("requests", tserverResource, "limits", tserverLimit));
     }
-
     expectedOverrides.put("resource", resourceOverrides);
 
     expectedOverrides.put("Image", ImmutableMap.of("tag", ybSoftwareVersion));
@@ -542,7 +565,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Yaml yaml = new Yaml();
     InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
-
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
   }
@@ -738,10 +760,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
     Map<String, Object> resourceOverrides = (Map<String, Object>) overrides.get("resource");
-    if (instanceType.equals("dev")) {
-      assertTrue(resourceOverrides.containsKey("master"));
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      if (instanceType.equals("dev")) {
+        assertTrue(resourceOverrides.containsKey("master"));
+      } else {
+        assertFalse(resourceOverrides.containsKey("master"));
+      }
     } else {
-      assertFalse(resourceOverrides.containsKey("master"));
+      // We are adding master to resource overrides default values
+      assertTrue(resourceOverrides.containsKey("master"));
     }
 
     assertTrue(resourceOverrides.containsKey("tserver"));
@@ -763,7 +790,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: foo\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: foo\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultProvider.setConfigMap(defaultAnnotations);
     defaultProvider.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
@@ -808,7 +848,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: bar\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultRegion.setConfig(defaultAnnotations);
     defaultRegion.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
@@ -853,7 +906,20 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, String> defaultAnnotations = new HashMap<>();
     defaultAnnotations.put(
         "OVERRIDES",
-        "serviceEndpoints:\n  - name: yb-master-service\n    type: LoadBalancer\n    app: yb-master\n    annotations:\n      annotation-1: bar\n    ports:\n      ui: 7000\n\n  - name: yb-tserver-service\n    type: LoadBalancer\n    app: yb-tserver\n    ports:\n      ycql-port: 9042\n      yedis-port: 6379");
+        "serviceEndpoints:\n"
+            + "  - name: yb-master-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-master\n"
+            + "    annotations:\n"
+            + "      annotation-1: bar\n"
+            + "    ports:\n"
+            + "      ui: 7000\n\n"
+            + "  - name: yb-tserver-service\n"
+            + "    type: LoadBalancer\n"
+            + "    app: yb-tserver\n"
+            + "    ports:\n"
+            + "      ycql-port: 9042\n"
+            + "      yedis-port: 6379");
     defaultAZ.updateConfig(defaultAnnotations);
     defaultAZ.save();
     KubernetesCommandExecutor kubernetesCommandExecutor =
@@ -988,16 +1054,29 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Map<String, Object> masterLimit = new HashMap<>();
     double burstVal = 1.2;
 
-    tserverResource.put("cpu", instanceType.getNumCores());
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
-    tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+    if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      tserverResource.put("cpu", instanceType.getNumCores());
+      tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+      tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+      tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
 
-    masterResource.put("cpu", 0.5);
-    masterResource.put("memory", "0.5Gi");
-    masterLimit.put("cpu", "650m");
-    masterLimit.put("memory", "0.5Gi");
-
+      masterResource.put("cpu", 0.5);
+      masterResource.put("memory", "0.5Gi");
+      masterLimit.put("cpu", "650m");
+      masterLimit.put("memory", "0.5Gi");
+    } else {
+      // Get Defaults form k8sResourceSpec
+      K8SNodeResourceSpec k8sResourceSpec = new K8SNodeResourceSpec();
+      masterResource.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      masterResource.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+      tserverResource.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      tserverResource.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+      masterLimit.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      // Verify that master limit for CPU is what we set above in overrides
+      masterLimit.put("cpu", "650m");
+      tserverLimit.put("memory", String.format("%.2f%s", k8sResourceSpec.memoryGib, "Gi"));
+      tserverLimit.put("cpu", String.format("%.2f", k8sResourceSpec.cpuCoreCount));
+    }
     resourceOverrides.put(
         "master", ImmutableMap.of("requests", masterResource, "limits", masterLimit));
     resourceOverrides.put(

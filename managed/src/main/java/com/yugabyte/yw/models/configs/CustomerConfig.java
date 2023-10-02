@@ -165,6 +165,13 @@ public class CustomerConfig extends Model {
         r.putAll((mapper.convertValue(entry.getValue(), ProxySetting.class)).toMap());
       }
     }
+
+    if (type.equals(ConfigType.STORAGE)
+        && name.equals(NAME_AZURE)
+        && !r.get("AZURE_STORAGE_SAS_TOKEN").startsWith("?")) {
+      r.put("AZURE_STORAGE_SAS_TOKEN", "?" + r.get("AZURE_STORAGE_SAS_TOKEN"));
+    }
+
     return r;
   }
 
@@ -230,6 +237,14 @@ public class CustomerConfig extends Model {
 
   public static CustomerConfig createPasswordPolicyConfig(UUID customerUUID, JsonNode payload) {
     return createConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY, payload);
+  }
+
+  public static CustomerConfig createStorageConfig(
+      UUID customerUUID, String name, String configName, JsonNode payload) {
+    // We allow overriding name here because this is used by operator.
+    CustomerConfig c = createConfig(customerUUID, ConfigType.STORAGE, name, payload);
+    c.setConfigName(configName);
+    return c;
   }
 
   /**

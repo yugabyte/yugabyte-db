@@ -8,7 +8,6 @@ import static org.mockito.Mockito.spy;
 import static play.inject.Bindings.bind;
 
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
@@ -16,12 +15,13 @@ import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.YbcClientService;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -34,6 +34,7 @@ import org.junit.Before;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -65,7 +66,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TaskInfoManager mockTaskManager = mock(TaskInfoManager.class);
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
   public NodeManager mockNodeManager = mock(NodeManager.class);
-  public BackupUtil mockBackupUtil = mock(BackupUtil.class);
+  public BackupHelper mockBackupHelper = mock(BackupHelper.class);
+  public StorageUtilFactory mockStorageUtilFactory = mock(StorageUtilFactory.class);
+  public CloudUtilFactory mockCloudUtilFactory = mock(CloudUtilFactory.class);
   public AWSUtil mockAWSUtil = mock(AWSUtil.class);
   public GCPUtil mockGCPUtil = mock(GCPUtil.class);
   public AZUtil mockAZUtil = mock(AZUtil.class);
@@ -74,9 +77,12 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public YbcClientService mockYbcClientService = mock(YbcClientService.class);
   public YbcUpgrade mockYbcUpgrade = mock(YbcUpgrade.class);
   public YbcManager mockYbcManager = mock(YbcManager.class);
-  public AWSCloudImpl mockAWSCloudImpl = mock(AWSCloudImpl.class);
   public YBClient mockYBClient = mock(YBClient.class);
   public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
+  public FileHelperService mockFileHelperService = mock(FileHelperService.class);
+  public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
+  public NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
+  public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -105,7 +111,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
-                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
+                .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
@@ -134,13 +140,19 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(GCPUtil.class).toInstance(mockGCPUtil))
                 .overrides(bind(AZUtil.class).toInstance(mockAZUtil))
                 .overrides(bind(NFSUtil.class).toInstance(mockNfsUtil))
+                .overrides(bind(StorageUtilFactory.class).toInstance(mockStorageUtilFactory))
+                .overrides(bind(CloudUtilFactory.class).toInstance(mockCloudUtilFactory))
                 .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
                 .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator))
                 .overrides(bind(YbcClientService.class).toInstance(mockYbcClientService))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
-                .overrides(bind(AWSCloudImpl.class).toInstance(mockAWSCloudImpl))
-                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper)))
+                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
+                .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
+                .overrides(bind(GetTableSchemaResponse.class).toInstance(mockSchemaResponse))
+                .overrides(
+                    bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
+        .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .build();
   }
 

@@ -36,6 +36,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
+| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra compatible YCQL language features. | Single-node<br/>local/cloud |
 
 ## Set up YugabyteDB universe
 
@@ -96,6 +97,12 @@ Or, if you are running macOS Monterey, use the following command:
                       --master_webserver_port=9999
 ```
 
+To check the status of a running single-node universe, run the following command:
+
+```sh
+./bin/yugabyted status
+```
+
 For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
@@ -145,6 +152,12 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 ```
 
 This command can be executed on any node where you already started YugabyteDB.
+
+To check the status of a running multi-node universe, run the following command:
+
+```sh
+./bin/yugabyted status --base_dir=/tmp/ybd1
+```
 
   {{% /tab %}}
 
@@ -226,7 +239,9 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
-To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To run the examples, you need to create a single- or multi-node universe.
+
+For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
 </div>
@@ -244,7 +259,7 @@ YB Workload Simulator requires Java 11 or later installed on your computer. {{% 
 Download the YB Workload Simulator JAR file using the following command:
 
 ```sh
-wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.3/yb-workload-sim-0.0.3.jar
+wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/download/v0.0.4/yb-workload-sim-0.0.4.jar
 ```
 
 ## Use the application
@@ -288,11 +303,11 @@ java -Dnode=<host name> \
     -Dssl=true \
     -Dsslmode=verify-full \
     -Dsslrootcert=<path-to-cluster-certificate> \
-    -jar ./yb-workload-sim-0.0.3.jar
+    -jar ./yb-workload-sim-0.0.4.jar
 ```
 
 - `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-- `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
+- `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
 - `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
 <!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:
 
@@ -311,7 +326,7 @@ To start the application against a running local universe, use the following com
 ```sh
 java -jar \
     -Dnode=127.0.0.1 \
-    ./yb-workload-sim-0.0.3.jar
+    ./yb-workload-sim-0.0.4.jar
 ```
 
 The `-Dnode` flag specifies the IP address of the node to which to connect.
@@ -325,7 +340,7 @@ The `-Dspring.datasource` flag enables [topology-aware load balancing](../driver
 
 <!--
 ```sh
-scp -i <path_to_your_pem_file> yb-workload-sim-0.0.3.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
+scp -i <path_to_your_pem_file> yb-workload-sim-0.0.4.jar ec2-user@<YugabyteDB_Anywhere_instance_IP_address>:/tmp/
 ```
 -->
 
@@ -333,7 +348,7 @@ scp -i <path_to_your_pem_file> yb-workload-sim-0.0.3.jar ec2-user@<YugabyteDB_An
 <!--
 
 ```sh
-scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.3.jar ec2-user@123.456.789.2XS:/tmp/
+scp -i Documents/Yugabyte/Security-Keys/AWS/AWS-east-1.pem yb-workload-sim-0.0.4.jar ec2-user@123.456.789.2XS:/tmp/
 ```
 -->
 
@@ -347,31 +362,31 @@ To start the application against a running YugabyteDB Anywhere universe, use the
 
 -->
 
-   ```sh
-   java -Dnode=<node_ip> \
-         -Ddbname=<dbname> \
-         -Ddbuser=<dbuser> \
-         -Ddbpassword=<dbpassword> \
-         -Dspring.datasource.hikari.data-source-properties.topologyKeys=<aws.regions.zones> \
-         -jar ./yb-workload-sim-0.0.3.jar
-   ```
+```sh
+java -Dnode=<node_ip> \
+      -Ddbname=<dbname> \
+      -Ddbuser=<dbuser> \
+      -Ddbpassword=<dbpassword> \
+      -Dspring.datasource.hikari.data-source-properties.topologyKeys=<cloud.region.zone> \
+      -jar ./yb-workload-sim-0.0.4.jar
+```
 
-   Replace the following:
+Replace the following:
 
-   - `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere.
+- `<node_ip>` - The IP address of the node in your YugabyteDB Anywhere universe. You can find this information by navigating to **Universes > UniverseName > Nodes** in YugabyteDB Anywhere.
 
-   - `<dbname>` - The name of the database you are connecting to (the default is yugabyte).
+- `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
 
-   - `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
+- `<dbuser>` and `<dbpassword>` - The user name and password for the YugabyteDB database. <!-- - `<port>` - 5433. -->
 
-   - `<aws.regions.zones>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
+- `<cloud.region.zone>` - The zones in your universe, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed in **Universes > UniverseName > Nodes**. For example, to add topology keys for a single-region multi-zone universe, you would enter the following:
 
-     ```sh
-     -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
-     ```
+    ```sh
+    -Dspring.datasource.hikari.data-source-properties.topologyKeys=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c
+    ```
 
 <!-- The preceding instructions are applicable to a YSQL workload.
-To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.3.jar` command: -->
+To run a YCQL workload, add the following parameters before the `-jar ./yb-workload-sim-0.0.4.jar` command: -->
 
 <!--
 ```sh

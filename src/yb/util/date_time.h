@@ -61,6 +61,8 @@ class DateTime {
                                        const OutputFormat& output_format = CqlOutputFormat);
   static Timestamp TimestampNow();
 
+  static std::string SystemTimezone();
+
   //----------------------------------------------------------------------------------------------
   // Date represented as the number of days in uint32_t with the epoch (1970-01-01) at the center of
   // the range (2^31). Min and max possible dates are "-5877641-06-23" and "5881580-07-11".

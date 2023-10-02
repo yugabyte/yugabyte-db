@@ -261,7 +261,7 @@ class AllTypesItest : public YBTest {
  public:
   AllTypesItest() {
     if (AllowSlowTests()) {
-      FLAGS_num_rows_per_tablet = 10000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_rows_per_tablet) = 10000;
     }
     setup_ = TestSetup();
   }
@@ -271,13 +271,13 @@ class AllTypesItest : public YBTest {
   void CreateAllTypesSchema() {
     YBSchemaBuilder builder;
     setup_.AddKeyColumnsToSchema(&builder);
-    builder.AddColumn("int8_val")->Type(INT8);
-    builder.AddColumn("int16_val")->Type(INT16);
-    builder.AddColumn("int32_val")->Type(INT32);
-    builder.AddColumn("int64_val")->Type(INT64);
-    builder.AddColumn("string_val")->Type(STRING);
-    builder.AddColumn("bool_val")->Type(BOOL);
-    builder.AddColumn("binary_val")->Type(BINARY);
+    builder.AddColumn("int8_val")->Type(DataType::INT8);
+    builder.AddColumn("int16_val")->Type(DataType::INT16);
+    builder.AddColumn("int32_val")->Type(DataType::INT32);
+    builder.AddColumn("int64_val")->Type(DataType::INT64);
+    builder.AddColumn("string_val")->Type(DataType::STRING);
+    builder.AddColumn("bool_val")->Type(DataType::BOOL);
+    builder.AddColumn("binary_val")->Type(DataType::BINARY);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -333,7 +333,7 @@ class AllTypesItest : public YBTest {
   // perfectly partitioned table, if the encoding of the keys was correct and the rows
   // ended up in the right place.
   Status InsertRows() {
-    shared_ptr<YBSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession(MonoDelta::FromSeconds(60));
     int max_rows_per_tablet = setup_.GetRowsPerTablet();
     for (int i = 0; i < kNumTablets; ++i) {
       for (int j = 0; j < max_rows_per_tablet; ++j) {
@@ -414,12 +414,12 @@ class AllTypesItest : public YBTest {
   TableHandle table_;
 };
 
-typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8>>,
-                         IntKeysTestSetup<KeyTypeWrapper<INT16>>,
-                         IntKeysTestSetup<KeyTypeWrapper<INT32>>,
-                         IntKeysTestSetup<KeyTypeWrapper<INT64>>,
-                         SliceKeysTestSetup<KeyTypeWrapper<STRING>>,
-                         SliceKeysTestSetup<KeyTypeWrapper<BINARY>>
+typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<DataType::INT8>>,
+                         IntKeysTestSetup<KeyTypeWrapper<DataType::INT16>>,
+                         IntKeysTestSetup<KeyTypeWrapper<DataType::INT32>>,
+                         IntKeysTestSetup<KeyTypeWrapper<DataType::INT64>>,
+                         SliceKeysTestSetup<KeyTypeWrapper<DataType::STRING>>,
+                         SliceKeysTestSetup<KeyTypeWrapper<DataType::BINARY>>
                          > KeyTypes;
 
 TYPED_TEST_CASE(AllTypesItest, KeyTypes);

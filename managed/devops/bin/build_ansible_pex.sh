@@ -29,9 +29,10 @@ echo "Rebuilding pex env for ansible."
 
 
 # Build pex docker image if doesn't exist.
-docker inspect "$DOCKER_IMAGE_NAME" > /dev/null 2>&1 || docker build -t "$DOCKER_IMAGE_NAME" .
+docker inspect "$DOCKER_PEX_IMAGE_NAME" > /dev/null 2>&1 || \
+docker build -t "$DOCKER_PEX_IMAGE_NAME" .
 
 # Execute the build_pex.sh script inside the built docker image
 # to generate the repaired PEX.
 docker run --rm -v "$yb_devops_home:/code" -u "$UID:$(id -g $UID)" \
-"$DOCKER_IMAGE_NAME" -c "-r" "/code/ansible_python_requirements.txt" "--include_python2"
+"$DOCKER_PEX_IMAGE_NAME" -c "-r" "/code/ansible_python_requirements.txt"

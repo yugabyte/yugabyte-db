@@ -32,7 +32,7 @@ type: docs
 
 </ul>
 
-YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
+YugabyteDB Managed supports peering virtual private cloud (VPC) networks on AWS and GCP.
 
 Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
@@ -64,7 +64,7 @@ The CIDR range for the application VPC with which you want to peer, as _the addr
 
 To create a VPC, do the following:
 
-1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
+1. On the **Networking** page, select **VPC Network**, then **VPCs**.
 1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
@@ -94,7 +94,7 @@ The following details for the AWS application VPC you are peering with:
 
 To create a peering connection, in YugabyteDB Managed do the following:
 
-1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
+1. On the **Networking** page, select **VPC Network**, then **Peering Connections**.
 1. Click **Add Peering Connection** to display the **Create Peering** sheet.
 1. Enter a name for the peering connection.
 1. Choose **AWS**.

@@ -50,7 +50,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                 "server", metricName, metricDescription,
                 MetricUnit::kMicroseconds, metricDescription,
                 MetricLevel::kInfo, 0, 10000000, 2);
-    histogram_ = master->metric_entity()->FindOrCreateHistogram(std::move(prototype));
+    histogram_ = master->metric_entity()->FindOrCreateMetric<Histogram>(std::move(prototype));
 }
 
 YQLVirtualTable::~YQLVirtualTable() = default;
@@ -60,9 +60,9 @@ Status YQLVirtualTable::GetIterator(
     const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const qlexpr::QLScanSpec& spec,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.

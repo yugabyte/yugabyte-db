@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -25,7 +25,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -42,7 +42,6 @@ import {
   getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { ON_PREM_UNLISTED_LOCATION } from '../../providerRegionsData';
 import { getOnPremLocationOption } from '../configureRegion/utils';
 
 import {
@@ -152,10 +151,8 @@ export const OnPremProviderEditForm = ({
     setRegionOperation(RegionOperation.ADD);
     setIsRegionFormModalOpen(true);
   };
-  const showEditRegionFormModal = (options?: { isExistingRegion: boolean }) => {
-    setRegionOperation(
-      options?.isExistingRegion ? RegionOperation.EDIT_EXISTING : RegionOperation.EDIT_NEW
-    );
+  const showEditRegionFormModal = (regionOperation: RegionOperation) => {
+    setRegionOperation(regionOperation);
     setIsRegionFormModalOpen(true);
   };
   const hideRegionFormModal = () => {
@@ -232,6 +229,7 @@ export const OnPremProviderEditForm = ({
                 showDeleteRegionModal={showDeleteRegionModal}
                 disabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
+                isProviderInUse={isProviderInUse}
               />
               {formMethods.formState.errors.regions?.message ? (
                 <FormHelperText error={true}>
@@ -398,6 +396,7 @@ export const OnPremProviderEditForm = ({
       {isRegionFormModalOpen && (
         <ConfigureOnPremRegionModal
           configuredRegions={regions}
+          isProviderFormDisabled={isFormDisabled}
           onClose={hideRegionFormModal}
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
@@ -431,7 +430,10 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     location: getOnPremLocationOption(region.latitude, region.longitude),
+    latitude: region.latitude,
+    longitude: region.longitude,
     zones: region.zones.map((zone) => ({
       code: zone.code
     }))
@@ -456,7 +458,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     KeyPairManagement.SELF_MANAGED,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
@@ -497,12 +499,10 @@ const constructProviderPayload = async (
             uuid: existingRegion.uuid,
             details: existingRegion.details
           }),
-          ...(regionFormValues.location.label !== ON_PREM_UNLISTED_LOCATION && {
-            latitude: regionFormValues.location.value.latitude,
-            longitude: regionFormValues.location.value.longitude
-          }),
+          latitude: regionFormValues.latitude,
+          longitude: regionFormValues.longitude,
           code: regionFormValues.code,
-          name: regionFormValues.code,
+          name: regionFormValues.name,
           zones: [
             ...regionFormValues.zones.map((azFormValues) => {
               const existingZone = findExistingZone<OnPremRegion, OnPremAvailabilityZone>(

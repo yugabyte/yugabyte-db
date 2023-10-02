@@ -4,9 +4,9 @@ package com.yugabyte.yw.metrics;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +15,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.MetricConfig;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,7 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -36,6 +38,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Mock ApiHelper mockApiHelper;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   private MetricUrlProvider metricUrlProvider;
   private MetricConfig validMetric;
   private MetricConfig validRangeMetric;
@@ -43,6 +47,9 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Before
   public void setUp() {
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
+        .thenReturn(true);
 
     JsonNode configJson =
         Json.parse(
@@ -63,7 +70,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     validRangeMetric = MetricConfig.create("valid_range_metric", rangeConfigJson);
     validRangeMetric.save();
 
-    metricUrlProvider = new MetricUrlProvider(mockAppConfig);
+    metricUrlProvider = new MetricUrlProvider(runtimeConfGetter);
   }
 
   @Test
@@ -72,7 +79,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -128,6 +136,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -149,7 +158,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Test
   public void testCustomExternalMetricUrl() {
 
-    when(mockAppConfig.getString("yb.metrics.external.url")).thenReturn("bar://external");
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsExternalUrl))
+        .thenReturn("bar://external");
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "valid_range_metric");
@@ -157,6 +167,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -187,6 +198,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         new MetricQueryExecutor(
             metricUrlProvider,
             mockApiHelper,
+            new HashMap<>(),
             params,
             new HashMap<>(),
             new MetricSettings()
@@ -229,7 +241,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "invalid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
     JsonNode result = qe.call();
 
     assertThat(
@@ -248,7 +261,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -288,7 +302,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -328,12 +343,13 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
+        new MetricQueryExecutor(
+            metricUrlProvider, mockApiHelper, new HashMap<>(), params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
-            "{\"status\":\"error\",\"errorType\":\"bad_data\","
-                + "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+            "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error at char 44:"
+                + " unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
     JsonNode response = qe.call();

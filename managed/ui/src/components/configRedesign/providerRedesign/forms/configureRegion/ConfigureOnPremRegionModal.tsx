@@ -5,20 +5,22 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { array, object, string } from 'yup';
+import { array, number, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import { OnPremRegionFieldLabel, RegionOperation } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
-import { generateLowerCaseAlphanumericId } from '../utils';
+import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
-import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
-import { ON_PREM_LOCATIONS } from '../../providerRegionsData';
+import {
+  ReactSelectOption,
+  YBReactSelectField
+} from '../../components/YBReactSelect/YBReactSelectField';
+import { ON_PREM_CUSTOM_LOCATION, ON_PREM_LOCATIONS } from '../../providerRegionsData';
 import { RegionOperationLabel } from '../../constants';
 
 interface ConfigureOnPremRegionModalProps extends YBModalProps {
@@ -26,6 +28,7 @@ interface ConfigureOnPremRegionModalProps extends YBModalProps {
   onRegionSubmit: (region: ConfigureOnPremRegionFormValues) => void;
   onClose: () => void;
   regionOperation: RegionOperation;
+  isProviderFormDisabled: boolean;
 
   regionSelection?: ConfigureOnPremRegionFormValues;
 }
@@ -37,7 +40,10 @@ export interface OnPremAvailabilityZoneFormValues {
 export interface ConfigureOnPremRegionFormValues {
   fieldId: string;
   code: string;
-  location: { value: { latitude: number; longitude: number }; label: string };
+  name: string;
+  location: { value: string; label: string };
+  longitude: number;
+  latitude: number;
   zones: OnPremAvailabilityZoneFormValues[];
 }
 
@@ -56,15 +62,14 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const ON_PREM_LOCATION_OPTIONS = Object.entries(ON_PREM_LOCATIONS).map(
-  ([locationName, location]) => ({
-    value: location,
-    label: locationName
-  })
-);
+const ON_PREM_LOCATION_OPTIONS = Object.keys(ON_PREM_LOCATIONS).map((locationName) => ({
+  value: locationName,
+  label: locationName
+}));
 
 export const ConfigureOnPremRegionModal = ({
   configuredRegions,
+  isProviderFormDisabled,
   onRegionSubmit,
   onClose,
   regionSelection,
@@ -83,6 +88,14 @@ export const ConfigureOnPremRegionModal = ({
           code ? regionSelection?.code === code || !configuredRegionCodes.includes(code) : false
       ),
     location: object().required(`${OnPremRegionFieldLabel.LOCATION} is required.`),
+    latitude: number().when('location', {
+      is: ON_PREM_CUSTOM_LOCATION,
+      then: number().required(`${OnPremRegionFieldLabel.LATITUDE} is required.`)
+    }),
+    longitude: number().when('location', {
+      is: ON_PREM_CUSTOM_LOCATION,
+      then: number().required(`${OnPremRegionFieldLabel.LONGITUDE} is required.`)
+    }),
     zones: array().of(
       object().shape({
         code: string()
@@ -112,6 +125,7 @@ export const ConfigureOnPremRegionModal = ({
     }
     const newRegion = {
       ...formValues,
+      name: formValues.code,
       fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);
@@ -119,17 +133,31 @@ export const ConfigureOnPremRegionModal = ({
     onClose();
   };
 
+  const onLocationChange = (option: ReactSelectOption) => {
+    formMethods.setValue('longitude', ON_PREM_LOCATIONS[option.value]?.longitude ?? 0);
+    formMethods.setValue('latitude', ON_PREM_LOCATIONS[option.value]?.latitude ?? 0);
+  };
+
+  const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
+  const location = formMethods.watch('location', regionSelection?.location);
   return (
     <FormProvider {...formMethods}>
       <YBModal
         title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
+        submitLabel={
+          regionOperation !== RegionOperation.VIEW
+            ? `${RegionOperationLabel[regionOperation]} Region`
+            : undefined
+        }
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
         submitTestId="ConfigureRegionModal-SubmitButton"
         cancelTestId="ConfigureRegionModal-CancelButton"
+        buttonProps={{
+          primary: { disabled: isFormDisabled }
+        }}
         {...modalProps}
       >
         <div className={classes.formField}>
@@ -138,6 +166,7 @@ export const ConfigureOnPremRegionModal = ({
             control={formMethods.control}
             name="code"
             placeholder="Enter..."
+            disabled={isFormDisabled}
             fullWidth
           />
         </div>
@@ -146,13 +175,41 @@ export const ConfigureOnPremRegionModal = ({
           <YBReactSelectField
             control={formMethods.control}
             name="location"
+            onChange={onLocationChange}
             options={ON_PREM_LOCATION_OPTIONS}
+            isDisabled={isFormDisabled}
           />
         </div>
+        {location?.label === ON_PREM_CUSTOM_LOCATION && (
+          <>
+            <div className={classes.formField}>
+              <div>{OnPremRegionFieldLabel.LATITUDE}</div>
+              <YBInputField
+                control={formMethods.control}
+                disabled={isFormDisabled}
+                fullWidth
+                name="latitude"
+                placeholder="Enter..."
+                type="number"
+              />
+            </div>
+            <div className={classes.formField}>
+              <div>{OnPremRegionFieldLabel.LONGITUDE}</div>
+              <YBInputField
+                control={formMethods.control}
+                disabled={isFormDisabled}
+                fullWidth
+                name="longitude"
+                placeholder="Enter..."
+                type="number"
+              />
+            </div>
+          </>
+        )}
         <div>
           <ConfigureOnPremAvailabilityZoneField
             className={classes.manageAvailabilityZoneField}
-            isSubmitting={formMethods.formState.isSubmitting}
+            isFormDisabled={isFormDisabled}
           />
           {formMethods.formState.errors.zones?.message && (
             <FormHelperText error={true}>
