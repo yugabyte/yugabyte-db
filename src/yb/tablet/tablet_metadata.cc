@@ -1008,6 +1008,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
     last_flushed_change_metadata_op_id_ = last_applied_change_metadata_op_id;
   }
   TRACE("Metadata flushed");
+  VLOG_WITH_PREFIX(3) << "RaftGroupMetadata flushed";
 
   return Status::OK();
 }
@@ -1695,6 +1696,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
   metadata->raft_group_id_ = raft_group_id;
+  metadata->log_prefix_ = consensus::MakeTabletLogPrefix(raft_group_id, fs_manager_->uuid());
   metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
   metadata->kv_store_.kv_store_id = KvStoreId(raft_group_id);
   metadata->kv_store_.lower_bound_key = lower_bound_key;

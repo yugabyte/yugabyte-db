@@ -759,7 +759,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 
-  const std::string log_prefix_;
+  std::string log_prefix_;
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
 
