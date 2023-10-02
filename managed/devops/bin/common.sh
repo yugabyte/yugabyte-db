@@ -123,7 +123,6 @@ set -u
 
 # Basename (i.e. name excluding the directory path) of our virtualenv.
 readonly YB_VIRTUALENV_BASENAME=venv
-readonly YB_PEXVENV_BASENAME=pexvenv
 readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
 readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
 readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
@@ -574,26 +573,14 @@ activate_pex() {
   export PEX_ROOT="$PEX_PATH"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
+  mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
+                "import sys; print([x for x in sys.path if x.find('mitogen-') >= 0][0])")
+  ansible_module_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
+                "import sys; print([x for x in sys.path if x.find('ansible-') >= 0][0])")
+  PEX_ANSIBLE_PLAYBOOK_PATH="$ansible_module_path"/.prefix/bin
+  SITE_PACKAGES="$mitogen_path"
+  export SITE_PACKAGES
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
-  # Create and activate virtualenv
-  (
-    flock 9 || log "Waiting for pex lock";
-    if [[ ! -d $pex_venv_dir ]]; then
-      deactivate_virtualenv
-      PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv $pex_venv_dir
-    fi
-  ) 9>>"$pex_lock"
-
-  if [[ ! -f "$pex_venv_dir/bin/activate" ]]; then
-    fatal "File '$pex_venv_dir/bin/activate' does not exist."
-  fi
-  set +u
-  . "$pex_venv_dir"/bin/activate
-  set -u
-  PYTHON_EXECUTABLE="python"
-  log "Using pex virtualenv python executable now."
-  unset PYTHONPATH
-
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -616,5 +603,3 @@ export LC_ALL=en_US.UTF-8
 log_dir=$HOME/logs
 
 readonly virtualenv_dir=$yb_devops_home/$YB_VIRTUALENV_BASENAME
-readonly pex_venv_dir=$yb_devops_home/$YB_PEXVENV_BASENAME
-readonly pex_lock="/tmp/pexlock"
