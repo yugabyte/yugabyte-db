@@ -133,12 +133,11 @@ VALUES
 SET 
   quantity = products.quantity + excluded.quantity;
 ---
-SELECT *
-FROM   products;
-  name   | quantity
+SELECT * FROM products;
+  name   | quantity 
 ---------+----------
- oranges |   	10
- apples  |    2
+ apples  |        2
+ oranges |       10
 (2 rows)
 ```
 
