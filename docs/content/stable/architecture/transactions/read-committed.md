@@ -3,18 +3,19 @@ title: Read Committed isolation level
 headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic.
 
-The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Read Committed in PostgreSQL works around conflicts by allowing single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflict resolution is done by reading and attempting re-execution or  locking on the latest version of the row).
+The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Read Committed in PostgreSQL works around conflicts by allowing single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflict resolution is done by reading and attempting re-execution or locking on the latest version of the row).
 
 YSQL supports the Read Committed isolation level, and its behavior is the same as that of PostgreSQL's [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED).
 
@@ -323,13 +324,13 @@ This can change after [#11573](https://github.com/yugabyte/yugabyte-db/issues/11
 
 ### Interaction with concurrency control
 
-Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict-beta-preview-faq-general-what-is-the-definition-of-the-beta-feature-tag) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
+Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
 
 As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster (by having the YB-TServer flag `enable_wait_queues=false`), transactions in Read Committed isolation will still provide `Wait-on-Conflict` semantics. For providing `Wait-on-Conflict` semantics without wait queues, YugabyteDB relies on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. The retries are at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
 
 However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
 
-* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](../read-committed/#performance-tuning).
+* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](#performance-tuning).
 * The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
