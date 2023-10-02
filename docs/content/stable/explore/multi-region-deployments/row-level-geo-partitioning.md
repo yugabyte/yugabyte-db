@@ -77,6 +77,12 @@ First, create tablespaces for each geographic region you wish to partition data 
     );
     ```
 
+To view your tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
+```
+
 ## Step 2. Create table with partitions
 
 Next, create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region you want to partition data into as shown in the following diagram:
