@@ -70,7 +70,7 @@ simple_spinlock* WaitStateInfo::get_mutex() {
 };
 
 void WaitStateInfo::freeze() {
-  if (&GetAtomicFlag(FLAGS_freeze_wait_states)) {
+  if (GetAtomicFlag(&FLAGS_freeze_wait_states)) {
     freeze_ = true;
   }
 }
