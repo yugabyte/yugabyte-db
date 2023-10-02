@@ -13,7 +13,7 @@ type: docs
 
 YugabyteDB Anywhere allows you to use its UI or [API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#set-up-bidirectional-replication) (multi-master) xCluster replication between two data centers.
 
-Within the concept of replication, universes are divided into the following categories:
+In the concept of replication, universes are divided into the following categories:
 
 - A source universe contains the original data that is subject to replication.
 
@@ -56,7 +56,9 @@ You can set up xCluster replication as follows:
 
 1. Click **Validate Table Selection**.
 
-   This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables:
+   {{< note >}}
+Note that if data on the source universe is created by restoring a backup, the same backup must be restored to the target universe before setting up replication. This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables.
+   {{< /note >}}
 
    - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
 
@@ -97,7 +99,7 @@ Even though you could use yb-admin to replicate a subset of tables from a YSQL k
 
 {{< /note >}}
 
-Since replication is a table-level task, selecting a keyspace adds all its current tables to the xCluster configuration. Any tables created later must be manually added to the xCluster configuration if replication is required.
+Because replication is a table-level task, selecting a keyspace adds all its current tables to the xCluster configuration. Any tables created later must be manually added to the xCluster configuration if replication is required.
 
 <!--
 
@@ -115,9 +117,9 @@ This page allows you to do the following:
 
 - View the replication details.
 
-- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
+- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is helpful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
-- Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustaration to select the tables or database for which to restart the replication:
+- Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustration to select the tables or database for which to restart the replication:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
@@ -163,6 +165,7 @@ The current implementation of xCluster replication in YugabyteDB Anywhere has th
 
 - The source and target universes must exist on the same instance of YugabyteDB Anywhere because data needs to be backed up data from the source universe and restored to the target universe.
 - The chosen storage configuration for bootstrapping must be accessible from both universes.
+- If data on the source universe is added through a restore operation, the same backup must be restored to the target universe before setting up replication.
 - Active-active bidirectional replication is not supported because the backup or restore would wipe out the existing data. This means that bootstrapping can be done only if an xCluster configuration with reverse direction for a table does not exist. It is recommended to set up replication from your active universe to the passive target, and then set up replication for the target to the source universe. To restart a replication with bootstrap, the reverse replication must be deleted.
 - The tables with the same name (`database.schema_name.table_name` for YSQL and `keyspace.table_name` for YCQL) and schema must exist on both universes before xCluster replication can be set up.
 - If you are setting up the replication for YSQL with bootstrapping enabled, you must select all the tables in one database.
@@ -172,8 +175,6 @@ The current implementation of xCluster replication in YugabyteDB Anywhere has th
 - When using xCluster replication, it is recommended to use the same version of YugabyteDB for both universes. In case of software upgrades, the target universe should be upgraded first.
 - If, after setting up xCluster replication, you add a node to the target universe with TLS enabled, you need to manually copy the source universe's root certificate to the added node.
 - The xCluster replication creation task might clash with scheduled backups. It is recommended to wait for the scheduled backup to finish, and then restart the replication.
-
-
 
 <!--
 
