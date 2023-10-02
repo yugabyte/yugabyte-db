@@ -215,11 +215,11 @@ Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 
 ### xCluster replication
 
-xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends independently. To perform a restore, the following is the recommended procedure:
+xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends independently. You can perform a restore using the following recommended procedure:
 
 1. Stop application workloads and make sure there are no active transactions.
 1. Wait for replication to complete.
-1. Delete xCluster replication from both sides.
+1. Delete xCluster replication from both clusters.
 1. Restore both clusters to the exact same time.
 1. Re-establish xCluster replication.
 1. Resume the application workloads.
