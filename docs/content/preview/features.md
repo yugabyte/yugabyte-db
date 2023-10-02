@@ -17,7 +17,7 @@ YugabyteDB is a good fit for fast-growing, cloud native applications that need t
 
 ## Key benefits
 
-YugabyteDB brings together five must-have needs of cloud native applications:
+YugabyteDB provides five key features for cloud-native applications:
 
 - PostgreSQL compatibility
 - Resilience and continuous availability
