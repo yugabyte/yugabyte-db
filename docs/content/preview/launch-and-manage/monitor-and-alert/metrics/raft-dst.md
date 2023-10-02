@@ -20,7 +20,7 @@ All handler latency metrics include additional attributes. Refer to [Throughput 
 
 The following are key metrics for monitoring RAFT processing. All metrics are counters in microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :----- | :--- |
 | `handler_latency_yb_consensus_ConsensusService_UpdateConsensus` | Time to replicate a batch of log entries from the leader to the follower. Includes the total count of the RPC method being invoked.
 | `handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes` | Time by candidates to gather votes. Includes the total count of the RPC method being invoked.
@@ -40,7 +40,7 @@ Clock skew is an important metric for performance and data consistency. It signa
 
 Clock skew is a gauge in microseconds.
 
-| Metric | Description |
+| Metric (Gauge \| microseconds) | Description |
 | :--- | :--- |
 | `hybrid_clock_skew`| Time for clock drift and skew.
 
@@ -54,7 +54,7 @@ When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to cre
 
 Remote bootstraps is a counter in microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :--- | :--- |
 | `handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap` | Time to remote bootstrap a new Raft peer. Includes the total count of remote bootstrap connections.
 

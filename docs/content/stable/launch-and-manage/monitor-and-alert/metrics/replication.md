@@ -20,7 +20,7 @@ The replication lag metrics are computed at a tablet level as the difference bet
 
 The following table describes key replication metrics. All metrics are counters and units are microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :------ | :---------- |
 | `async_replication_committed_lag_micros` | The time in microseconds for the replication lag on the target cluster. This metric is available only on the source cluster. |
 | `time_since_last_getchanges` | The time elapsed in microseconds from when the source cluster got a request to replicate from the target cluster. This metric is available only on the source cluster. |

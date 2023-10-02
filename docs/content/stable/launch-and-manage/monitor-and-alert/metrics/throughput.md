@@ -39,7 +39,7 @@ YSQL query processing metrics represent the total inclusive time it takes Yugaby
 
 The following are key metrics for evaluating YSQL query processing. All metrics are counters and units are microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :--- | :--- |
 | `handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt` | Time to parse and execute INSERT statement.
 | `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` | Time to parse and execute SELECT statement.
@@ -69,7 +69,7 @@ The [YB-TServer](../../../../architecture/concepts/yb-tserver/) is responsible f
 
 The following are key metrics for evaluating database IOPS. All metrics are counters and units are microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :--- | :--- |
 | `handler_latency_yb_tserver_TabletServerService_Read` | Time to perform WRITE operations at a tablet level.
 | `handler_latency_yb_tserver_TabletServerService_Write` | Time to perform READ operations at a tablet level.

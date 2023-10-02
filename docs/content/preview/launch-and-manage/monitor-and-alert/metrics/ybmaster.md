@@ -18,7 +18,7 @@ All handler latency metrics include additional attributes. Refer to [Throughput 
 
 The following are key metrics for evaluating YB-Master performance. All metrics are counters and units are microseconds.
 
-| Metric | Description |
+| Metric (Counter \| microseconds) | Description |
 | :--- | :--- |
 | `handler_latency_yb_master_MasterClient_GetTabletLocations` | Time spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server.
 | `handler_latency_yb_tserver_TabletServerService_Read` | Time to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads.
