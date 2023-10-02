@@ -141,6 +141,9 @@ SELECT * FROM products;
 (2 rows)
 ```
 
+{{<tip>}}
+For more details, see [Data manipulation](../../explore/ysql-language-features/data-manipulation).
+{{</tip>}}
 
 ## Load balance and failover using smart drivers
 
