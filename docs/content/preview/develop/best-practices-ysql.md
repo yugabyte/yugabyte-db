@@ -166,7 +166,28 @@ For consistent latency or performance, it is recommended to size columns in the 
 
 [TRUNCATE](../../api/ysql/the-sql-language/statements/ddl_truncate/) deletes the database files that store the table and is much faster than [DELETE](../../api/ysql/the-sql-language/statements/dml_delete/) which inserts a _delete marker_ for each row in transactions that are later removed from storage during compaction runs.
 
+## Number of tables and indexes
+
+Each table and index is split into tablets and each tablet has overhead. See [tablets per server](#tablets-per-server) for limits.
+
+## Tablets per server
+
+Each table and index consists of several tablets based on the [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) flag. 
+For a cluster with RF3, 1000 tablets have an overhead of 0.4vcpu for raft heartbeats (assuming 0.5s heartbeat interval), 300MB memory, 128GB disk-space for WAL (write-ahead log).
+
+You have to keep this number in mind depending on the number of tables and number of tablets per-server that you intend to create. Note that each tablet can contain 100GB+ of data. 
+
+An effort to increase this limit is currently in progress. See GitHub issue [#1317](https://github.com/yugabyte/yugabyte-db/issues/1317).
+
+You can try one of the following ways to reduce the number of tablets:
+
+- Use [colocation](../../architecture/docdb-sharding/colocated-tables/) to group small tables into 1 tablet.
+- Reduce number of tablets-per-table using [`--ysql_num_shards_per_tserver`](../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) gflag.
+- Use [`SPLIT INTO`](../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause when creating a table.
+- Start with few tablets and use [automatic tablet splitting](../../architecture/docdb-sharding/tablet-splitting/).
+
 ## Settings for CI and CD integration tests
+
 You can set certain gflags to increase performance using YugabyteDB in CI and CD automated test scenarios as follows:
 
 - Point the gflags `--fs_data_dirs`, and `--fs_wal_dirs` to a RAMDisk directory to make DML, DDL, cluster creation and deletion faster, ensuring that data is not written to disk.
