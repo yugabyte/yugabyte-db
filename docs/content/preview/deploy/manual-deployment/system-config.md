@@ -111,8 +111,8 @@ On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured to match
 
 {{< note title="Note" >}}
 
-If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, you
- must add them also in the `Service` section in the configuration file. See example config for systemd [yb-master.service](/code-samples/yb-master.service) & [yb-tserver.service](/code-samples/yb-tserver.service).
+If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, add the ulimts in the `Service` section of the configuration file. 
+For more details , see systemd example configuration for [yb-master.service](/code-samples/yb-master.service) , and [yb-tserver.service](/code-samples/yb-tserver.service).
 
 ```
 [Unit]
