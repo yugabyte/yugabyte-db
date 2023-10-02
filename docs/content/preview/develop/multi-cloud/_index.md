@@ -14,7 +14,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Most organizations choose a single cloud provider (or private data centers) to deploy their applications. But this can lead to vendor lock-in, and the feature set and growth of your cloud provider can become a bottleneck for the growth of your organization.
+Most organizations choose a single cloud provider (or private data centers) to deploy their applications. But this can lead to vendor lock-in, and the feature set and growth of your cloud provider can become a bottleneck to growth.
 
 ![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-global-spread.png)
 
@@ -34,7 +34,7 @@ The main objective of adopting a multi-cloud strategy is to provide you with the
 
 While a multi-cloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds present big challenges.
 
-YugabyteDB is designed to address these challenges. Multi-cloud management capabilities have been integrated directly into [YugabyteDB](../../), [YugabyteDB Anywhere](../../yugabyte-platform/) and [YugabyteDB Managed](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
+YugabyteDB is designed to address these challenges. Multi-cloud management capabilities have been integrated directly into [YugabyteDB](../../), [YugabyteDB Anywhere](../../yugabyte-platform/), and [YugabyteDB Managed](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
 
 ### Setup
 
@@ -46,7 +46,7 @@ After you set up your multi-cloud, you need to choose a suitable design pattern 
 
 ## Hybrid cloud
 
-The journey from public clouds from private data centers (_on-prem_) is not instantaneous. It takes a lot of time and planning. One of the first steps is to move a few select applications to the public cloud while maintaining the rest in private data centers.
+The journey to public clouds from private data centers (_on-prem_) is not instantaneous. It takes a lot of time and planning. One of the first steps is to move a few select applications to the public cloud while maintaining the rest in private data centers.
 
 This hybrid approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers.
 
