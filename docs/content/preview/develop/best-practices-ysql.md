@@ -96,6 +96,64 @@ Use [table partitioning](../../explore/ysql-language-features/advanced-features/
 For more details, see [Partition data by time](../common-patterns/timeseries/partitioning-by-time/).
 {{</tip>}}
 
+## Use multi row inserts wherever possible
+If you're inserting multiple rows, it's faster to batch them together whenever possible. You can start with 128 rows per batch
+and test different batch sizes to find the sweet spot.
+
+Don't use multiple statements:
+```postgresql
+INSERT INTO users(name,surname) VALUES ('bill', 'jane');
+INSERT INTO users(name,surname) VALUES ('billy', 'bob');
+INSERT INTO users(name,surname) VALUES ('joey', 'does');
+```
+Instead, group values into a single statement as follows:
+```postgresql
+INSERT INTO users(name,surname) VALUES ('bill', 'jane'), ('billy', 'bob'), ('joe', 'does');
+``` 
+
+
+## UPSERT multiple rows wherever possible
+
+PostgreSQL and YSQL enable you to do upserts using the `INSERT ON CONFLICT` clause. Similar to multi-row inserts, 
+you can also batch multiple upserts in a single `INSERT ON CONFLICT` statement for better performance.
+
+In case the row already exists, you can access the existing values using `EXCLUDED.<column_name>` in the query.
+
+The following example creates a table to track the quantity of products, and increments rows in batches:
+
+```postgresql
+CREATE TABLE products
+  (
+     name     TEXT PRIMARY KEY,
+     quantity BIGINT DEFAULT 0
+  );  
+---
+INSERT INTO products(name, quantity) 
+VALUES 
+  ('apples', 1), 
+  ('oranges', 5) ON CONFLICT(name) DO UPDATE 
+SET 
+  quantity = products.quantity + excluded.quantity;
+---
+INSERT INTO products(name, quantity) 
+VALUES 
+  ('apples', 1), 
+  ('oranges', 5) ON CONFLICT(name) DO UPDATE 
+SET 
+  quantity = products.quantity + excluded.quantity;
+---
+SELECT * FROM products;
+  name   | quantity 
+---------+----------
+ apples  |        2
+ oranges |       10
+(2 rows)
+```
+
+{{<tip>}}
+For more details, see [Data manipulation](../../explore/ysql-language-features/data-manipulation).
+{{</tip>}}
+
 ## Load balance and failover using smart drivers
 
 YugabyteDB [smart drivers](../../drivers-orms/smart-drivers/) provide advanced cluster-aware load-balancing capabilities that enables your applications to send requests to multiple nodes in the cluster just by connecting to one node. You can also set a fallback hierarchy by assigning priority to specific regions and ensuring that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails.
