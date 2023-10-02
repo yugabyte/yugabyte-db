@@ -12,26 +12,28 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { PlacementCloudInfo } from './PlacementCloudInfo';
 
 
 /**
- * 
+ * Placement Block
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface PlacementBlock
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface PlacementBlock  {
+  /**
+   * 
+   * @type {PlacementCloudInfo}
+   * @memberof PlacementBlock
+   */
+  cloud_info?: PlacementCloudInfo;
   /**
    * 
    * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @memberof PlacementBlock
    */
-  ysql: number;
-  /**
-   * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
-   */
-  ycql: number;
+  min_num_replicas?: number;
 }
 
 

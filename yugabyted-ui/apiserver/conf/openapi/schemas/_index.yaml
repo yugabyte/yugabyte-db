@@ -358,6 +358,10 @@ ClusterTable:
       type: string
       minLength: 1
       nullable: false
+    uuid:
+      type: string
+      minLength: 1
+      nullable: false
     type:
       $ref: '#/YbApiEnum'
     size_bytes:
@@ -367,6 +371,7 @@ ClusterTable:
   required:
     - name
     - keyspace
+    - uuid
     - type
     - size_bytes
 YbApiEnum:

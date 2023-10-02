@@ -150,6 +150,14 @@ paths:
         explode: false
         schema:
           type: string
+      - name: zone
+        in: query
+        description: Zone to filter for the given cluster
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
       - name: start_time
         in: query
         description: Start of range of time series data (in epoch seconds)
@@ -220,6 +228,14 @@ paths:
         - name: id
           in: query
           description: UUID of the table
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where the table info is retrieved
           required: true
           style: form
           explode: false
@@ -869,6 +885,10 @@ components:
           type: string
           minLength: 1
           nullable: false
+        uuid:
+          type: string
+          minLength: 1
+          nullable: false
         type:
           $ref: '#/components/schemas/YbApiEnum'
         size_bytes:
@@ -878,6 +898,7 @@ components:
       required:
         - name
         - keyspace
+        - uuid
         - type
         - size_bytes
     ClusterTableData:

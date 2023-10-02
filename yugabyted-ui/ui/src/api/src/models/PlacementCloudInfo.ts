@@ -15,23 +15,29 @@
 
 
 /**
- * 
+ * Placement Cloud Info
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface PlacementCloudInfo
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface PlacementCloudInfo  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof PlacementCloudInfo
    */
-  ysql: number;
+  placement_cloud?: string;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof PlacementCloudInfo
    */
-  ycql: number;
+  placement_region?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof PlacementCloudInfo
+   */
+  placement_zone?: string;
 }
 
 

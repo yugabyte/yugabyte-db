@@ -15,23 +15,29 @@
 
 
 /**
- * 
+ * Raft Config
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface RaftConfig
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface RaftConfig  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof RaftConfig
    */
-  ysql: number;
+  uuid?: string;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof RaftConfig
    */
-  ycql: number;
+  role?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof RaftConfig
+   */
+  location?: string;
 }
 
 

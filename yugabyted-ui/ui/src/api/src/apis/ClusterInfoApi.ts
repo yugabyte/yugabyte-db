@@ -28,6 +28,7 @@ import type {
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
+  TableInfo,
   VersionInfo,
 } from '../models';
 
@@ -35,6 +36,7 @@ export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
   region?: string;
+  zone?: string;
   start_time?: number;
   end_time?: number;
 }
@@ -43,6 +45,10 @@ export interface GetClusterTablesForQuery {
 }
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
+}
+export interface GetTableInfoForQuery {
+  id: string;
+  node_address: string;
 }
 
 /**
@@ -137,6 +143,7 @@ export const getClusterMetricAxiosRequest = (
         metrics: requestParameters['metrics'],
         node_name: requestParameters['node_name'],
         region: requestParameters['region'],
+        zone: requestParameters['zone'],
         start_time: requestParameters['start_time'],
         end_time: requestParameters['end_time'],
       }
@@ -656,6 +663,88 @@ export const useGetSlowQueriesQuery = <T = SlowQueryResponseSchema, Error = ApiE
   const query = useQuery<SlowQueryResponseSchema, Error, T>(
     queryKey,
     () => getSlowQueriesAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get info on a single table, given table uuid
+ * Get info on a single table, given table uuid
+ */
+
+export const getTableInfoAxiosRequest = (
+  requestParameters: GetTableInfoForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<TableInfo>(
+    {
+      url: '/table',
+      method: 'GET',
+      params: {
+        id: requestParameters['id'],
+        node_address: requestParameters['node_address'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getTableInfoQueryKey = (
+  requestParametersQuery: GetTableInfoForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/table`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetTableInfoInfiniteQuery = <T = TableInfo, Error = ApiError>(
+  params: GetTableInfoForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<TableInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getTableInfoQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<TableInfo, Error, T>(
+    queryKey,
+    () => getTableInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetTableInfoQuery = <T = TableInfo, Error = ApiError>(
+  params: GetTableInfoForQuery,
+  options?: {
+    query?: UseQueryOptions<TableInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getTableInfoQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<TableInfo, Error, T>(
+    queryKey,
+    () => getTableInfoAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

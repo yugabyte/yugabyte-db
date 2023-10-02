@@ -25,13 +25,13 @@ import type { ClusterSpec } from './ClusterSpec';
  */
 export interface ClusterData  {
   /**
-   *
+   * 
    * @type {ClusterSpec}
    * @memberof ClusterData
    */
   spec: ClusterSpec;
   /**
-   *
+   * 
    * @type {ClusterDataInfo}
    * @memberof ClusterData
    */

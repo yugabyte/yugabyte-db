@@ -23,6 +23,7 @@ src/models/ClusterTable.ts
 src/models/ClusterTableListResponse.ts
 src/models/ClusterTablet.ts
 src/models/ClusterTabletListResponse.ts
+src/models/ColumnInfo.ts
 src/models/EncryptionInfo.ts
 src/models/EntityMetadata.ts
 src/models/HealthCheckInfo.ts
@@ -40,11 +41,18 @@ src/models/NodeData.ts
 src/models/NodeDataCloudInfo.ts
 src/models/NodeDataMetrics.ts
 src/models/NodeDataMetricsActiveConnections.ts
+src/models/PlacementBlock.ts
+src/models/PlacementCloudInfo.ts
 src/models/PlacementInfo.ts
+src/models/RaftConfig.ts
 src/models/SlowQueryResponseData.ts
 src/models/SlowQueryResponseSchema.ts
 src/models/SlowQueryResponseYSQLData.ts
 src/models/SlowQueryResponseYSQLQueryItem.ts
+src/models/TableInfo.ts
+src/models/TableInfoTableReplicationInfo.ts
+src/models/TableReplicationInfo.ts
+src/models/TabletInfo.ts
 src/models/VersionInfo.ts
 src/models/YbApiEnum.ts
 src/models/index.ts

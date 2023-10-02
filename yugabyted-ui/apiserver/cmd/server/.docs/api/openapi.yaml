@@ -223,6 +223,14 @@ paths:
         schema:
           type: string
         style: form
+      - description: Zone to filter for the given cluster
+        explode: false
+        in: query
+        name: zone
+        required: false
+        schema:
+          type: string
+        style: form
       - description: Start of range of time series data (in epoch seconds)
         explode: false
         in: query
@@ -312,6 +320,14 @@ paths:
         explode: false
         in: query
         name: id
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Specify the node ip-address from where the table info is retrieved
+        explode: false
+        in: query
+        name: node_address
         required: true
         schema:
           type: string
@@ -1352,12 +1368,17 @@ components:
         keyspace: keyspace
         size_bytes: 0
         name: name
+        uuid: uuid
       properties:
         name:
           minLength: 1
           nullable: false
           type: string
         keyspace:
+          minLength: 1
+          nullable: false
+          type: string
+        uuid:
           minLength: 1
           nullable: false
           type: string
@@ -1372,6 +1393,7 @@ components:
       - name
       - size_bytes
       - type
+      - uuid
       title: Cluster Table Object
       type: object
     ClusterTableData:
@@ -1876,9 +1898,11 @@ components:
         - keyspace: keyspace
           size_bytes: 0
           name: name
+          uuid: uuid
         - keyspace: keyspace
           size_bytes: 0
           name: name
+          uuid: uuid
       properties:
         data:
           description: List of cluster tables

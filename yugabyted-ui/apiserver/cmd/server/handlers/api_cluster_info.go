@@ -806,47 +806,49 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
 
 // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
 func (c *Container) GetClusterTables(ctx echo.Context) error {
-        tableListResponse := models.ClusterTableListResponse{
-                Data: []models.ClusterTable{},
+    tableListResponse := models.ClusterTableListResponse{
+        Data: []models.ClusterTable{},
+    }
+    tablesFuture := make(chan helpers.TablesFuture)
+    go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
+    tablesListStruct := <-tablesFuture
+    if tablesListStruct.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
+    }
+    // For now, we only show user and index tables.
+    tablesList := append(tablesListStruct.Tables.User, tablesListStruct.Tables.Index...)
+    api := ctx.QueryParam("api")
+    switch api {
+    case "YSQL":
+        for _, table := range tablesList {
+            if table.YsqlOid != "" {
+                tableListResponse.Data = append(tableListResponse.Data,
+                    models.ClusterTable{
+                        Name:      table.TableName,
+                        Keyspace:  table.Keyspace,
+                        Uuid:      table.Uuid,
+                        Type:      models.YBAPIENUM_YSQL,
+                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                   table.OnDiskSize.SstFilesSizeBytes,
+                    })
+            }
         }
-        tablesFuture := make(chan helpers.TablesFuture)
-        go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
-        tablesListStruct := <-tablesFuture
-        if tablesListStruct.Error != nil {
-                return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
+    case "YCQL":
+        for _, table := range tablesList {
+            if table.YsqlOid == "" {
+                tableListResponse.Data = append(tableListResponse.Data,
+                    models.ClusterTable{
+                        Name:      table.TableName,
+                        Keyspace:  table.Keyspace,
+                        Uuid:      table.Uuid,
+                        Type:      models.YBAPIENUM_YCQL,
+                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                   table.OnDiskSize.SstFilesSizeBytes,
+                })
+            }
         }
-        // For now, we only show user and index tables.
-        tablesList := append(tablesListStruct.Tables.User, tablesListStruct.Tables.Index...)
-        api := ctx.QueryParam("api")
-        switch api {
-        case "YSQL":
-                for _, table := range tablesList {
-                        if table.YsqlOid != "" {
-                                tableListResponse.Data = append(tableListResponse.Data,
-                                    models.ClusterTable{
-                                        Name:      table.TableName,
-                                        Keyspace:  table.Keyspace,
-                                        Type:      models.YBAPIENUM_YSQL,
-                                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
-                                                   table.OnDiskSize.SstFilesSizeBytes,
-                                })
-                        }
-                }
-        case "YCQL":
-                    for _, table := range tablesList {
-                        if table.YsqlOid == "" {
-                                tableListResponse.Data = append(tableListResponse.Data,
-                                    models.ClusterTable{
-                                        Name:      table.TableName,
-                                        Keyspace:  table.Keyspace,
-                                        Type:      models.YBAPIENUM_YCQL,
-                                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
-                                                   table.OnDiskSize.SstFilesSizeBytes,
-                                    })
-                        }
-                }
-        }
-        return ctx.JSON(http.StatusOK, tableListResponse)
+    }
+    return ctx.JSON(http.StatusOK, tableListResponse)
 }
 
 // GetClusterHealthCheck - Get health information about the cluster
@@ -1019,7 +1021,7 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
         return ctx.JSON(http.StatusOK, slowQueryResponse)
 }
 
-// GetLiveQueries - Get the live queries in a cluster
+// GetLiveQueries - Get the tablets in a cluster
 func (c *Container) GetClusterTablets(ctx echo.Context) error {
     tabletListResponse := models.ClusterTabletListResponse{
         Data: map[string]models.ClusterTablet{},

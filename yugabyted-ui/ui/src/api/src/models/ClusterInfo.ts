@@ -41,7 +41,7 @@ export interface ClusterInfo  {
    * @type {number}
    * @memberof ClusterInfo
    */
-  replication_factor?: number;
+  replication_factor: number;
   /**
    * 
    * @type {ClusterNodeInfo}
