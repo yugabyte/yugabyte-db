@@ -615,7 +615,7 @@ Flush the memstores of the specified table on all tablet servers to disk.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    flush_table <table> [timeout_in_seconds] [ADD_INDEXES]
+    flush_table <table_name> | <table_id> <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
