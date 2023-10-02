@@ -29,6 +29,8 @@ The valid *arguments* for analyze schema are described in the following table:
 | -h, --help | Command line help. |
 | --output-format <format> | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (default: true) |
+| --verbose | Display extra information in the output. (default: false) |
+| -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 
 #### Example
 

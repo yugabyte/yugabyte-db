@@ -35,7 +35,9 @@ The valid *arguments* for import data are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | --batch-size <number> | Size of batches generated for ingestion during import data. (default: 20000 rows) |
+| --continue-on-error | If set, this flag ignores errors and continues with the import. |
 | --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
+| --enable-upsert | Set to true to enable UPSERT mode on target tables and false to disable the mode. (default true) |
 | --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. For live migration, during import data, the `--exclude-table-list` argument is not supported. |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
@@ -48,14 +50,17 @@ The valid *arguments* for import data are described in the following table:
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --target-db-port <port> | Port number of the target database machine. (default: 5433) |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
+| --target-db-sid <SID>  | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
+| --target-endpoints <nodeEndpoints> | Comma-separated list of node's endpoint to use for parallel import of data (default is to use all the nodes in the cluster). For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag will be ignored if this is used. |
+| --use-public-ip | Set to true to use the public IPs of the nodes to distribute --parallel-jobs uniformly for data import (default: false).<br> Note that you may need to configure database to have public_ip available by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses). |
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --verbose | Display extra information in the output. (default: false) |
-| -y, --yes | Answer yes to all prompts during the export schema operation. |
+| -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 
 <!-- To do : document the following arguments with description
 | --continue-on-error |

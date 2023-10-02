@@ -26,7 +26,7 @@ Initiate a [switchover](../../../migrate/live-fall-forward/#switch-over-to-the-f
 Usage: yb-voyager fall-forward switchover [ <arguments> ... ]
 ```
 
-### Arguments
+#### Arguments
 
 The valid *arguments* for fall-forward switchover are described in the following table:
 
