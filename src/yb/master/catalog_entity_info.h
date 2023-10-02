@@ -461,6 +461,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return started_hiding() || started_deleting();
   }
 
+  bool is_hidden_but_not_deleting() const {
+    return is_hidden() && !started_deleting();
+  }
+
   // Return the table's name.
   const TableName& name() const {
     return pb.name();
@@ -569,6 +573,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsOperationalForClient() const {
     auto l = LockForRead();
     return !l->started_hiding_or_deleting();
+  }
+
+  bool IsHiddenButNotDeleting() const {
+    auto l = LockForRead();
+    return l->is_hidden_but_not_deleting();
   }
 
   // If the table is already hidden then treat it as a duplicate hide request.

@@ -2120,7 +2120,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
 
-  // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
+  // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
@@ -2637,6 +2637,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Will filter tables content, so pass it by value here.
   void CleanupHiddenTables(
       std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
+      const LeaderEpoch& epoch);
+
+  // Checks the colocated table is hidden and is not within the retention of any snapshot schedule
+  // or covered by any live snapshot. If the checks pass sends a request to the relevant tserver
+  // to remove this table from its metadata for the parent tablet.
+  void RemoveHiddenColocatedTableFromTablet(
+      const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
       const LeaderEpoch& epoch);
 
   rpc::Scheduler& Scheduler() override;
