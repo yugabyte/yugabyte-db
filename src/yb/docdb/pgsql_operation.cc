@@ -1713,7 +1713,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit() * 1_KB;
+    response_size_limit = request_.size_limit();
   }
 
   VLOG(4) << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
@@ -1832,7 +1832,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit() * 1_KB;
+    response_size_limit = request_.size_limit();
   }
 
   auto projection = CreateProjection(doc_read_context.schema(), request_);
