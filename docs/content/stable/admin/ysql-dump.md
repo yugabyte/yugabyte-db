@@ -71,6 +71,7 @@ Create the dump in the specified character set encoding. By default, the dump is
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
 
 #### -m *addresses*, --masters=*addresses*
+
 Comma-separated list of YB-Master hosts and ports.
 
 #### -n *schema*, --schema=*schema*
@@ -323,7 +324,7 @@ $ ysql_dump mydb > mydb.sql
 #### Dump a single table named `mytable`
 
 ```sh
-$ ysql_dump -t mytable mydb > mytable_mydb.sql
+$ ysql_dump -t mytable mydb -f mytable_mydb.sql
 ```
 
 #### Dump schemas based on filters

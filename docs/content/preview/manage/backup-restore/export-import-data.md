@@ -59,7 +59,7 @@ For example, to export the `mydb` database into a file called `mydb-dump.sql` lo
 To export a single database table, use the `ysql_dump` utility by executing the following command:
 
 ```sh
-./postgres/bin/ysql_dump -t <table-name> <db-name> > <file>
+./postgres/bin/ysql_dump -t <table-name> <db-name> -f <file>
 ```
 
 - *table-name* is the name of the table to be exported.
@@ -69,7 +69,7 @@ To export a single database table, use the `ysql_dump` utility by executing the 
 For example, to export the `mytable` table of the `mydb` database into a file called `mytable-mydb-dump.sql` located in the `backup` folder, the command would be as follows:
 
 ```sh
-./postgres/bin/ysql_dump -t mytable mydb > backup/mytable-mydb-dump.sql
+./postgres/bin/ysql_dump -t mytable mydb -f backup/mytable-mydb-dump.sql
 ```
 
 ## Export all databases
