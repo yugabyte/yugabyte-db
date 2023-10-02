@@ -17,13 +17,13 @@ This page describes the usage of the following export commands:
 - [export data](#export-data)
 - [export data status](#export-data-status)
 
-### export data
+## export data
 
 For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
 
 For [live migration](../../../migrate/live-migrate/#export-data) (and [fall-forward](../../../migrate/live-fall-forward/#export-data)), export data [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager export data [ <arguments> ... ]
@@ -61,7 +61,7 @@ The valid *arguments* for export data are described in the following table:
 | --start-clean | Starts a fresh data export after clearing all data from the `data` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
 | -y, --yes | Answer yes to all prompts during the export schema operation. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager export data --export-dir /path/to/yb/export/dir \
@@ -74,13 +74,13 @@ yb-voyager export data --export-dir /path/to/yb/export/dir \
         --source-db-schema schemaName # Not applicable for MySQL
 ```
 
-### export data status
+## export data status
 
 For offline migration, get the status report of an ongoing or completed data export operation.
 
 For live migration (and fall-forward), get the report of the ongoing export phase which includes metrics such as the number of rows exported in the snapshot phase, the total number of change events exported from the source, the number of `INSERT`/`UPDATE`/`DELETE` events, and the final row count exported.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager export data status [ <arguments> ... ]
@@ -95,7 +95,7 @@ The valid *arguments* for export data status are described in the following tabl
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager export data status --export-dir /path/to/yb/export/dir

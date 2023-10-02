@@ -13,13 +13,13 @@ type: docs
 
 Exports new changes from the YugabyteDB database to import to the fall-forward database so that the fall-forward database can be in sync with the YugabyteDB database after cutover.
 
-#### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager fall-forward synchronize [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for fall-forward synchronize are described in the following table:
 
@@ -45,7 +45,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes| Answer yes to all prompts during migration. (default: false) |
 
-#### Example
+## Example
 
 ```sh
 yb-voyager fall-forward synchronize --export-dir /path/to/yb/export/dir \

@@ -27,11 +27,11 @@ Before starting a [live migration](../live-migrate/#live-migration-workflow), yo
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cut-over-to-a-database), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cut-over-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
-Finally, if you need to switch to the fall-forward database (because the current YugabyteDB system is not working as expected), you can [switch over your database](#switch-over-your-database-optional).
+Finally, if you need to switch to the fall-forward database (because the current YugabyteDB system is not working as expected), you can [switch over your database](#switch-over-to-the-fall-forward-optional).
 
 ![After fall-forward switchover](/images/migrate/after-fall-fwd-switchover.png)
 

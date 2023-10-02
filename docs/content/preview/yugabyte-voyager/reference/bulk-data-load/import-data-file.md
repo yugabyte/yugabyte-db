@@ -13,13 +13,13 @@ type: docs
 
 Load data from files in CSV or text format directly to the YugabyteDB database. These data files can be located either on a local filesystem, an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).
 
-#### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager import data file [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import data file are described in the following table:
 
@@ -60,7 +60,7 @@ The valid *arguments* for import data file are described in the following table:
 | --target-endpoints |
 | --use-public-ip | -->
 
-### Examples
+## Examples
 
 The following examples use the `--data-dir` argument along with `--file-table-map` argument and contextually differ based on whether the data is imported from local disk or cloud storage options.
 
@@ -182,9 +182,9 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
         --has-header=true
 ```
 
- {{% /tab %}}
+{{% /tab %}}
 
-  {{% tab header="Text" %}}
+{{% tab header="Text" %}}
 
 Import data for text files using `import data file` by providing the argument --format 'text' in the command.
 
@@ -293,4 +293,6 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
         --delimiter '|'
 ```
 
-  {{% /tab %}}
+{{% /tab %}}
+
+{{< /tabpane >}}

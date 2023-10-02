@@ -16,17 +16,17 @@ This page describes the usage of the following switchover commands:
 - [fall-forward switchover](#fall-forward-switchover)
 - [fall-forward status](#fall-forward-status)
 
-### fall-forward switchover
+## fall-forward switchover
 
 Initiate a [switchover](../../../migrate/live-fall-forward/#switch-over-to-the-fall-forward-optional) to the fall-forward database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager fall-forward switchover [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for fall-forward switchover are described in the following table:
 
@@ -35,17 +35,17 @@ The valid *arguments* for fall-forward switchover are described in the following
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for switchover. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 ```
 
-### fall-forward status
+## fall-forward status
 
 Shows the status of the fall-forward switchover to the fall-forward database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager fall-forward status [ <arguments> ... ]
@@ -60,7 +60,7 @@ The valid *arguments* for fall-forward switchover status are described in the fo
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover status. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager fall-forward status --export-dir /path/to/yb/export/dir \

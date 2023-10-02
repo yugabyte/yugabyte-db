@@ -13,11 +13,13 @@ type: docs
 
 [Analyse the PostgreSQL schema](../../../migrate/migrate-steps/#analyze-schema) dumped in the export schema step.
 
-#### Syntax
+## Syntax
 
 ```sh
 yb-voyager analyze-schema [ <arguments> ... ]
 ```
+
+### Arguments
 
 The valid *arguments* for analyze schema are described in the following table:
 

@@ -21,13 +21,13 @@ For Oracle migrations using YugabyteDB Voyager v1.1 or later, the Orafce extensi
 
 {{< /note >}}
 
-#### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager import schema [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for import schema are described in the following table:
 
@@ -59,7 +59,7 @@ The valid *arguments* for import schema are described in the following table:
 --object-list string
 --refresh-mviews
 --straight-order -->
-#### Example
+## Example
 
 ```sh
 yb-voyager import schema --export-dir /path/to/yb/export/dir \

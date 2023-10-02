@@ -14,13 +14,13 @@ type: docs
 
 [Export the schema](../../../migrate/migrate-steps/#export-and-analyze-schema) from the source database.
 
-#### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager export schema [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for export schema are described in the following table:
 
@@ -48,7 +48,7 @@ The valid *arguments* for export schema are described in the following table:
 | --use-orafce | Use the Orafce extension. Oracle migrations only. (default: true) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager export schema --export-dir /path/to/yb/export/dir \

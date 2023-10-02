@@ -16,13 +16,13 @@ This page describes the usage of the following import commands:
 - [import data](#import-data)
 - [import data status](#import-data-status)
 
-### import data
+## import data
 
 For offline migration, [Import the data](../../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 
 For live migration (and fall-forward), the command [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
-#### Syntax
+### Syntax
 
 ```text
 yb-voyager import data [ <arguments> ... ]
@@ -62,7 +62,7 @@ The valid *arguments* for import data are described in the following table:
 | --enable-upsert |
 | --target-endpoints |
 | --use-public-ip | -->
-#### Example
+### Example
 
 ```sh
 yb-voyager import data --export-dir /path/to/yb/export/dir \
@@ -74,13 +74,13 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
         --parallel-jobs connectionCount
 ```
 
-### import data status
+## import data status
 
 For offline migration, get the status report of an ongoing or completed data import operation. The report contains migration status of tables, number of rows or bytes imported, and percentage completion.
 
 For live migration, get the status report of import data. For live migration with fall forward, the report also includes the status of fall forward setup. The report includes the status of tables, the number of rows imported, the total number of changes imported, the number of `INSERT`, `UPDATE`, and `DELETE` events, and the final row count of the target or fall-forward database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager import data status [ <arguments> ... ]
@@ -97,7 +97,7 @@ The valid *arguments* for import data status are described in the following tabl
 | target-db-password | Password of the target database. Live migrations only. |
 | ff-db-password | Password of the fall-forward database. Live migration with fall-forward only. |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager import data status --export-dir /path/to/yb/export/dir

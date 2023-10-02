@@ -13,7 +13,7 @@ type: docs
 
 Imports data to the fall-forward database, and streams new changes from the YugabyteDB database to the fall-forward database.
 
-#### Syntax
+### Syntax
 
 ```text
 Usage: yb-voyager fall-forward setup [ <arguments> ... ]
@@ -53,7 +53,7 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the migration. (default: false) |
 
-#### Example
+### Example
 
 ```sh
 yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \

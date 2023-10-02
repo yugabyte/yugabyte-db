@@ -13,13 +13,13 @@ type: docs
 
 Archives the streaming data from the source database.
 
-#### Syntax
+## Syntax
 
 ```text
 Usage: yb-voyager archive changes [ <arguments> ... ]
 ```
 
-#### Arguments
+### Arguments
 
 The valid *arguments* for archive changes status are described in the following table:
 
