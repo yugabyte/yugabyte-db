@@ -531,10 +531,10 @@ void CatalogManagerUtil::FillTableInfoPB(
 }
 
 bool CatalogManagerUtil::RetainTablet(
-    const google::protobuf::RepeatedPtrField<std::string>& retaininng_snapshot_schedules,
+    const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
     const ScheduleMinRestoreTime& schedule_to_min_restore_time,
     HybridTime hide_hybrid_time, const TabletId& tablet_id) {
-  for (const auto& schedule_id_str : retaininng_snapshot_schedules) {
+  for (const auto& schedule_id_str : retaining_snapshot_schedules) {
     auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
     auto it = schedule_to_min_restore_time.find(schedule_id);
     // If schedule is not present in schedule_min_restore_time then it means that schedule

@@ -179,7 +179,7 @@ class CatalogManagerUtil {
       tablet::TableInfoPB* pb);
 
   static bool RetainTablet(
-      const google::protobuf::RepeatedPtrField<std::string>& retaininng_snapshot_schedules,
+      const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
       const ScheduleMinRestoreTime& schedule_to_min_restore_time,
       HybridTime hide_hybrid_time, const TabletId& tablet_id);
 

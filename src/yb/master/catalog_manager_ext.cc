@@ -2703,55 +2703,74 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
-void CatalogManager::CleanupHiddenTables(
-    std::vector<TableInfoPtr> tables,
-    const ScheduleMinRestoreTime& schedule_min_restore_time,
+void CatalogManager::RemoveHiddenColocatedTableFromTablet(
+    const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
-  std::vector<TableInfo::WriteLock> locks;
-  EraseIf([this, &locks, &schedule_min_restore_time, &epoch](const TableInfoPtr& table) {
-    {
-      auto lock = table->LockForRead();
-      // If the table is colocated and hidden then remove it from its colocated tablet if
-      // it has expired.
-      if (lock->is_hidden() && !lock->started_deleting()) {
-        auto tablet_info = table->GetColocatedUserTablet();
-        if (tablet_info) {
-          auto tablet_lock = tablet_info->LockForRead();
-          auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-          bool cleanup = !CatalogManagerUtil::RetainTablet(
-              tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
-              hide_hybrid_time, tablet_info->tablet_id()) &&
-              !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id());
-          if (!cleanup) {
-            return true;
-          }
-          LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
-          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-              master_, AsyncTaskPool(), tablet_info, table, epoch);
-          table->AddTask(call);
-          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-          table->ClearTabletMaps();
-        }
-      }
-      if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
-        return true;
-      }
-    }
-    auto lock = table->LockForWrite();
-    if (lock->started_deleting()) {
-      return true;
-    }
-    LOG_WITH_PREFIX(INFO) << "Should delete table: " << AsString(table);
-    lock.mutable_data()->set_state(
-        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
-    locks.push_back(std::move(lock));
-    return false;
-  }, &tables);
-  if (tables.empty()) {
+  auto lock = table->LockForRead();
+  if (!lock->is_hidden_but_not_deleting()) {
     return;
   }
+  auto tablet_info = table->GetColocatedUserTablet();
+  if (!tablet_info) {
+    return;
+  }
+  auto tablet_lock = tablet_info->LockForRead();
+  auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+  if (CatalogManagerUtil::RetainTablet(
+          tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
+          hide_hybrid_time, tablet_info->tablet_id()) ||
+      snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id())) {
+    return;
+  }
+  LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+  auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+      master_, AsyncTaskPool(), tablet_info, table, epoch);
+  table->AddTask(call);
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+  table->ClearTabletMaps();
+}
 
-  Status s = sys_catalog_->Upsert(epoch, tables);
+void CatalogManager::CleanupHiddenTables(
+    std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
+    const LeaderEpoch& epoch) {
+  std::vector<TableInfoPtr> expired_tables;
+  for (auto& table : tables) {
+    if (table->GetColocatedUserTablet() != nullptr) {
+      // Table is colocated and still registered with its parent tablet. Remove it from its parent
+      // tablet's metadata first.
+      RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
+    }
+    if (!table->IsHiddenButNotDeleting() || !table->AreAllTabletsDeleted()) {
+      continue;
+    }
+    expired_tables.push_back(std::move(table));
+  }
+  // Sort the expired tables so we acquire write locks in id order. This is the required lock
+  // acquisition order for tables.
+  std::sort(
+      expired_tables.begin(), expired_tables.end(),
+      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
+  std::vector<TableInfo::WriteLock> locks;
+  for (const auto& table : expired_tables) {
+    auto write_lock = table->LockForWrite();
+    if (write_lock->started_deleting()) {
+      continue;
+    }
+    // Because tablets for hidden tables are deleted first, there is nothing left to delete besides
+    // the table metadata itself now. So we skip the DELETING state and transition directly to
+    // DELETED.
+    write_lock.mutable_data()->set_state(
+        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Cleaning up hidden table $0: $1", table->name(), AsString(table));
+    locks.push_back(std::move(write_lock));
+  }
+  if (locks.empty()) {
+    return;
+  }
+  // We skip writes for unmodified sys catalog entries so don't worry about expired tables we
+  // skipped.
+  Status s = sys_catalog_->Upsert(epoch, expired_tables);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to mark tables as deleted: " << s;
     return;
