@@ -18,12 +18,15 @@ spec:
               universeName:
                 type: string
                 x-kubernetes-validations:
-                - message: universeName is required once set
+                - message: universeName cannot be changed once set.
                   rule: self == oldSelf
               numNodes:
                 type: integer
               replicationFactor:
                 type: integer
+                x-kubernetes-validations:
+                - message: Replication Factor is cannot be changed
+                  rule: self == oldSelf
               instanceType:
                 type: string
               assignPublicIP:
@@ -59,8 +62,14 @@ spec:
                   type: string
               enableYSQLAuth:
                 type: boolean
+                x-kubernetes-validations:
+                  - message: enableYSQL auth cannot be changed once set.
+                    rule: self == oldSelf
               ysqlPassword:
                 type: object
+                x-kubernetes-validations:
+                - message: ysqlPassword cannot be changed once set.
+                  rule: self == oldSelf
                 properties:
                   secretName:
                     type: string
@@ -68,10 +77,22 @@ spec:
                 - secretName
               enableYCQL:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYCQL cannot be changed once set.
+                  rule: self == oldSelf
+
               enableYCQLAuth:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYCQLAuth cannot be changed once set.
+                  rule: self == oldSelf
+
               ycqlPassword:
                 type: object
+                x-kubernetes-validations:
+                - message:  ycqlPassword cannot be changed once set.
+                  rule: self == oldSelf
+
                 properties:
                   secretName:
                     type: string
@@ -79,16 +100,24 @@ spec:
                 - secretName
               enableIPV6:
                 type: boolean
+                x-kubernetes-validations:
+                - message:   enableIPV6 cannot be changed once set.
+                  rule: self == oldSelf
               enableExposingService:
                 type: string
+                x-kubernetes-validations:
+                - message:   enableExposingService cannot be changed once set.
+                  rule: self == oldSelf
               accessKeyCode:
                 type: string
+                x-kubernetes-validations:
+                  - message:   AccessKeycode cannot be changed once set.
+                    rule: self == oldSelf
               replicationFactor:
                 type: integer
-              useSystemd:
-                type: boolean
-              dedicatedNodes:
-                type: boolean
+                x-kubernetes-validations:
+                  - message:   replication Factor cannot be changed once set.
+                    rule: self == oldSelf
               deviceInfo:
                 properties:
                   volumeSize:
