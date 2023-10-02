@@ -249,6 +249,7 @@ class GraphPanelHeader extends Component {
 
   componentWillUnmount() {
     clearInterval(this.refreshInterval);
+    this.props.resetGraphFilter();
   }
 
   submitGraphFilters = (type, val) => {
