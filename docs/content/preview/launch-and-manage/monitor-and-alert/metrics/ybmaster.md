@@ -16,22 +16,22 @@ The [YB-Master](../../../../architecture/concepts/yb-master/) hosts system metad
 
 All handler latency metrics include additional attributes. Refer to [Throughput and latency](../throughput/).
 
-The following are key metrics for evaluating YB-Master performance.
+The following are key metrics for evaluating YB-Master performance. All metrics are counters and units are microseconds.
 
-| Metric | Unit | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `handler_latency_yb_master_MasterClient_GetTabletLocations` | microseconds | counter | Time spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server.
-| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | Time to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads.
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | Time to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes.
-| `handler_latency_yb_master_MasterDdl_CreateTable` | microseconds | counter | Time to create a table (during DDL). This metric includes the count of create table operations.
-| `handler_latency_yb_master_MasterDdl_DeleteTable` | microseconds | counter | Time to delete a table (during DDL). This metric includes the count of delete table operations.
+| Metric (Counter \| microseconds) | Description |
+| :--- | :--- |
+| `handler_latency_yb_master_MasterClient_GetTabletLocations` | Time spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server.
+| `handler_latency_yb_tserver_TabletServerService_Read` | Time to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads.
+| `handler_latency_yb_tserver_TabletServerService_Write` | Time to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes.
+| `handler_latency_yb_master_MasterDdl_CreateTable` | Time to create a table (during DDL). This metric includes the count of create table operations.
+| `handler_latency_yb_master_MasterDdl_DeleteTable` | Time to delete a table (during DDL). This metric includes the count of delete table operations.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `handler_latency_yb_master_MasterClient_GetTabletLocations` | microseconds | counter | The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server. |
-| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | The time in microseconds to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads. |
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | The time in microseconds to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes. |
-| `handler_latency_yb_master_MasterDdl_CreateTable` | microseconds | counter | The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.|
-| `handler_latency_yb_master_MasterDdl_DeleteTable` | microseconds | counter | The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.| -->
+| `handler_latency_yb_master_MasterClient_GetTabletLocations` | The number of microseconds spent on fetching the replicas from the master servers. This metric includes the number of times the locations of the replicas are fetched from the master server. |
+| `handler_latency_yb_tserver_TabletServerService_Read` | The time in microseconds to read the PostgreSQL system tables (during DDL). This metric includes the count or number of reads. |
+| `handler_latency_yb_tserver_TabletServerService_Write` | The time in microseconds to write the PostgreSQL system tables (during DDL). This metric includes the count or number of writes. |
+| `handler_latency_yb_master_MasterDdl_CreateTable` | The time in microseconds to create a table (during DDL). This metric includes the count of create table operations.|
+| `handler_latency_yb_master_MasterDdl_DeleteTable` | The time in microseconds to delete a table (during DDL). This metric includes the count of delete table operations.| -->
 
 These metrics can be aggregated for nodes across the entire cluster using appropriate aggregations.

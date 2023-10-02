@@ -57,7 +57,7 @@ These metrics can be aggregated across the entire cluster using appropriate aggr
 
 ## SST files
 
-RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is sorted, and flushed to disk in the form of a sorted run. When a sorted run is flushed to disk, it may be iteratively merged with existing runs of the same size. Overall, as a result of such iterative merges, the sorted runs on disk, also termed Sorted-String Table or SST files, form a collection of levels of exponentially increasing size with potentially overlapping key ranges across the levels.
+RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is sorted, and flushed to disk in the form of a sorted run. When a sorted run is flushed to disk, it may be iteratively merged with existing runs of the same size. Overall, as a result of such iterative merges, the sorted runs on disk (also called Sorted-String Table or SST files) form a collection of levels of exponentially increasing size with potentially overlapping key ranges across the levels.
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
