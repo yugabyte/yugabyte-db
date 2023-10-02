@@ -81,6 +81,7 @@
 #define YB_CONSENSUS                 0xED000000U
 #define YB_TABLET_WAIT               0xEC000000U
 #define YB_ROCKSDB                   0xEB000000U
+#define YB_COMMON                    0xEA000000U
 
 #define YB_PG_CLIENT_SERVICE         0xCF000000U
 #define YB_CQL_WAIT_STATE            0xCE000000U
@@ -97,10 +98,11 @@ YB_DEFINE_ENUM_TYPE(
     uint32_t,
     ((Unused, 0))
 
+    ((ActiveOnCPU, YB_COMMON))
+      (PassiveOnCPU)
+
     // General states for incoming RPCs
     ((Created, YB_RPC)) // The rpc has been created.
-      (ActiveOnCPU)
-      (PassiveOnCPU)
        // Response Queued waiting for network transfer. -- Is this expected to take long?
        (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
 

@@ -88,6 +88,9 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
         case YB_PG_CLIENT_SERVICE:
             event_type = "Perform API";
             break;
+        case YB_COMMON:
+            event_type = "Common";
+            break;
         case YB_RPC:
             event_type = "RPC";
             break;
