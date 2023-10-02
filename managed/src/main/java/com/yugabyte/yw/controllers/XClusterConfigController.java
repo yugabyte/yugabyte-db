@@ -1331,6 +1331,21 @@ public class XClusterConfigController extends AuthenticatedController {
               tableType));
     }
 
+    // There cannot exist more than one xCluster config when there is a txn xCluster config.
+    List<XClusterConfig> sourceUniverseXClusterConfigs =
+        XClusterConfig.getByUniverseUuid(sourceUniverse.getUniverseUUID());
+    List<XClusterConfig> targetUniverseXClusterConfigs =
+        XClusterConfig.getByUniverseUuid(targetUniverse.getUniverseUUID());
+    if (sourceUniverseXClusterConfigs.stream()
+            .anyMatch(xClusterConfig -> xClusterConfig.getType().equals(ConfigType.Txn))
+        || targetUniverseXClusterConfigs.stream()
+            .anyMatch(xClusterConfig -> xClusterConfig.getType().equals(ConfigType.Txn))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "At least one of the universes has a txn xCluster config. There cannot exist any other "
+              + "xCluster config when there is a txn xCluster config.");
+    }
+
     if (configType.equals(ConfigType.Txn)) {
       XClusterConfigController.transactionalXClusterPreChecks(
           confGetter, sourceUniverse, targetUniverse, tableType);
