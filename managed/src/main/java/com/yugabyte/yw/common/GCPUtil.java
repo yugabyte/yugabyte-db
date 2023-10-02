@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.gax.paging.Page;
+import com.google.api.gax.retrying.RetrySettings;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.logging.LogEntry;
@@ -44,10 +45,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -88,8 +89,7 @@ public class GCPUtil implements CloudUtil {
             : (location.startsWith(HTTPS_PROTOCOL_PREFIX) ? HTTPS_PROTOCOL_PREFIX.length() : 0);
 
     location = location.substring(prefixLength);
-    String[] split = location.split("/", 2);
-    return split;
+    return location.split("/", 2);
   }
 
   @Override
@@ -100,13 +100,23 @@ public class GCPUtil implements CloudUtil {
     return new ConfigLocationInfo(bucket, cloudPath);
   }
 
-  public static Storage getStorageService(CustomerConfigStorageGCSData gcsData)
-      throws IOException, UnsupportedEncodingException {
-    String gcsCredentials = gcsData.gcsCredentialsJson;
-    Credentials credentials =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(gcsCredentials.getBytes("UTF-8")));
-    Storage storage = StorageOptions.newBuilder().setCredentials(credentials).build().getService();
-    return storage;
+  public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
+    try (InputStream is =
+        new ByteArrayInputStream(gcsData.gcsCredentialsJson.getBytes(StandardCharsets.UTF_8))) {
+      return getStorageService(is, null);
+    }
+  }
+
+  public static Storage getStorageService(InputStream is, RetrySettings retrySettings)
+      throws IOException {
+    Credentials credentials = GoogleCredentials.fromStream(is);
+    StorageOptions.Builder storageOptions = StorageOptions.newBuilder().setCredentials(credentials);
+
+    if (retrySettings != null) {
+      storageOptions.setRetrySettings(retrySettings);
+    }
+
+    return storageOptions.build().getService();
   }
 
   @Override
@@ -133,10 +143,9 @@ public class GCPUtil implements CloudUtil {
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
       Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-      Boolean deleted = storage.delete(bucketName, keyLocation);
+      boolean deleted = storage.delete(bucketName, keyLocation);
       if (!deleted) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
       }

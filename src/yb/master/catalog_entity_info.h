@@ -365,7 +365,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
-  // The next five methods are getters and setters for the transient, in memory list of table ids
+  // The next four methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
   // hosted_tables_mapped_by_parent_id field is set.
   void SetTableIds(std::vector<TableId>&& table_ids);

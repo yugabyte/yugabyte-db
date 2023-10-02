@@ -174,6 +174,10 @@ class CallResponse {
   // Extract sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
+  size_t GetSidecarsCount() const {
+    return sidecars_.GetCount();
+  }
+
   // Transfer all sidecars to specified context, returning the first transferred sidecar index in
   // the context.
   size_t TransferSidecars(Sidecars* dest);
@@ -430,6 +434,7 @@ class OutboundCall : public RpcCall {
 
   // See appropriate comments in CallResponse.
   virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+  virtual size_t GetSidecarsCount() const;
   virtual size_t TransferSidecars(Sidecars* dest);
 
   // ----------------------------------------------------------------------------------------------

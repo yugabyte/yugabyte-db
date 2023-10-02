@@ -61,6 +61,9 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
 }
 
 void DocReadContext::LogAfterLoad() {
+  if (schema_packing_storage.SingleSchemaVersion() == 0) {
+    return;
+  }
   LOG_WITH_PREFIX(INFO) << __func__ << ": " << schema_packing_storage.VersionsToString();
 }
 
@@ -87,7 +90,7 @@ void DocReadContext::UpdateKeyPrefix() {
     BigEndian::Store32(out, schema_.colocation_id());
     out += sizeof(ColocationId);
   }
-  key_prefix_encoded_len_ = out - shared_key_prefix_buffer_.data();
+  key_prefix_encoded_len_ = table_key_prefix_len_ = out - shared_key_prefix_buffer_.data();
   bool use_inplace_increment_for_upperbound = false;
   if (schema_.num_hash_key_columns()) {
     *out++ = dockv::KeyEntryTypeAsChar::kUInt16Hash;

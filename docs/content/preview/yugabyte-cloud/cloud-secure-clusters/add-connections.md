@@ -36,13 +36,13 @@ Each entry can either be a single IP address, a CIDR-notated range of addresses,
 
 For development and learning, you can use the range 0.0.0.0/0 to allow connections from any address. Do not use this for sensitive or production data.
 
-The IP allow lists assigned to a cluster are listed under **Networking** on the cluster **Settings** tab.
+The IP allow lists assigned to a cluster are listed under **Network Access** on the cluster **Settings** tab.
 
 ## Enabling public access
 
 By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses, and you can only connect from resources inside the VPC network.
 
-If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable **Public Access** on the cluster **Settings** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable **Public Access** on the cluster **Settings > Network Access** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
 Public access isn't available for read replicas.
 
@@ -55,8 +55,8 @@ Public access isn't available for read replicas.
 
 To add IP allow lists to a cluster:
 
-1. On the **Clusters** page, select the cluster, and select the **Settings** tab.
-1. Under **IP Allow Lists**, click **Edit List** to display the **Add IP Allow List** sheet.
+1. On the **Clusters** page, select the cluster, and select the **Settings > Network Access** tab.
+1. Under **IP Allow Lists**, click **Add List** or **Edit List** to display the **Add IP Allow List** sheet.
 
     The sheet lists all IP allow lists that have been assigned to the cluster.
 
@@ -90,7 +90,7 @@ IP allow lists are limited to a maximum of 100 allow list rules (that is, the ma
 To create an IP allow list:
 
 1. On the **Networking** page, select the **IP Allow List** tab.
-1. Click **Add IP Address** to display the **Create New Allow List** sheet.
+1. Click **Add IP Address** to display the **Create New IP Allow List** sheet.
 1. Enter a name and description for the allow list.
 1. Enter the IP addresses and ranges. Each entry can either be a single IP address, a CIDR-notated range of addresses, or multiple comma-delimited addresses.
 1. Click **Add Current IP Address** to add the IP address of the computer you are using to access YugabyteDB Managed.

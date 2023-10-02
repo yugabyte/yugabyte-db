@@ -887,7 +887,8 @@ class GetHelperBase : public PackedRowContext {
 
   Result<const FetchedEntry&> Prepare(
       const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
-    DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << data_.iter->DebugPosToString();
+    DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << data_.iter->DebugPosToString()
+                                  << " kCheckExistOnly: " << kCheckExistOnly;
 
     root_key_entry_->AppendRawBytes(root_doc_key_);
 

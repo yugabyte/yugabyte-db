@@ -71,7 +71,7 @@ export const EditRole = () => {
     keyPrefix: 'rbac.roles.edit'
   });
 
-  const Menu = [t('menu.configurations'), t('menu.users')] as const;
+  const Menu = [t('menu.configurations')] as const;
 
   const classes = useStyles();
   const [currentView, setCurrentView] = useState<typeof Menu[number]>('Configurations');
@@ -101,6 +101,7 @@ export const EditRole = () => {
           <YBButton
             variant="secondary"
             size="large"
+            data-testid={`rbac-resource-delete-role`}
             startIcon={<Delete />}
             onClick={() => {
               toggleDeleteModal(true);

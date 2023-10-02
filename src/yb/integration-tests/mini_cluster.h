@@ -223,8 +223,9 @@ class MiniCluster : public MiniClusterBase {
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
   Status WaitForTabletServerCount(size_t count);
-  Status WaitForTabletServerCount(
-      size_t count, std::vector<std::shared_ptr<master::TSDescriptor>>* descs);
+  Status WaitForTabletServerCount(size_t count,
+                                  std::vector<std::shared_ptr<master::TSDescriptor>>* descs,
+                                  bool live_only = false);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -404,8 +405,10 @@ Status WaitForPeersPostSplitCompacted(
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 Status WaitForTableIntentsApplied(
-    MiniCluster* cluster, const TableId& table_id,
-    MonoDelta timeout = MonoDelta::FromSeconds(30));
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+Status WaitForAllIntentsApplied(
+    MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

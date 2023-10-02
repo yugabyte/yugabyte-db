@@ -46,6 +46,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/restore_sys_catalog_state.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
@@ -1435,6 +1436,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status RunXClusterBgTasks();
 
+  Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
+
   void StartCDCParentTabletDeletionTaskIfStopped();
 
   void ScheduleCDCParentTabletDeletionTask();
@@ -1801,6 +1804,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     TableInfo::WriteLock write_lock;
     RepeatedBytes retained_by_snapshot_schedules;
     bool remove_from_name_map;
+    bool active_snapshot;
   };
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
@@ -1830,14 +1834,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Marks each of the tablets in the given table as deleted and triggers requests to the tablet
   // servers to delete them. The table parameter is expected to be given "write locked".
   Status DeleteTabletsAndSendRequests(
-      const TableInfoPtr& table, const RepeatedBytes& retained_by_snapshot_schedules,
-      const LeaderEpoch& epoch);
+      const DeletingTableData& table_data, const LeaderEpoch& epoch);
 
   // Marks each tablet as deleted and triggers requests to the tablet servers to delete them.
   Status DeleteTabletListAndSendRequests(
       const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
-      const RepeatedBytes& retained_by_snapshot_schedules, bool transaction_status_tablets,
-      const LeaderEpoch& epoch);
+      const RepeatedBytes& retaining_snapshot_schedules, bool transaction_status_tablets,
+      const LeaderEpoch& epoch, const bool active_snapshot);
 
   // Sends a prepare delete transaction tablet request to the leader of the status tablet.
   // This will be followed by delete tablet requests to each replica.

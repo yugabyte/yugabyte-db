@@ -10,14 +10,14 @@ import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
-import { api, xClusterQueryKey } from '../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
-import { ConfigTableSelect } from '../common/tableSelect/ConfigTableSelect';
+import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
 import { XClusterConfigStatus } from '../constants';
 
 import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
@@ -72,10 +72,12 @@ export const RestartConfigModal = ({
   onHide,
   xClusterConfig
 }: RestartConfigModalProps) => {
-  // If xCluster config setup has failed, then we must restart the whole xCluster config.
+  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
+  // Allowing partial restarts when the xCluster config is in intialized status is not expected behaviour.
   // Thus, we skip table selection for the xCluster config setup failed scenario.
   const firstFormStep =
-    xClusterConfig.status === XClusterConfigStatus.FAILED
+    xClusterConfig.status === XClusterConfigStatus.FAILED ||
+    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
       ? FormStep.CONFIGURE_BOOTSTRAP
       : FormStep.SELECT_TABLES;
   const [currentStep, setCurrentStep] = useState<FormStep>(firstFormStep);
@@ -88,7 +90,7 @@ export const RestartConfigModal = ({
   const formik = useRef({} as FormikProps<RestartXClusterConfigFormValues>);
 
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 

@@ -14,29 +14,14 @@ showRightNav: true
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_regular_declaration,plpgsql_bound_refcursor_declaration,plpgsql_open_cursor_stmt,declare,plpgsql_fetch_from_cursor_stmt,plpgsql_close_cursor_stmt.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_regular_declaration,plpgsql_bound_refcursor_declaration,plpgsql_open_cursor_stmt,declare,plpgsql_fetch_from_cursor_stmt,plpgsql_close_cursor_stmt.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  plpgsql_regular_declaration,
+  plpgsql_bound_refcursor_declaration,
+  plpgsql_open_cursor_stmt,
+  declare,
+  plpgsql_fetch_from_cursor_stmt,
+  plpgsql_close_cursor_stmt
+{{%/ebnf%}}
 
 ## Semantics
 The background understanding that you need in order to manipulate cursors in PL/pgSQL is common to both PL/pgSQL and top-level SQL. It's explained in the dedicated **[Cursors](../../../../../../cursors/)** section. Notice that it begins by **[calling out](../../../../../../cursors/#beware-issue-6514)** the fact that, while **[Issue #6514](https://github.com/yugabyte/yugabyte-db/issues/6514)** is open, cursor functionality in YSQL is limited with respect to what vanilla PostgreSQL exposes. In particular, an attempt to use the [_move_ statement](../../../../../../syntax_resources/grammar_diagrams/#plpgsql-move-in-cursor-stmt) in the PL/pgSQL source code of a subprogram causes the _create procedure_ or _create function_ attempt to fail—so that you never get as far as seeing the run-time error that the corresponding attempt in top-level SQL causes. (The outcome is analogous for a _do_ statement.) Try this in a convenient sandbox database:

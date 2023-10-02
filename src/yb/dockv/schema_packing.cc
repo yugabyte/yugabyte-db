@@ -543,6 +543,13 @@ std::string SchemaPackingStorage::ToString() const {
   return YB_CLASS_TO_STRING(table_type, version_to_schema_packing);
 }
 
+std::optional<SchemaVersion> SchemaPackingStorage::SingleSchemaVersion() const {
+  if (version_to_schema_packing_.size() != 1) {
+    return std::nullopt;
+  }
+  return version_to_schema_packing_.begin()->first;
+}
+
 PackedRowDecoderV1::PackedRowDecoderV1(
     std::reference_wrapper<const SchemaPacking> packing, const uint8_t* data)
     : PackedRowDecoderBase(packing), header_ptr_(data), data_(data + packing_->prefix_len()) {

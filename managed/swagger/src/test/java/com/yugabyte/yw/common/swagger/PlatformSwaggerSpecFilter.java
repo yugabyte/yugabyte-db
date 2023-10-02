@@ -73,6 +73,6 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
   }
 
   public boolean isRemovingUnreferencedDefinitions() {
-    return false;
+    return true;
   }
 }

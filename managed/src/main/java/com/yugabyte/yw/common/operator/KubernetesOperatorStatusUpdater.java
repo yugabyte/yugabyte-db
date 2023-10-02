@@ -16,6 +16,8 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.*;
 import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
+import io.yugabyte.operator.v1alpha1.RestoreJob;
+import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -83,6 +85,41 @@ public class KubernetesOperatorStatusUpdater {
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
+    }
+  }
+
+  /*
+   * Update Restore Job Status
+   */
+  public void updateRestoreJobStatus(String message, UUID taskUUID) {
+    try {
+      log.info("Update Restore Job Status called for task {} ", taskUUID);
+      try (final KubernetesClient kubernetesClient =
+          new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+
+        for (RestoreJob restoreJob :
+            kubernetesClient.resources(RestoreJob.class).inNamespace(namespace).list().getItems()) {
+          if (restoreJob.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+            // Found our Restore.
+            log.info("Found RestoreJob {} task {} ", restoreJob, taskUUID);
+            RestoreJobStatus status = restoreJob.getStatus();
+
+            status.setMessage(message);
+            status.setTaskUUID(taskUUID.toString());
+
+            restoreJob.setStatus(status);
+            kubernetesClient
+                .resources(RestoreJob.class)
+                .inNamespace(namespace)
+                .resource(restoreJob)
+                .replaceStatus();
+            log.info("Updated Status for Restore Job CR {}", restoreJob);
+            break;
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error("Exception in updating restoreJob cr status: {}", e);
     }
   }
 

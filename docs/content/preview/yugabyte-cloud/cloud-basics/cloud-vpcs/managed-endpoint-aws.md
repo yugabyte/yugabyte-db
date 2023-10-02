@@ -85,7 +85,7 @@ To create a PSE, do the following:
 
 Note the following values:
 
-- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
+- **Host** - The host name of the PSE. You will use this to [connect to your cluster](../../../cloud-connect/connect-applications/). The host name of a PSE for AWS always ends in `aws.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings > Infrastructure** tab under **Connection Parameters**.
 - **Service Name** - You will use this service name when creating the private endpoint in AWS.
 
 To delete a PSE, enter the following command:

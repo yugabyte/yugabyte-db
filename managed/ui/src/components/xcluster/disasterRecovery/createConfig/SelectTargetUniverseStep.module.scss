@@ -1,0 +1,51 @@
+@use '../../../../_style/colors.scss';
+
+.formInstruction {
+  margin-bottom: 25px;
+
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.formFieldContainer {
+  margin-top: 25px;
+
+  & > * {
+    margin-top: 15px;
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+}
+
+.note {
+  display: flex;
+
+  margin-top: 20px;
+  padding: 12px;
+
+  background-color: #d7eff4;
+  border: 1px solid rgba(0, 129, 155, 0.3);
+  border-radius: 4px;
+
+  .noteText {
+    margin-left: 10px;
+    a {
+      text-decoration: underline;
+      color: unset;
+    }
+  }
+
+  .toggleNoteDetailsBtn {
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: colors.$YB_ORANGE;
+    cursor: pointer;
+    text-decoration: underline;
+    &:hover {
+      color: colors.$YB_ORANGE_HOVER;
+    }
+  }
+}

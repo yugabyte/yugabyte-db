@@ -466,7 +466,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
           } else if (result.status().IsTryAgain()) {
             // It is safe to suppose that transaction in PENDING state in case of try again error.
             transaction.status = TransactionStatus::PENDING;
-          } else if (result.status().IsNotFound()) {
+          } else if (result.status().IsNotFound() || result.status().IsExpired()) {
             transaction.status = TransactionStatus::ABORTED;
           } else {
             transaction.failure = result.status();

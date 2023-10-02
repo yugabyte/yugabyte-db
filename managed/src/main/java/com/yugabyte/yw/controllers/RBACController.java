@@ -19,6 +19,8 @@ import com.yugabyte.yw.forms.rbac.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -53,6 +55,8 @@ import play.mvc.Result;
 @Slf4j
 public class RBACController extends AuthenticatedController {
 
+  public static final String newAuthzRuntimeFlagPath = "yb.rbac.use_new_authz";
+
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
@@ -73,6 +77,10 @@ public class RBACController extends AuthenticatedController {
    * @param resourceType
    * @return list of all permissions info
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "List all the permissions available",
       nickname = "listPermissions",
@@ -102,6 +110,10 @@ public class RBACController extends AuthenticatedController {
    * @param roleUUID
    * @return the role information
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(value = "Get a role's information", nickname = "getRole", response = Role.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -124,6 +136,10 @@ public class RBACController extends AuthenticatedController {
    * @param roleType
    * @return the list of roles and their information
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "List all the roles available",
       nickname = "listRoles",
@@ -159,7 +175,18 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return the info of the role created
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(value = "Create a custom role", nickname = "createRole", response = Role.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RoleFormData",
+          value = "create role form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.rbac.RoleFormData",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -222,7 +249,18 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return the info of the edited role
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(value = "Edit a custom role", nickname = "editRole", response = Role.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RoleFormData",
+          value = "edit role form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.rbac.RoleFormData",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -292,6 +330,10 @@ public class RBACController extends AuthenticatedController {
    * @param request
    * @return a success message if deleted properly.
    */
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "Delete a custom role",
       nickname = "deleteRole",
@@ -348,6 +390,10 @@ public class RBACController extends AuthenticatedController {
             "Successfully deleted role with UUID '%s' for customer '%s'", roleUUID, customerUUID));
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "Get all the role bindings available",
       nickname = "getRoleBindings",
@@ -381,6 +427,10 @@ public class RBACController extends AuthenticatedController {
     return PlatformResults.withData(roleBindingMap);
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "Set the role bindings of a user",
       nickname = "setRoleBinding",
@@ -432,6 +482,10 @@ public class RBACController extends AuthenticatedController {
     return PlatformResults.withData(createdRoleBindings);
   }
 
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
       value = "UI_ONLY",
       nickname = "getUserResourcePermissions",

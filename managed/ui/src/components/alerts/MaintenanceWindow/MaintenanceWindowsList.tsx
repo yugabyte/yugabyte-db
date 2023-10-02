@@ -19,6 +19,8 @@ import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './MaintenanceWindowsList.scss';
 
 /**
@@ -233,14 +235,21 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
           />
         </Col>
         <Col lg={2}>
-          <YBButton
-            btnText="Add Maintenance Window"
-            btnClass="btn btn-orange"
-            onClick={() => {
-              setSelectedWindow(null);
-              showCreateView();
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.createMaintenenceWindow
             }}
-          />
+            isControl
+          >
+            <YBButton
+              btnText="Add Maintenance Window"
+              btnClass="btn btn-orange"
+              onClick={() => {
+                setSelectedWindow(null);
+                showCreateView();
+              }}
+            />
+          </RbacValidator>
         </Col>
       </Row>
       <Row>

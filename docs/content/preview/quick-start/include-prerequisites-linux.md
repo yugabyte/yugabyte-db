@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 Before installing YugabyteDB, ensure that you have the following available:
 
 1. One of the following operating systems:

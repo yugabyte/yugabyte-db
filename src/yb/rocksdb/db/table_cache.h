@@ -93,11 +93,12 @@ class TableCache {
       bool skip_filters = false);
 
   // Version of NewIterator which uses provided table reader instead of getting it by
-  // itself.
+  // itself. Releases TableReaderWithHandle before return.
   InternalIterator* NewIterator(
-      const ReadOptions& options, TableReaderWithHandle* trwh,
-      Slice filter, bool for_compaction = false,
-      Arena* arena = nullptr, bool skip_filters = false);
+      const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
+      bool for_compaction = false, Arena* arena = nullptr, bool skip_filters = false);
+  InternalIterator* NewIndexIterator(
+      const ReadOptions& options, TableReaderWithHandle* trwh);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value) repeatedly until

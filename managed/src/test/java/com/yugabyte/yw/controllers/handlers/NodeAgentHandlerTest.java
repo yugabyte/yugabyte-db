@@ -54,7 +54,8 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
+    nodeAgentHandler =
+        new NodeAgentHandler(mockCommissioner, nodeAgentManager, mockNodeAgentClient);
     nodeAgentHandler.enableConnectionValidation(false);
   }
 

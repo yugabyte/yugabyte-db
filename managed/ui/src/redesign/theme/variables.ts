@@ -120,20 +120,26 @@ export const colors = {
     bar2: '#262666'
   },
   ybacolors: {
-    ybOrangeFocus: '#EF582480',
-    ybGray: '#DEDEE0',
-    ybBorderGray: '#E5E5E9',
-    ybDarkGray: '#232329',
-    ybDarkGray1: '#9F9EA7',
-    ybDarkGray2: '#D9D9DB',
-    backgroundGrayLightest: '#FCFCFC',
-    backgroundGrayLight: '#F7F7F7',
-    backgroundGrayDark: '#E5E5E9',
-    inputBackground: '#E6E6E6',
     backgroundDisabled: '#EEE',
+    backgroundGrayDark: '#E5E5E9',
+    backgroundGrayRegular: '#F1F1F1',
+    backgroundGrayLight: '#F7F7F7',
+    backgroundGrayLightest: '#FCFCFC',
     colorDisabled: '#555',
     darkBlue: '#303a78',
-    labelBackground: '#151730'
+    inputBackground: '#E6E6E6',
+    labelBackground: '#151730',
+    success: '#289B42',
+    backgroundBlueLight: '#f5f8fe',
+    borderBlue: '#3771FD',
+    textDarkGray: '#67666C',
+    ybBorderGray: '#E5E5E9',
+    ybBorderGrayDark: '#C8C7CE',
+    ybDarkGray1: '#9F9EA7',
+    ybDarkGray2: '#D9D9DB',
+    ybDarkGray: '#232329',
+    ybGray: '#DEDEE0',
+    ybOrangeFocus: '#EF582480'
   },
   ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'

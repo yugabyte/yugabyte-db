@@ -29,7 +29,7 @@ class PgSharedMemTest : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_pg_client_use_shared_memory = true;
     FLAGS_pg_client_extra_timeout_ms = 0;
-    FLAGS_ysql_client_read_write_timeout_ms = 2000;
+    FLAGS_ysql_client_read_write_timeout_ms = 2000 * kTimeMultiplier;
     PgMiniTestBase::SetUp();
   }
 };

@@ -94,8 +94,23 @@
     margin-top: 25px;
     padding: 15px 20px;
     .empty-state {
-        margin-top: 20px;
-      }
+      margin-top: 20px;
+    }
+
+    .node-type-label {
+      float: left;
+      font-weight: 600;
+      font-size: 13px;
+      color: colors.$YB_DARKER_GRAY;
+    }
+
+    .cpu {
+      margin-top: -25px;
+    }
+
+    .disk {
+      margin-top: -35px;
+    }
   }
 
   .colocated-mode-panel {
@@ -153,7 +168,6 @@
   }
 
   .cpu-usage-panel {
-
     .graph-body {
       margin-top: 15px !important;
       margin-bottom: 5px !important;

@@ -513,7 +513,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row);
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row);
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
-  void EnableVerboseLoggingForModule(const std::string& module, int level);
 
   Result<std::string> GetValueFromMap(const QLMapValuePB& map_value, const std::string& key);
 

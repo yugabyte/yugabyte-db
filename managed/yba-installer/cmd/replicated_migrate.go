@@ -103,7 +103,7 @@ var replicatedMigrationStart = &cobra.Command{
 		initServices()
 
 		// Lay out new YBA bits, don't start
-		common.Install(common.GetVersion())
+		common.Install(ybaCtl.Version())
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {
@@ -216,7 +216,7 @@ var replicatedMigrationStart = &cobra.Command{
 		}
 		log.Info("Started yb-platform after restoring data.")
 
-		common.WaitForYBAReady()
+		common.WaitForYBAReady(ybaCtl.Version())
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {

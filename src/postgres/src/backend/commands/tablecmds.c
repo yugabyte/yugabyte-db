@@ -4766,14 +4766,22 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		 * the equivalent of a rewrite, by the time we reach here so the trigger
 		 * is executed after the rewrite.
 		 */
-		if (IsYugaByteEnabled() && tab->subcmds[AT_PASS_ALTER_TYPE] != NIL &&
-			tab->rewrite > 0)
+		if (IsYBRelationById(tab->relid) &&
+			tab->subcmds[AT_PASS_ALTER_TYPE] != NIL && tab->rewrite > 0)
 		{
 			if (parsetree)
 				EventTriggerTableRewrite((Node *) parsetree, tab->relid,
 										 tab->rewrite);
 			continue;
 		}
+
+		/*
+		 * When rewriting a temp relation, we need to execute the PG
+		 * transaction handling code-paths, as PG uses the transaction ID to
+		 * determine what rows are visible to a specific transaction.
+		 */
+		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
+			SetTxnWithPGRel();
 
 		/*
 		 * If we change column data types or add/remove OIDs, the operation

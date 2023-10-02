@@ -1,37 +1,45 @@
 // Copyright (c) YugaByte, Inc.
 import t from 'typy';
 import { browserHistory } from 'react-router';
+import { isRbacEnabled } from '../redesign/features/rbac/common/RbacUtils';
 
 export function getFeatureState(features, feature_name, default_value = 'enabled') {
+  if(isRbacEnabled()) return default_value;
   return t(features, feature_name).safeObject || default_value;
 }
 
 export function isNonAvailable(features, feature_name, default_value) {
+  if(isRbacEnabled()) return false;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState === 'disabled' || featureState === 'hidden';
 }
 
 export function isAvailable(features, feature_name, default_value) {
+  if(isRbacEnabled()) return true;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState === 'enabled' || featureState === 'visible';
 }
 
 export function isEnabled(features, feature_name, default_value) {
+  if(isRbacEnabled()) return true;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState === 'enabled';
 }
 
 export function isDisabled(features, feature_name, default_value) {
+  if(isRbacEnabled()) return false;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState === 'disabled';
 }
 
 export function isHidden(features, feature_name, default_value) {
+  if(isRbacEnabled()) return false;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState === 'hidden';
 }
 
 export function isNotHidden(features, feature_name, default_value) {
+  if(isRbacEnabled()) return true;
   const featureState = getFeatureState(features, feature_name, default_value);
   return featureState !== 'hidden';
 }

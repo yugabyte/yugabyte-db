@@ -1066,4 +1066,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Will ignore preview APIs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcDiagThreadDumpsGCSEnabled =
+      new ConfKeyInfo<>(
+          "yb.diag.thread_dumps.gcs.enabled",
+          ScopeType.GLOBAL,
+          "Enable publishing thread dumps to GCS",
+          "Enable publishing thread dumps to GCS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

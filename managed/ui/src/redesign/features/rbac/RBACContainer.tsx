@@ -24,7 +24,7 @@ export const RBACContainer = () => {
         >
             <Tab
                 eventKey="users"
-                title="users"
+                title="Users"
                 unmountOnExit
             >
                 <ManageUsers />

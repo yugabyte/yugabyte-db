@@ -788,6 +788,9 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
   status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
+  for (const auto& table : meta_->GetAllColocatedTables()) {
+    status_pb_out->add_colocated_table_ids(table);
+  }
 }
 
 Status TabletPeer::RunLogGC() {

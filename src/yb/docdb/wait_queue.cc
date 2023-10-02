@@ -143,6 +143,17 @@ using dockv::KeyEntryTypeAsChar;
 
 namespace {
 
+const Status kShuttingDownError = STATUS(
+    IllegalState, "Tablet shutdown in progress - there may be a new leader.");
+
+const Status kRetrySingleShardOp = STATUS(
+    TimedOut,
+    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
+
+const Status kRefreshWaiterTimeout = STATUS(
+    TimedOut,
+    "Waiter transaction timed out waiting in queue, invoking callback.");
+
 CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
   static constexpr auto kDefaultWaitForRelockUnblockedTxnKeys = 1000ms;
   if (FLAGS_wait_for_relock_unblocked_txn_keys_ms > 0) {
@@ -428,7 +439,7 @@ class BlockerData {
     bool was_txn_local = !IsPromotedUnlocked();
 
     // TODO(wait-queues): Track status hybrid times and ignore old status updates
-    txn_status_ = UnwrapResult(txn_status_response);
+    txn_status_or_res_ = UnwrapResult(txn_status_response);
     bool is_txn_pending = IsPendingUnlocked();
 
     // txn_underwent_promotion is set to true only on the first call to Signal with
@@ -454,7 +465,7 @@ class BlockerData {
     if (should_signal) {
       if (txn_status_ht_.is_special()) {
         DCHECK(IsAbortedUnlocked())
-          << "Unexpected special status ht in blocker " << txn_status_
+          << "Unexpected special status ht in blocker " << txn_status_or_res_
           << " @ " << txn_status_ht_;
         txn_status_ht_ = now;
       }
@@ -509,16 +520,17 @@ class BlockerData {
   }
 
   bool IsPendingUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() &&
-        (*txn_status_ == ResolutionStatus::kPending || *txn_status_ == ResolutionStatus::kPromoted);
+    return txn_status_or_res_.ok() && (*txn_status_or_res_ == ResolutionStatus::kPending ||
+                                       *txn_status_or_res_ == ResolutionStatus::kPromoted);
   }
 
   bool IsAbortedUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kAborted;
+    return txn_status_or_res_.ok() && (*txn_status_or_res_ == ResolutionStatus::kAborted ||
+                                       *txn_status_or_res_ == ResolutionStatus::kDeadlocked);
   }
 
   bool IsPromotedUnlocked() REQUIRES_SHARED(mutex_) {
-    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kPromoted;
+    return txn_status_or_res_.ok() && *txn_status_or_res_ == ResolutionStatus::kPromoted;
   }
 
   auto CleanAndGetSize() {
@@ -613,7 +625,7 @@ class BlockerData {
     SharedLock l(mutex_);
     out << "<tr>"
           << "<td>|" << id_ << "</td>"
-          << "<td>|" << txn_status_ << "</td>"
+          << "<td>|" << txn_status_or_res_ << "</td>"
         << "</tr>" << std::endl;
   }
 
@@ -621,7 +633,7 @@ class BlockerData {
   const TransactionId id_;
   TabletId status_tablet_ GUARDED_BY(mutex_);;
   mutable rw_spinlock mutex_;
-  Result<ResolutionStatus> txn_status_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
+  Result<ResolutionStatus> txn_status_or_res_ GUARDED_BY(mutex_) = ResolutionStatus::kPending;
   HybridTime txn_status_ht_ GUARDED_BY(mutex_) = HybridTime::kMin;
   SubtxnSet aborted_subtransactions_ GUARDED_BY(mutex_);
   std::vector<std::weak_ptr<WaiterData>> waiters_ GUARDED_BY(mutex_);
@@ -653,6 +665,15 @@ class ResumedWaiterRunner {
   void Submit(const WaiterDataPtr& waiter, const Status& status, HybridTime resolve_ht) {
     {
       UniqueLock l(mutex_);
+      if (PREDICT_FALSE(shutting_down_)) {
+        // We shouldn't push new entries onto 'pq_' after thread_pool_token_ is shut down as they
+        // wouldn't be processed. Additionally, we cannot skip executing the waiter's callback here
+        // as the record might have already been erased from waiter_status_. Else, we risk dropping
+        // execution of the callback all together.
+        l.unlock();
+        waiter->InvokeCallback(kShuttingDownError);
+        return;
+      }
       AddWaiter(waiter, status, resolve_ht);
     }
     TriggerPoll();
@@ -660,6 +681,21 @@ class ResumedWaiterRunner {
 
   void Shutdown() {
     thread_pool_token_->Shutdown();
+    // ThreadPoolToken Shutdown will wait for the current running task to finish and destroy other
+    // remaining enqueued tasks. Hence, we need to explicitly clear WaiterData entries off 'pq_'.
+    std::vector<WaiterDataPtr> waiters;
+    {
+      UniqueLock l(mutex_);
+      waiters.reserve(pq_.size());
+      while (!pq_.empty()) {
+        waiters.push_back(std::move(pq_.top().waiter));
+        pq_.pop();
+      }
+      shutting_down_ = true;
+    }
+    for (const auto& waiter : waiters) {
+      waiter->InvokeCallback(kShuttingDownError);
+    }
   }
 
  private:
@@ -701,18 +737,8 @@ class ResumedWaiterRunner {
   std::priority_queue<
       SerialWaiter, std::vector<SerialWaiter>, SerialWaiter> pq_ GUARDED_BY(mutex_);
   ThreadPoolToken* thread_pool_token_;
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
-
-const Status kShuttingDownError = STATUS(
-    IllegalState, "Tablet shutdown in progress - there may be a new leader.");
-
-const Status kRetrySingleShardOp = STATUS(
-    TimedOut,
-    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
-
-const Status kRefreshWaiterTimeout = STATUS(
-    TimedOut,
-    "Waiter transaction timed out waiting in queue, invoking callback.");
 
 } // namespace
 

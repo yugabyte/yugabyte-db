@@ -73,6 +73,7 @@
 #include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "utils/yb_inheritscache.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -3025,6 +3026,18 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 	if (fix_dependencies)
 	{
+		if (IsYugaByteEnabled())
+		{
+			/*
+			* YB Note: If setting index parent, invalidate the entry for the
+			* parent table in the pg_inherits cache as the parent now has a new
+			* child. If clearing the entry for the child, then invalidate the
+			* entry in the cache pertaining to the child and its old parent.
+			*/
+			YbPgInheritsCacheInvalidate(
+				OidIsValid(parentOid) ? parentOid : partRelid);
+		}
+
 		ObjectAddress partIdx;
 
 		/*

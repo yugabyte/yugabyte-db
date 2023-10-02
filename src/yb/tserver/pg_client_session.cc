@@ -537,7 +537,7 @@ PgClientSession::PgClientSession(
     std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
     PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-    PgSequenceCache* sequence_cache)
+    PgSequenceCache* sequence_cache, TransactionCache* txn_cache)
     : id_(id),
       client_(*client),
       clock_(clock),
@@ -546,7 +546,8 @@ PgClientSession::PgClientSession(
       xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
-      sequence_cache_(*sequence_cache) {}
+      sequence_cache_(*sequence_cache),
+      txn_cache_(*txn_cache) {}
 
 uint64_t PgClientSession::id() const {
   return id_;
@@ -862,6 +863,13 @@ Status PgClientSession::FinishTransaction(
   txn.swap(txn_value);
   Session(kind)->SetTransaction(nullptr);
 
+  // Clear the transaction from the cache
+  if (req.ddl_mode()) {
+    txn_cache_.EraseDdlTransaction(id());
+  } else {
+    txn_cache_.ErasePlainTransaction(id());
+  }
+
   if (req.commit()) {
     const auto commit_status = txn_value->CommitFuture().get();
     VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -1165,6 +1173,14 @@ PgClientSession::SetupSession(
   if (transaction) {
     DCHECK_GE(options.active_sub_transaction_id(), 0);
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+
+    // To avoid updating cache unnecessarily (which requires taking a lock), check if the
+    // transaction ID has indeed changed.
+    if (sessions_[to_underlying(kind)].transaction->id() != transaction->id()) {
+      kind == PgClientSessionKind::kPlain
+          ? txn_cache_.InsertPlainTransaction(id(), transaction->id())
+          : txn_cache_.InsertDdlTransaction(id(), transaction->id());
+    }
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
@@ -1218,6 +1234,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
     txn->Abort();
     session->SetTransaction(nullptr);
     txn = nullptr;
+    txn_cache_.ErasePlainTransaction(id());
   }
 
   if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
@@ -1259,6 +1276,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
+  txn_cache_.InsertPlainTransaction(id(), txn->id());
 
   return Status::OK();
 }
@@ -1277,6 +1295,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl, deadline)->SetTransaction(txn);
+    txn_cache_.InsertDdlTransaction(id(), txn->id());
   }
 
   return &ddl_txn_metadata_;
@@ -1284,18 +1303,6 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
 
 client::YBClient& PgClientSession::client() {
   return client_;
-}
-
-const TransactionId* PgClientSession::GetTransactionId() const {
-  auto txn = Transaction(PgClientSessionKind::kDdl);
-  if (!txn) {
-    txn = Transaction(PgClientSessionKind::kPlain);
-    if (!txn) {
-      return nullptr;
-    }
-  }
-
-  return &txn->id();
 }
 
 Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
@@ -1470,7 +1477,8 @@ Status PgClientSession::FetchSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   session->Apply(std::move(psql_write));
-  auto fetch_status = session->FlushFuture().get();
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  auto fetch_status = session->TEST_FlushAndGetOpsErrors();
   RETURN_NOT_OK(CombineErrorsToStatus(fetch_status.errors, fetch_status.status));
 
   // Expect exactly two rows on success: sequence value range start and end, each as a single value
@@ -1552,7 +1560,7 @@ Status PgClientSession::ReadSequenceTuple(
 
   auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(session->TEST_ReadSync(psql_read));
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
 
   CHECK_EQ(psql_read->sidecar_index(), 0);
 
@@ -1617,6 +1625,99 @@ Status PgClientSession::DeleteDBSequences(
   auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   return session->TEST_ApplyAndFlush(std::move(psql_delete));
+}
+
+void PgClientSession::GetTableKeyRanges(
+    yb::tserver::PgGetTableKeyRangesRequestPB const& req,
+    yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
+  const auto table = table_cache_.Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  if (!table.ok()) {
+    StatusToPB(table.status(), resp->mutable_status());
+    context.RespondSuccess();
+    return;
+  }
+
+  auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
+  auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  GetTableKeyRanges(
+      session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
+      req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),
+      /* paging_state = */ nullptr,
+      [resp, shared_context](Status status) {
+        if (!status.ok()) {
+          StatusToPB(status, resp->mutable_status());
+        }
+        shared_context->RespondSuccess();
+      });
+}
+
+void PgClientSession::GetTableKeyRanges(
+    client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
+    Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+    uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
+    PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback) {
+  // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
+  // instead of passing through YBSession.
+  auto psql_read = client::YBPgsqlReadOp::NewSelect(table, sidecars);
+
+  auto* read_request = psql_read->mutable_request();
+  if (paging_state) {
+    if (paging_state->total_num_rows_read() >= max_num_ranges) {
+      callback(Status::OK());
+      return;
+    }
+    read_request->set_limit(max_num_ranges - paging_state->total_num_rows_read());
+    read_request->set_allocated_paging_state(paging_state);
+  } else {
+    read_request->set_limit(max_num_ranges);
+  }
+
+  auto* req = read_request->mutable_get_tablet_key_ranges_request();
+
+  if (!lower_bound_key.empty()) {
+    read_request->mutable_lower_bound()->mutable_key()->assign(
+        lower_bound_key.cdata(), lower_bound_key.size());
+    read_request->mutable_lower_bound()->set_is_inclusive(true);
+    read_request->mutable_partition_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+    req->mutable_lower_bound_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+  }
+  if (!upper_bound_key.empty()) {
+    read_request->mutable_upper_bound()->mutable_key()->assign(
+        upper_bound_key.cdata(), upper_bound_key.size());
+    read_request->mutable_upper_bound()->set_is_inclusive(false);
+    req->mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
+  }
+  req->set_is_forward(is_forward);
+  req->set_range_size_bytes(range_size_bytes);
+  req->set_max_key_length(max_key_length);
+
+  session->Apply(psql_read);
+  session->FlushAsync([this, session, psql_read, callback = std::move(callback), table,
+                       lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
+                       is_forward, max_key_length, sidecars](client::FlushStatus* flush_status) {
+    const auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
+    if (!status.ok()) {
+      callback(status);
+      return;
+    }
+
+    {
+      std::lock_guard guard(plain_session_used_read_time_.lock);
+      if (!plain_session_used_read_time_.value) {
+        plain_session_used_read_time_.value = psql_read->used_read_time();
+        plain_session_used_read_time_.tablet_id = psql_read->used_tablet();
+      }
+    }
+
+    auto* resp = psql_read->mutable_response();
+    if (!resp->has_paging_state()) {
+      callback(Status::OK());
+      return;
+    }
+    GetTableKeyRanges(
+        session, table, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
+        is_forward, max_key_length, sidecars, resp->release_paging_state(), std::move(callback));
+  });
 }
 
 client::YBSessionPtr& PgClientSession::EnsureSession(

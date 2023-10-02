@@ -332,7 +332,9 @@ Status CDCStateTable::WriteEntries(
 
     ops.push_back(std::move(op));
   }
-  return session->ApplyAndFlushSync(ops);
+
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  return session->TEST_ApplyAndFlush(ops);
 }
 
 Status CDCStateTable::InsertEntries(const std::vector<CDCStateTableEntry>& entries) {
@@ -390,7 +392,8 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   req_read->mutable_column_refs()->add_ids(kCdcStreamIdColumnId);
 
   cdc_table->AddColumns(columns, req_read);
-  RETURN_NOT_OK(session->ReadSync(read_op));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(read_op));
   auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return std::nullopt;

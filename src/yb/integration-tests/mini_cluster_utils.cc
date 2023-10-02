@@ -49,7 +49,7 @@ size_t CountRunningTransactions(MiniCluster* cluster) {
     if (!tablet)
       continue;
     auto participant = tablet->transaction_participant();
-    result += participant ? participant->TEST_GetNumRunningTransactions() : 0;
+    result += participant ? participant->GetNumRunningTransactions() : 0;
   }
   return result;
 }
@@ -87,16 +87,15 @@ void AssertRunningTransactionsCountLessOrEqualTo(MiniCluster* cluster,
       if (!tablet) continue;
       auto participant = tablet->transaction_participant();
       if (participant) {
-        auto status = Wait([participant, max_remaining_txns_per_tablet] {
-              return participant->TEST_GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
+        auto status = Wait(
+            [participant, max_remaining_txns_per_tablet] {
+              return participant->GetNumRunningTransactions() <= max_remaining_txns_per_tablet;
             },
-            deadline,
-            "Wait until no transactions are running");
+            deadline, "Wait until no transactions are running");
         if (!status.ok()) {
           LOG(ERROR) << Format(
-              "T $1 P $0: Transactions: $2",
-              server->permanent_uuid(), peer->tablet_id(),
-              participant->TEST_GetNumRunningTransactions());
+              "T $1 P $0: Transactions: $2", server->permanent_uuid(), peer->tablet_id(),
+              participant->GetNumRunningTransactions());
           has_bad = true;
         }
       }

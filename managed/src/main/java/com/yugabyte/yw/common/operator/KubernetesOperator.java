@@ -25,6 +25,7 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.Release;
+import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.SupportBundle;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
@@ -56,6 +57,8 @@ public class KubernetesOperator {
 
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
+  public MixedOperation<RestoreJob, KubernetesResourceList<RestoreJob>, Resource<RestoreJob>>
+      restoreJobClient;
 
   public MixedOperation<
           StorageConfig, KubernetesResourceList<StorageConfig>, Resource<StorageConfig>>
@@ -89,12 +92,14 @@ public class KubernetesOperator {
                   this.releasesClient = client.resources(Release.class);
                   this.scClient = client.resources(StorageConfig.class);
                   this.backupClient = client.resources(Backup.class);
+                  this.restoreJobClient = client.resources(RestoreJob.class);
 
                   this.supportBundleClient = client.resources(SupportBundle.class);
                   SharedIndexInformer<YBUniverse> ybUniverseSharedIndexInformer;
                   SharedIndexInformer<Release> ybSoftwareReleaseIndexInformer;
                   SharedIndexInformer<StorageConfig> ybStorageConfigIndexInformer;
                   SharedIndexInformer<Backup> ybBackupIndexInformer;
+                  SharedIndexInformer<RestoreJob> ybRestoreJobIndexInformer;
 
                   SharedIndexInformer<SupportBundle> ybSupportBundleIndexInformer;
                   long resyncPeriodInMillis = 10 * 60 * 1000L;
@@ -171,6 +176,22 @@ public class KubernetesOperator {
                                 },
                                 resyncPeriodInMillis);
 
+                    ybRestoreJobIndexInformer =
+                        client
+                            .resources(RestoreJob.class)
+                            .inNamespace(namespace)
+                            .inform(
+                                new ResourceEventHandler<>() {
+                                  @Override
+                                  public void onAdd(RestoreJob r) {}
+
+                                  @Override
+                                  public void onUpdate(RestoreJob r1, RestoreJob r2) {}
+
+                                  @Override
+                                  public void onDelete(RestoreJob r, boolean deletedFinalUnknown) {}
+                                },
+                                resyncPeriodInMillis);
                     ybSupportBundleIndexInformer =
                         client
                             .resources(SupportBundle.class)
@@ -200,6 +221,9 @@ public class KubernetesOperator {
                             StorageConfig.class, resyncPeriodInMillis);
                     ybBackupIndexInformer =
                         informerFactory.sharedIndexInformerFor(Backup.class, resyncPeriodInMillis);
+                    ybRestoreJobIndexInformer =
+                        informerFactory.sharedIndexInformerFor(
+                            RestoreJob.class, resyncPeriodInMillis);
                     ybSupportBundleIndexInformer =
                         informerFactory.sharedIndexInformerFor(
                             SupportBundle.class, resyncPeriodInMillis);
@@ -244,6 +268,15 @@ public class KubernetesOperator {
                           namespace,
                           ybStorageConfigIndexInformer);
 
+                  RestoreJobReconciler restoreJobReconciler =
+                      new RestoreJobReconciler(
+                          ybRestoreJobIndexInformer,
+                          ybBackupIndexInformer,
+                          restoreJobClient,
+                          backupHelper,
+                          formFactory,
+                          namespace);
+
                   Future<Void> startedInformersFuture =
                       informerFactory.startAllRegisteredInformers();
 
@@ -251,18 +284,23 @@ public class KubernetesOperator {
                   releaseReconciler.run();
                   scReconciler.run();
                   backupReconciler.run();
+                  restoreJobReconciler.run();
                   supportBundleReconciler.run();
                   ybUniverseController.run();
 
                   LOG.info("Finished running ybUniverseController");
                 } catch (KubernetesClientException | ExecutionException exception) {
                   LOG.error("Kubernetes Client Exception : ", exception);
+                  throw new RuntimeException(
+                      "Operator Initialization Failed to construct a kubernetes client");
                 } catch (InterruptedException interruptedException) {
                   LOG.error("Interrupted: ", interruptedException);
-                  Thread.currentThread().interrupt();
+                  throw new RuntimeException(
+                      "Operator Initialization Failed, interupted by client");
                 }
               } catch (Exception e) {
                 LOG.error("Error", e);
+                throw new RuntimeException("Operator Initialization Failed");
               }
             });
     kubernetesOperatorThread.start();
