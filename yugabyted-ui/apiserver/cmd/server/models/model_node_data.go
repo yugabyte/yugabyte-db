@@ -15,6 +15,8 @@ type NodeData struct {
 
     IsReadReplica bool `json:"is_read_replica"`
 
+    PreferenceOrder int32 `json:"preference_order"`
+
     IsMasterUp bool `json:"is_master_up"`
 
     IsBootstrapping bool `json:"is_bootstrapping"`

@@ -216,10 +216,17 @@ EXAMPLE = {
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=region\n\n" +
-                       "# Configure a multi-zone cluster with specified placement info and rf:\n" +
-                       "yugabyted configure data_placement --fault_tolerance=zone " +
+                       "# Configure a multi-zone cluster with the specified placement info and " + \
+                       "rf:\n" + "yugabyted configure data_placement --fault_tolerance=zone " +
                        "--constraint_value=cloud1.region1.zone1,cloud2.region2.zone2," +
-                       "cloud3.region3.zon3 --rf=3\n\n",
+                       "cloud3.region3.zone3 --rf=3\n\n" +
+                       "# Configure a multi-zone cluster with the order of preference" \
+                       " to place the primary copy of the data:\n" +
+                       "yugabyted configure data_placement  --constraint_value=" +
+                       "cloud1.region1.zone1:<preference_number>," +
+                       "cloud2.region2.zone2:<preference_number>," +
+                       "cloud3.region3.zone3:<preference_number>\n\n",
+
     'encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --enable\n\n" +
                         "# Disable encryption at rest for a cluster:\n" +
@@ -782,9 +789,12 @@ class ControlScript(object):
                     self.remove_master_for_data_placement(master_addr, master)
 
         current_masters_with_port_list = self.get_all_masters()
-        placement_info = self.configs.temp_data.get("constraint_value")
-        if not placement_info:
+        if self.configs.temp_data.get("constraint_value"):
+            constraint_value = self.configs.temp_data.get("constraint_value")
+            placement_info,priority_info = self.parse_constraint_value(constraint_value)
+        else:
             placement_info = []
+            priority_info = []
             for master in current_masters_with_port_list:
                 placement_info.append(placement_locations[master.split(":")[0]])
             placement_info = ",".join(placement_info)
@@ -805,7 +815,16 @@ class ControlScript(object):
         else:
             Output.log("Configure step was successful.")
 
-        status_details = self.get_configure_status_details(placement_locations, new_masters)
+        if priority_info:
+            priority_info = list(set(priority_info))
+            if not YBAdminProxy.set_preferred_zones(master_addresses, priority_info):
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                                          ": Unsuccessful in setting preference for zones")
+            else:
+                Output.log("Successful in setting preference for zones.")
+
+        status_details = self.get_configure_status_details(placement_locations,
+                                                           new_masters, priority_info)
 
         Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
 
@@ -2705,9 +2724,20 @@ class ControlScript(object):
         else:
             Output.log("Removed master {} from the cluster".format(old_master))
 
+    def parse_constraint_value(self, constraint_str):
+        placement_constraints = []
+        priority_constraints = []
+        for item in constraint_str.split(","):
+            parts = item.rsplit(":", 1)
+            placement_constraints.append(parts[0])
+            if len(parts) > 1:
+                priority_constraints.append(item)
+
+        placement_str = ",".join(placement_constraints)
+        return placement_str, priority_constraints
 
     # Get status details to print after configure data_placement was run
-    def get_configure_status_details(self, placement_locations, new_masters):
+    def get_configure_status_details(self, placement_locations, new_masters, priority_info):
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
         replication_factor = int(self.configs.temp_data.get("replication_factor"))
@@ -2876,6 +2906,18 @@ class ControlScript(object):
                     (Output.make_yellow(""), az_node_info)
                 ]
 
+        if priority_info:
+            preference_msg = "Successful in setting preference for zones."
+            status_details.append((Output.make_yellow("Zone Preferences"), preference_msg))
+            status_display_info[preference_msg] = Output.make_green
+            status_details.append((Output.make_yellow(""),
+                                   "Following are the preferences for zones"))
+            sorted_priority_info = sorted(priority_info, key=lambda x: int(x.rsplit(':', 1)[1]))
+            for item in sorted_priority_info:
+                zone, priority = item.rsplit(':', 1)
+                zone_preference_info = "{} : {}".format(zone, priority)
+                status_details.append((Output.make_yellow(""), zone_preference_info))
+
         status_display_info = None if len(status_display_info) == 0 else status_display_info
 
         return [status_details, status_display_info]
@@ -2904,7 +2946,6 @@ class ControlScript(object):
             is_valid = False
 
         return is_valid
-
     # az_to_num_rr_nodes_map is map in the form of {az: num_of_rr_nodes}.
     # Here az means the availability zone in form of cloud.region.zone.
     # num_of_rr_nodes is the number of all the nodes present in that az.
@@ -4190,22 +4231,109 @@ class ControlScript(object):
                         "Please specify one of the following - zone, region or cloud ")
 
             if args.constraint_value is not None:
-                data_constraints = args.constraint_value.split(",")
+                placement_info,priority_info = self.parse_constraint_value(args.constraint_value)
+                placement_info = placement_info.split(",")
+
+                # Initializing a map to store different types of errors
+                constraint_value_error_map = {
+                    'placement_error': [],
+                    'invalid_priority_error': [],
+                    'inconsistent_priority_error': [],
+                    'missing_priority_error': False,
+                }
                 has_errors = False
-                for constraint in data_constraints:
+                for constraint in placement_info:
+                    is_valid_placement_info = True
                     cloud_info = constraint.split(".")
+                    # Each cloud location should have exactly 3 parts:
+                    # cloudprovider, region and zone
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
                             if not value:
-                                has_errors=True
+                                is_valid_placement_info = False
                     else:
-                        has_errors = True
+                        is_valid_placement_info = False
+
+                    if not is_valid_placement_info:
+                        error_info = " * {}".format(constraint)
+                        constraint_value_error_map['placement_error'].append(error_info)
+
+                # Validate the format and consistency of the priority info
+                if priority_info:
+                    priority_numbers = []
+                    zones = {}
+                    for preference in priority_info:
+                        zone, priority = preference.rsplit(":", 1)
+                        # Ensure the priority value is a valid integer
+                        if not priority.isdigit():
+                            if priority == '':
+                                error_info = " * Empty priority value found for {}".format(zone)
+                            else:
+                                error_info = " * {} in {}".format(priority, zone)
+                            constraint_value_error_map['invalid_priority_error'].append(error_info)
+                            continue
+
+                        priority = int(priority)
+                        priority_numbers.append(priority)
+                        # Check that same zone must be specified with consistent priority values
+                        if zone in list(zones.keys()):
+                            if priority not in zones[zone]:
+                                zones[zone].append(priority)
+                        else:
+                            zones[zone] = [priority]
+
+                    for zone, priorities in zones.items():
+                        # Condition to check if more than 2 priorities
+                        # are associated with a specified zone
+                        if len(priorities) > 1:
+                            error_info = " * {} in {}". \
+                            format(', '.join(map(str, sorted(priorities))), zone)
+                            constraint_value_error_map['inconsistent_priority_error']. \
+                            append(error_info)
+
+                    # Ensure there are no missing priorities in the sequence
+                    priority_set = set(priority_numbers)
+                    max_priority = max(priority_numbers)
+                    for i in range(1, max_priority + 1):
+                        if i not in priority_set:
+                            constraint_value_error_map['missing_priority_error'] = True
+                            break
+
+                errors = []
+
+                # Add placement errors to the errors list
+                if constraint_value_error_map.get('placement_error'):
+                    errors.append("- Incorrect value specified for cloud location. " \
+                                  "Please follow the format - cloudprovider.region.zone" \
+                                  " for the following cloud locations:\n" + \
+                        "\n".join(constraint_value_error_map['placement_error'])
+                    )
+                    has_errors = True
+                # Add invalid priority errors to the errors list
+                if constraint_value_error_map.get('invalid_priority_error'):
+                    errors.append("- Incorrect priority value specified. " \
+                        "Please specify a valid integer for the following cloud locations:\n" +
+                        "\n".join(constraint_value_error_map['invalid_priority_error'])
+                    )
+                    has_errors = True
+                # Add inconsistent priority errors to the errors list
+                if constraint_value_error_map.get('inconsistent_priority_error'):
+                    errors.append("- Same zone specified with different priority values. Please " \
+                    "specify a consistent priority value for the following cloud locations:\n" +
+                    "\n".join(constraint_value_error_map['inconsistent_priority_error'])
+                    )
+                    has_errors = True
+                # Add missing priority errors to the errors list
+                if constraint_value_error_map.get('missing_priority_error'):
+                    errors.append("- Priority values should not skip numbers." \
+                            " Please specify consecutive priority numbers."
+                    )
+                    has_errors = True
 
                 if has_errors:
-                    Output.print_out(
-                        "Incorrect value specified for constraint_value. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone")
+                    Output.print_out(Output.make_red("Error") + ": Following errors found for" \
+                                        " --constraint_value flag:\n" + "\n".join(errors))
+                 # If no errors are found, set the valid constraint value
                 else:
                     self.configs.temp_data[
                         "constraint_value"] = args.constraint_value
@@ -5541,6 +5669,13 @@ class YBAdminProxy(object):
                 placement_locations, replication_factor, placement_uuid]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)
+
+    @staticmethod
+    def set_preferred_zones(master_addrs, priority_info, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses",
+                                       master_addrs, "set_preferred_zones"] + priority_info
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
 
     # Sets placement info of read replicas
     @staticmethod
