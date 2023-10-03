@@ -246,11 +246,11 @@ class UniverseForm extends Component {
       });
     }
     universeTaskParams.clusterOperation = isEdit ? 'EDIT' : 'CREATE';
-    if(!isEdit){
+    if (!isEdit) {
       universeTaskParams.enableYbc =
-      this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
+        this.props.featureFlags.test['enableYbc'] || this.props.featureFlags.released['enableYbc'];
     }
-    
+
     universeTaskParams.ybcSoftwareVersion = '';
   };
 
@@ -664,6 +664,10 @@ class UniverseForm extends Component {
     if (!isDefinedNotNull(submitPayload.enableYbc))
       submitPayload.enableYbc = featureFlags.released.enableYbc || featureFlags.test.enableYbc;
 
+    if (type === 'Async') {
+      submitPayload.enableYbc = false;
+    }
+
     return submitPayload;
   };
 
@@ -829,12 +833,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-          (node) =>
-            node.nodeName &&
-            (type === 'Async'
-              ? node.nodeName.includes('readonly')
-              : !node.nodeName.includes('readonly'))
-        )
+        (node) =>
+          node.nodeName &&
+          (type === 'Async'
+            ? node.nodeName.includes('readonly')
+            : !node.nodeName.includes('readonly'))
+      )
       : [];
 
     const resizePossible = this.isResizePossible();
