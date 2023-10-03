@@ -606,6 +606,38 @@ yb-admin \
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
 
+#### flush_table
+
+Flush the memstores of the specified table on all tablet servers to disk.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    flush_table <table_name> | <table_id> <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table_name*: The name of the table to flush.
+* *table_id*: The unique UUID of the table to flush.
+* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is `false`.
+
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table ysql.yugabyte table_name
+    
+```
+```output
+Flushed [yugabyte.table_name] tables.
+```
 ---
 
 ### Backup and snapshot commands
