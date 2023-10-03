@@ -2616,7 +2616,8 @@ Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
 
 void CatalogManager::StartTablespaceBgTaskIfStopped() {
   if (GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) <= 0 ||
-      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
+      GetAtomicFlag(&FLAGS_create_initial_sys_catalog_snapshot)) {
     // The tablespace bg task is disabled. Nothing to do.
     return;
   }
@@ -12377,7 +12378,7 @@ void CatalogManager::GetExpectedNumberOfReplicasForTable(
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
       table,
       GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info());
+      l->pb.replication_info());
   *num_live_replicas =
       narrow_cast<int>(GetNumReplicasFromPlacementInfo(replication_info.live_replicas()));
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
