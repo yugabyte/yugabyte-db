@@ -159,6 +159,21 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
     }
 
+    // There cannot exist more than one xCluster config when there is a txn xCluster config.
+    List<XClusterConfig> sourceUniverseXClusterConfigs =
+        XClusterConfig.getByUniverseUuid(sourceUniverse.getUniverseUUID());
+    List<XClusterConfig> targetUniverseXClusterConfigs =
+        XClusterConfig.getByUniverseUuid(targetUniverse.getUniverseUUID());
+    if (sourceUniverseXClusterConfigs.stream()
+            .anyMatch(xClusterConfig -> xClusterConfig.getType().equals(ConfigType.Txn))
+        || targetUniverseXClusterConfigs.stream()
+            .anyMatch(xClusterConfig -> xClusterConfig.getType().equals(ConfigType.Txn))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "At least one of the universes has a txn xCluster config. There cannot exist any other "
+              + "xCluster config when there is a txn xCluster config.");
+    }
+
     if (createFormData.configType.equals(ConfigType.Txn)) {
       if (!confGetter.getGlobalConf(GlobalConfKeys.transactionalXClusterEnabled)) {
         throw new PlatformServiceException(
@@ -196,11 +211,8 @@ public class XClusterConfigController extends AuthenticatedController {
       }
 
       // There cannot exist more than one xCluster config when its type is transactional.
-      List<XClusterConfig> sourceUniverseXClusterConfigs =
-          XClusterConfig.getByUniverseUuid(sourceUniverse.getUniverseUUID());
-      List<XClusterConfig> targetUniverseXClusterConfigs =
-          XClusterConfig.getByUniverseUuid(targetUniverse.getUniverseUUID());
-      if (!sourceUniverseXClusterConfigs.isEmpty() || !targetUniverseXClusterConfigs.isEmpty()) {
+      if (!XClusterConfig.getByUniverseUuid(sourceUniverse.getUniverseUUID()).isEmpty()
+          || !XClusterConfig.getByUniverseUuid(targetUniverse.getUniverseUUID()).isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "To create a transactional xCluster, you have to delete all the existing xCluster "
