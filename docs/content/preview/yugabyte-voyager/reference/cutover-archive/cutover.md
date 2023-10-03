@@ -58,7 +58,7 @@ The valid *arguments* for cutover status are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| -h, --help | Command line help for cutover initiate. |
+| -h, --help | Command line help for cutover status. |
 
 #### Example
 

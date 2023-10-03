@@ -101,6 +101,9 @@ The valid *arguments* for import data status are described in the following tabl
 | -h, --help | Command line help. |
 | target-db-password | Password of the target database. Live migrations only. |
 | ff-db-password | Password of the fall-forward database. Live migration with fall-forward only. |
+| --send-diagnostics | Send diagnostics information to Yugabyte. |
+| --verbose | Display extra information in the output. (default: false) |
+| -y, --yes | Answer yes to all prompts during the import data operation. (default: false) |
 
 ### Example
 
