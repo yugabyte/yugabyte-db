@@ -3,10 +3,12 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 menu:
-  preview_integrations:
+  preview:
     identifier: metabase
-    parent: integrations
-    weight: 571
+    parent: tools
+    weight: 70
+aliases:
+  - /integrations/metabase/
 type: docs
 ---
 

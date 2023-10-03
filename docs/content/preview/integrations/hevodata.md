@@ -6,7 +6,7 @@ aliases:
 menu:
   preview_integrations:
     identifier: hevodata
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---

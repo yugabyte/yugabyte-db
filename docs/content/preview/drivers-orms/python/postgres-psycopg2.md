@@ -41,6 +41,13 @@ type: docs
     </a>
   </li>
 
+  <li >
+    <a href="../aiopg" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      aiopg
+    </a>
+  </li>
+
 </ul>
 
 Psycopg is the most popular PostgreSQL database adapter for Python. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).

@@ -5,7 +5,7 @@ description: Presto
 menu:
   preview_integrations:
     identifier: presto
-    parent: integrations
+    parent: data-discovery
     weight: 571
 type: docs
 ---

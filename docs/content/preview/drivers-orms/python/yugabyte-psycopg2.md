@@ -38,6 +38,14 @@ type: docs
       PostgreSQL Psycopg2 Driver
     </a>
   </li>
+
+  <li >
+    <a href="../aiopg" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      aiopg
+    </a>
+  </li>
+
 </ul>
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
