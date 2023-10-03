@@ -2284,7 +2284,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_disable_wait_for_backends_catalog_version,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3686,7 +3686,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_index_state_flags_update_delay,
-		0, 0, INT_MAX,
+		1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
