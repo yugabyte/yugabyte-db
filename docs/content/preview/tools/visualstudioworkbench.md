@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: visualstudioworkbench
     parent: tools
-    weight: 80
+    weight: 40
 type: docs
 ---
 

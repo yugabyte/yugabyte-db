@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: sql-workbench
     parent: tools
-    weight: 70
+    weight: 90
 type: docs
 ---
 

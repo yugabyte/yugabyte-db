@@ -460,6 +460,12 @@
     showSection = true
 
 [[preview_integrations]]
+  name = "Drivers and ORMs"
+  weight = 2
+  url = "/preview/drivers-orms/"
+  parent = "integrations"
+
+[[preview_integrations]]
   name = "Schema migration"
   weight = 3
   identifier = "schema-migration"
@@ -479,38 +485,44 @@
 
 [[preview_integrations]]
   name = "Application frameworks"
-  weight = 7
+  weight = 6
   identifier = "application-frameworks"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Development platforms"
-  weight = 8
+  weight = 7
   identifier = "development-platforms"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Data discovery"
-  weight = 9
+  weight = 8
   identifier = "data-discovery"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Security"
-  weight = 10
+  weight = 9
   identifier = "integrations-security"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Applications"
-  weight = 11
+  weight = 10
   identifier = "integrations-applications"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Other"
-  weight = 12
+  weight = 11
   identifier = "integrations-other"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "GUI clients"
+  weight = 12
+  url = "/preview/tools/"
   parent = "integrations"
 
 ########## Menus (in preview) for APIs

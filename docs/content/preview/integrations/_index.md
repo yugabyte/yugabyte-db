@@ -52,9 +52,11 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
+| Apache Superset   | Full | [Apache Superset](../tools/superset/) |
 | Arctype   | Full | [Arctype](../tools/arctype/) |
 | DBeaver   | Full | [DBeaver](../tools/dbeaver-ysql/) |
 | DbSchema  | Full | [DbSchema](../tools/dbschema/) |
+| Metabase  | Full | [Metabase](metabase/) |
 | pgAdmin   | Full | [pgAdmin](../tools/pgadmin/) |
 | SQL Workbench/J | Full | [SQL Workbench/J](../tools/sql-workbench/) |
 | TablePlus | Full | [TablePlus](../tools/tableplus/) |
@@ -109,8 +111,7 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 | Jaeger       |      | Full | [Jaeger](jaeger/) |
 | JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
 | KairosDB     |      | Full | [KairosDB](kairosdb/) |
-| Metabase     |      | Full | [Metabase](metabase/) |
-| Mirantis MKE |      | Full | [Mirantix](mirantis/) |
+| Mirantis MKE |      | Full | [Mirantis](mirantis/) |
 
 <ul class="nav yb-pills">
 
@@ -370,13 +371,6 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
     <a href="wso2/">
       <img src="/images/section_icons/develop/ecosystem/wso2.png">
       WSO2 Identity Server
-    </a>
-  </li>
-
-  <li>
-    <a href="aiopg/">
-      <i class="fa-brands fa-python"></i>
-      YSQL Aiopg
     </a>
   </li>
 

@@ -3,7 +3,7 @@ title: Third party tools
 headerTitle: Third party tools
 linkTitle: Third party tools
 description: Interactive third party clients that you can use with YugabyteDB.
-headcontent: Use popular third party clients with YugabyteDB.
+headcontent: Use popular third party clients with YugabyteDB
 image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
@@ -14,9 +14,79 @@ menu:
     parent: reference
     weight: 2900
 type: indexpage
+showRightNav: true
 ---
 
 Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters.
+
+## Tools
+
+<ul class="nav yb-pills">
+
+  <li>
+    <a href="superset/">
+      <img src="/images/develop/tools/superset/superset-icon.png">
+      Apache Superset
+    </a>
+  </li>
+
+  <li>
+    <a href="arctype/">
+      <img src="/images/develop/tools/arctype/arctype-icon.png">
+      Arctype
+    </a>
+  </li>
+
+  <li>
+    <a href="visualstudioworkbench/">
+      <img src="/images/section_icons/develop/tools/cassandraworkbench.png">
+      Cassandra Workbench
+    </a>
+  </li>
+
+  <li>
+    <a href="dbeaver-ysql/">
+      <img src="/images/develop/tools/dbeaver-icon.png">
+      DBeaver
+    </a>
+  </li>
+
+  <li>
+    <a href="dbschema/">
+      <img src="/images/develop/tools/dbschema/dbschema-icon.png">
+      DbSchema
+    </a>
+  </li>
+
+  <li>
+    <a href="metabase/">
+      <img src="/images/section_icons/develop/ecosystem/metabase.png">
+      Metabase
+    </a>
+  </li>
+
+  <li>
+    <a href="pgadmin/">
+      <img src="/images/develop/tools/pgadmin-icon.png">
+      pgAdmin
+    </a>
+  </li>
+
+  <li>
+    <a href="sql-workbench/">
+      <img src="/images/develop/tools/sql-workbench.png">
+      SQL Workbench/J
+    </a>
+  </li>
+
+  <li>
+    <a href="tableplus/">
+      <img src="/images/section_icons/develop/tools/tableplus.png">
+      TablePlus
+    </a>
+  </li>
+
+</ul>
 
 ### YugabyteDB prerequisites
 
@@ -43,8 +113,7 @@ To connect, follow the client's configuration steps, and use the following value
 
 YugabyteDB Managed requires TLS. Use the root.ca certificate you downloaded for connections to YugabyteDB Managed clusters.
 
-## Tools
-
+<!--
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -144,3 +213,4 @@ YugabyteDB Managed requires TLS. Use the root.ca certificate you downloaded for 
   </div>
 
 </div>
+-->
