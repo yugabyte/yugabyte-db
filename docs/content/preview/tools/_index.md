@@ -38,13 +38,6 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
   </li>
 
   <li>
-    <a href="visualstudioworkbench/">
-      <img src="/images/section_icons/develop/tools/cassandraworkbench.png">
-      Cassandra Workbench
-    </a>
-  </li>
-
-  <li>
     <a href="dbeaver-ysql/">
       <img src="/images/develop/tools/dbeaver-icon.png">
       DBeaver

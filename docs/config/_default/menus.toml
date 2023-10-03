@@ -484,45 +484,45 @@
   parent = "integrations"
 
 [[preview_integrations]]
-  name = "Application frameworks"
+  name = "GUI clients"
   weight = 6
+  url = "/preview/tools/"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Application frameworks"
+  weight = 7
   identifier = "application-frameworks"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Development platforms"
-  weight = 7
+  weight = 8
   identifier = "development-platforms"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Data discovery"
-  weight = 8
+  weight = 9
   identifier = "data-discovery"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Security"
-  weight = 9
+  weight = 10
   identifier = "integrations-security"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Applications"
-  weight = 10
+  weight = 11
   identifier = "integrations-applications"
   parent = "integrations"
 
 [[preview_integrations]]
   name = "Other"
-  weight = 11
-  identifier = "integrations-other"
-  parent = "integrations"
-
-[[preview_integrations]]
-  name = "GUI clients"
   weight = 12
-  url = "/preview/tools/"
+  identifier = "integrations-other"
   parent = "integrations"
 
 ########## Menus (in preview) for APIs
