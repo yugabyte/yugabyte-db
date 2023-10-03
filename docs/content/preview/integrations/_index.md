@@ -87,7 +87,6 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 | Datahub     | Full | [Datahub](datahub/) |
 | DQ Analyzer | Full | [Ataccama DQ Analyzer](ataccama/) |
 | Metacat     | Full | [Metacat](metacat/) |
-| Presto      | Full | [Presto](presto/) |
 
 ### Security
 
@@ -112,6 +111,7 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 | JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
 | KairosDB     |      | Full | [KairosDB](kairosdb/) |
 | Mirantis MKE |      | Full | [Mirantis](mirantis/) |
+| Presto      | Full | [Presto](presto/) |
 
 <ul class="nav yb-pills">
 
