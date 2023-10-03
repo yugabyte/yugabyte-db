@@ -1914,6 +1914,7 @@ components:
         is_node_up: true
         name: name
         host: host
+        preference_order: 0
         is_bootstrapping: true
         cloud_info:
           cloud: cloud
@@ -1922,18 +1923,18 @@ components:
         metrics:
           system_tablets_total: 0
           system_tablets_leaders: 0
-          write_ops_per_sec: 5.637376656633329
+          write_ops_per_sec: 2.3021358869347655
           ram_provisioned_bytes: 0
-          time_since_hb_sec: 2.3021358869347655
+          time_since_hb_sec: 7.061401241503109
           active_connections:
             ysql: 0
             ycql: 0
-          total_sst_file_size_bytes: 6
-          uncompressed_sst_file_size_bytes: 1
-          read_ops_per_sec: 5.962133916683182
+          total_sst_file_size_bytes: 1
+          uncompressed_sst_file_size_bytes: 5
+          read_ops_per_sec: 5.637376656633329
           user_tablets_leaders: 0
           ram_used_bytes: 0
-          memory_used_bytes: 0
+          memory_used_bytes: 6
           uptime_seconds: 0
           user_tablets_total: 0
           disk_provisioned_bytes: 0
@@ -1954,6 +1955,8 @@ components:
           type: boolean
         is_read_replica:
           type: boolean
+        preference_order:
+          type: integer
         is_master_up:
           type: boolean
         is_bootstrapping:
@@ -2640,6 +2643,7 @@ components:
           is_node_up: true
           name: name
           host: host
+          preference_order: 0
           is_bootstrapping: true
           cloud_info:
             cloud: cloud
@@ -2648,18 +2652,18 @@ components:
           metrics:
             system_tablets_total: 0
             system_tablets_leaders: 0
-            write_ops_per_sec: 5.637376656633329
+            write_ops_per_sec: 2.3021358869347655
             ram_provisioned_bytes: 0
-            time_since_hb_sec: 2.3021358869347655
+            time_since_hb_sec: 7.061401241503109
             active_connections:
               ysql: 0
               ycql: 0
-            total_sst_file_size_bytes: 6
-            uncompressed_sst_file_size_bytes: 1
-            read_ops_per_sec: 5.962133916683182
+            total_sst_file_size_bytes: 1
+            uncompressed_sst_file_size_bytes: 5
+            read_ops_per_sec: 5.637376656633329
             user_tablets_leaders: 0
             ram_used_bytes: 0
-            memory_used_bytes: 0
+            memory_used_bytes: 6
             uptime_seconds: 0
             user_tablets_total: 0
             disk_provisioned_bytes: 0
@@ -2672,6 +2676,7 @@ components:
           is_node_up: true
           name: name
           host: host
+          preference_order: 0
           is_bootstrapping: true
           cloud_info:
             cloud: cloud
@@ -2680,18 +2685,18 @@ components:
           metrics:
             system_tablets_total: 0
             system_tablets_leaders: 0
-            write_ops_per_sec: 5.637376656633329
+            write_ops_per_sec: 2.3021358869347655
             ram_provisioned_bytes: 0
-            time_since_hb_sec: 2.3021358869347655
+            time_since_hb_sec: 7.061401241503109
             active_connections:
               ysql: 0
               ycql: 0
-            total_sst_file_size_bytes: 6
-            uncompressed_sst_file_size_bytes: 1
-            read_ops_per_sec: 5.962133916683182
+            total_sst_file_size_bytes: 1
+            uncompressed_sst_file_size_bytes: 5
+            read_ops_per_sec: 5.637376656633329
             user_tablets_leaders: 0
             ram_used_bytes: 0
-            memory_used_bytes: 0
+            memory_used_bytes: 6
             uptime_seconds: 0
             user_tablets_total: 0
             disk_provisioned_bytes: 0
@@ -2898,18 +2903,18 @@ components:
       example:
         system_tablets_total: 0
         system_tablets_leaders: 0
-        write_ops_per_sec: 5.637376656633329
+        write_ops_per_sec: 2.3021358869347655
         ram_provisioned_bytes: 0
-        time_since_hb_sec: 2.3021358869347655
+        time_since_hb_sec: 7.061401241503109
         active_connections:
           ysql: 0
           ycql: 0
-        total_sst_file_size_bytes: 6
-        uncompressed_sst_file_size_bytes: 1
-        read_ops_per_sec: 5.962133916683182
+        total_sst_file_size_bytes: 1
+        uncompressed_sst_file_size_bytes: 5
+        read_ops_per_sec: 5.637376656633329
         user_tablets_leaders: 0
         ram_used_bytes: 0
-        memory_used_bytes: 0
+        memory_used_bytes: 6
         uptime_seconds: 0
         user_tablets_total: 0
         disk_provisioned_bytes: 0

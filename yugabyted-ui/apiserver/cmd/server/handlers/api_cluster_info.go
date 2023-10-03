@@ -141,6 +141,20 @@ func (c *Container) getNodes(clusterType ...string) ([]string, error) {
     return hostNames, nil
 }
 
+func getPreferenceOrder(cloud, region, zone string,
+    zonePreferences []helpers.MultiAffinitizedLeader) int32 {
+    for i, leader := range zonePreferences {
+        for _, cloudInfo := range leader.Zones {
+            if cloud == cloudInfo.PlacementCloud &&
+               region == cloudInfo.PlacementRegion &&
+               zone == cloudInfo.PlacementZone {
+                return int32(i+1)
+            }
+        }
+    }
+    return -1
+}
+
 func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQueriesFuture) {
     slowQueries := SlowQueriesFuture{
         Items: []*models.SlowQueryResponseYsqlQueryItem{},
@@ -929,6 +943,11 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             // the implementation here.
             // For now, assuming IsTserver is always true
             _, isMaster := masters[hostName]
+            zonePreferences := clusterConfigResponse.ClusterConfig.
+            ReplicationInfo.MultiAffinitizedLeaders
+            var preferenceOrder int32 = getPreferenceOrder(
+                nodeData.Cloud, nodeData.Region, nodeData.Zone,
+                zonePreferences)
             response.Data = append(response.Data, models.NodeData{
                 Name:            hostName,
                 Host:            hostName,
@@ -936,6 +955,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 IsMaster:        isMaster,
                 IsTserver:       true,
                 IsReadReplica:   isReadReplica,
+                PreferenceOrder: preferenceOrder,
                 IsMasterUp:      isMasterUp,
                 IsBootstrapping: isBootstrapping,
                 Metrics: models.NodeDataMetrics{

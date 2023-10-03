@@ -1080,6 +1080,8 @@ components:
           type: boolean
         is_read_replica:
           type: boolean
+        preference_order:
+          type: integer
         is_master_up:
           type: boolean
         is_bootstrapping:
