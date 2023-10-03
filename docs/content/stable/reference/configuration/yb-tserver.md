@@ -945,6 +945,8 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
+--ycql_enable_packed_row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+
 Whether packed row is enabled for YCQL.
 
 Default: `false`
