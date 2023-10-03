@@ -32,7 +32,11 @@ public class RuntimeConfigCache {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   private RuntimeConfigChangeNotifier runtimeConfigChangeNotifier;
-  private Set<String> cachedGlobalKeys = Set.of(GlobalConfKeys.useNewRbacAuthz.getKey());
+  private Set<String> cachedGlobalKeys =
+      Set.of(
+          GlobalConfKeys.useNewRbacAuthz.getKey(),
+          GlobalConfKeys.ybaApiStrictMode.getKey(),
+          GlobalConfKeys.ybaApiSafeMode.getKey());
 
   @Inject
   public RuntimeConfigCache(RuntimeConfigChangeNotifier runtimeConfigChangeNotifier) {

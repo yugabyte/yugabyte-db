@@ -1050,4 +1050,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables VM OS Patching with image bundles",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ybaApiStrictMode =
+      new ConfKeyInfo<>(
+          "yb.api.mode.strict",
+          ScopeType.GLOBAL,
+          "Enable strict mode to ignore deprecated YBA APIs",
+          "Will ignore deprecated APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybaApiSafeMode =
+      new ConfKeyInfo<>(
+          "yb.api.mode.safe",
+          ScopeType.GLOBAL,
+          "Enable safe mode to ignore preview YBA APIs",
+          "Will ignore preview APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
