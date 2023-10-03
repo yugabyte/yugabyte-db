@@ -309,11 +309,14 @@ class TransactionState {
         case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
           ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
           break;
-        case TransactionStatus::ABORTED:
-          ClearRequests(
-              STATUS(Expired, "Transaction aborted",
-                     TransactionError(TransactionErrorCode::kAborted)));
+        case TransactionStatus::ABORTED: {
+          auto s = data.state.deadlock_reason().code() != AppStatusPB::OK
+              ? StatusFromPB(data.state.deadlock_reason())
+              : STATUS(Expired, "Transaction aborted",
+                       TransactionError(TransactionErrorCode::kAborted));
+          ClearRequests(s);
           break;
+        }
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
         case TransactionStatus::SEALED: FALLTHROUGH_INTENDED;
@@ -715,7 +718,11 @@ class TransactionState {
 
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
-
+    // TODO(wait-queues): If the transaction is being aborted due to a deadlock, replicate the
+    // deadlock specific info on status tablet followers. That would help return a consistent
+    // error message on deadlock, across status tablet leadership changes.
+    //
+    // Refer https://github.com/yugabyte/yugabyte-db/issues/19257 for more details.
     auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
     state->dup_transaction_id(id_.AsSlice());
     state->set_status(status);
@@ -1472,6 +1479,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         } else {
           lock.unlock();
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+          // If the transaction was involved in a deadlock, the deadlock error takes precedence
+          // over a generic status of type Expired.
+          if (status.IsExpired()) {
+            auto s = deadlock_detector_.GetTransactionDeadlockStatus(*id);
+            if (!s.ok()) {
+              status = std::move(s);
+            }
+          }
           request->CompleteWithStatus(status);
           return;
         }
