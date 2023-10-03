@@ -1,10 +1,12 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.operator.annotations;
 
 import com.google.inject.Inject;
 import com.google.re2j.Matcher;
 import com.google.re2j.Pattern;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -21,16 +23,15 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
   private static final String UUID_PATTERN =
       "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
-  private final RuntimeConfGetter confGetter;
+  private final RuntimeConfigCache confGetter;
 
   @Inject
-  BlockOperatorResourceHandler(RuntimeConfGetter confGetter) {
+  BlockOperatorResourceHandler(RuntimeConfigCache confGetter) {
     this.confGetter = confGetter;
   }
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
-    log.info("SHUBIN: Entering 'block api operator resource' action");
     if (!enabled()) {
       log.trace("block operator api is disable, skipping action");
       return delegate.call(request);
@@ -67,6 +68,6 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
   }
 
   private Boolean enabled() {
-    return confGetter.getGlobalConf(GlobalConfKeys.blockOperatorApiResources);
+    return confGetter.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey());
   }
 }

@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.operator.utils;
 
 import com.google.inject.Inject;
