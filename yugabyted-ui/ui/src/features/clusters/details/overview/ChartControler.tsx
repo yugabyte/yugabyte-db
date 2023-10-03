@@ -6,6 +6,7 @@ import { MetricResponse, useGetClusterMetricQuery } from '@app/api/src';
 import { getInterval, RelativeInterval, roundDecimal, timeFormatterWithStartEnd } from '@app/helpers';
 import { YBChartContainer } from '@app/components/YBChart/YBChartContainer';
 import { YBLineChartOptions, YBLinerChart } from '@app/components/YBChart/YBLinerChart';
+import { useQueryParam } from 'use-query-params';
 
 interface ChartDataPoint {
   time: number;
@@ -103,14 +104,18 @@ export const ChartController: FC<ChartContainerProps> = ({
     setNewNodeName(nodeName === 'all' ? undefined : nodeName);
   }, [relativeInterval, nodeName]);
 
+  const [ refreshChartController, setRefreshChartController ] =
+    useQueryParam<boolean | undefined>("refreshChartController");
+
   // getInterval() will return new timestamps on every call which will trigger query re-run
   const refresh = useCallback(() => {
     setNewInterval(getInterval(relativeInterval));
+    setRefreshChartController(undefined, "replaceIn");
   }, [relativeInterval]);
 
   useEffect(() => {
     refresh();
-  }, [refreshFromParent, refresh]);
+  }, [refreshFromParent, refresh, refreshChartController]);
 
   const tooltipFormatter = (value: number, name: string) => {
     const tooltipVal = roundDecimal(value).toLocaleString();

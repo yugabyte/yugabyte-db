@@ -5,10 +5,10 @@ import { NodesTab } from '../nodes/NodesTab';
 import { useTranslation } from 'react-i18next';
 import { ActivityTab } from '../activities/ActivityTab';
 import { SettingsTab } from '../settings/SettingsTab';
-import { StringParam, useQueryParams, withDefault } from 'use-query-params';
+import { StringParam, useQueryParam, useQueryParams, withDefault } from 'use-query-params';
 import { YBButton } from '@app/components';
 import RefreshIcon from '@app/assets/refresh.svg';
-import { useGetClusterQuery, useGetClusterNodesQuery, useGetClusterHealthCheckQuery, 
+import { useGetClusterQuery, useGetClusterNodesQuery, useGetClusterHealthCheckQuery,
   useGetIsLoadBalancerIdleQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
@@ -73,12 +73,14 @@ export const OverviewDetails: FC = () => {
   const { refetch: refetchCluster } = useGetClusterQuery({ query: { enabled: false }});
   const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
   const { refetch: refetchLoadBalancer } = useGetIsLoadBalancerIdleQuery({ query: { enabled: false }});
+  const [ refreshChartController, setRefreshChartController ] = useQueryParam<boolean | undefined>("refreshChartController");
 
   const refetch = () => {
     refetchNodes();
     refetchCluster();
     refetchHealth();
     refetchLoadBalancer();
+    setRefreshChartController(!refreshChartController, "replaceIn");
   }
 
   const TabComponent = tabList.find(tab => tab.name === currentTab)?.component;

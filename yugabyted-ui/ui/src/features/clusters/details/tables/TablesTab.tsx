@@ -1,7 +1,7 @@
 import React, { FC, useMemo } from 'react';
 import { makeStyles, Box, LinearProgress, Breadcrumbs, Link, Typography, MenuItem } from '@material-ui/core';
 import { AlertVariant, YBDropdown } from '@app/components';
-import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum, ClusterTable, 
+import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum, ClusterTable,
   useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import { useToast } from '@app/helpers';
 import { DatabaseList } from './DatabaseList';
@@ -11,6 +11,7 @@ import { TabletList } from './TabletList';
 import { useTranslation } from 'react-i18next';
 
 export type DatabaseListType = Array<{ name: string, tableCount: number, size: number }>
+export type TableListType = Array<ClusterTable & { isIndexTable?: boolean }>;
 
 const useStyles = makeStyles((theme) => ({
   dropdown: {
@@ -103,11 +104,26 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
     refetchHealth();
   };
 
-  const ysqlTableData = useMemo(() => clusterTablesResponseYsql?.data ?? [], [clusterTablesResponseYsql?.data]);
-  const ycqlTableData = useMemo(() => clusterTablesResponseYcql?.data ?? [], [clusterTablesResponseYcql?.data]);
+  const ysqlTableData = useMemo<TableListType>(
+    () =>
+      clusterTablesResponseYsql
+        ? [
+            ...clusterTablesResponseYsql.tables,
+            ...clusterTablesResponseYsql.indexes.map((indexTable) => ({
+              ...indexTable,
+              isIndexTable: true,
+            })),
+          ]
+        : [],
+    [clusterTablesResponseYsql?.tables, clusterTablesResponseYsql?.indexes]
+  );
+  const ycqlTableData = useMemo<TableListType>(
+    () => clusterTablesResponseYcql?.tables ?? [],
+    [clusterTablesResponseYcql?.tables]
+  );
 
   let isFetching = false;
-  let data: ClusterTable[];
+  let data: TableListType;
   switch (dbApi) {
     case GetClusterTablesApiEnum.Ysql:
       isFetching = isFetchingYsql;
@@ -119,7 +135,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
       break;
   }
 
-  const dbKeyframeList = React.useMemo<DatabaseListType>(() => 
+  const dbKeyframeList = React.useMemo<DatabaseListType>(() =>
     Array.from(data.reduce((prev, curr) => prev.add(curr.keyspace), new Set<string>()))
       .map(dbName => {
         const filteredDb = data.filter(d => d.keyspace === dbName);
@@ -130,7 +146,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         }
       }), [data]);
 
-  const tableList = React.useMemo<ClusterTable[]>(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
+  const tableList = React.useMemo(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
 
   if (isFetching) {
     return (
@@ -145,12 +161,12 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
       <Box className={classes.breadcrumbs}>
         {selectedDB &&
           <Breadcrumbs aria-label="breadcrumb">
-            <Link className={classes.link} 
+            <Link className={classes.link}
               onClick={() => { setSelectedTable(undefined); setSelectedDB(undefined); }}>
               <Typography variant="body2" color="primary">{dbApi}</Typography>
             </Link>
             {selectedTable ?
-              <Link className={classes.link} 
+              <Link className={classes.link}
                 onClick={() => { setSelectedTable(undefined); }}>
                 <Typography variant="body2" color="primary">
                   {selectedDB}
@@ -193,7 +209,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               className={classes.dropdown}
             >
               <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.table')}</Box>
-              {tableList.map(item => (
+              {tableList.filter(table => !table.isIndexTable).map(item => (
                 <MenuItem
                   key={`keyspaces-${item.name.replace(' ', '-')}`}
                   selected={item.uuid === selectedTable.uuid}
@@ -207,12 +223,12 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
           </Breadcrumbs>
         }
       </Box>
-      {selectedDB && selectedTable ? 
+      {selectedDB && selectedTable ?
         <TabletList
           selectedTableUuid={selectedTable.uuid}
           onRefetch={refetchData} />
         :
-        (selectedDB ? 
+        (selectedDB ?
           <TableList
             tableList={tableList}
             onSelect={(name: string, uuid: string) => {
@@ -221,8 +237,8 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
             onRefetch={refetchData}
           />
           :
-          <DatabaseList 
-            dbList={dbKeyframeList} 
+          <DatabaseList
+            dbList={dbKeyframeList}
             isYcql={dbApi === GetClusterTablesApiEnum.Ycql}
             onSelect={setSelectedDB}
             onRefetch={refetchData}
