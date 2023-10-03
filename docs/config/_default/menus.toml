@@ -459,6 +459,60 @@
   [preview_integrations.params]
     showSection = true
 
+[[preview_integrations]]
+  name = "Schema migration"
+  weight = 3
+  identifier = "schema-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data migration"
+  weight = 4
+  identifier = "data-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data integration"
+  weight = 5
+  identifier = "data-integration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Application frameworks"
+  weight = 7
+  identifier = "application-frameworks"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Development platforms"
+  weight = 8
+  identifier = "development-platforms"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data discovery"
+  weight = 9
+  identifier = "data-discovery"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Security"
+  weight = 10
+  identifier = "integrations-security"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Applications"
+  weight = 11
+  identifier = "integrations-applications"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Other"
+  weight = 12
+  identifier = "integrations-other"
+  parent = "integrations"
+
 ########## Menus (in preview) for APIs
 
 # [[preview_api]]

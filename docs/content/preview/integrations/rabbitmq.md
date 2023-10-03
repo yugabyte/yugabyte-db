@@ -6,7 +6,7 @@ description: Use RabbitMQ to work with distributed SQL databases in YugabyteDB.
 menu:
   preview_integrations:
     identifier: rabbitmq
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---

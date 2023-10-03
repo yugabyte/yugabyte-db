@@ -5,7 +5,7 @@ description: Metabase
 menu:
   preview_integrations:
     identifier: metabase
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---

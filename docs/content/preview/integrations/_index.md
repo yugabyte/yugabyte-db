@@ -15,6 +15,10 @@ For information on YugabyteDB-compatible drivers, ORMs, and frameworks, refer to
 
 ## Choose your integration
 
+### Drivers and ORMs
+
+{{< readfile "../drivers-orms/include-drivers-orms-list.md" >}}
+
 ### Schema migration
 
 | Tool | Latest tested version | Support | Tutorial |
@@ -26,102 +30,89 @@ For information on YugabyteDB-compatible drivers, ORMs, and frameworks, refer to
 
 ### Data migration
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| PGmigrate | | Full | [PGmigrate](pgmigrate/) |
-| YSQL Loader (pgloader) | | Full | [YSQL Loader](ysql-loader/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| PGmigrate | Full | [PGmigrate](pgmigrate/) |
+| YSQL Loader (pgloader) | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Apache Beam | | Full | [Apache Beam](apache-beam/) |
-| Apache Flink | | Full | [Apache Flink](apache-flink/) |
-| Apache Kafka | | Full | [Apache Kafka](apache-kafka/) |
-| Akka Persistence | | Full | [Akka Persistence](akka-ysql/) |
-| Confluent | | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
-| Debezium | | Full | [Debezium](cdc/debezium/) |
-| Hevo Data | | Full | [Hevo Data](hevodata/) |
-| Kinesis Data Streams | | Full | [Kinesis](kinesis/) |
-| RabbitMQ | | Full | [RabbitMQ](rabbitmq/) |
-| Synapse | | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Apache Beam    | Full | [Apache Beam](apache-beam/) |
+| Apache Flink   | Full | [Apache Flink](apache-flink/) |
+| Apache Kafka   | Full | [Apache Kafka](apache-kafka/) |
+| Akka Persistence | Full | [Akka Persistence](akka-ysql/) |
+| Confluent      | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
+| Debezium       | Full | [Debezium](cdc/debezium/) |
+| Hevo Data      | Full | [Hevo Data](hevodata/) |
+| Kinesis Data Streams | Full | [Kinesis](kinesis/) |
+| RabbitMQ       | Full | [RabbitMQ](rabbitmq/) |
+| Synapse        | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Arctype | | Full | [Arctype](../tools/arctype/) |
-| DBeaver | | Full | [DBeaver](../tools/dbeaver-ysql/) |
-| DbSchema | | Full | [DbSchema](../tools/dbschema/) |
-| pgAdmin | | Full | [pgAdmin](../tools/pgadmin/) |
-| Metabase | | Full | [Metabase](metabase/) |
-| SQL Workbench/J | | Full | [SQL Workbench/J](../tools/sql-workbench/) |
-| TablePlus | | Full | [TablePlus](../tools/tableplus/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Arctype   | Full | [Arctype](../tools/arctype/) |
+| DBeaver   | Full | [DBeaver](../tools/dbeaver-ysql/) |
+| DbSchema  | Full | [DbSchema](../tools/dbschema/) |
+| pgAdmin   | Full | [pgAdmin](../tools/pgadmin/) |
+| SQL Workbench/J | Full | [SQL Workbench/J](../tools/sql-workbench/) |
+| TablePlus | Full | [TablePlus](../tools/tableplus/) |
 
 ### Application frameworks
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| AtomicJar Testcontainers | | Full | [AtomicJar Testcontainers](atomicjar/) |
-| Hasura | | Full | [Hasura](hasura/) |
-| Spring | | Full | [Spring](spring-framework/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| AtomicJar Testcontainers | Full | [AtomicJar Testcontainers](atomicjar/) |
+| Django | Full | [Django REST Framework](django-rest-framework/) |
+| Hasura | Full | [Hasura](hasura/) |
+| Spring | Full | [Spring](spring-framework/) |
 
-### Integrated development environments
+### Development platforms
 
-| IDE | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Caspio | | Full | [Caspio](caspio/) |
-| Retool | | Full | [Retool](retool/) |
-| Superblocks | | Full | [Superblocks](superblocks/) |
-| Visual Studio Code | | Full | [Cassandra Workbench](../tools/visualstudioworkbench/) |
+| IDE | Support | Tutorial |
+| :--- | :--- | :--- |
+| Caspio | Full | [Caspio](caspio/) |
+| Retool | Full | [Retool](retool/) |
+| Superblocks | Full | [Superblocks](superblocks/) |
+| Visual Studio Code | Full | [Cassandra Workbench](../tools/visualstudioworkbench/) |
 
 ### Data discovery and metadata
 
 | Tool | Latest tested version | Support | Tutorial |
 | :--- | :--- | :--- | :--- |
-| Ataccama DQ Analyzer | | Full | [Ataccama DQ Analyzer](ataccama/) |
-| Dataedo | | Full | [Dataedo](dataedo/) |
-| Datahub | | Full | [Datahub](datahub/) |
-| Metacat | | Full | [Metacat](metacat/) |
-| Presto | | Full | [Presto](presto/) |
+| Dataedo     | Full | [Dataedo](dataedo/) |
+| Datahub     | Full | [Datahub](datahub/) |
+| DQ Analyzer | Full | [Ataccama DQ Analyzer](ataccama/) |
+| Metacat     | Full | [Metacat](metacat/) |
+| Presto      | Full | [Presto](presto/) |
 
 ### Security
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Hashicorp Vault | | Full | [Hashicorp Vault](hashicorp-vault/) |
-| WSO2 Identity Server | | Full | [WSO2 Identity Server](wso2/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Hashicorp Vault      | Full | [Hashicorp Vault](hashicorp-vault/) |
+| WSO2 Identity Server | Full | [WSO2 Identity Server](wso2/) |
 
 ### Applications powered by YugabyteDB
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Camunda | | Full | [Camunda](camunda/) |
-
-### Observability
-
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Jaeger | | Full | [Jaeger](jaeger/) |
-
-### Kubernetes
-
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Mirantis MKE | | Full | [Mirantix](mirantis/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Camunda | Full | [Camunda](camunda/) |
 
 ### Other
 
 | Tool | Latest tested version | Support | Tutorial |
 | :--- | :--- | :--- | :--- |
+| Apache Atlas |      | Full | [Apache Atlas](atlas-ycql/) |
 | Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
-| JanusGraph | | Full | [JanusGraph](janusgraph/) |
-
-### Compliance
-
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Apache Atlas | | Full | [Apache Atlas](atlas-ycql/) |
+| Jaeger       |      | Full | [Jaeger](jaeger/) |
+| JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
+| KairosDB     |      | Full | [KairosDB](kairosdb/) |
+| Metabase     |      | Full | [Metabase](metabase/) |
+| Mirantis MKE |      | Full | [Mirantix](mirantis/) |
 
 <ul class="nav yb-pills">
 

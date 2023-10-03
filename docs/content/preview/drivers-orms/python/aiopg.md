@@ -1,14 +1,55 @@
 ---
-title: YSQL Aiopg
-linkTitle: YSQL Aiopg
-description: Build a sample Python application with aiopg that uses YSQL
+title: aiopg Driver for YSQL
+headerTitle: Connect an application
+linkTitle: Connect an app
+description: Connect a Python application using aiopg Driver for YSQL
+aliases:
+  - /integrations/aiopg/
 menu:
   preview_integrations:
     identifier: ysql-aiopg
-    parent: integrations
+    parent: python-drivers
     weight: 571
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yugabyte-psycopg2/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../yugabyte-psycopg2" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Psycopg2 Smart Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../postgres-psycopg2" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL Psycopg2 Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../aiopg" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      aiopg
+    </a>
+  </li>
+
+</ul>
 
 The following tutorial creates a basic Python application that connects to a YugabyteDB cluster using the [`aiopg`](https://aiopg.readthedocs.io/en/stable/) database adapter, performs a few basic database operations — creating a table, inserting data, and running a SQL query — and prints the results to the screen.
 

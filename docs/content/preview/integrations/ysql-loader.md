@@ -5,7 +5,7 @@ description: YSQL Loader
 menu:
   preview_integrations:
     identifier: ysql-loader
-    parent: integrations
+    parent: data-migration
     weight: 571
 type: docs
 ---

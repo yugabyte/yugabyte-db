@@ -6,7 +6,7 @@ description: Use Schema Evolution Manager to work with distributed SQL databases
 menu:
   preview_integrations:
     identifier: schema-evolution-mgr
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---

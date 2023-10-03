@@ -5,7 +5,7 @@ description: Use Jaeger with YCQL API
 menu:
   preview_integrations:
     identifier: jaeger
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---
