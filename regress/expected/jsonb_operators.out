@@ -805,6 +805,587 @@ LINE 1: SELECT '{"a":null, "b":"qq"}'::agtype ?& '{"null"}';
 DETAIL:  Expected ":", but found "}".
 CONTEXT:  agtype data, line 1: {"null"}
 --
+-- Agtype access operators (->, ->>)
+--
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'::text->2->'float'::text as i) a;
+  i   | pg_typeof 
+------+-----------
+ 3.14 | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '{"bool":true, "array":[1,3,{"bool":false, "int":3, "float":3.14},7], "float":3.14}'::agtype->'array'::text->2->>'float'::text as i) a;
+  i   | pg_typeof 
+------+-----------
+ 3.14 | text
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->0 as i) a;
+ i | pg_typeof 
+---+-----------
+ 0 | agtype
+(1 row)
+
+SELECT i, pg_typeof(i) FROM (SELECT '[0, 1]'::agtype->>0 as i) a;
+ i | pg_typeof 
+---+-----------
+ 0 | text
+(1 row)
+
+/*
+ * access agtype object field or array element (->)
+ */
+-- LHS is an object
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"n"'::agtype;
+ ?column? 
+----------
+ null
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"a"'::agtype;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"b"'::agtype;
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"c"'::agtype;
+ ?column? 
+----------
+ {"1": 2}
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"d"'::agtype;
+   ?column?    
+---------------
+ {"1": [2, 3]}
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"d"'::agtype -> '"1"'::agtype;
+ ?column? 
+----------
+ [2, 3]
+(1 row)
+
+SELECT '{"a": [-1, -2, -3]}'::agtype -> 'a'::text;
+   ?column?   
+--------------
+ [-1, -2, -3]
+(1 row)
+
+SELECT '{"a": 9, "b": 11, "c": {"ca": [[], {}, null]}, "d": true, "1": false}'::agtype -> '"1"'::text::agtype;
+ ?column? 
+----------
+ false
+(1 row)
+
+SELECT '{"a": true, "b": null, "c": -1.99, "d": {"e": []}, "1": [{}, [[[]]]], " ": [{}]}'::agtype -> ' '::text;
+ ?column? 
+----------
+ [{}]
+(1 row)
+
+SELECT '{"a": true, "b": null, "c": -1.99, "d": {"e": []}, "1": [{}, [[[]]]], " ": [{}]}'::agtype -> '" "'::agtype;
+ ?column? 
+----------
+ [{}]
+(1 row)
+
+-- should return null
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"e"'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}, "1": -19}'::agtype -> '1'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype -> '""'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype -> null::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype -> null::int;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [-1, -2, -3]}'::agtype -> '"a"'::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": 9, "b": 11, "c": {"ca": [[], {}, null]}, "d": true, "1": false}'::agtype -> '1'::text::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+-- LHS is an array
+SELECT '["a","b","c",[1,2],null]'::agtype -> '0'::agtype;
+ ?column? 
+----------
+ "a"
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> 1;
+ ?column? 
+----------
+ "b"
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '2'::agtype;
+ ?column? 
+----------
+ "c"
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> 3;
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '3'::agtype -> '1'::agtype;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '3'::agtype -> '-1'::agtype;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '3'::agtype -> -1;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> 4;
+ ?column? 
+----------
+ null
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '-1'::agtype;
+ ?column? 
+----------
+ null
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '-5'::agtype;
+ ?column? 
+----------
+ "a"
+(1 row)
+
+SELECT '[1, 2, 3]'::agtype -> '1'::text::agtype;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '[1, 2, 3]'::agtype -> '1'::text::agtype::int;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '[1, 2, 3]'::agtype -> '1'::text::agtype::int::bool::int;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '[1, 2, 3]'::agtype -> '1'::text::int;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT '[1, "e", {"a": 1}, {}, [{}, {}, -9]]'::agtype -> true::int;
+ ?column? 
+----------
+ "e"
+(1 row)
+
+SELECT '[1, "e", {"a": 1}, {}, [{}, {}, -9]]'::agtype -> 1.9::int;
+ ?column? 
+----------
+ {"a": 1}
+(1 row)
+
+SELECT '[1, "e", {"a": 1}, {}, [{}, {}, -9]]'::agtype -> 1.1::int;
+ ?column? 
+----------
+ "e"
+(1 row)
+
+SELECT 'true'::agtype -> 0.1::int;
+ ?column? 
+----------
+ true
+(1 row)
+
+SELECT 'true'::agtype -> 0;
+ ?column? 
+----------
+ true
+(1 row)
+
+SELECT 'true'::agtype -> false::int;
+ ?column? 
+----------
+ true
+(1 row)
+
+SELECT 'true'::agtype -> 0.1::int::bool::int;
+ ?column? 
+----------
+ true
+(1 row)
+
+SELECT '[1, 9]'::agtype -> -1.2::int;
+ ?column? 
+----------
+ 9
+(1 row)
+
+SELECT 'true'::agtype -> 0.1::bigint::int;
+ ?column? 
+----------
+ true
+(1 row)
+
+-- should return null
+SELECT '["a","b","c",[1,2],null]'::agtype -> '5'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '-6'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '"a"'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '"foo"'::agtype -> '1'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, 3, "string", {"a": 1}, {"a": []}]'::agtype -> '5'::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, 3]'::agtype -> '[1]';
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, "e", {"a": 1}, {}, [{}, {}, -9]]'::agtype -> '{"a": 1}'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 'true'::agtype -> 0::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT 'true'::agtype -> false::int::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+-- LHS is vertex/edge/path
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"a"';
+ ?column? 
+----------
+ "xyz"
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"e"' -> 'g'::text;
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"e"' -> 'h'::text -> -1;
+ ?column? 
+----------
+ {}
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"e"' -> 'h'::text -> -1 -> 0;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"id"';
+ ?column? 
+----------
+ 
+(1 row)
+
+-- access array element nested inside object or object field nested inside array on LHS
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"d"'::agtype -> '"1"'::agtype -> '1'::agtype;
+ ?column? 
+----------
+ 3
+(1 row)
+
+SELECT '{"a": 9, "b": 11, "c": {"ca": [[], {}, null]}, "d": true}'::agtype -> 'c'::text -> '"ca"'::agtype -> 0;
+ ?column? 
+----------
+ []
+(1 row)
+
+SELECT '{"a":[1, 2, 3], "b": {"c": ["cc", "cd"]}}'::agtype -> '"b"'::agtype -> 'c'::text -> 1 -> 0;
+ ?column? 
+----------
+ "cd"
+(1 row)
+
+SELECT '{"a":[1, 2, 3], "b": {"c": 1}}'::agtype -> '"b"'::agtype -> 1;
+ ?column? 
+----------
+ 
+(1 row)
+
+/*
+ * access agtype object field or array element as text (->>)
+ */
+-- LHS is an object
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ->> '"a"'::agtype;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype ->> '"d"'::agtype;
+   ?column?    
+---------------
+ {"1": [2, 3]}
+(1 row)
+
+SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}'::agtype ->> '"1"';
+ ?column? 
+----------
+ true
+(1 row)
+
+SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}'::agtype ->> '1'::text;
+ ?column? 
+----------
+ true
+(1 row)
+
+-- should return null
+SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}'::agtype ->> 1;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}, "1": true}'::agtype ->> '1';
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> null::int;
+ ?column? 
+----------
+ 
+(1 row)
+
+-- LHS is an array
+SELECT '["a","b","c",[1,2],null]'::agtype ->> 0;
+ ?column? 
+----------
+ a
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '1'::agtype;
+ ?column? 
+----------
+ b
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '2'::int;
+ ?column? 
+----------
+ c
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype ->> 3::int;
+ ?column? 
+----------
+ [1, 2]
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '4'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, "e", true, null, {"a": true, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> 0.1::float::bigint::int;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '"foo"'::agtype ->> '0'::agtype;
+ ?column? 
+----------
+ foo
+(1 row)
+
+SELECT '[false, {}]'::agtype ->> 1::bool::int::bigint::int;
+ ?column? 
+----------
+ {}
+(1 row)
+
+-- should return null
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '-1'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, "e", true, null, {"a": true, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> 2::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, "e", true, null, {"a": true, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> '2'::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '[1, 2, "e", true, null, {"a": true, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> 'null'::text;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '"foo"'::agtype ->> '1'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+-- LHS is vertex/edge/path
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype ->> '"a"';
+ ?column? 
+----------
+ xyz
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype ->> '"id"';
+ ?column? 
+----------
+ 
+(1 row)
+
+-- using -> and ->> in single query
+SELECT '{"1": -1.99, "a": 1, "b": 2, "c": {"d": [{}, [[[], [9]]]]}}'::agtype -> '"1"' ->> '0';
+ ?column? 
+----------
+ -1.99
+(1 row)
+
+SELECT '["a","b","c",[1,2],null]'::agtype -> '3'::agtype ->> '1'::agtype;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT ('["a","b","c",[1,2],null]'::agtype -> '3'::agtype) ->> 0;
+ ?column? 
+----------
+ 1
+(1 row)
+
+SELECT '{"n":null,"a":1,"b":[1,2],"c":{"1":2},"d":{"1":[2,3]}}'::agtype -> '"d"'::agtype ->> '1'::agtype;
+ ?column? 
+----------
+ 
+(1 row)
+
+SELECT '{"id": 1125899906842625, "label": "Vertex", "properties": {"a": "xyz", "b": true, "c": -19.888, "e": {"f": "abcdef", "g": {}, "h": [[], {}]}, "i": {"j": 199, "k": {"l": "mnopq"}}}}::vertex'::agtype -> '"e"' -> 'h'::text -> -1 ->> 0;
+ ?column? 
+----------
+ 
+(1 row)
+
+-- should give error
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '3'::agtype ->> '1'::agtype;
+ERROR:  operator does not exist: text ->> agtype
+LINE 1: ...["a","b","c",[1,2],null]'::agtype ->> '3'::agtype ->> '1'::a...
+                                                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '["a","b","c",[1,2],null]'::agtype ->> '3'::agtype -> '1'::agtype;
+ERROR:  operator does not exist: text -> agtype
+LINE 1: ...["a","b","c",[1,2],null]'::agtype ->> '3'::agtype -> '1'::ag...
+                                                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '[1, 2, "e", true, null, {"a": true, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> 0.1::float::bigint;
+ERROR:  operator does not exist: agtype ->> bigint
+LINE 1: ...ue, "b": {}, "c": [{}, [[], {}]]}, null]'::agtype ->> 0.1::f...
+                                                             ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> "'z'"::agtype;
+ERROR:  column "'z'" does not exist
+LINE 1: ...CT '{"a": [{"b": "c"}, {"b": "cc"}]}'::agtype ->> "'z'"::agt...
+                                                             ^
+--
 -- Agtype path extraction operators (#>, #>>)
 --
 /*
@@ -2045,6 +2626,251 @@ SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& '{}' $$) as (a ag
 ERROR:  invalid agtype value for right operand
 SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n ?& n.json $$) as (a agtype);
 ERROR:  invalid agtype value for right operand
+--
+-- agtype access operator (->)
+--
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-1
+$$) AS r(result agtype);
+ result 
+--------
+ 9
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->1
+$$) AS r(result agtype);
+                                     result                                     
+--------------------------------------------------------------------------------
+ {"int": 3, "bool": true, "array": [9, 11, {"bool": false, "float": 3.14}, 13]}
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4
+$$) AS r(result agtype);
+                                     result                                     
+--------------------------------------------------------------------------------
+ {"int": 3, "bool": true, "array": [9, 11, {"bool": false, "float": 3.14}, 13]}
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4->'array'
+$$) AS r(result agtype);
+                   result                    
+---------------------------------------------
+ [9, 11, {"bool": false, "float": 3.14}, 13]
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4->'array'->-2->'bool'
+$$) AS r(result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4->'array'->-2->'bool'->-1
+$$) AS r(result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->(size(lst)-1)
+$$) AS r(result agtype);
+ result 
+--------
+ 9
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->(size(lst)%size(lst))
+$$) AS r(result agtype);
+ result 
+--------
+ 1
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4->'array'->-2->'float'
+$$) AS r(result agtype);
+ result 
+--------
+ 3.14
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->-4->'array'->-2->'float'->0
+$$) AS r(result agtype);
+ result 
+--------
+ 3.14
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json' $$) as (a agtype);
+                     a                      
+--------------------------------------------
+ {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'a' $$) as (a agtype);
+ a 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'a'->-1 $$) as (a agtype);
+ a 
+---
+ 1
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'b' $$) as (a agtype);
+     a      
+------------
+ ["a", "b"]
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'b'->-2 $$) as (a agtype);
+  a  
+-----
+ "a"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'b'->1 $$) as (a agtype);
+  a  
+-----
+ "b"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'c' $$) as (a agtype);
+     a      
+------------
+ {"d": "a"}
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'c'->0 $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'c'->'d' $$) as (a agtype);
+  a  
+-----
+ "a"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'c'->'d'->-1->0 $$) as (a agtype);
+  a  
+-----
+ "a"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'list' $$) as (a agtype);
+        a        
+-----------------
+ ["a", "b", "c"]
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'list'->-1 $$) as (a agtype);
+  a  
+-----
+ "c"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'list'->2->0 $$) as (a agtype);
+  a  
+-----
+ "c"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) WITH n->'list' AS lst RETURN lst $$) as (a agtype);
+        a        
+-----------------
+ ["a", "b", "c"]
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) WITH n->'list' AS lst RETURN lst->0 $$) as (a agtype);
+  a  
+-----
+ "a"
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) WITH n->'list' AS lst RETURN lst->(size(lst)-1) $$) as (a agtype);
+  a  
+-----
+ "c"
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('jsonb_operators', $$
+    WITH [1,
+        {bool: true, int: 3, array: [9, 11, {bool: false, float: 3.14}, 13]},
+        5, 7, 9] as lst
+    RETURN lst->(size(lst))
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'d' $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'list'->'c' $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) WITH n->'list' AS lst RETURN lst->(size(lst)) $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
+SELECT * FROM cypher('jsonb_operators',$$MATCH (n) return n->'json'->'b'->'a' $$) as (a agtype);
+ a 
+---
+ 
+(1 row)
+
 --
 -- path extraction #> operator
 --

@@ -2894,6 +2894,36 @@ CREATE OPERATOR ->> (
   FUNCTION = ag_catalog.agtype_object_field_text
 );
 
+CREATE FUNCTION ag_catalog.agtype_object_field_agtype(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype object field or array element
+CREATE OPERATOR -> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_object_field_agtype
+);
+
+CREATE FUNCTION ag_catalog.agtype_object_field_text_agtype(agtype, agtype)
+RETURNS text
+LANGUAGE c
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+-- get agtype object field or array element as text
+CREATE OPERATOR ->> (
+  LEFTARG = agtype,
+  RIGHTARG = agtype,
+  FUNCTION = ag_catalog.agtype_object_field_text_agtype
+);
+
 CREATE FUNCTION ag_catalog.agtype_array_element(agtype, int4)
 RETURNS agtype
 LANGUAGE c

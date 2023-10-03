@@ -1550,6 +1550,10 @@ expr:
                          ag_scanner_errposition(@1, scanner)));
             }
         }
+    | expr '-' '>' expr %prec '.'
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "->", $1, $4, @2);
+        }
     | expr TYPECAST symbolic_name
         {
             $$ = make_typecast_expr($1, $3, @2);

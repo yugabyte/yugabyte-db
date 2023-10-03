@@ -499,6 +499,30 @@ RETURN [
 ][1].array[2]["float"]
 $$) AS r(result agtype);
 
+SELECT *
+FROM cypher('expr', $$
+    WITH {bool_val: false, int_val: 3, float_val: 3.14, array: [1, 2, 3]} as a
+    RETURN a - 'array'
+$$) as (a agtype);
+
+SELECT *
+FROM cypher('expr', $$
+    WITH {bool_val: false, int_val: 3, float_val: 3.14, array: [1, 2, 3]} as a
+    RETURN a - 'int_val'
+$$) as (a agtype);
+
+SELECT *
+FROM cypher('expr', $$
+    WITH {bool_val: false, int_val: 3, float_val: 3.14, array: [1, 2, 3]} as a
+    RETURN a.array - 1
+$$) as (a agtype);
+
+SELECT *
+FROM cypher('expr', $$
+    WITH {bool_val: false, int_val: 3, float_val: 3.14, array: [1, 2, 3]} as a
+    RETURN a.array + 1
+$$) as (a agtype);
+
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS transform logic
 --
