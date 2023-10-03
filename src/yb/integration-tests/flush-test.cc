@@ -235,7 +235,7 @@ class FlushITest : public YBTest {
 
   void DumpMemoryUsage() {
     auto* server = cluster_->mini_tablet_server(0)->server();
-    LOG(INFO) << server->mem_tracker()->FindChild("Tablets")->LogUsage("MEM ");
+    LOG(INFO) << server->mem_tracker()->FindChild("Tablets_overhead")->LogUsage("MEM ");
     LOG(INFO) << "rocksdb memory usage: " << GetRocksDbMemoryUsage();
   }
 
