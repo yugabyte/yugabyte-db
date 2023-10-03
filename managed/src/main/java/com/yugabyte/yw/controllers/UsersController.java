@@ -355,8 +355,7 @@ public class UsersController extends AuthenticatedController {
           BAD_REQUEST, "ConnectOnly/ReadOnly/BackupAdmin users can't change their timezone");
     }
 
-    if (StringUtils.isNotEmpty(formData.getTimezone())
-        && !formData.getTimezone().equals(user.getTimezone())) {
+    if (!formData.getTimezone().equals(user.getTimezone())) {
       user.setTimezone(formData.getTimezone());
     }
     if (formData.getRole() != user.getRole()) {

@@ -1,0 +1,13 @@
+[almalinux8-appstream]
+name=Almalinux8-appstream
+baseurl=https://repo.almalinux.org/almalinux/8/AppStream/x86_64/os/
+gpgcheck=1
+enabled=0
+gpgkey=https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-8
+
+[almalinux8-baseos]
+name=Almalinux8-baseos
+baseurl=https://repo.almalinux.org/almalinux/8/BaseOS/x86_64/os/
+gpgcheck=1
+enabled=0
+gpgkey=https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-8

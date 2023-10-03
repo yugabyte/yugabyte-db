@@ -1,0 +1,35 @@
+.yb-badge {
+  display: inline-flex;
+  padding: 3px 7px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  vertical-align: middle;
+  border-radius: 6px;
+  text-decoration: none;
+  margin: 0 10px;
+  background: #7879f1;
+  border: 1px solid #7879f1;
+  color: #fff;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  top: -2px;
+
+  &:hover,
+  &:focus,
+  &:active {
+    background: rgba(120, 121, 241, 0.8);
+  }
+
+  &.tech-preview {
+    background: #ff603b;
+    border: 1px solid #ff603b;
+
+    &:hover,
+    &:focus,
+    &:active {
+      background: rgba(255, 96, 59, 0.8);
+    }
+  }
+}
