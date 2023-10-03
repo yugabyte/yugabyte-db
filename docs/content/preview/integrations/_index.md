@@ -11,8 +11,6 @@ showRightNav: true
 
 Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many third-party integrations out of the box.
 
-For information on YugabyteDB-compatible drivers, ORMs, and frameworks, refer to [Drivers and ORMs](../drivers-orms/).
-
 ## Choose your integration
 
 ### Drivers and ORMs
