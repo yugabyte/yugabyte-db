@@ -55,7 +55,7 @@ Do the following:
 1. Use ysql_dump to export the table to a SQL script file. The syntax for dumping a single table is as follows:
 
     ```sh
-    ./ysql_dump -h <host> -t <table-name> <database-name> > <file-path>
+    ./ysql_dump -h <host> -t <table-name> <database-name> -f <file-path>
     ```
 
     Replace values as follows:
@@ -68,7 +68,7 @@ Do the following:
     For example:
 
     ```sh
-    ./ysql_dump -h 172.16.0.0 -t table_1 restored_db > /home/yugabyte/restored_db_table_1.sql
+    ./ysql_dump -h 172.16.0.0 -t table_1 restored_db -f /home/yugabyte/restored_db_table_1.sql
     ```
 
 ### Drop the table from the source
