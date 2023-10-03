@@ -52,6 +52,10 @@ DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the available "
              "memory. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
+DEFINE_NON_RUNTIME_int32(
+    tablet_overhead_size_percentage, 0,
+    "Percentage of total available memory to use for tablet-related overheads. Default is 0, "
+    "meaning no limit. Must be between 0 and 100 inclusive.");
 
 namespace {
   constexpr int kDbCacheSizeUsePercentage = -1;
@@ -154,6 +158,16 @@ size_t GetLogCacheSize(tablet::TabletPeer* peer) {
   return consensus_result.get()->LogCacheSize();
 }
 
+int64 ComputeTabletOverheadLimit() {
+  CHECK(0 <= FLAGS_tablet_overhead_size_percentage && FLAGS_tablet_overhead_size_percentage <= 100)
+      << Format(
+             "Flag tablet_overhead_size_percentage must be between 0 and 100 inclusive. Current "
+             "value: $0",
+             FLAGS_tablet_overhead_size_percentage);
+  if (0 == FLAGS_tablet_overhead_size_percentage) return -1;
+  return MemTracker::GetRootTracker()->limit() * FLAGS_tablet_overhead_size_percentage / 100;
+}
+
 }  // namespace
 
 TabletMemoryManager::TabletMemoryManager(
@@ -164,6 +178,8 @@ TabletMemoryManager::TabletMemoryManager(
     const std::function<std::vector<tablet::TabletPeerPtr>()>& peers_fn) {
   server_mem_tracker_ = mem_tracker;
   peers_fn_ = peers_fn;
+  tablets_overhead_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      ComputeTabletOverheadLimit(), "Tablets_overhead", server_mem_tracker_);
 
   InitBlockCache(metrics, default_block_cache_size_percentage, options);
   InitLogCacheGC();
@@ -186,6 +202,17 @@ void TabletMemoryManager::Shutdown() {
 
 std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker() {
   return block_based_table_mem_tracker_;
+}
+
+std::shared_ptr<MemTracker> TabletMemoryManager::tablets_overhead_mem_tracker() {
+  return tablets_overhead_mem_tracker_;
+}
+
+std::shared_ptr<MemTracker> TabletMemoryManager::FindOrCreateOverheadMemTrackerForTablet(
+    const TabletId& id) {
+  return MemTracker::FindOrCreateTracker(
+      Format("tablet-$0", id), /* metric_name */ "PerTablet", tablets_overhead_mem_tracker(),
+      AddToParent::kTrue, CreateMetrics::kFalse);
 }
 
 void TabletMemoryManager::InitBlockCache(
