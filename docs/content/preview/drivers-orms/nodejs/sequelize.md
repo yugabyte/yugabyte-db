@@ -5,6 +5,8 @@ linkTitle: Use an ORM
 description: Node.js Sequelize ORM support for YugabyteDB
 headcontent: Node.js ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /integrations/sequelize/
 menu:
   preview:
     identifier: sequelize-1

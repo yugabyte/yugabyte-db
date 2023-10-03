@@ -56,7 +56,7 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 | Arctype   | Full | [Arctype](../tools/arctype/) |
 | DBeaver   | Full | [DBeaver](../tools/dbeaver-ysql/) |
 | DbSchema  | Full | [DbSchema](../tools/dbschema/) |
-| Metabase  | Full | [Metabase](metabase/) |
+| Metabase  | Full | [Metabase](../tools/metabase/) |
 | pgAdmin   | Full | [pgAdmin](../tools/pgadmin/) |
 | SQL Workbench/J | Full | [SQL Workbench/J](../tools/sql-workbench/) |
 | TablePlus | Full | [TablePlus](../tools/tableplus/) |
@@ -113,6 +113,7 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 | Mirantis MKE |      | Full | [Mirantis](mirantis/) |
 | Presto      | Full | [Presto](presto/) |
 
+<!--
 <ul class="nav yb-pills">
 
   <li>
@@ -382,3 +383,4 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
   </li>
 
 </ul>
+-->
