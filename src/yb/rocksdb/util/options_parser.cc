@@ -52,7 +52,7 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
                              const std::string& file_name, Env* env,
                              const IncludeHeader include_header,
                              const IncludeFileVersion include_file_version) {
-  TEST_SYNC_POINT("PersistRocksDBOptions:start");
+  DEBUG_ONLY_TEST_SYNC_POINT("PersistRocksDBOptions:start");
   if (cf_names.size() != cf_opts.size()) {
     return STATUS(InvalidArgument,
         "cf_names.size() and cf_opts.size() must be the same");

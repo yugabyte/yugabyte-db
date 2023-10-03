@@ -109,7 +109,7 @@ Status WritableFileWriter::Append(const Slice& data) {
 
   {
     IOSTATS_TIMER_GUARD(prepare_write_nanos);
-    TEST_SYNC_POINT("WritableFileWriter::Append:BeforePrepareWrite");
+    DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Append:BeforePrepareWrite");
     writable_file_->PrepareWrite(static_cast<size_t>(GetFileSize()), left);
   }
 
@@ -281,9 +281,9 @@ Status WritableFileWriter::SyncWithoutFlush(bool use_fsync) {
       "Can't WritableFileWriter::SyncWithoutFlush() because "
       "WritableFile::IsSyncThreadSafe() is false");
   }
-  TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:1");
   Status s = SyncInternal(use_fsync);
-  TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:2");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:2");
   return s;
 }
 
@@ -294,7 +294,7 @@ Status WritableFileWriter::InvalidateCache(size_t offset, size_t length) {
 Status WritableFileWriter::SyncInternal(bool use_fsync) {
   Status s;
   IOSTATS_TIMER_GUARD(fsync_nanos);
-  TEST_SYNC_POINT("WritableFileWriter::SyncInternal:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncInternal:0");
   if (use_fsync) {
     s = writable_file_->Fsync();
   } else {
@@ -305,7 +305,7 @@ Status WritableFileWriter::SyncInternal(bool use_fsync) {
 
 Status WritableFileWriter::RangeSync(uint64_t offset, uint64_t nbytes) {
   IOSTATS_TIMER_GUARD(range_sync_nanos);
-  TEST_SYNC_POINT("WritableFileWriter::RangeSync:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::RangeSync:0");
   return writable_file_->RangeSync(offset, nbytes);
 }
 
@@ -343,7 +343,7 @@ Status WritableFileWriter::WriteBuffered(const char* data, size_t size) {
 
     {
       IOSTATS_TIMER_GUARD(write_nanos);
-      TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
+      DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
       s = writable_file_->Append(Slice(src, allowed));
       if (!s.ok()) {
         return s;
@@ -399,7 +399,7 @@ Status WritableFileWriter::WriteUnbuffered() {
 
     {
       IOSTATS_TIMER_GUARD(write_nanos);
-      TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
+      DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
       // Unbuffered writes must be positional
       s = writable_file_->PositionedAppend(Slice(src, size), write_offset);
       if (!s.ok()) {
