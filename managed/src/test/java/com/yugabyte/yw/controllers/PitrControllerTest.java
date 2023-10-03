@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -134,7 +135,7 @@ public class PitrControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreatePitrConfig() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreatePitrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("retentionPeriodInSeconds", 7 * 86400L);
@@ -550,7 +551,7 @@ public class PitrControllerTest extends FakeDBApplication {
     params1.tableType = TableType.PGSQL_TABLE_TYPE;
     PitrConfig pitr1 = PitrConfig.create(scheduleUUID1, params1);
 
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeletePitrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result r = deletePitrConfig(defaultUniverse.getUniverseUUID(), pitr1.getUuid());
     assertOk(r);
@@ -648,7 +649,6 @@ public class PitrControllerTest extends FakeDBApplication {
   @Test
   public void testPerformPitr() throws Exception {
     List<SnapshotScheduleInfo> scheduleInfoList = new ArrayList<>();
-    UUID fakeTaskUUID = UUID.randomUUID();
     UUID pitrConfigUUID = UUID.randomUUID();
     CreatePitrConfigParams params3 = new CreatePitrConfigParams();
     params3.retentionPeriodInSeconds = 7 * 86400L;
@@ -658,6 +658,7 @@ public class PitrControllerTest extends FakeDBApplication {
     params3.keyspaceName = "cassandra";
     params3.tableType = TableType.YQL_TABLE_TYPE;
     PitrConfig pitr3 = PitrConfig.create(pitrConfigUUID, params3);
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreatePitrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID snapshotUUID = UUID.randomUUID();
     long snapshotTime = System.currentTimeMillis() + 2 * 1000 * 86400L;

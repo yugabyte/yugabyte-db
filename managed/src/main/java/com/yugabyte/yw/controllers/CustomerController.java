@@ -44,6 +44,8 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -310,6 +312,20 @@ public class CustomerController extends AuthenticatedController {
     List<Users> users = Users.getAll(customerUUID);
     for (Users user : users) {
       user.delete();
+    }
+
+    // delete the taskInfo corresponding to the customer_task
+    // TODO: Alter task_info table to have foreign key reference to customer id.
+    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customerUUID);
+    if (!customerTasks.isEmpty()) {
+      for (CustomerTask task : customerTasks) {
+        UUID taskUUID = task.getTaskUUID();
+        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+        if (!taskInfo.delete()) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Unable to delete taskInfo of taskUUID: " + taskUUID);
+        }
+      }
     }
 
     if (!customer.delete()) {
