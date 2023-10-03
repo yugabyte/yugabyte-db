@@ -189,12 +189,11 @@ public class BackupHelper {
               "Cannot run Backup task since the universe %s is currently in a locked state.",
               taskParams.getUniverseUUID().toString()));
     }
-    if ((universe.getLiveTServersInPrimaryCluster().size() < taskParams.parallelDBBackups)
-        || taskParams.parallelDBBackups <= 0) {
+    if (taskParams.parallelDBBackups <= 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "invalid parallel backups value provided for universe %s",
+              "Invalid parallel backups value provided for universe %s",
               universe.getUniverseUUID()));
     }
     validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);

@@ -740,7 +740,7 @@ public class YbcManager {
     } else {
       nodeIPs.addAll(
           universe
-              .getLiveTServersInPrimaryCluster()
+              .getRunningTserversInPrimaryCluster()
               .parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
@@ -783,7 +783,7 @@ public class YbcManager {
 
     // Give second preference to same AZ nodes.
     Set<String> sameAZNodes =
-        universe.getLiveTServersInPrimaryCluster().stream()
+        universe.getRunningTserversInPrimaryCluster().stream()
             .filter(
                 nD ->
                     !nD.cloudInfo.private_ip.equals(masterLeaderIP)
@@ -795,7 +795,7 @@ public class YbcManager {
 
     // Give third preference to same region nodes.
     List<String> regionSortedList =
-        universe.getLiveTServersInPrimaryCluster().stream()
+        universe.getRunningTserversInPrimaryCluster().stream()
             .filter(
                 nD ->
                     !nD.cloudInfo.private_ip.equals(masterLeaderIP)

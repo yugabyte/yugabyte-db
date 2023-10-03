@@ -863,7 +863,7 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
     return nodeList.get(0).cloudInfo.private_ip;
   }
 

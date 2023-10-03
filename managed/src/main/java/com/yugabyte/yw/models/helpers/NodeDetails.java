@@ -383,6 +383,11 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isConsideredRunning() {
+    return (state == NodeState.Live || state == NodeState.ToBeRemoved);
+  }
+
+  @JsonIgnore
   public Set<UniverseTaskBase.ServerType> getAllProcesses() {
     Set<UniverseTaskBase.ServerType> result = new LinkedHashSet<>();
     if (isMaster) {
