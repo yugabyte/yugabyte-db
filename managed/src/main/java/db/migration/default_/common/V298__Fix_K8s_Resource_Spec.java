@@ -43,16 +43,27 @@ public class V298__Fix_K8s_Resource_Spec extends BaseJavaMigration {
           for (JsonNode cluster : clusters) {
             JsonNode userIntentNode = cluster.get("userIntent");
             if (userIntentNode != null) {
-              String provider = userIntentNode.get("providerType").asText();
-              String insType = userIntentNode.get("instanceType").asText();
+              String provider = userIntentNode.get("provider").asText();
+              String providerType = userIntentNode.get("providerType").asText();
+              String insType = null;
+              if (userIntentNode.has("instanceType")
+                  && userIntentNode.get("instanceType") != null) {
+                insType = userIntentNode.get("instanceType").asText();
+              } else {
+                // We could not find instanceType string, skip this cluster.
+                // This can happen if we never set instance type on this universe.
+                continue;
+              }
               if (provider == null) {
+                // We don't have a provider lets skip this cluster.
                 continue;
               }
               InstanceType instanceType = InstanceType.get(UUID.fromString(provider), insType);
               if (instanceType == null) {
+                // No instance Type found.
                 continue;
               }
-              if (provider.equals("kubernetes") && instanceType != null) {
+              if (providerType.equals("kubernetes") && instanceType != null) {
                 // Create a new JSON object for masterK8SNodeResourceSpec
                 ObjectNode masterK8SNodeResourceSpec = JsonNodeFactory.instance.objectNode();
                 masterK8SNodeResourceSpec.put("memoryGib", instanceType.getMemSizeGB());
