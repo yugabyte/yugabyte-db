@@ -137,14 +137,14 @@ export const TableList: FC<DatabaseListProps> = ({
       status: tabletList.some(
         (tablet) =>
           tablet.tablet_id &&
-          tablet.table_name === table.name &&
+          tablet.table_uuid === table.uuid &&
           healthCheckData?.data?.under_replicated_tablets?.includes(tablet.tablet_id)
       )
         ? "Under-replicated"
         : tabletList.some(
             (tablet) =>
               tablet.tablet_id &&
-              tablet.table_name === table.name &&
+              tablet.table_uuid === table.uuid &&
               healthCheckData?.data?.leaderless_tablets?.includes(tablet.tablet_id)
           )
         ? "Unavailable"

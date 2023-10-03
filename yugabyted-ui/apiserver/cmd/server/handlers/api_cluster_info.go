@@ -58,10 +58,10 @@ type DetailObj struct {
 }
 
 // return hostname of each node
-func getNodes() ([]string, error) {
+func getNodes(logger logger.Logger) ([]string, error) {
         hostNames := []string{}
         tabletServersFuture := make(chan helpers.TabletServersFuture)
-        go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go helpers.GetTabletServersFuture(logger, helpers.HOST, tabletServersFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
                 return hostNames, tabletServersResponse.Error
@@ -365,262 +365,233 @@ func divideMetricByConstant(metricValues [][]float64, constant float64) {
 
 // GetClusterMetric - Get a metric for a cluster
 func (c *Container) GetClusterMetric(ctx echo.Context) error {
-        metricsParam := strings.Split(ctx.QueryParam("metrics"), ",")
-        nodeParam := ctx.QueryParam("node_name")
-        nodeList := []string{nodeParam}
-        var err error = nil
-        if nodeParam == "" {
-                nodeList, err = getNodes()
-                if err != nil {
-                        return ctx.String(http.StatusInternalServerError, err.Error())
-                }
-        }
-        hostToUuid, err := helpers.GetHostToUuidMap(helpers.HOST)
-        if err != nil {
-                return ctx.String(http.StatusInternalServerError, err.Error())
-        }
-        // in case of errors parsing start/end time, set default start = 1 hour ago, end = now
-        startTime, err := strconv.ParseInt(ctx.QueryParam("start_time"), 10, 64)
-        if err != nil {
-                now := time.Now()
-                startTime = now.Unix()
-        }
-        endTime, err := strconv.ParseInt(ctx.QueryParam("end_time"), 10, 64)
-        if err != nil {
-                now := time.Now()
-                endTime = now.Unix() - 60*60
-        }
-
-        metricResponse := models.MetricResponse{
-                Data:           []models.MetricData{},
-                StartTimestamp: startTime,
-                EndTimestamp:   endTime,
-        }
-
-        session, err := c.GetSession()
+    metricsParam := strings.Split(ctx.QueryParam("metrics"), ",")
+    nodeParam := ctx.QueryParam("node_name")
+    nodeList := []string{nodeParam}
+    var err error = nil
+    if nodeParam == "" {
+        nodeList, err = getNodes(c.logger)
         if err != nil {
             return ctx.String(http.StatusInternalServerError, err.Error())
         }
+    }
+    hostToUuid, err := helpers.GetHostToUuidMap(c.logger, helpers.HOST)
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    // in case of errors parsing start/end time, set default start = 1 hour ago, end = now
+    startTime, err := strconv.ParseInt(ctx.QueryParam("start_time"), 10, 64)
+    if err != nil {
+        now := time.Now()
+        startTime = now.Unix()
+    }
+    endTime, err := strconv.ParseInt(ctx.QueryParam("end_time"), 10, 64)
+    if err != nil {
+        now := time.Now()
+        endTime = now.Unix() - 60*60
+    }
 
-        for _, metric := range metricsParam {
-                // Read from the table.
-                var ts int64
-                var value int
-                var details string
-                // need node uuid
-                switch metric {
-                case "READ_OPS_PER_SEC":
-                        rawMetricValues, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        rateMetrics := convertRawMetricsToRates(rawMetricValues)
-                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
-                        metricValues := calculateCombinedMetric(nodeMetricValues, false)
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "WRITE_OPS_PER_SEC":
-                        rawMetricValues, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        rateMetrics := convertRawMetricsToRates(rawMetricValues)
-                        nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
-                        metricValues := calculateCombinedMetric(nodeMetricValues, false)
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "CPU_USAGE_USER":
-                        metricValues, err := getAveragePercentageMetricData("cpu_usage_user",
-                                nodeList, hostToUuid, startTime, endTime, session, true)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "CPU_USAGE_SYSTEM":
-                        metricValues, err := getAveragePercentageMetricData("cpu_usage_system",
-                                nodeList, hostToUuid, startTime, endTime, session, true)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "DISK_USAGE_GB":
-                        // For disk usage, we assume every node reports the same metrics
-                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk",
-                                startTime*1000, endTime*1000)
-                        iter := session.Query(query).Iter()
-                        values := [][]float64{}
-                        for iter.Scan(&ts, &value, &details) {
-                                values = append(values,
-                                        []float64{float64(ts) / 1000,
-                                            float64(value) / helpers.BYTES_IN_GB})
-                        }
-                        if err := iter.Close(); err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        sort.Slice(values, func(i, j int) bool {
-                                return values[i][0] < values[j][0]
-                        })
-                        query = fmt.Sprintf(QUERY_FORMAT, "system.metrics", "free_disk",
-                                startTime*1000, endTime*1000)
-                        iter = session.Query(query).Iter()
-                        freeValues := [][]float64{}
-                        for iter.Scan(&ts, &value, &details) {
-                                freeValues = append(freeValues,
-                                        []float64{float64(ts) / 1000,
-                                            float64(value) / helpers.BYTES_IN_GB})
-                        }
-                        if err := iter.Close(); err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        sort.Slice(freeValues, func(i, j int) bool {
-                                return freeValues[i][0] < freeValues[j][0]
-                        })
+    metricResponse := models.MetricResponse{
+        Data:           []models.MetricData{},
+        StartTimestamp: startTime,
+        EndTimestamp:   endTime,
+    }
 
-                        // assume query results for free and total disk have the same timestamps
-                        for index, pair := range freeValues {
-                                if index >= len(values) {
-                                        break
-                                }
-                                values[index][1] -= float64(pair[1])
-                        }
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name: metric,
-                                Values: reduceGranularity(startTime, endTime, values,
-                                        GRANULARITY_NUM_INTERVALS, true),
-                        })
-                case "PROVISIONED_DISK_SPACE_GB":
-                        query := fmt.Sprintf(QUERY_FORMAT, "system.metrics", "total_disk",
-                                startTime*1000, endTime*1000)
-                        iter := session.Query(query).Iter()
-                        values := [][]float64{}
-                        for iter.Scan(&ts, &value, &details) {
-                                values = append(values,
-                                        []float64{float64(ts) / 1000,
-                                            float64(value) / helpers.BYTES_IN_GB})
-                        }
-                        if err := iter.Close(); err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        sort.Slice(values, func(i, j int) bool {
-                                return values[i][0] < values[j][0]
-                        })
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name: metric,
-                                Values: reduceGranularity(startTime, endTime, values,
-                                        GRANULARITY_NUM_INTERVALS, true),
-                        })
-                case "AVERAGE_READ_LATENCY_MS":
-                        rawMetricValuesCount, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
+    session, err := c.GetSession()
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
 
-                        rawMetricValuesSum, err := getRawMetricsForAllNodes(READ_SUM_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
+    for _, metric := range metricsParam {
+        switch metric {
+        case "READ_OPS_PER_SEC":
+            rawMetricValues, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            rateMetrics := convertRawMetricsToRates(rawMetricValues)
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "WRITE_OPS_PER_SEC":
+            rawMetricValues, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            rateMetrics := convertRawMetricsToRates(rawMetricValues)
+            nodeMetricValues := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetrics, GRANULARITY_NUM_INTERVALS, true)
+            metricValues := calculateCombinedMetric(nodeMetricValues, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "CPU_USAGE_USER":
+            metricValues, err := getAveragePercentageMetricData("cpu_usage_user",
+                nodeList, hostToUuid, startTime, endTime, session, true)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "CPU_USAGE_SYSTEM":
+            metricValues, err := getAveragePercentageMetricData("cpu_usage_system",
+                nodeList, hostToUuid, startTime, endTime, session, true)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "DISK_USAGE_GB":
+            reducedNodeList := helpers.RemoveLocalAddresses(nodeList)
+            rawTotalDiskValues, err := getRawMetricsForAllNodes("total_disk",
+                reducedNodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            nodeTotalDiskValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawTotalDiskValues, GRANULARITY_NUM_INTERVALS, true)
+            combinedTotalDiskValues := calculateCombinedMetric(nodeTotalDiskValues, false)
+            divideMetricByConstant(combinedTotalDiskValues, helpers.BYTES_IN_GB)
+            rawFreeDiskValues, err := getRawMetricsForAllNodes("free_disk",
+                reducedNodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            nodeFreeDiskValues := reduceGranularityForAllNodes(startTime, endTime,
+                rawFreeDiskValues, GRANULARITY_NUM_INTERVALS, true)
+            combinedFreeDiskValues := calculateCombinedMetric(nodeFreeDiskValues, false)
+            // We divide by negative value so we can sum with total disk metric
+            divideMetricByConstant(combinedFreeDiskValues, -helpers.BYTES_IN_GB)
+            combinedDiskUsageValues := calculateCombinedMetric(
+                [][][]float64{combinedTotalDiskValues, combinedFreeDiskValues}, false)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name: metric,
+                Values: combinedDiskUsageValues,
+            })
+        case "PROVISIONED_DISK_SPACE_GB":
+            reducedNodeList := helpers.RemoveLocalAddresses(nodeList)
+            rawMetricValues, err := getRawMetricsForAllNodes("total_disk",
+                reducedNodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            nodeValues := reduceGranularityForAllNodes(startTime, endTime, rawMetricValues,
+                GRANULARITY_NUM_INTERVALS, true)
+            combinedValues := calculateCombinedMetric(nodeValues, false)
+            divideMetricByConstant(combinedValues, helpers.BYTES_IN_GB)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name: metric,
+                Values: combinedValues,
+            })
+        case "AVERAGE_READ_LATENCY_MS":
+            rawMetricValuesCount, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
 
-                        rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
-                        rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
+            rawMetricValuesSum, err := getRawMetricsForAllNodes(READ_SUM_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
 
-                        rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
+            rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
+            rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
 
-                        rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
+            rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
 
-                        rateMetricsCountCombined :=
-                            calculateCombinedMetric(rateMetricsCountReduced, false)
-                        rateMetricsSumCombined :=
-                            calculateCombinedMetric(rateMetricsSumReduced, false)
+            rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-                        latencyMetric :=
-                            divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
-                                [][][]float64{rateMetricsCountCombined})
+            rateMetricsCountCombined :=
+                calculateCombinedMetric(rateMetricsCountReduced, false)
+            rateMetricsSumCombined :=
+                calculateCombinedMetric(rateMetricsSumReduced, false)
 
-                        metricValues := latencyMetric[0]
-                        // Divide everything by 1000 to convert from microseconds to milliseconds
-                        divideMetricByConstant(metricValues, 1000)
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "AVERAGE_WRITE_LATENCY_MS":
-                        rawMetricValuesCount, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
+            latencyMetric :=
+                divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                    [][][]float64{rateMetricsCountCombined})
 
-                        rawMetricValuesSum, err := getRawMetricsForAllNodes(WRITE_SUM_METRIC,
-                                nodeList, hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
+            metricValues := latencyMetric[0]
+            // Divide everything by 1000 to convert from microseconds to milliseconds
+            divideMetricByConstant(metricValues, 1000)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "AVERAGE_WRITE_LATENCY_MS":
+            rawMetricValuesCount, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
 
-                        rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
-                        rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
+            rawMetricValuesSum, err := getRawMetricsForAllNodes(WRITE_SUM_METRIC,
+                nodeList, hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
 
-                        rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
+            rateMetricsCount := convertRawMetricsToRates(rawMetricValuesCount)
+            rateMetricsSum := convertRawMetricsToRates(rawMetricValuesSum)
 
-                        rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
-                                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
+            rateMetricsCountReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsCount, GRANULARITY_NUM_INTERVALS, false)
 
-                        rateMetricsCountCombined :=
-                            calculateCombinedMetric(rateMetricsCountReduced, false)
-                        rateMetricsSumCombined :=
-                            calculateCombinedMetric(rateMetricsSumReduced, false)
+            rateMetricsSumReduced := reduceGranularityForAllNodes(startTime, endTime,
+                rateMetricsSum, GRANULARITY_NUM_INTERVALS, false)
 
-                        latencyMetric :=
-                            divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
-                                [][][]float64{rateMetricsCountCombined})
+            rateMetricsCountCombined :=
+                calculateCombinedMetric(rateMetricsCountReduced, false)
+            rateMetricsSumCombined :=
+                calculateCombinedMetric(rateMetricsSumReduced, false)
 
-                        metricValues := latencyMetric[0]
-                        // Divide everything by 1000 to convert from microseconds to milliseconds
-                        divideMetricByConstant(metricValues, 1000)
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
-                case "TOTAL_LIVE_NODES":
-                        rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList,
-                                hostToUuid, startTime, endTime, session, false)
-                        if err != nil {
-                                return ctx.String(http.StatusInternalServerError, err.Error())
-                        }
-                        reducedMetric := reduceGranularityForAllNodes(startTime, endTime,
-                                rawMetricValues, GRANULARITY_NUM_INTERVALS, true)
-                        metricValues := calculateCombinedMetric(reducedMetric, false)
-                        // In cases where there is no data, set to 0
-                        for i, metric := range metricValues {
-                                if len(metric) < 2 {
-                                        metricValues[i] = append(metricValues[i], 0)
-                                }
-                        }
-                        metricResponse.Data = append(metricResponse.Data, models.MetricData{
-                                Name:   metric,
-                                Values: metricValues,
-                        })
+            latencyMetric :=
+                divideMetricForAllNodes([][][]float64{rateMetricsSumCombined},
+                    [][][]float64{rateMetricsCountCombined})
+
+            metricValues := latencyMetric[0]
+            // Divide everything by 1000 to convert from microseconds to milliseconds
+            divideMetricByConstant(metricValues, 1000)
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
+        case "TOTAL_LIVE_NODES":
+            rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList,
+                hostToUuid, startTime, endTime, session, false)
+            if err != nil {
+                return ctx.String(http.StatusInternalServerError, err.Error())
+            }
+            reducedMetric := reduceGranularityForAllNodes(startTime, endTime,
+                rawMetricValues, GRANULARITY_NUM_INTERVALS, true)
+            metricValues := calculateCombinedMetric(reducedMetric, false)
+            // In cases where there is no data, set to 0
+            for i, metric := range metricValues {
+                if len(metric) < 2 {
+                    metricValues[i] = append(metricValues[i], 0)
                 }
+            }
+            metricResponse.Data = append(metricResponse.Data, models.MetricData{
+                Name:   metric,
+                Values: metricValues,
+            })
         }
-        return ctx.JSON(http.StatusOK, metricResponse)
+    }
+    return ctx.JSON(http.StatusOK, metricResponse)
 }
 
 // GetClusterNodes - Get the nodes for a cluster
@@ -629,7 +600,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 Data: []models.NodeData{},
         }
         tabletServersFuture := make(chan helpers.TabletServersFuture)
-        go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go helpers.GetTabletServersFuture(c.logger, helpers.HOST, tabletServersFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
                 return ctx.String(http.StatusInternalServerError,
@@ -673,135 +644,136 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 }
             }
         }
-        currentTime := time.Now().UnixMicro()
-        hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(helpers.HOST)
-        for _, obj := range tabletServersResponse.Tablets {
-                for hostport, nodeData := range obj {
-                        host, _, err := net.SplitHostPort(hostport)
-                        // If we can split hostport, just use host as name.
-                        // Otherwise, use hostport as name.
-                        // However, we can only get version information if we can get the host
-                        hostName := hostport
-                        versionNumber := ""
-                        activeYsqlConnections := int64(0)
-                        activeYcqlConnections := int64(0)
-                        isMasterUp := true
-                        ramUsedTserver := int64(0)
-                        ramUsedMaster := int64(0)
-                        ramLimitTserver := int64(0)
-                        ramLimitMaster := int64(0)
-                        masterUptimeUs := int64(0)
-                        totalDiskBytes := int64(0)
-                        if err == nil {
-                                hostName = host
-                                versionInfo := <-versionInfoFutures[hostName]
-                                if versionInfo.Error == nil {
-                                    versionNumber = versionInfo.VersionInfo.VersionNumber
-                                }
-                                ysqlConnections := <-activeYsqlConnectionsFutures[hostName]
-                                if ysqlConnections.Error == nil {
-                                    activeYsqlConnections += ysqlConnections.YsqlConnections
-                                }
-                                ycqlConnections := <-activeYcqlConnectionsFutures[hostName]
-                                if ycqlConnections.Error == nil {
-                                    activeYcqlConnections += ycqlConnections.YcqlConnections
-                                }
-                                masterMemTracker := <-masterMemTrackersFutures[hostName]
-                                if masterMemTracker.Error == nil {
-                                    ramUsedMaster = masterMemTracker.Consumption
-                                    ramLimitMaster = masterMemTracker.Limit
-                                }
-                                tserverMemTracker := <-tserverMemTrackersFutures[hostName]
-                                if tserverMemTracker.Error == nil {
-                                    ramUsedTserver = tserverMemTracker.Consumption
-                                    ramLimitTserver = tserverMemTracker.Limit
-                                }
-                                if master, ok := masters[hostName]; ok {
-                                    isMasterUp = master.Error == nil
-                                    if isMasterUp {
-                                        masterUptimeUs = currentTime - master.InstanceId.StartTimeUs
-                                    }
-                                }
-                                if errHostToUuidMap == nil {
-                                    query :=
-                                        fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
-                                            hostToUuid[hostName])
-                                    session, err := c.GetSession()
-                                    if err == nil {
-                                        iter := session.Query(query).Iter()
-                                        var ts int64
-                                        var value int64
-                                        var details string
-                                        iter.Scan(&ts, &value, &details)
-                                        totalDiskBytes = value
-                                    }
-                                }
-                        }
-                        totalSstFileSizeBytes := int64(nodeData.TotalSstFileSizeBytes)
-                        uncompressedSstFileSizeBytes :=
-                                int64(nodeData.UncompressedSstFileSizeBytes)
-                        userTabletsTotal := int64(nodeData.UserTabletsTotal)
-                        userTabletsLeaders := int64(nodeData.UserTabletsLeaders)
-                        systemTabletsTotal := int64(nodeData.SystemTabletsTotal)
-                        systemTabletsLeaders := int64(nodeData.SystemTabletsLeaders)
-                        activeConnections := models.NodeDataMetricsActiveConnections{
-                            Ysql: activeYsqlConnections,
-                            Ycql: activeYcqlConnections,
-                        }
-                        ramUsedBytes := ramUsedMaster + ramUsedTserver
-                        ramProvisionedBytes := ramLimitMaster + ramLimitTserver
-                        isBootstrapping := true
-                        // For now we hard code isBootstrapping here, and we use the
-                        // GetIsLoadBalancerIdle endpoint separately to determine if
-                        // a node is bootstrapping on the frontend, since yb-admin is a
-                        // bit slow. Once we get a faster way of doing this we can move
-                        // the implementation here.
-                        // For now, assuming that IsMaster and IsTserver are always true
-                        // The UI frontend doesn't use these values so this should be ok for now
-                        response.Data = append(response.Data, models.NodeData{
-                                Name:            hostName,
-                                Host:            hostName,
-                                IsNodeUp:        nodeData.Status == "ALIVE",
-                                IsMaster:        true,
-                                IsTserver:       true,
-                                IsMasterUp:      isMasterUp,
-                                IsBootstrapping: isBootstrapping,
-                                Metrics: models.NodeDataMetrics{
-                                    // Eventually we want to change models.NodeDataMetrics so that
-                                    // all the int64 fields are uint64. But currently openapi
-                                    // generator only generates int64s. Ideally if we set
-                                    // minimum: 0 in the specs, the generator should use uint64.
-                                    // We should try to implement this into openapi-generator.
-                                        MemoryUsedBytes:              int64(nodeData.RamUsedBytes),
-                                        TotalSstFileSizeBytes:        &totalSstFileSizeBytes,
-                                        UncompressedSstFileSizeBytes: &uncompressedSstFileSizeBytes,
-                                        ReadOpsPerSec:                nodeData.ReadOpsPerSec,
-                                        WriteOpsPerSec:               nodeData.WriteOpsPerSec,
-                                        TimeSinceHbSec:               nodeData.TimeSinceHbSec,
-                                        UptimeSeconds:                int64(nodeData.UptimeSeconds),
-                                        UserTabletsTotal:             userTabletsTotal,
-                                        UserTabletsLeaders:           userTabletsLeaders,
-                                        SystemTabletsTotal:           systemTabletsTotal,
-                                        SystemTabletsLeaders:         systemTabletsLeaders,
-                                        ActiveConnections:            activeConnections,
-                                        MasterUptimeUs:               masterUptimeUs,
-                                        RamUsedBytes:                 ramUsedBytes,
-                                        RamProvisionedBytes:          ramProvisionedBytes,
-                                        DiskProvisionedBytes:         totalDiskBytes,
-                                },
-                                CloudInfo: models.NodeDataCloudInfo{
-                                        Cloud:  nodeData.Cloud,
-                                        Region: nodeData.Region,
-                                        Zone:   nodeData.Zone,
-                                },
-                                SoftwareVersion: versionNumber,
-                        })
+    currentTime := time.Now().UnixMicro()
+    hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(c.logger, helpers.HOST)
+    for _, obj := range tabletServersResponse.Tablets {
+        // Cross check the placement UUID of the node with that of read-replica cluster
+        for hostport, nodeData := range obj {
+            host, _, err := net.SplitHostPort(hostport)
+            // If we can split hostport, just use host as name.
+            // Otherwise, use hostport as name.
+            // However, we can only get version information if we can get the host
+            hostName := hostport
+            versionNumber := ""
+            activeYsqlConnections := int64(0)
+            activeYcqlConnections := int64(0)
+            isMasterUp := true
+            ramUsedTserver := int64(0)
+            ramUsedMaster := int64(0)
+            ramLimitTserver := int64(0)
+            ramLimitMaster := int64(0)
+            masterUptimeUs := int64(0)
+            totalDiskBytes := int64(0)
+            if err == nil {
+                hostName = host
+                versionInfo := <-versionInfoFutures[hostName]
+                if versionInfo.Error == nil {
+                    versionNumber = versionInfo.VersionInfo.VersionNumber
                 }
+                ysqlConnections := <-activeYsqlConnectionsFutures[hostName]
+                if ysqlConnections.Error == nil {
+                    activeYsqlConnections += ysqlConnections.YsqlConnections
+                }
+                ycqlConnections := <-activeYcqlConnectionsFutures[hostName]
+                if ycqlConnections.Error == nil {
+                    activeYcqlConnections += ycqlConnections.YcqlConnections
+                }
+                masterMemTracker := <-masterMemTrackersFutures[hostName]
+                if masterMemTracker.Error == nil {
+                    ramUsedMaster = masterMemTracker.Consumption
+                    ramLimitMaster = masterMemTracker.Limit
+                }
+                tserverMemTracker := <-tserverMemTrackersFutures[hostName]
+                if tserverMemTracker.Error == nil {
+                    ramUsedTserver = tserverMemTracker.Consumption
+                    ramLimitTserver = tserverMemTracker.Limit
+                }
+                if master, ok := masters[hostName]; ok {
+                    isMasterUp = master.Error == nil
+                    if isMasterUp {
+                        masterUptimeUs = currentTime - master.InstanceId.StartTimeUs
+                    }
+                }
+                if errHostToUuidMap == nil {
+                    query :=
+                        fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
+                            hostToUuid[hostName])
+                    session, err := c.GetSession()
+                    if err == nil {
+                        iter := session.Query(query).Iter()
+                        var ts int64
+                        var value int64
+                        var details string
+                        iter.Scan(&ts, &value, &details)
+                        totalDiskBytes = value
+                    }
+                }
+            }
+            totalSstFileSizeBytes := int64(nodeData.TotalSstFileSizeBytes)
+            uncompressedSstFileSizeBytes :=
+                int64(nodeData.UncompressedSstFileSizeBytes)
+            userTabletsTotal := int64(nodeData.UserTabletsTotal)
+            userTabletsLeaders := int64(nodeData.UserTabletsLeaders)
+            systemTabletsTotal := int64(nodeData.SystemTabletsTotal)
+            systemTabletsLeaders := int64(nodeData.SystemTabletsLeaders)
+            activeConnections := models.NodeDataMetricsActiveConnections{
+                Ysql: activeYsqlConnections,
+                Ycql: activeYcqlConnections,
+            }
+            ramUsedBytes := ramUsedMaster + ramUsedTserver
+            ramProvisionedBytes := ramLimitMaster + ramLimitTserver
+            isBootstrapping := true
+            // For now we hard code isBootstrapping here, and we use the
+            // GetIsLoadBalancerIdle endpoint separately to determine if
+            // a node is bootstrapping on the frontend, since yb-admin is a
+            // bit slow. Once we get a faster way of doing this we can move
+            // the implementation here.
+            // For now, assuming IsTserver is always true
+            _, isMaster := masters[hostName]
+            response.Data = append(response.Data, models.NodeData{
+                Name:            hostName,
+                Host:            hostName,
+                IsNodeUp:        nodeData.Status == "ALIVE",
+                IsMaster:        isMaster,
+                IsTserver:       true,
+                IsMasterUp:      isMasterUp,
+                IsBootstrapping: isBootstrapping,
+                Metrics: models.NodeDataMetrics{
+                    // Eventually we want to change models.NodeDataMetrics so that
+                    // all the int64 fields are uint64. But currently openapi
+                    // generator only generates int64s. Ideally if we set
+                    // minimum: 0 in the specs, the generator should use uint64.
+                    // We should try to implement this into openapi-generator.
+                    MemoryUsedBytes:              int64(nodeData.RamUsedBytes),
+                    TotalSstFileSizeBytes:        &totalSstFileSizeBytes,
+                    UncompressedSstFileSizeBytes: &uncompressedSstFileSizeBytes,
+                    ReadOpsPerSec:                nodeData.ReadOpsPerSec,
+                    WriteOpsPerSec:               nodeData.WriteOpsPerSec,
+                    TimeSinceHbSec:               nodeData.TimeSinceHbSec,
+                    UptimeSeconds:                int64(nodeData.UptimeSeconds),
+                    UserTabletsTotal:             userTabletsTotal,
+                    UserTabletsLeaders:           userTabletsLeaders,
+                    SystemTabletsTotal:           systemTabletsTotal,
+                    SystemTabletsLeaders:         systemTabletsLeaders,
+                    ActiveConnections:            activeConnections,
+                    MasterUptimeUs:               masterUptimeUs,
+                    RamUsedBytes:                 ramUsedBytes,
+                    RamProvisionedBytes:          ramProvisionedBytes,
+                    DiskProvisionedBytes:         totalDiskBytes,
+                },
+                CloudInfo: models.NodeDataCloudInfo{
+                    Cloud:  nodeData.Cloud,
+                    Region: nodeData.Region,
+                    Zone:   nodeData.Zone,
+                },
+                SoftwareVersion: versionNumber,
+            })
         }
-        sort.Slice(response.Data, func(i, j int) bool {
-                return response.Data[i].Name < response.Data[j].Name
-        })
-        return ctx.JSON(http.StatusOK, response)
+    }
+    sort.Slice(response.Data, func(i, j int) bool {
+        return response.Data[i].Name < response.Data[j].Name
+    })
+    return ctx.JSON(http.StatusOK, response)
 }
 
 // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
@@ -811,7 +783,7 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         Indexes: []models.ClusterTable{},
     }
     tablesFuture := make(chan helpers.TablesFuture)
-    go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
+    go helpers.GetTablesFuture(c.logger, helpers.HOST, true, tablesFuture)
     tablesListStruct := <-tablesFuture
     if tablesListStruct.Error != nil {
         return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
@@ -869,7 +841,7 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
 // GetClusterHealthCheck - Get health information about the cluster
 func (c *Container) GetClusterHealthCheck(ctx echo.Context) error {
     future := make(chan helpers.HealthCheckFuture)
-    go helpers.GetHealthCheckFuture(helpers.HOST, future)
+    go helpers.GetHealthCheckFuture(c.logger, helpers.HOST, future)
     result := <-future
     if result.Error != nil {
         return ctx.String(http.StatusInternalServerError, result.Error.Error())
@@ -889,7 +861,7 @@ func (c *Container) GetLiveQueries(ctx echo.Context) error {
         liveQueryResponse := models.LiveQueryResponseSchema{
                 Data: models.LiveQueryResponseData{},
         }
-        nodes, err := getNodes()
+        nodes, err := getNodes(c.logger)
         if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
         }
@@ -946,7 +918,7 @@ func (c *Container) GetLiveQueries(ctx echo.Context) error {
 
 // GetSlowQueries - Get the slow queries in a cluster
 func (c *Container) GetSlowQueries(ctx echo.Context) error {
-        nodes, err := getNodes()
+        nodes, err := getNodes(c.logger)
         if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
         }
@@ -1069,7 +1041,7 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
 // GetVersion - Get YugabyteDB version
 func (c *Container) GetVersion(ctx echo.Context) error {
     tabletServersFuture := make(chan helpers.TabletServersFuture)
-    go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+    go helpers.GetTabletServersFuture(c.logger, helpers.HOST, tabletServersFuture)
 
     // Get response from tabletServersFuture
     tabletServersResponse := <-tabletServersFuture
@@ -1140,7 +1112,7 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
     }
 
     tableInfoFuture := make(chan helpers.TableInfoFuture)
-    go helpers.GetTableInfoFuture(nodeHost, id, tableInfoFuture)
+    go helpers.GetTableInfoFuture(c.logger, nodeHost, id, tableInfoFuture)
 
     tableInfo := <- tableInfoFuture
     if tableInfo.Error != nil {

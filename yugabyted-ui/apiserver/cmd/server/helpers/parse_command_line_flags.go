@@ -16,6 +16,7 @@ var (
         SslRootCert string
         MasterUIPort  string
         TserverUIPort string
+        Debug         bool
 )
 
 func init() {
@@ -38,5 +39,6 @@ func init() {
                 "Master UI port.")
         flag.StringVar(&TserverUIPort, "tserver_ui_port", "9000",
                 "Tserver UI port.")
+        flag.BoolVar(&Debug, "debug", false, "enables debug logs")
         flag.Parse()
 }
