@@ -251,7 +251,7 @@ The following **Azure regions** are available:
 - Sao Paulo State (brazilsouth)
 - Toronto (canadacentral)
 - Pune (centralindia)
-- Iowa (centralus)*
+- Iowa (centralus)
 - Hong Kong (eastasia)
 - Virginia (eastus)
 - Virginia (eastus2)*

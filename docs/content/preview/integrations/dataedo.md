@@ -5,7 +5,7 @@ description: Use Dataedo with YSQL API
 menu:
   preview_integrations:
     identifier: dataedo
-    parent: integrations
+    parent: data-discovery
     weight: 571
 type: docs
 ---

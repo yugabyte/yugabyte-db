@@ -5,7 +5,7 @@ description: Use Datahub with YSQL
 aliases:
 menu:
   preview_integrations:
-    parent: integrations
+    parent: data-discovery
     identifier: datahub
     weight: 571
 type: docs

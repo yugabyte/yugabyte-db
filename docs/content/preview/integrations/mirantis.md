@@ -5,7 +5,7 @@ description: Mirantis
 menu:
   preview_integrations:
     identifier: mirantis
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---
