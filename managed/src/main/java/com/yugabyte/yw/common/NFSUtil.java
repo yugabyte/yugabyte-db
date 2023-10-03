@@ -114,7 +114,7 @@ public class NFSUtil implements StorageUtil {
   }
 
   public void validateDirectory(CustomerConfigData customerConfigData, Universe universe) {
-    for (NodeDetails node : universe.getTServersInPrimaryCluster()) {
+    for (NodeDetails node : universe.getRunningTserversInPrimaryCluster()) {
       String backupDirectory = ((CustomerConfigStorageNFSData) customerConfigData).backupLocation;
       if (!backupDirectory.endsWith("/")) {
         backupDirectory += "/";
@@ -169,7 +169,7 @@ public class NFSUtil implements StorageUtil {
   public Map<String, Boolean> bulkCheckFilesExistWithAbsoluteLocations(
       Universe universe, List<String> absoluteLocationsList) {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
-    NodeDetails node = universe.getLiveTServersInPrimaryCluster().get(0);
+    NodeDetails node = universe.getRunningTserversInPrimaryCluster().get(0);
     String identifierUUID = UUID.randomUUID().toString();
     String sourceFilesToCheckFilename = identifierUUID + "-" + "bulk_check_files_node";
     String sourceFilesToCheckPath =
