@@ -143,6 +143,17 @@ using dockv::KeyEntryTypeAsChar;
 
 namespace {
 
+const Status kShuttingDownError = STATUS(
+    IllegalState, "Tablet shutdown in progress - there may be a new leader.");
+
+const Status kRetrySingleShardOp = STATUS(
+    TimedOut,
+    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
+
+const Status kRefreshWaiterTimeout = STATUS(
+    TimedOut,
+    "Waiter transaction timed out waiting in queue, invoking callback.");
+
 CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
   static constexpr auto kDefaultWaitForRelockUnblockedTxnKeys = 1000ms;
   if (FLAGS_wait_for_relock_unblocked_txn_keys_ms > 0) {
@@ -653,6 +664,15 @@ class ResumedWaiterRunner {
   void Submit(const WaiterDataPtr& waiter, const Status& status, HybridTime resolve_ht) {
     {
       UniqueLock l(mutex_);
+      if (PREDICT_FALSE(shutting_down_)) {
+        // We shouldn't push new entries onto 'pq_' after thread_pool_token_ is shut down as they
+        // wouldn't be processed. Additionally, we cannot skip executing the waiter's callback here
+        // as the record might have already been erased from waiter_status_. Else, we risk dropping
+        // execution of the callback all together.
+        l.unlock();
+        waiter->InvokeCallback(kShuttingDownError);
+        return;
+      }
       AddWaiter(waiter, status, resolve_ht);
     }
     TriggerPoll();
@@ -660,6 +680,21 @@ class ResumedWaiterRunner {
 
   void Shutdown() {
     thread_pool_token_->Shutdown();
+    // ThreadPoolToken Shutdown will wait for the current running task to finish and destroy other
+    // remaining enqueued tasks. Hence, we need to explicitly clear WaiterData entries off 'pq_'.
+    std::vector<WaiterDataPtr> waiters;
+    {
+      UniqueLock l(mutex_);
+      waiters.reserve(pq_.size());
+      while (!pq_.empty()) {
+        waiters.push_back(std::move(pq_.top().waiter));
+        pq_.pop();
+      }
+      shutting_down_ = true;
+    }
+    for (const auto& waiter : waiters) {
+      waiter->InvokeCallback(kShuttingDownError);
+    }
   }
 
  private:
@@ -701,18 +736,8 @@ class ResumedWaiterRunner {
   std::priority_queue<
       SerialWaiter, std::vector<SerialWaiter>, SerialWaiter> pq_ GUARDED_BY(mutex_);
   ThreadPoolToken* thread_pool_token_;
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
-
-const Status kShuttingDownError = STATUS(
-    IllegalState, "Tablet shutdown in progress - there may be a new leader.");
-
-const Status kRetrySingleShardOp = STATUS(
-    TimedOut,
-    "Single shard transaction timed out while waiting. Forcing retry to confirm client liveness.");
-
-const Status kRefreshWaiterTimeout = STATUS(
-    TimedOut,
-    "Waiter transaction timed out waiting in queue, invoking callback.");
 
 } // namespace
 
