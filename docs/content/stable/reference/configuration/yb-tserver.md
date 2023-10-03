@@ -935,7 +935,7 @@ Whether packed row is enabled for YSQL.
 
 Default: `false`
 
-For versions 2.16.4 and later, and 2.18.1 and later, the feature is stable to be used in production, and starting from version 2.19 and later, the flag default is true.
+For versions 2.16.4 and later, and 2.18.1 and later, the feature is stable to be used in production, and starting from version 2.19 and later, the flag default is true for new clusters.
 
 ##### --ysql_packed_row_size_limit
 
