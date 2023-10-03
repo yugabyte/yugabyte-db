@@ -25,21 +25,15 @@
 #include <unordered_set>
 #include <vector>
 
-#ifdef NDEBUG
-#define TEST_SYNC_POINT(x)
-#define TEST_SYNC_POINT_CALLBACK(x, y)
-#else
-
 namespace yb {
 
 // This class provides facility to reproduce race conditions deterministically
 // in unit tests.
-// Developer could specify sync points in the codebase via TEST_SYNC_POINT.
-// Each sync point represents a position in the execution stream of a thread.
-// In the unit test, 'Happens After' relationship among sync points could be
-// setup via SyncPoint::LoadDependency, to reproduce a desired interleave of
-// threads execution.
-// Refer to (DBTest,TransactionLogIteratorRace), for an example use case.
+// Developer could specify sync points in the codebase via TEST_SYNC_POINT and
+// DEBUG_ONLY_TEST_SYNC_POINT. Each sync point represents a position in the execution stream of a
+// thread. In the unit test, 'Happens After' relationship among sync points could be setup via
+// SyncPoint::LoadDependency, to reproduce a desired interleave of threads execution. Refer to
+// (DBTest,TransactionLogIteratorRace), for an example use case.
 
 class SyncPoint {
  public:
@@ -67,9 +61,8 @@ class SyncPoint {
   // remove the execution trace of all sync points
   void ClearTrace();
 
-  // triggered by TEST_SYNC_POINT, blocking execution until all predecessors
-  // are executed.
-  // And/or call registered callback functionn, with argument `cb_arg`
+  // triggered by TEST_SYNC_POINT and DEBUG_ONLY_TEST_SYNC_POINT, blocking execution until all
+  // predecessors are executed. And/or call registered callback function, with argument `cb_arg`
   void Process(const std::string& point, void* cb_arg = nullptr);
 
   // TODO: it might be useful to provide a function that blocks until all
@@ -93,15 +86,26 @@ class SyncPoint {
   int num_callbacks_running_ = 0;
 };
 
-}  // namespace yb
+void TEST_sync_point(const std::string& point, void* cb_arg = nullptr);
 
 // Use TEST_SYNC_POINT to specify sync points inside code base.
 // Sync points can have happens-after depedency on other sync points,
 // configured at runtime via SyncPoint::LoadDependency. This could be
 // utilized to re-produce race conditions between threads.
 // See TransactionLogIteratorRace in db_test.cc for an example use case.
-// TEST_SYNC_POINT is no op in release build.
-#define TEST_SYNC_POINT(x) yb::SyncPoint::GetInstance()->Process(x)
-#define TEST_SYNC_POINT_CALLBACK(x, y) \
-    yb::SyncPoint::GetInstance()->Process(x, y)
+#define TEST_SYNC_POINT(x) yb::TEST_sync_point(x)
+
+#define TEST_SYNC_POINT_CALLBACK(x, y) yb::TEST_sync_point(x, y)
+
+// Use DEBUG_ONLY_TEST_SYNC_POINT in perf sensitive code path. It is no op in release build.
+// Sync point processing only happens in test mode (FLAGS_TEST_running_test), but it still requires
+// a function call and boolean check which in some places need to be avoided.
+#ifdef NDEBUG
+#define DEBUG_ONLY_TEST_SYNC_POINT(x)
+#define DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(x, y)
+#else
+#define DEBUG_ONLY_TEST_SYNC_POINT(x) TEST_SYNC_POINT(x)
+#define DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(x, y) TEST_SYNC_POINT_CALLBACK(x, y)
 #endif  // NDEBUG
+
+}  // namespace yb

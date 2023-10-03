@@ -49,12 +49,15 @@
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
+DECLARE_bool(TEST_enable_sync_points);
+
 namespace rocksdb {
 class SequentialFileReader;
 
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
