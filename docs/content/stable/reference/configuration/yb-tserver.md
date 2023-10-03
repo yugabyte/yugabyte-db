@@ -923,7 +923,9 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed row flags (Beta)
+## Packed row flags
+
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
 
 To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
 
@@ -932,6 +934,8 @@ To learn about the packed row feature, see [Packed row format](../../../architec
 Whether packed row is enabled for YSQL.
 
 Default: `false`
+
+For versions 2.16 and 2.18, the feature is stable to be used in production, and starting from version 2.19 and later, the flag default is true.
 
 ##### --ysql_packed_row_size_limit
 
