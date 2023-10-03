@@ -17,7 +17,7 @@ import type { ClusterTable } from './ClusterTable';
 
 
 /**
- * 
+ *
  * @export
  * @interface ClusterTableListResponse
  */
@@ -27,7 +27,13 @@ export interface ClusterTableListResponse  {
    * @type {ClusterTable[]}
    * @memberof ClusterTableListResponse
    */
-  data: ClusterTable[];
+  tables: ClusterTable[];
+  /**
+   * List of cluster tables
+   * @type {ClusterTable[]}
+   * @memberof ClusterTableListResponse
+   */
+  indexes: ClusterTable[];
 }
 
 

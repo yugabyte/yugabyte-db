@@ -863,7 +863,7 @@ export const NodesTab: FC = () => {
             <YBButton
                 variant="ghost"
                 startIcon={<RefreshIcon />}
-                onClick={() =>  refetchNodes()}
+                onClick={() => refetchNodes()}
                 >
                 {t('clusterDetail.nodes.refresh')}
             </YBButton>
