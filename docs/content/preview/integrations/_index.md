@@ -19,12 +19,12 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 ### Schema migration
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Flyway | | Full | [Flyway](flyway/) |
-| Liquibase | | Full | [Liquibase](liquibase/) |
-| Prisma | | Full | [Prisma](prisma/) |
-| Schema Evolution Manager | | Full | [Schema Evolution Manager](schema-evolution-mgr/) |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Flyway    | Full | [Flyway](flyway/) |
+| Liquibase | Full | [Liquibase](liquibase/) |
+| Prisma    | Full | [Prisma](prisma/) |
+| Schema Evolution Manager | Full | [Schema Evolution Manager](schema-evolution-mgr/) |
 
 ### Data migration
 
@@ -79,8 +79,8 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 ### Data discovery and metadata
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
 | Dataedo     | Full | [Dataedo](dataedo/) |
 | Datahub     | Full | [Datahub](datahub/) |
 | DQ Analyzer | Full | [Ataccama DQ Analyzer](ataccama/) |
