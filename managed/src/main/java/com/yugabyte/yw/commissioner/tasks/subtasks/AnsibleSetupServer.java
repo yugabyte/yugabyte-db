@@ -44,6 +44,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
     // For cron to systemd upgrades
     public boolean isSystemdUpgrade = false;
+    // For ybc upgrades
+    public boolean isYbcInstall = false;
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
     public boolean ignoreUseCustomImageConfig = false;
   }
