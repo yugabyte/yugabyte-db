@@ -61,6 +61,7 @@ import algoliasearch from 'algoliasearch';
     hitIs.forEach(hit => {
       let pageTitle = '';
       let pageBreadcrumb = '';
+      let highlightedText = '';
 
       if (hit.headers[0]) {
         pageTitle = hit.headers[0];
@@ -72,9 +73,72 @@ import algoliasearch from 'algoliasearch';
         pageBreadcrumb = hit.breadcrumb;
       }
 
+      /* eslint no-underscore-dangle: 0 */
+      let highlightContent = '';
+      console.log('hhit', hit);
+      if (hit._highlightResult && hit._highlightResult.content) {
+        let matchedWords = '';
+        if (hit._highlightResult.content.matchedWords
+          && hit._highlightResult.content.matchedWords[0]
+        ) {
+          matchedWords = hit._highlightResult.content.matchedWords[0];
+        }
+
+        if (matchedWords !== '' && hit._highlightResult.content.value) {
+          const contentValue = hit._highlightResult.content.value;
+          const splittedContent = contentValue.split(`<em>${matchedWords}</em>`);
+
+          let test = 0;
+          splittedContent.every((splittedValue) => {
+            const splitWithMatched = `${splittedValue}${matchedWords}`;
+
+            test += 1;
+
+            if (highlightContent.length === 0) {
+              highlightContent = splitWithMatched;
+
+              const matchedLength = highlightContent.length;
+              if (matchedLength > 25) {
+                highlightContent = highlightContent.slice(matchedLength - 25, matchedLength);
+              }
+            } else {
+              const moreLength = 25 - highlightContent.length;
+
+              if (splitWithMatched.length > moreLength) {
+                highlightContent += splitWithMatched.slice(0, moreLength);
+              } else {
+                highlightContent += splitWithMatched;
+              }
+            }
+
+            if (highlightContent.length >= 25) {
+              console.log('test', test);
+              return false;
+            }
+
+            return true;
+          });
+
+          console.log('highlightContent', highlightContent);
+        } else {
+          highlightContent = hit._highlightResult.content.value;
+
+          const matchedLength = highlightContent.length;
+          if (matchedLength > 25) {
+            highlightContent = highlightContent.slice(matchedLength - 25, matchedLength);
+          }
+        }
+      }
+
+      if (highlightContent.length > 0) {
+        highlightedText = `#:~:text=${highlightContent}`;
+      }
+
+      console.log('highlightedText', highlightedText);
+
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${highlightedText}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
