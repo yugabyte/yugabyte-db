@@ -25,20 +25,20 @@ The valid *arguments* for import data file are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --batch-size <number> | Size of batches generated for ingestion during import data. (default: 20000; rows) |
+| --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. (default: 20000 rows) |
 | --data-dir <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location such as an AWS S3 bucket, GCS bucket, or an Azure blob. For more details, see [Bulk data load from files](../../../migrate/bulk-data-load/).|
-| --delimiter | Character used as delimiter in rows of the table(s). (default: comma (,) for CSV file format and tab (\t) for TEXT file format.) |
+| --delimiter | Character used as a delimiter to separate column values in rows of the datafile(s). (default: comma `','` for CSV file format and tab `'\t'` for TEXT file format.)<br>Example: `yb-voyager import data file .... --delimiter ','` |
 | --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
-| --escape-char | Escape character (default double quotes `"`) |
+| --escape-char | Escape character (default: double quotes `'"'`)<br>Example: `yb-voyager import data file ... --escape-char '"'` |
 | --file-opts <string> | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>Note that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char=\",quote_char=\""` or `--file-opts 'escape_char=",quote_char="'` |
-| --null-string | String that represents null value in the data file. (default: ""(empty string) for CSV, and '\N' for text.) |
-| --file-table-map \<filename1:tablename1\> | Comma-separated mapping between the files in `--data-dir` argument to the corresponding table in the database. You can import multiple files in one table either by providing one `<fileName>:<tableName>` entry for each file OR by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`. |
-| --format <format> | One of `CSV` or `text` format of the data file. (default: CSV) |
-| --has-header | default: false; change to true if the CSV file contains column names as a header.<br>**Note**: Boolean flags take arguments in the format `--flag-name=[true|false]`, and not `--flag-name [true|false]`. |
+| --null-string | String that represents null values in the datafile. (default: `""` (empty string) for CSV, and `'\N'` for text.)<br>Example: `yb-voyager import data file ... --null-string 'NULL'` |
+| --file-table-map \<filename1:tablename1\> | Comma-separated mapping between the files in `--data-dir` argument to the corresponding table in the database. You can import multiple files in one table either by providing one `<fileName>:<tableName>` entry for each file OR by passing a glob expression in place of the file name.<br>Example: `--file-table-map 'fileName1:tableName,fileName2:tableName'` OR `--file-table-map 'fileName*:tableName'`. |
+| --format <format> | One of `'csv'` or `'text'` format of the data file. (default: 'csv')<br>Example: `yb-voyager import data file ... --format 'text'` |
+| --has-header | For `csv` datafiles, use this argument if the datafile has a header with column names for the table. (Default: false).<br>Example: `yb-voyager import data file ... --format 'csv' --has-header` OR `yb-voyager import data file ... --format 'csv' --has-header=true` |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
 | --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. (default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.)|
-| --quote-char | Character used to quote the values (default double quotes `"`) |
+| --quote-char | Character used to quote the values (default double quotes `"`)<br>Example: `yb-voyager import data file ... --quote-char '"'` |
 | --send-diagnostics | Send diagnostics information to Yugabyte. |
 | --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables; if yes, then yb-voyager starts ingesting the data present in the data files with upsert mode and for the cases where a table doesn't have a primary key, it may duplicate the data. In that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | --target-db-name <name> | Target database name. |
@@ -54,12 +54,6 @@ The valid *arguments* for import data file are described in the following table:
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes  | Answer yes to all prompts during the export schema operation. |
 
-<!-- To do : document the following arguments with description
-| --continue-on-error |
-| --enable-upsert |
-| --target-endpoints |
-| --use-public-ip | -->
-
 ## Examples
 
 The following examples use the `--data-dir` argument along with `--file-table-map` argument and contextually differ based on whether the data is imported from local disk or cloud storage options.
@@ -72,7 +66,7 @@ Import data for CSV files using `import data file` command by providing the argu
 
 ### Import data file from local disk
 
-The `--data-dir` argument is a path to the local directory where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database (you can mention case-sensitive table names as well); each file has a header, delimiter as ',' (default), escape and quote character as '"'(default).
+The `--data-dir` argument is a path to the local directory where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database (you can mention case-sensitive table names as well, for example: `--file-table-map 'foo.csv:"Foo"'`); each file has a header, delimiter as `','` (default), escape and quote character as `'"'`(default).
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -89,7 +83,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from AWS S3
 
-The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 bucket where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database, where each file has '\t' (tab character) as the delimiter, escape character as '\' and quote character as ''' with no header (default) as demonstrated in the following command:
+The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 bucket where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database, where each file has `'\t'` (tab character) as the delimiter, escape character as `'\'` and quote character as `'''` with no header (default) as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -108,7 +102,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from GCS
 
-The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping of each CSV file in `--data-dir` to the corresponding table in the database, where each file has delimiter as ' ' (white space), escape character as '^', quote character as '"', and null string for null values as 'NULL' with no header (default) as demonstrated in the following command:
+The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping of each CSV file in `--data-dir` to the corresponding table in the database, where each file has delimiter as ' ' (white space), escape character as `'^'`, quote character as `'"'`, and null string for null values as `'NULL'` with no header (default) as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -128,7 +122,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from Azure blob
 
-The `--data-dir` argument is the Azure blob URL of the data directory on the Azure blob container where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping of each CSV file in `--data-dir` to the corresponding table in the database, where each file has delimiter '#', escape character as '%', quote character as '"', and null string for null values as 'null' with no header (default) as demonstrated in the following command:
+The `--data-dir` argument is the Azure blob URL of the data directory on the Azure blob container where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping of each CSV file in `--data-dir` to the corresponding table in the database, where each file has delimiter `'#'`, escape character as `'%'`, quote character as `'"'`, and null string for null values as 'null' with no header (default) as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -150,7 +144,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 Multiple files can be imported in one table (for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`).
 
-The `--data-dir` argument is a path to the local directory where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database, where each file has a header, delimiter as ',' (default), escape and quote character as '"'(default).
+The `--data-dir` argument is a path to the local directory where all the CSV files are present, and the `--file-table-map` argument provides a comma-separated mapping between each CSV file in `--data-dir` to the corresponding table in the database, where each file has a header, delimiter as `','` (default), escape and quote character as `'"'`(default).
 
 Example for each file entry in --file-table-map (`foo1.csv:foo,foo2.csv:foo`) is as follows:
 
@@ -190,7 +184,7 @@ Import data for text files using `import data file` by providing the argument --
 
 ### Import data file from local disk
 
-The `--data-dir` argument is a path to the local directory where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database, where each file has '\t' (default) as a delimiter and '\N' (default) as a null string.
+The `--data-dir` argument is a path to the local directory where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database, where each file has `'\t'` (default) as a delimiter and `'\N'` (default) as a null string.
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -206,7 +200,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from AWS S3
 
-The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 bucket where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database, where each file has ',' (comma) as the delimiter, and null string as ` NULL` for null values as demonstrated in the following command:
+The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 bucket where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database, where each file has `','` (comma) as the delimiter, and null string as `'NULL'` for null values as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -224,7 +218,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from GCS
 
-The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping of each text file in `--data-dir` to the corresponding table in the database (you can mention case-sensitive table names as well), where each file has delimiter as '-' (hyphen character) as demonstrated in the following command:
+The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping of each text file in `--data-dir` to the corresponding table in the database (you can mention case-sensitive table names as well), where each file has delimiter as `'-'`(hyphen character) as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -241,7 +235,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 ### Import data file from Azure blob
 
-The `--data-dir` argument is the Azure blob URL of the data directory on the Azure blob container where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping of each text file in `--data-dir` to the corresponding table in the database , where each file has delimiter '#' (white space), and null string as 'null' for null values as demonstrated in the following command:
+The `--data-dir` argument is the Azure blob URL of the data directory on the Azure blob container where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping of each text file in `--data-dir` to the corresponding table in the database, where each file has delimiter `'#'` (hash character), and null string as `'null'` for null values as demonstrated in the following command:
 
 ```sh
 yb-voyager import data file --export-dir '/dir/export-dir' \
@@ -261,7 +255,7 @@ yb-voyager import data file --export-dir '/dir/export-dir' \
 
 Multiple files can be imported in one table (for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`).
 
-The `--data-dir` argument is a path to the local directory where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database  where each file has a header, delimiter as '|' (pipe character).
+The `--data-dir` argument is a path to the local directory where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database  where each file has a header, delimiter as `'|'` (pipe character).
 
 Example for each file entry in --file-table-map (`foo1.csv:foo,foo2.csv:foo`) is as follows:
 

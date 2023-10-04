@@ -33,7 +33,7 @@ The valid *arguments* for export schema are described in the following table:
 | --oracle-cdb-sid <SID> | Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
 | --oracle-cdb-tns-alias <alias> | Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
-| --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
+| --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --send-diagnostics | Sends diagnostics information to Yugabyte. (default: true)|
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
@@ -48,7 +48,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --start-clean | Starts a fresh schema export after clearing the `schema` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
+| --start-clean | Starts a fresh schema export after clearing the `schema` directory.|
 | --use-orafce | Use the Orafce extension. Oracle migrations only. (default: true) |
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |

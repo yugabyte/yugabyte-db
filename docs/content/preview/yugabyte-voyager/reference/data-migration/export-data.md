@@ -19,7 +19,7 @@ This page describes the usage of the following export commands:
 
 ## export data
 
-For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) the source database to the machine where yb-voyager is installed.
+For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) data of the source database in the `export-dir/data` directory on the machine where yb-voyager is running.
 
 For [live migration](../../../migrate/live-migrate/#export-data) (and [fall-forward](../../../migrate/live-fall-forward/#export-data)), export data [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
@@ -61,7 +61,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. For tables with no primary key, you should exclude them using `--exlcude-table-list` flag to avoid duplicate data, if any, or truncate those tables manually before using the start-clean flag. |
+| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. |
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 

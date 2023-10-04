@@ -25,10 +25,10 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --batch-size <number> | Size of batches generated for ingestion during import data. (Default: 10000000) |
-| --continue-on-error | Ignores errors and continues data import. |
+| --batch-size <number> | Size of batches in the number of rows generated for ingestion when you import data to fall forward database. (Default: 10,000,000) |
+| --continue-on-error | Ignores the error while executing the DDLs for resuming sequences on target db after the data is imported. (Default: false) |
 | --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for export data. (default: false) |
-| --enable-upsert | Set to true to enable UPSERT mode on target tables, and false to disable UPSERT mode on target tables. (default: true) |
+| --enable-upsert | Enable UPSERT mode on tables while streaming changes to fall forward database. (Default: true)<br>Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while migrating data (ignored if `--table-list` is used). The `exclude-table-list` argument is not supported during import data during live migration.|
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | --ff-db-host <hostname> | Domain name or IP address of the machine on which Fall-forward database server is running. (default: "127.0.0.1") |
@@ -46,7 +46,7 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | -h, --help | Command line help for setup. |
 | --oracle-home <path> | Path to set $ORACLE_HOME environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. (default: 1) |
+| --parallel-jobs <connectionCount> | The number of parallel batches issued to the fall forward database. (default: 1) |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (Default: true) |
 | --start-clean | Starts a fresh import with data files present in the `data` directory and if any table on fall- forward database is non-empty, it prompts whether you want to continue the import without the truncating those tables; if yes, then yb-voyager starts ingesting the data present in the data files without upsert mode and for the cases where a table doesn't have a primary key, it may duplicate the data. So, in that case, use `--exclude-table-list` flag to exclude such tables or truncate those tables manually before using the `start-clean` flag. |
 | --table-list | Comma-separated list of the tables to import data. Do not use in conjunction with `--exclude-table-list.` |

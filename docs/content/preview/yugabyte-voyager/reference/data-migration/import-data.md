@@ -34,12 +34,12 @@ The valid *arguments* for import data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --batch-size <number> | Size of batches generated for ingestion during import data. (default: 20000 rows) |
-| --continue-on-error | If set, this flag ignores errors and continues with the import. |
+| --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. (default: 20000 rows)<br>Example: `yb-voyager import data ... --batch-size 20000` |
+| --continue-on-error | Ignores the error while executing the DDLs for resuming sequences on target db after the data is imported. (Default: false) |
 | --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
-| --enable-upsert | Set to true to enable UPSERT mode on target tables and false to disable the mode. (default true) |
-| --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. |
-| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. For live migration, during import data, the `--exclude-table-list` argument is not supported. |
+| --enable-upsert | Enable UPSERT mode on target tables while importing data. (Default: true)<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
+| --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. This argument is unsupported for live migration. |
+| --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For the import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. This argument is unsupported for live migration. |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. (default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.)|
@@ -50,10 +50,9 @@ The valid *arguments* for import data are described in the following table:
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --target-db-port <port> | Port number of the target database machine. (default: 5433) |
 | --target-db-schema <schemaName> | Schema name of the target database. MySQL and Oracle migrations only. |
-| --target-db-sid <SID>  | Oracle System Identifier (SID) that you wish to use while importing data to Oracle instances. Oracle migrations only. |
 | --target-db-user <username> | Username of the target database. |
 | --target-endpoints <nodeEndpoints> | Comma-separated list of node's endpoint to use for parallel import of data (default is to use all the nodes in the cluster). For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag will be ignored if this is used. |
-| --use-public-ip | Set to true to use the public IPs of the nodes to distribute --parallel-jobs uniformly for data import (default: false).<br> Note that you may need to configure database to have public_ip available by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses). |
+| --use-public-ip | Suggests voyager to use the public IPs of the nodes to distribute --parallel-jobs uniformly for data import (default: false).<br> Note that you may need to configure database to have public IP available by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Usage: `yb-voyager import data ...  --use-public-ip` |
 | [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) <keyName> | Name of the key which is part of the SSL `<cert,key>` pair. |
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
@@ -99,8 +98,8 @@ The valid *arguments* for import data status are described in the following tabl
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | Command line help. |
-| target-db-password | Password of the target database. Live migrations only. |
-| ff-db-password | Password of the fall-forward database. Live migration with fall-forward only. |
+| target-db-password | Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. Required for live migrations only. |
+| ff-db-password | Password to connect to the fall-forward database server. Alternatively, you can also specify the password by setting the environment variable `FF_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. Required for live migration with fall forward only. |
 | --send-diagnostics | Send diagnostics information to Yugabyte. |
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the import data operation. (default: false) |
