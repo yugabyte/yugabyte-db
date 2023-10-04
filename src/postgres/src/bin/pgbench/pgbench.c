@@ -4705,7 +4705,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 				 */
 				copyRandomState(&st->retry_state.random_state,
 								&st->random_state);
-				/* YB_TODO(neil@yugabyte)
+				/*
 				 * CopyVariable need to be updated to use PG13 structure.
 				 */
 				YbCopyVariables(&st->retry_state.variables, &st->variables);
@@ -5903,7 +5903,7 @@ processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
 	/* client stat is just counting */
 	st->cnt++;
 #ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte)
+	/*
 	 * - Pg13 doesn't count error this way any more. The attribute "ecnt" has been removed.
 	 * - Need to revisit to see if "ecnt" is still needed by YB.
 	 */
@@ -6307,7 +6307,7 @@ initGenerateDataClientSide(PGconn *con)
 	executeStatement(con, "commit");
 
 #ifdef YB_TODO
-	/* YB_TODO(neil) Need to reintro these code into Pg13. */
+	/* Need to reintro these code into Pg13. */
 	if (j != (int64) naccounts * scale)
 	{
 		/* We would need to begin a new transaction if we have more
@@ -8551,7 +8551,7 @@ main(int argc, char **argv)
 		((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) |
 		(((uint64) pg_jrand48(base_random_sequence.xseed) & 0xFFFFFFFF) << 32);
 
-		/* YB_TODO(neil@yugabyte) Yugabyte's code use "data" instead of "xseed".
+		/* Yugabyte's code use "data" instead of "xseed".
 		 * - Need to fix this.
 		 */
 		seed = ((uint64) pg_jrand48(base_random_sequence.data) & 0xFFFFFFFF) |

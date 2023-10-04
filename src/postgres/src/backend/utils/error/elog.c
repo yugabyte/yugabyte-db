@@ -3938,7 +3938,7 @@ yb_strerror(int errnum)
 {
 	return NULL;
 #ifdef YB_TODO
-	/* YB_TODO(neil) Needs to move this function to strerror.c to match Postgres code */
+	/* Needs to move this function to strerror.c to match Postgres code */
 	const char *str;
 
 #ifdef WIN32

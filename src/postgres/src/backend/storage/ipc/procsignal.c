@@ -106,7 +106,7 @@ static bool CheckProcSignal(ProcSignalReason reason);
 static void ResetProcSignalBarrierBits(uint32 flags);
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Yb makes this public */
+/* Yb makes this public */
 static void CleanupProcSignalState(int status, Datum arg);
 #endif
 

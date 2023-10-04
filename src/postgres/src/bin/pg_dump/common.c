@@ -39,7 +39,7 @@ static int	allocedDumpIds = 0;
 static DumpId lastDumpId = 0;	/* Note: 0 is InvalidDumpId */
 
 #ifdef YB_TODO
-/* YB_TODO(neil) The dump object structure has changed, so these variables won't work.
+/* The dump object structure has changed, so these variables won't work.
  *
  * Variables for mapping CatalogId to DumpableObject
  */
@@ -136,7 +136,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	int			numEventTriggers;
 
 #ifdef YB_TODO
-	/* YB_TODO(neil) Need rework to match Pg15 */
+	/* Need rework to match Pg15 */
 	TablegroupInfo *tblgrpinfo;
 #endif
 
@@ -186,7 +186,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	getAccessMethods(fout, &numAccessMethods);
 
 #ifdef YB_TODO
-	/* YB_TODO(neil) Need rework to match Pg15 */
+	/* Need rework to match Pg15 */
 	pg_log_info("reading user-defined tablegroups\n");
 	tblgrpinfo = getTablegroups(fout, &numTablegroups);
 	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
@@ -933,7 +933,7 @@ TablegroupInfo *
 findTablegroupByOid(Oid oid)
 {
 #ifdef YB_TODO
-	/* YB_TODO(neil) Need rework to match Pg15 */
+	/* Need rework to match Pg15 */
 	return (TablegroupInfo *) findObjectByOid(oid, tblgrpinfoindex, numTablegroups);
 #endif
 	return NULL;
