@@ -1265,7 +1265,7 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     }
     // GetTablets locks lock_ in shared mode.
     if (table) {
-      tablets = table->GetTablets();
+      tablets = table->GetTablets(IncludeInactive::kTrue);
     }
 
     // For the table dropped, GetTablets() will be empty.
@@ -1336,38 +1336,44 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfo
     return Status::OK();
   }
 
-  // Map to identify the list of drop tables for the stream.
+  // Map of valid tablets to keep for each stream.
+  std::unordered_map<xrepl::StreamId, std::set<TabletId>> tablets_to_keep_per_stream;
+  // Map to identify the list of dropped tables for the stream.
   StreamTablesMap drop_stream_table_list;
   for (const auto& stream : streams) {
     const auto& stream_id = stream->StreamId();
-    // The set "tablets_with_streams" consists of all tablets not associated with the table
-    // dropped. Tablets belonging to this set will not be deleted from cdc_state.
-    // The set "drop_table_list" consists of all the tables those were associated with the stream,
-    // but dropped.
-    std::set<TabletId> tablets_with_streams;
-    std::set<TableId> drop_table_list;
-    bool should_delete_from_map = true;
-    GetValidTabletsAndDroppedTablesForStream(stream, &tablets_with_streams, &drop_table_list);
+    // Get the set of all tablets not associated with the table dropped. Tablets belonging to this
+    // set will not be deleted from cdc_state.
+    // The second set consists of all the tables that were associated with the stream, but dropped.
+    GetValidTabletsAndDroppedTablesForStream(
+        stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]);
+  }
 
-    for (const auto& tablet_id : tablets_with_streams) {
-      auto status = cdc_state_table_->DeleteEntries({{tablet_id, stream_id}});
-      if (!status.ok()) {
-        // Don't remove the stream from the system catalog as well as master cdc_stream_map_
-        // cache, if there is an error during a row delete for the corresponding stream-id,
-        // tablet-id combination from cdc_state table.
-        LOG(WARNING) << "Error deleting cdc_state row with tablet id " << tablet_id
-                     << " and stream id " << stream_id << " : " << status;
-        should_delete_from_map = false;
-        break;
-      }
-      LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << ", tablet "
-                << tablet_id;
+  Status iteration_status;
+  auto all_entry_keys =
+      VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
+  std::vector<cdc::CDCStateTableKey> keys_to_delete;
+  for (const auto& entry_result : all_entry_keys) {
+    RETURN_NOT_OK(entry_result);
+    const auto& entry = *entry_result;
+    const auto tablets = FindOrNull(tablets_to_keep_per_stream, entry.key.stream_id);
+    if (!tablets) {
+      continue;
     }
 
-    if (should_delete_from_map) {
-      drop_stream_table_list[stream->StreamId()] = drop_table_list;
+    if (!tablets->contains(entry.key.tablet_id)) {
+      // Tablet is no longer part of this stream so delete it.
+      keys_to_delete.emplace_back(entry.key.tablet_id, entry.key.stream_id);
     }
   }
+  RETURN_NOT_OK(iteration_status);
+
+  if (keys_to_delete.empty()) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Deleting cdc_state table entries " << AsString(keys_to_delete);
+  RETURN_NOT_OK(cdc_state_table_->DeleteEntries(keys_to_delete));
 
   // Cleanup the streams from system catalog and from internal maps.
   return CleanUpCDCMetadataFromSystemCatalog(drop_stream_table_list);
