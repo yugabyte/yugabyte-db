@@ -32,6 +32,44 @@
       },
       "type" : "object"
     },
+    "AWSCloudWatchConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "AWSCloudWatchConfig Config",
+        "properties" : {
+          "accessKey" : {
+            "description" : "Access Key",
+            "type" : "string"
+          },
+          "endpoint" : {
+            "description" : "End Point",
+            "type" : "string"
+          },
+          "logGroup" : {
+            "description" : "Log Group",
+            "type" : "string"
+          },
+          "logStream" : {
+            "description" : "Log Stream",
+            "type" : "string"
+          },
+          "region" : {
+            "description" : "Region",
+            "type" : "string"
+          },
+          "roleARN" : {
+            "description" : "Role ARN",
+            "type" : "string"
+          },
+          "secretKey" : {
+            "description" : "Secret Key",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "AWSRegionCloudInfo" : {
       "properties" : {
         "securityGroupId" : {
@@ -375,6 +413,34 @@
       "required" : [ "customer_uuid", "name", "params" ],
       "type" : "object"
     },
+    "AlertChannelEmailParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "defaultRecipients" : {
+            "description" : "Use health check notification recipients",
+            "type" : "boolean"
+          },
+          "defaultSmtpSettings" : {
+            "description" : "Use health check notification SMTP settings",
+            "type" : "boolean"
+          },
+          "recipients" : {
+            "description" : "List of recipients",
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "smtpData" : {
+            "$ref" : "#/definitions/SmtpData",
+            "description" : "SMTP settings"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "AlertChannelFormData" : {
       "properties" : {
         "alertChannelUUID" : {
@@ -390,6 +456,28 @@
       },
       "required" : [ "alertChannelUUID", "name", "params" ],
       "type" : "object"
+    },
+    "AlertChannelPagerDutyParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "apiKey" : {
+            "description" : "API key",
+            "maxLength" : 2147483647,
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "routingKey" : {
+            "description" : "Routing key",
+            "maxLength" : 2147483647,
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "apiKey", "routingKey" ],
+        "type" : "object"
+      } ]
     },
     "AlertChannelParams" : {
       "description" : "Supertype for channel params for different channel types.",
@@ -410,6 +498,30 @@
         }
       },
       "type" : "object"
+    },
+    "AlertChannelSlackParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "iconUrl" : {
+            "description" : "Slack icon URL",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Slack username",
+            "maxLength" : 2147483647,
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "webhookUrl" : {
+            "description" : "Slack webhook URL",
+            "type" : "string"
+          }
+        },
+        "required" : [ "username", "webhookUrl" ],
+        "type" : "object"
+      } ]
     },
     "AlertChannelTemplates" : {
       "description" : "Alert channel templates",
@@ -436,6 +548,24 @@
       },
       "required" : [ "customerUUID", "textTemplate", "type" ],
       "type" : "object"
+    },
+    "AlertChannelWebHookParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "httpAuth" : {
+            "$ref" : "#/definitions/HTTP Auth information",
+            "description" : "Authentication Details"
+          },
+          "webhookUrl" : {
+            "description" : "Webhook URL",
+            "type" : "string"
+          }
+        },
+        "required" : [ "webhookUrl" ],
+        "type" : "object"
+      } ]
     },
     "AlertConfiguration" : {
       "description" : "Alert configuration",
@@ -2335,6 +2465,23 @@
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
+    "Basic Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "password" : {
+            "description" : "Password",
+            "type" : "string"
+          },
+          "username" : {
+            "description" : "Username",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "BootstarpBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -2544,6 +2691,90 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "CertificateInfo" : {
+      "description" : "SSL certificate used by the universe",
+      "properties" : {
+        "certType" : {
+          "description" : "Type of the certificate",
+          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert", "HashicorpVault", "K8SCertManager" ],
+          "example" : "SelfSigned",
+          "type" : "string"
+        },
+        "certificate" : {
+          "description" : "Certificate path",
+          "example" : "/opt/yugaware/certs/.../ca.root.cert",
+          "type" : "string"
+        },
+        "checksum" : {
+          "description" : "The certificate file's checksum",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customCertPathParams" : {
+          "$ref" : "#/definitions/CustomCertInfo"
+        },
+        "customHCPKICertInfo" : {
+          "$ref" : "#/definitions/HashicorpVaultConfigParams"
+        },
+        "customServerCertInfo" : {
+          "$ref" : "#/definitions/CustomServerCertInfo"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID of the backup which it belongs to",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "expiryDateIso" : {
+          "description" : "The certificate's expiry date",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "inUse" : {
+          "description" : "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "label" : {
+          "description" : "Certificate label",
+          "example" : "yb-admin-example",
+          "type" : "string"
+        },
+        "privateKey" : {
+          "description" : "Private key path",
+          "example" : "/opt/yugaware/.../example.key.pem",
+          "type" : "string"
+        },
+        "startDateIso" : {
+          "description" : "The certificate's creation date",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "universeDetailSubsets" : {
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "type" : "array"
+        },
+        "universeDetails" : {
+          "description" : "Associated universe details for the certificate",
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "uuid" : {
+          "description" : "Certificate UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo", "universeDetailSubsets" ],
       "type" : "object"
     },
     "CertificateInfoExt" : {
@@ -3223,6 +3454,15 @@
           "type" : "integer"
         }
       },
+      "type" : "object"
+    },
+    "ConfDataType" : {
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "name" ],
       "type" : "object"
     },
     "ConfDataTypeObject" : {
@@ -4000,6 +4240,24 @@
       },
       "type" : "object"
     },
+    "DataDogConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "DataDog Config",
+        "properties" : {
+          "apiKey" : {
+            "description" : "API Key",
+            "type" : "string"
+          },
+          "site" : {
+            "description" : "Site",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "DatabaseSecurityFormData" : {
       "description" : "Database security properties",
       "properties" : {
@@ -4312,6 +4570,20 @@
       },
       "type" : "object"
     },
+    "GCPCloudMonitoringConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "GCPCloudMonitoringConfig Config",
+        "properties" : {
+          "project" : {
+            "description" : "Project",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "GCPRegionCloudInfo" : {
       "properties" : {
         "instanceTemplate" : {
@@ -4564,6 +4836,17 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "HTTP Auth information" : {
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "HTTP Auth type",
+          "enum" : [ "NONE", "BASIC", "TOKEN" ],
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "HashedTimestampColumnFinderResponse" : {
@@ -6086,6 +6369,14 @@
         }
       },
       "type" : "object"
+    },
+    "No Auth" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : { },
+        "type" : "object"
+      } ]
     },
     "NodeActionFormData" : {
       "properties" : {
@@ -9854,6 +10145,36 @@
       },
       "type" : "object"
     },
+    "SplunkConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "Splunk Config",
+        "properties" : {
+          "endpoint" : {
+            "description" : "End Point",
+            "type" : "string"
+          },
+          "index" : {
+            "description" : "Index",
+            "type" : "string"
+          },
+          "source" : {
+            "description" : "Source",
+            "type" : "string"
+          },
+          "sourceType" : {
+            "description" : "Source Type",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "Token",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -11117,6 +11438,23 @@
       },
       "required" : [ "allowInsecure", "clusters", "creatingUser", "enableClientToNodeEncrypt", "enableNodeToNodeEncrypt", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
+    },
+    "Token Auth information" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/HTTP Auth information"
+      }, {
+        "properties" : {
+          "tokenHeader" : {
+            "description" : "Header name",
+            "type" : "string"
+          },
+          "tokenValue" : {
+            "description" : "Token value",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "TriggerHealthCheckResult" : {
       "description" : "The response type for triggering a health check. Contains the timestamp of when the health check was triggered.",
@@ -12894,6 +13232,29 @@
       "required" : [ "clusters", "creatingUser", "forceVMImageUpgrade", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption", "ybSoftwareVersion" ],
       "type" : "object"
     },
+    "ValidationResult" : {
+      "description" : "Validation result of a node config",
+      "properties" : {
+        "description" : {
+          "type" : "string"
+        },
+        "isRequired" : {
+          "type" : "boolean"
+        },
+        "isValid" : {
+          "type" : "boolean"
+        },
+        "type" : {
+          "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "type" : "object"
+    },
     "VolumeDetails" : {
       "properties" : {
         "mountPath" : {
@@ -12909,6 +13270,119 @@
         }
       },
       "required" : [ "mountPath", "volumeSizeGB", "volumeType" ],
+      "type" : "object"
+    },
+    "XClusterConfig" : {
+      "description" : "xcluster config object",
+      "properties" : {
+        "createTime" : {
+          "description" : "Create time of the xCluster config",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "imported" : {
+          "description" : "Whether this xCluster replication config was imported",
+          "type" : "boolean"
+        },
+        "modifyTime" : {
+          "description" : "Last modify time of the xCluster config",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "XCluster config name",
+          "type" : "string"
+        },
+        "paused" : {
+          "description" : "Whether this xCluster replication config is paused",
+          "type" : "boolean"
+        },
+        "pitrConfigs" : {
+          "items" : {
+            "$ref" : "#/definitions/PitrConfig"
+          },
+          "type" : "array"
+        },
+        "replicationGroupName" : {
+          "description" : "Replication group name in DB",
+          "type" : "string"
+        },
+        "secondary" : {
+          "description" : "Whether this xCluster config is used as a secondary config for a DR config",
+          "type" : "boolean"
+        },
+        "sourceActive" : {
+          "description" : "Whether the source is active in txn xCluster",
+          "type" : "boolean"
+        },
+        "sourceUniverseState" : {
+          "description" : "The replication status of the source universe; used for disaster recover",
+          "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
+          "type" : "string"
+        },
+        "sourceUniverseUUID" : {
+          "description" : "Source Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "Status",
+          "enum" : [ "Initialized", "Running", "Updating", "DeletedUniverse", "DeletionFailed", "Failed" ],
+          "type" : "string"
+        },
+        "tableDetails" : {
+          "description" : "Tables participating in this xCluster config",
+          "items" : {
+            "$ref" : "#/definitions/XClusterTableConfig"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "tableType" : {
+          "description" : "tableType",
+          "enum" : [ "UNKNOWN", "YSQL", "YCQL" ],
+          "type" : "string"
+        },
+        "tables" : {
+          "items" : {
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "targetActive" : {
+          "description" : "Whether the target is active in txn xCluster",
+          "type" : "boolean"
+        },
+        "targetUniverseState" : {
+          "description" : "The replication status of the target universe; used for disaster recover",
+          "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
+          "type" : "string"
+        },
+        "targetUniverseUUID" : {
+          "description" : "Target Universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Whether the config is txn xCluster",
+          "enum" : [ "Basic", "Txn" ],
+          "type" : "string"
+        },
+        "usedForDr" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "uuid" : {
+          "description" : "XCluster config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "pitrConfigs" ],
       "type" : "object"
     },
     "XClusterConfigCreateFormData" : {

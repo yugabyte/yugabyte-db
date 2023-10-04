@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
@@ -471,6 +472,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
@@ -504,12 +506,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class AZOverrides extends OverridenDetails
       implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
