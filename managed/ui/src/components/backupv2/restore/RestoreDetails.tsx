@@ -9,6 +9,8 @@
 
 import { FC, useContext } from 'react';
 import copy from 'copy-to-clipboard';
+import { useQuery } from 'react-query';
+import { find } from 'lodash';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
@@ -18,6 +20,7 @@ import { YBButton } from '../../../redesign/components';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { ENTITY_NOT_AVAILABLE, calculateDuration } from '../common/BackupUtils';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
+import { api } from '../../../redesign/helpers/api';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { IRestore } from '../common/IRestore';
 import { RestoreContextMethods, RestoreDetailsContext } from './RestoreContext';
@@ -87,8 +90,6 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer'
   },
   header: {
-    color: theme.palette.orange[500],
-    textDecoration: 'underline',
     marginTop: theme.spacing(1)
   },
   divider: {
@@ -102,6 +103,10 @@ const useStyles = makeStyles((theme) => ({
     columnGap: '72px',
     flexWrap: 'wrap',
     rowGap: '24px'
+  },
+  link: {
+    color: theme.palette.orange[500],
+    textDecoration: 'underline',
   }
 }));
 
@@ -114,6 +119,13 @@ export const RestoreDetails = () => {
   const { t } = useTranslation("translation", {
     keyPrefix: 'restore.restoreDetails'
   });
+
+  const { data: universesList } = useQuery(['universes'], () => api.fetchUniverseList(),
+    {
+      refetchOnMount: false
+    }
+
+  );
 
   if (!selectedRestore) return null;
 
@@ -138,19 +150,30 @@ export const RestoreDetails = () => {
                 {t('sourceUniverse')}
               </Typography>
               <CopyUUID uuid={selectedRestore.sourceUniverseUUID} />
-              <Link
-                target="_blank"
-                to={`/universes/${selectedRestore.sourceUniverseUUID}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-              >
-                <div className={classes.header}>
-                  {selectedRestore.sourceUniverseName
-                    ? selectedRestore.sourceUniverseName
-                    : ENTITY_NOT_AVAILABLE}
-                </div>
-              </Link>
+              {
+                find(universesList, { universeUUID: selectedRestore.sourceUniverseUUID }) ? (
+                  <Link
+                    target="_blank"
+                    to={`/universes/${selectedRestore.sourceUniverseUUID}`}
+                    className={classes.link}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <div className={classes.header}>
+                      {selectedRestore.sourceUniverseName
+                        ? selectedRestore.sourceUniverseName
+                        : ENTITY_NOT_AVAILABLE}
+                    </div>
+                  </Link>
+                ) : (
+                  <div className={classes.header}>
+                    {selectedRestore.sourceUniverseName
+                      ? selectedRestore.sourceUniverseName
+                      : ENTITY_NOT_AVAILABLE}
+                  </div>
+                )
+              }
             </div>
             <img className={classes.arrowIcon} src={ArrowRight} alt="arrowRight" />
             <div>
@@ -158,11 +181,31 @@ export const RestoreDetails = () => {
                 {t('targetUniverse')}
               </Typography>
               <CopyUUID uuid={selectedRestore.universeUUID} />
-              <div className={classes.header}>
-                {selectedRestore.targetUniverseName
-                  ? selectedRestore.targetUniverseName
-                  : ENTITY_NOT_AVAILABLE}
-              </div>
+              {
+                find(universesList, { universeUUID: selectedRestore.universeUUID }) ? (
+                  <Link
+                    target="_blank"
+                    to={`/universes/${selectedRestore.universeUUID}`}
+                    className={classes.link}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <div className={classes.header}>
+                      {selectedRestore.targetUniverseName
+                        ? selectedRestore.targetUniverseName
+                        : ENTITY_NOT_AVAILABLE}
+                    </div>
+                  </Link>
+                ) : (
+                  <div className={classes.header}>
+                    {selectedRestore.targetUniverseName
+                      ? selectedRestore.targetUniverseName
+                      : ENTITY_NOT_AVAILABLE}
+                  </div>
+                )
+              }
+
             </div>
           </div>
           <div className={classes.divider} />
@@ -267,7 +310,7 @@ const RestoreDBDetailsStyles = makeStyles((theme) => ({
   },
   copyButton: {
     padding: '5px 10px',
-    opacity: 0.5
+    opacity: 0.9
   },
   buttonLabel: {
     color: theme.palette.ybacolors.ybDarkGray,
