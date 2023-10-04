@@ -1999,7 +1999,7 @@ DefineIndex(Oid relationId,
 		YbWaitForBackendsCatalogVersion();
 
 		#ifdef YB_TODO
-		/* YB_TODO(later): The below line should be added after latest master rebase */
+		/* The below line should be added after latest master rebase */
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 		#endif
 

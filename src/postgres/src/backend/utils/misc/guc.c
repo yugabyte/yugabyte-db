@@ -2532,7 +2532,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 #ifdef YB_TODO
-	/* YB_TODO(deepthi@yugabyte)
+	/* deepthi@yugabyte
 	 * - QUERY_TUNING is no longer defined in Postgres source code.
 	 * - Please make appropriate modification.
 	 */
@@ -4185,7 +4185,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 #ifdef YB_TODO
-	/* YB_TODO(deepthi@yugabyte)
+	/* deepthi@yugabyte
 	 * - QUERY_TUNING is no longer defined in Postgres source code.
 	 * - Please make appropriate modification.
 	 */

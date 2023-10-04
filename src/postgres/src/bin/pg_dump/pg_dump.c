@@ -262,7 +262,7 @@ static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 static void dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo);
 #endif
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *tbinfo);
@@ -368,7 +368,7 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						char relkind);
 static void isDatabaseColocated(Archive *fout);
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 #endif
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
@@ -6713,7 +6713,7 @@ getTables(Archive *fout, int *numTables)
  *	numTablegroups is set to the number of tablegroups read in
  */
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 TablegroupInfo *
 getTablegroups(Archive *fout, int *numTablegroups)
 {
@@ -8428,7 +8428,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 			continue;
 
 #ifdef YB_TODO
-		/* YB_TODO(neil)
+		/*
 		 * - Postgres now initialize tbinfo later in this function and not in this loop.
 		 * - Move this code further down where appropriate.
 		 */
@@ -10173,7 +10173,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			break;
 		case DO_TABLEGROUP:
 #ifdef YB_TODO
-			/* YB_TODO(neil) Need rework to match Pg15 */
+			/* Need rework to match Pg15 */
 			dumpTablegroup(fout, (TablegroupInfo *) dobj);
 #endif
 			break;
@@ -15407,7 +15407,7 @@ createDummyViewAsClause(Archive *fout, const TableInfo *tbinfo)
 }
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 /*
  * dumpTablegroup
  *    write the declaration of one user-defined tablegroup
@@ -15944,7 +15944,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		destroyPQExpBuffer(yb_reloptions);
 
 #ifdef YB_TODO
-		/* YB_TODO(neil) Need rework to match Pg15 */
+		/* Need rework to match Pg15 */
 		/* Additional properties for YB table or index. */
 		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
 		{
@@ -16996,7 +16996,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
 
 #ifdef YB_TODO
-			/* YB_TODO(neil) Need rework to match Pg15 */
+			/* Need rework to match Pg15 */
 			/*
 			 * Issue #11600: if tablegroups mismatch between the table and its
 			 * constraint, we cannot currently replicate that.
@@ -19023,7 +19023,7 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		int	i_colocation_id = PQfnumber(res, "colocation_id");
 
 #ifdef YB_TODO
-		/* YB_TODO(neil) Need rework to match Pg15 */
+		/* Need rework to match Pg15 */
 		if (i_colocation_id == -1)
 			fatal("cannot create a dump with YSQL metadata included, "
 				  "please run YSQL upgrade first.\n"
@@ -19043,7 +19043,7 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		destroyPQExpBuffer(query);
 
 #ifdef YB_TODO
-		/* YB_TODO(neil) Need rework to match Pg15 */
+		/* Need rework to match Pg15 */
 		if (properties->is_colocated && !OidIsValid(properties->colocation_id))
 			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
 				  relname);
@@ -19096,7 +19096,7 @@ isDatabaseColocated(Archive *fout)
 }
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 /*
  * Load the YB range-partitioned table SPLIT AT Clause from the YB server.
  * The table is identified by the Relation OID.
@@ -19139,7 +19139,7 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 	PQExpBuffer	   update_query = createPQExpBuffer();
 	char		 **extconfigarray = NULL;
 #ifdef YB_TODO
-	/* YB_TODO(neil) Need rework to match Pg15 */
+	/* Need rework to match Pg15 */
 	int			   nconfigitems;
 	Oid			   tbloid;
 	TableInfo	  *tblinfo;
@@ -19157,14 +19157,12 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 						  "UPDATE pg_extension SET extconfig = ARRAY[");
 		/* Shouldn't happen. */
 #ifdef YB_TODO
-		/* YB_TODO(neil) Need rework to match Pg15 */
+		/* Need rework to match Pg15 */
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
 			fatal("error parsing OIDs of configuration relations "
 				  "of extension with OID %u\n", extinfo->dobj.catId.oid);
-#endif
 
-#ifdef YB_TODO
-		/* YB_TODO(neil) Need rework to match Pg15 */
+		/* Need rework to match Pg15 */
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);

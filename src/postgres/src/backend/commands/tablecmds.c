@@ -21346,7 +21346,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	{
 		Relation constrRel = table_open(ConstraintRelationId, AccessShareLock);
 		#ifdef YB_TODO
-		TODO: validateCheckConstraint is not available in pg15, needs to be handled.
+		/* validateCheckConstraint is not available in pg15, needs to be handled.*/
 		foreach(cell, new_check_constraints)
 		{
 			CookedConstraint *cooked_constraint = lfirst(cell);

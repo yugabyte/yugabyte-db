@@ -1051,7 +1051,7 @@ static bool
 yb_ipath_matches_pk(IndexPath *index_path) {
 	return false;
 #ifdef YB_TODO
-	/* YB_TODO(Trevor Foucher) This function needs changes to work with Pg15 */
+	/* Trevor Foucher This function needs changes to work with Pg15 */
 	ListCell   *values;
 	Bitmapset  *primary_key_attrs = NULL;
 	List	   *qinfos = NIL;

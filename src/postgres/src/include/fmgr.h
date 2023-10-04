@@ -98,7 +98,7 @@ typedef struct FunctionCallInfoBaseData
 } FunctionCallInfoBaseData;
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Remove the changes involving FunctionCallInfoData */
+/* Remove the changes involving FunctionCallInfoData */
 typedef struct FunctionCallInfoData FunctionCallInfoBaseData;
 #endif
 

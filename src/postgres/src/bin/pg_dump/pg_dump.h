@@ -766,7 +766,7 @@ extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 extern void getSubscriptions(Archive *fout);
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Need rework to match Pg15 */
+/* Need rework to match Pg15 */
 extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 #endif
 
