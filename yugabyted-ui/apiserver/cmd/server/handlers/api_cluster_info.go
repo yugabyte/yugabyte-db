@@ -1,23 +1,23 @@
 package handlers
 
 import (
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/logger"
-        "apiserver/cmd/server/models"
-        "context"
-        "encoding/json"
-        "fmt"
-        "math"
-        "net"
-        "net/http"
-        "sort"
-        "strconv"
-        "strings"
-        "time"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/models"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "math"
+    "net"
+    "net/http"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
 
-        "github.com/jackc/pgx/v4/pgxpool"
-        "github.com/labstack/echo/v4"
-        "github.com/yugabyte/gocql"
+    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/labstack/echo/v4"
+    "github.com/yugabyte/gocql"
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
@@ -58,24 +58,26 @@ type DetailObj struct {
 }
 
 // return hostname of each node
-func getNodes(logger logger.Logger) ([]string, error) {
-        hostNames := []string{}
-        tabletServersFuture := make(chan helpers.TabletServersFuture)
-        go helpers.GetTabletServersFuture(logger, helpers.HOST, tabletServersFuture)
-        tabletServersResponse := <-tabletServersFuture
-        if tabletServersResponse.Error != nil {
-                return hostNames, tabletServersResponse.Error
+func (c *Container) getNodes() ([]string, error) {
+    hostNames := []string{}
+    tabletServersFuture := make(chan helpers.TabletServersFuture)
+    go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+        return hostNames, tabletServersResponse.Error
+    }
+    // to get hostnames, get all second level keys and only keep if net.SpliHostPort succeeds.
+    for _, obj := range tabletServersResponse.Tablets {
+        for hostport := range obj {
+            host, _, err := net.SplitHostPort(hostport)
+            if err != nil {
+                c.logger.Warnf("failed to split hostport %s: %s", hostport, err.Error())
+            } else {
+                hostNames = append(hostNames, host)
+            }
         }
-        // to get hostnames, get all second level keys and only keep if net.SpliHostPort succeeds.
-        for _, obj := range tabletServersResponse.Tablets {
-                for hostport := range obj {
-                        host, _, err := net.SplitHostPort(hostport)
-                        if err == nil {
-                                hostNames = append(hostNames, host)
-                        }
-                }
-        }
-        return hostNames, nil
+    }
+    return hostNames, nil
 }
 
 func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQueriesFuture) {
@@ -198,7 +200,7 @@ func calculateCombinedMetric(nodeValues [][][]float64, isAverage bool) [][]float
 // Get metrics that are meant to be averaged over all nodes. detailsValue is true if the value of
 // the metric is in the details column instead of the value column in the system.metrics table.
 // Note: assumes values are percentages, and so all values are multiplied by 100
-func getAveragePercentageMetricData(
+func (c *Container) getAveragePercentageMetricData(
         metricColumnValue string,
         nodeList []string,
         hostToUuid map[string]string,
@@ -208,7 +210,7 @@ func getAveragePercentageMetricData(
         detailsValue bool,
 ) ([][]float64, error) {
         metricValues := [][]float64{}
-        rawMetricValues, err := getRawMetricsForAllNodes(metricColumnValue, nodeList, hostToUuid,
+        rawMetricValues, err := c.getRawMetricsForAllNodes(metricColumnValue, nodeList, hostToUuid,
                 startTime, endTime, session, detailsValue)
         if err != nil {
                 return metricValues, err
@@ -293,48 +295,51 @@ func reduceGranularityForAllNodes(
 }
 
 // Gets raw metrics for all provided nodes. Timestamps are returned in seconds.
-func getRawMetricsForAllNodes(
-        metricColumnValue string,
-        nodeList []string,
-        hostToUuid map[string]string,
-        startTime int64,
-        endTime int64,
-        session *gocql.Session,
-        detailsValue bool,
+// If a node is down, will ignore that node. Will only return an error if all nodes are down.
+func (c *Container) getRawMetricsForAllNodes(
+    metricColumnValue string,
+    nodeList []string,
+    hostToUuid map[string]string,
+    startTime int64,
+    endTime int64,
+    session *gocql.Session,
+    detailsValue bool,
 ) ([][][]float64, error) {
-        nodeValues := [][][]float64{}
-        var ts int64
-        var value int
-        var details string
-        for _, hostName := range nodeList {
-                query := fmt.Sprintf(QUERY_FORMAT_NODE, "system.metrics", metricColumnValue,
-                        hostToUuid[hostName], startTime*1000, endTime*1000)
-                iter := session.Query(query).Iter()
-                values := [][]float64{}
-                for iter.Scan(&ts, &value, &details) {
-                        if detailsValue {
-                                detailObj := DetailObj{}
-                                json.Unmarshal([]byte(details), &detailObj)
-                                values = append(
-                                    values,
-                                    []float64{float64(ts) / 1000, detailObj.Value})
-                        } else {
-                                values = append(
-                                    values,
-                                    []float64{float64(ts) / 1000, float64(value)})
-                        }
-                }
-                if err := iter.Close(); err != nil {
-                    logger.Log.Errorf("[api_cluster_info] Error fetching " +
-                    "getRawMetricsForAllNodes", err)
-                    return nodeValues, err
-                }
-                sort.Slice(values, func(i, j int) bool {
-                        return values[i][0] < values[j][0]
-                })
-                nodeValues = append(nodeValues, values)
+    nodeValues := [][][]float64{}
+    var ts int64
+    var value int
+    var details string
+    for _, hostName := range nodeList {
+        query := fmt.Sprintf(QUERY_FORMAT_NODE, "system.metrics", metricColumnValue,
+            hostToUuid[hostName], startTime*1000, endTime*1000)
+        iter := session.Query(query).Iter()
+        values := [][]float64{}
+        for iter.Scan(&ts, &value, &details) {
+            if detailsValue {
+                detailObj := DetailObj{}
+                json.Unmarshal([]byte(details), &detailObj)
+                values = append(
+                    values,
+                    []float64{float64(ts) / 1000, detailObj.Value})
+            } else {
+                values = append(
+                    values,
+                    []float64{float64(ts) / 1000, float64(value)})
+            }
         }
-        return nodeValues, nil
+        if err := iter.Close(); err != nil {
+            c.logger.Errorf("Error fetching metrics from %s: %s", hostName, err.Error())
+            continue
+        }
+        sort.Slice(values, func(i, j int) bool {
+            return values[i][0] < values[j][0]
+        })
+        nodeValues = append(nodeValues, values)
+    }
+    if len(nodeValues) == 0 {
+        return nodeValues, errors.New("all nodes failed to return metrics")
+    }
+    return nodeValues, nil
 }
 
 // Converts metrics to rate by dividing difference between consecutive values by difference in time
@@ -370,25 +375,29 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
     nodeList := []string{nodeParam}
     var err error = nil
     if nodeParam == "" {
-        nodeList, err = getNodes(c.logger)
+        nodeList, err = c.getNodes()
         if err != nil {
+            c.logger.Errorf("[getNodes]: %s", err.Error())
             return ctx.String(http.StatusInternalServerError, err.Error())
         }
     }
-    hostToUuid, err := helpers.GetHostToUuidMap(c.logger, helpers.HOST)
+    hostToUuid, err := c.helper.GetHostToUuidMap(helpers.HOST)
     if err != nil {
+        c.logger.Errorf("[GetHostToUuidMap]: %s", err.Error())
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
     // in case of errors parsing start/end time, set default start = 1 hour ago, end = now
     startTime, err := strconv.ParseInt(ctx.QueryParam("start_time"), 10, 64)
     if err != nil {
+        c.logger.Warnf("error parsing start time for metric, defaulting to 1 hour ago")
         now := time.Now()
-        startTime = now.Unix()
+        startTime = now.Unix() - 60*60
     }
     endTime, err := strconv.ParseInt(ctx.QueryParam("end_time"), 10, 64)
     if err != nil {
+        c.logger.Warnf("error parsing end time for metric, defaulting to now")
         now := time.Now()
-        endTime = now.Unix() - 60*60
+        endTime = now.Unix()
     }
 
     metricResponse := models.MetricResponse{
@@ -399,13 +408,14 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
 
     session, err := c.GetSession()
     if err != nil {
+        c.logger.Errorf("[GetSession]: %s", err.Error())
         return ctx.String(http.StatusInternalServerError, err.Error())
     }
 
     for _, metric := range metricsParam {
         switch metric {
         case "READ_OPS_PER_SEC":
-            rawMetricValues, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+            rawMetricValues, err := c.getRawMetricsForAllNodes(READ_COUNT_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -419,7 +429,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "WRITE_OPS_PER_SEC":
-            rawMetricValues, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+            rawMetricValues, err := c.getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -433,7 +443,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "CPU_USAGE_USER":
-            metricValues, err := getAveragePercentageMetricData("cpu_usage_user",
+            metricValues, err := c.getAveragePercentageMetricData("cpu_usage_user",
                 nodeList, hostToUuid, startTime, endTime, session, true)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -443,7 +453,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "CPU_USAGE_SYSTEM":
-            metricValues, err := getAveragePercentageMetricData("cpu_usage_system",
+            metricValues, err := c.getAveragePercentageMetricData("cpu_usage_system",
                 nodeList, hostToUuid, startTime, endTime, session, true)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -453,8 +463,8 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "DISK_USAGE_GB":
-            reducedNodeList := helpers.RemoveLocalAddresses(nodeList)
-            rawTotalDiskValues, err := getRawMetricsForAllNodes("total_disk",
+            reducedNodeList := c.helper.RemoveLocalAddresses(nodeList)
+            rawTotalDiskValues, err := c.getRawMetricsForAllNodes("total_disk",
                 reducedNodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -463,7 +473,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 rawTotalDiskValues, GRANULARITY_NUM_INTERVALS, true)
             combinedTotalDiskValues := calculateCombinedMetric(nodeTotalDiskValues, false)
             divideMetricByConstant(combinedTotalDiskValues, helpers.BYTES_IN_GB)
-            rawFreeDiskValues, err := getRawMetricsForAllNodes("free_disk",
+            rawFreeDiskValues, err := c.getRawMetricsForAllNodes("free_disk",
                 reducedNodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -480,8 +490,8 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: combinedDiskUsageValues,
             })
         case "PROVISIONED_DISK_SPACE_GB":
-            reducedNodeList := helpers.RemoveLocalAddresses(nodeList)
-            rawMetricValues, err := getRawMetricsForAllNodes("total_disk",
+            reducedNodeList := c.helper.RemoveLocalAddresses(nodeList)
+            rawMetricValues, err := c.getRawMetricsForAllNodes("total_disk",
                 reducedNodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -495,13 +505,13 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: combinedValues,
             })
         case "AVERAGE_READ_LATENCY_MS":
-            rawMetricValuesCount, err := getRawMetricsForAllNodes(READ_COUNT_METRIC,
+            rawMetricValuesCount, err := c.getRawMetricsForAllNodes(READ_COUNT_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
             }
 
-            rawMetricValuesSum, err := getRawMetricsForAllNodes(READ_SUM_METRIC,
+            rawMetricValuesSum, err := c.getRawMetricsForAllNodes(READ_SUM_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -533,13 +543,13 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "AVERAGE_WRITE_LATENCY_MS":
-            rawMetricValuesCount, err := getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
+            rawMetricValuesCount, err := c.getRawMetricsForAllNodes(WRITE_COUNT_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
             }
 
-            rawMetricValuesSum, err := getRawMetricsForAllNodes(WRITE_SUM_METRIC,
+            rawMetricValuesSum, err := c.getRawMetricsForAllNodes(WRITE_SUM_METRIC,
                 nodeList, hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -571,7 +581,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
                 Values: metricValues,
             })
         case "TOTAL_LIVE_NODES":
-            rawMetricValues, err := getRawMetricsForAllNodes("node_up", nodeList,
+            rawMetricValues, err := c.getRawMetricsForAllNodes("node_up", nodeList,
                 hostToUuid, startTime, endTime, session, false)
             if err != nil {
                 return ctx.String(http.StatusInternalServerError, err.Error())
@@ -596,56 +606,57 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
 
 // GetClusterNodes - Get the nodes for a cluster
 func (c *Container) GetClusterNodes(ctx echo.Context) error {
-        response := models.ClusterNodesResponse{
-                Data: []models.NodeData{},
-        }
-        tabletServersFuture := make(chan helpers.TabletServersFuture)
-        go helpers.GetTabletServersFuture(c.logger, helpers.HOST, tabletServersFuture)
-        tabletServersResponse := <-tabletServersFuture
-        if tabletServersResponse.Error != nil {
-                return ctx.String(http.StatusInternalServerError,
-                        tabletServersResponse.Error.Error())
-        }
+    response := models.ClusterNodesResponse{
+        Data: []models.NodeData{},
+    }
+    tabletServersFuture := make(chan helpers.TabletServersFuture)
+    go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+        c.logger.Errorf("[tabletServersResponse]: %s", tabletServersResponse.Error.Error())
+        return ctx.String(http.StatusInternalServerError,
+            tabletServersResponse.Error.Error())
+    }
 
-        mastersFuture := make(chan helpers.MastersFuture)
-        go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
+    mastersFuture := make(chan helpers.MastersFuture)
+    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
 
-        nodeList := helpers.GetNodesList(tabletServersResponse)
-        versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
-        for _, nodeHost := range nodeList {
-                versionInfoFuture := make(chan helpers.VersionInfoFuture)
-                versionInfoFutures[nodeHost] = versionInfoFuture
-                go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
-        }
-        activeYsqlConnectionsFutures := map[string]chan helpers.ActiveYsqlConnectionsFuture{}
-        activeYcqlConnectionsFutures := map[string]chan helpers.ActiveYcqlConnectionsFuture{}
-        masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
-        tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
-        for _, nodeHost := range nodeList {
-            activeYsqlConnectionsFuture := make(chan helpers.ActiveYsqlConnectionsFuture)
-            activeYsqlConnectionsFutures[nodeHost] = activeYsqlConnectionsFuture
-            go helpers.GetActiveYsqlConnectionsFuture(nodeHost, activeYsqlConnectionsFuture)
-            activeYcqlConnectionsFuture := make(chan helpers.ActiveYcqlConnectionsFuture)
-            activeYcqlConnectionsFutures[nodeHost] = activeYcqlConnectionsFuture
-            go helpers.GetActiveYcqlConnectionsFuture(nodeHost, activeYcqlConnectionsFuture)
-            masterMemTrackerFuture := make(chan helpers.MemTrackersFuture)
-            masterMemTrackersFutures[nodeHost] = masterMemTrackerFuture
-            go helpers.GetMemTrackersFuture(nodeHost, true, masterMemTrackerFuture)
-            tserverMemTrackerFuture := make(chan helpers.MemTrackersFuture)
-            tserverMemTrackersFutures[nodeHost] = tserverMemTrackerFuture
-            go helpers.GetMemTrackersFuture(nodeHost, false, tserverMemTrackerFuture)
-        }
-        masters := map[string] helpers.Master{}
-        mastersResponse := <- mastersFuture
-        if mastersResponse.Error == nil {
-            for _, master := range mastersResponse.Masters {
-                if len(master.Registration.PrivateRpcAddresses) > 0 {
-                    masters[master.Registration.PrivateRpcAddresses[0].Host] = master
-                }
+    nodeList := c.helper.GetNodesList(tabletServersResponse)
+    versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
+    for _, nodeHost := range nodeList {
+        versionInfoFuture := make(chan helpers.VersionInfoFuture)
+        versionInfoFutures[nodeHost] = versionInfoFuture
+        go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
+    }
+    activeYsqlConnectionsFutures := map[string]chan helpers.ActiveYsqlConnectionsFuture{}
+    activeYcqlConnectionsFutures := map[string]chan helpers.ActiveYcqlConnectionsFuture{}
+    masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+    tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+    for _, nodeHost := range nodeList {
+        activeYsqlConnectionsFuture := make(chan helpers.ActiveYsqlConnectionsFuture)
+        activeYsqlConnectionsFutures[nodeHost] = activeYsqlConnectionsFuture
+        go c.helper.GetActiveYsqlConnectionsFuture(nodeHost, activeYsqlConnectionsFuture)
+        activeYcqlConnectionsFuture := make(chan helpers.ActiveYcqlConnectionsFuture)
+        activeYcqlConnectionsFutures[nodeHost] = activeYcqlConnectionsFuture
+        go c.helper.GetActiveYcqlConnectionsFuture(nodeHost, activeYcqlConnectionsFuture)
+        masterMemTrackerFuture := make(chan helpers.MemTrackersFuture)
+        masterMemTrackersFutures[nodeHost] = masterMemTrackerFuture
+        go c.helper.GetMemTrackersFuture(nodeHost, true, masterMemTrackerFuture)
+        tserverMemTrackerFuture := make(chan helpers.MemTrackersFuture)
+        tserverMemTrackersFutures[nodeHost] = tserverMemTrackerFuture
+        go c.helper.GetMemTrackersFuture(nodeHost, false, tserverMemTrackerFuture)
+    }
+    masters := map[string]helpers.Master{}
+    mastersResponse := <-mastersFuture
+    if mastersResponse.Error == nil {
+        for _, master := range mastersResponse.Masters {
+            if len(master.Registration.PrivateRpcAddresses) > 0 {
+                masters[master.Registration.PrivateRpcAddresses[0].Host] = master
             }
         }
+    }
     currentTime := time.Now().UnixMicro()
-    hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(c.logger, helpers.HOST)
+    hostToUuid, errHostToUuidMap := c.helper.GetHostToUuidMap(helpers.HOST)
     for _, obj := range tabletServersResponse.Tablets {
         // Cross check the placement UUID of the node with that of read-replica cluster
         for hostport, nodeData := range obj {
@@ -664,7 +675,9 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             ramLimitMaster := int64(0)
             masterUptimeUs := int64(0)
             totalDiskBytes := int64(0)
-            if err == nil {
+            if err != nil {
+                c.logger.Warnf("failed to split host/port: %s: %s", hostport, err.Error())
+            } else {
                 hostName = host
                 versionInfo := <-versionInfoFutures[hostName]
                 if versionInfo.Error == nil {
@@ -706,6 +719,10 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                         var details string
                         iter.Scan(&ts, &value, &details)
                         totalDiskBytes = value
+                        if err := iter.Close(); err != nil {
+                            c.logger.Errorf("Error fetching total_disk from %s: %s",
+                                hostName, err.Error())
+                        }
                     }
                 }
             }
@@ -783,7 +800,7 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         Indexes: []models.ClusterTable{},
     }
     tablesFuture := make(chan helpers.TablesFuture)
-    go helpers.GetTablesFuture(c.logger, helpers.HOST, true, tablesFuture)
+    go c.helper.GetTablesFuture(helpers.HOST, true, tablesFuture)
     tablesListStruct := <-tablesFuture
     if tablesListStruct.Error != nil {
         return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
@@ -841,9 +858,10 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
 // GetClusterHealthCheck - Get health information about the cluster
 func (c *Container) GetClusterHealthCheck(ctx echo.Context) error {
     future := make(chan helpers.HealthCheckFuture)
-    go helpers.GetHealthCheckFuture(c.logger, helpers.HOST, future)
+    go c.helper.GetHealthCheckFuture(helpers.HOST, future)
     result := <-future
     if result.Error != nil {
+        c.logger.Errorf("[GetHealthCheckFuture]: %s", result.Error.Error())
         return ctx.String(http.StatusInternalServerError, result.Error.Error())
     }
     return ctx.JSON(http.StatusOK, models.HealthCheckResponse{
@@ -857,155 +875,164 @@ func (c *Container) GetClusterHealthCheck(ctx echo.Context) error {
 
 // GetLiveQueries - Get the live queries in a cluster
 func (c *Container) GetLiveQueries(ctx echo.Context) error {
-        api := ctx.QueryParam("api")
-        liveQueryResponse := models.LiveQueryResponseSchema{
-                Data: models.LiveQueryResponseData{},
+    api := ctx.QueryParam("api")
+    liveQueryResponse := models.LiveQueryResponseSchema{
+        Data: models.LiveQueryResponseData{},
+    }
+    nodes, err := c.getNodes()
+    if err != nil {
+        c.logger.Errorf("[getNodes]: %s", err.Error())
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    if api == "YSQL" {
+        liveQueryResponse.Data.Ysql = models.LiveQueryResponseYsqlData{
+            ErrorCount: 0,
+            Queries:    []models.LiveQueryResponseYsqlQueryItem{},
         }
-        nodes, err := getNodes(c.logger)
-        if err != nil {
-                return ctx.String(http.StatusInternalServerError, err.Error())
+        // Get live queries of all nodes in parallel
+        futures := map[string]chan helpers.LiveQueriesYsqlFuture{}
+        for _, nodeHost := range nodes {
+            future := make(chan helpers.LiveQueriesYsqlFuture)
+            futures[nodeHost] = future
+            go c.helper.GetLiveQueriesYsqlFuture(nodeHost, future)
         }
-        if api == "YSQL" {
-                liveQueryResponse.Data.Ysql = models.LiveQueryResponseYsqlData{
-                        ErrorCount: 0,
-                        Queries:    []models.LiveQueryResponseYsqlQueryItem{},
-                }
-                // Get live queries of all nodes in parallel
-                futures := []chan helpers.LiveQueriesYsqlFuture{}
-                for _, nodeHost := range nodes {
-                        future := make(chan helpers.LiveQueriesYsqlFuture)
-                        futures = append(futures, future)
-                        go helpers.GetLiveQueriesYsqlFuture(nodeHost, future)
-                }
-                for _, future := range futures {
-                        items := <-future
-                        if items.Error != nil {
-                                liveQueryResponse.Data.Ysql.ErrorCount++
-                                continue
-                        }
-                        for _, item := range items.Items {
-                                liveQueryResponse.Data.Ysql.Queries =
-                                        append(liveQueryResponse.Data.Ysql.Queries, *item)
-                        }
-                }
+        for nodeHost, future := range futures {
+            items := <-future
+            if items.Error != nil {
+                c.logger.Warnf("error getting live ysql queries from %s: %s",
+                    nodeHost, items.Error.Error())
+                liveQueryResponse.Data.Ysql.ErrorCount++
+                continue
+            }
+            for _, item := range items.Items {
+                liveQueryResponse.Data.Ysql.Queries =
+                    append(liveQueryResponse.Data.Ysql.Queries, *item)
+            }
         }
-        if api == "YCQL" {
-                liveQueryResponse.Data.Ycql = models.LiveQueryResponseYcqlData{
-                        ErrorCount: 0,
-                        Queries:    []models.LiveQueryResponseYcqlQueryItem{},
-                }
-                // Get live queries of all nodes in parallel
-                futures := []chan helpers.LiveQueriesYcqlFuture{}
-                for _, nodeHost := range nodes {
-                        future := make(chan helpers.LiveQueriesYcqlFuture)
-                        futures = append(futures, future)
-                        go helpers.GetLiveQueriesYcqlFuture(nodeHost, future)
-                }
-                for _, future := range futures {
-                        items := <-future
-                        if items.Error != nil {
-                                liveQueryResponse.Data.Ycql.ErrorCount++
-                                continue
-                        }
-                        for _, item := range items.Items {
-                                liveQueryResponse.Data.Ycql.Queries =
-                                        append(liveQueryResponse.Data.Ycql.Queries, *item)
-                        }
-                }
+    }
+    if api == "YCQL" {
+        liveQueryResponse.Data.Ycql = models.LiveQueryResponseYcqlData{
+            ErrorCount: 0,
+            Queries:    []models.LiveQueryResponseYcqlQueryItem{},
         }
-        return ctx.JSON(http.StatusOK, liveQueryResponse)
+        // Get live queries of all nodes in parallel
+        futures := map[string]chan helpers.LiveQueriesYcqlFuture{}
+        for _, nodeHost := range nodes {
+            future := make(chan helpers.LiveQueriesYcqlFuture)
+            futures[nodeHost] = future
+            go c.helper.GetLiveQueriesYcqlFuture(nodeHost, future)
+        }
+        for nodeHost, future := range futures {
+            items := <-future
+            if items.Error != nil {
+                c.logger.Warnf("error getting live ycql queries from %s: %s",
+                    nodeHost, items.Error.Error())
+                liveQueryResponse.Data.Ycql.ErrorCount++
+                continue
+            }
+            for _, item := range items.Items {
+                liveQueryResponse.Data.Ycql.Queries =
+                    append(liveQueryResponse.Data.Ycql.Queries, *item)
+            }
+        }
+    }
+    return ctx.JSON(http.StatusOK, liveQueryResponse)
 }
 
 // GetSlowQueries - Get the slow queries in a cluster
 func (c *Container) GetSlowQueries(ctx echo.Context) error {
-        nodes, err := getNodes(c.logger)
+    nodes, err := c.getNodes()
+    if err != nil {
+        c.logger.Errorf("[getNodes]: %s", err.Error())
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    slowQueryResponse := models.SlowQueryResponseSchema{
+        Data: models.SlowQueryResponseData{
+            Ysql: models.SlowQueryResponseYsqlData{
+                ErrorCount: 0,
+                Queries:    []models.SlowQueryResponseYsqlQueryItem{},
+            },
+        },
+    }
+
+    // for each node, get slow queries and aggregate the stats.
+    // do each node in parallel
+    futures := map[string]chan SlowQueriesFuture{}
+    for _, nodeHost := range nodes {
+        conn, err := c.GetConnectionFromMap(nodeHost)
         if err != nil {
-                return ctx.String(http.StatusInternalServerError, err.Error())
+            c.logger.Errorf("[GetConnectionFromMap]: %s", err.Error())
+        } else {
+            future := make(chan SlowQueriesFuture)
+            futures[nodeHost] = future
+            go getSlowQueriesFuture(nodeHost, conn, future)
         }
-        slowQueryResponse := models.SlowQueryResponseSchema{
-                Data: models.SlowQueryResponseData{
-                        Ysql: models.SlowQueryResponseYsqlData{
-                                ErrorCount: 0,
-                                Queries:    []models.SlowQueryResponseYsqlQueryItem{},
-                        },
-                },
+    }
+    // Keep track of stats for each query so we can aggregrate the states over all nodes
+    queryMap := map[string]*models.SlowQueryResponseYsqlQueryItem{}
+    for nodeHost, future := range futures {
+        items := <-future
+        if items.Error != nil {
+            c.logger.Warnf("error getting slow queries from %s: %s", nodeHost, items.Error.Error())
+            slowQueryResponse.Data.Ysql.ErrorCount++
+            continue
         }
+        for _, item := range items.Items {
+            if val, ok := queryMap[item.Query]; ok {
+                // If the query is already in the map, we update its stats
 
-        // for each node, get slow queries and aggregate the stats.
-        // do each node in parallel
-        futures := []chan SlowQueriesFuture{}
-        for _, nodeHost := range nodes {
-                conn, err := c.GetConnectionFromMap(nodeHost)
-                if err == nil {
-                    future := make(chan SlowQueriesFuture)
-                    futures = append(futures, future)
-                    go getSlowQueriesFuture(nodeHost, conn, future)
-                }
-        }
-        // Keep track of stats for each query so we can aggregrate the states over all nodes
-        queryMap := map[string]*models.SlowQueryResponseYsqlQueryItem{}
-        for _, future := range futures {
-                items := <-future
-                if items.Error != nil {
-                        slowQueryResponse.Data.Ysql.ErrorCount++
-                        continue
-                }
-                for _, item := range items.Items {
-                        if val, ok := queryMap[item.Query]; ok {
-                                // If the query is already in the map, we update its stats
+                // item is new query, val is previous queries
 
-                                // item is new query, val is previous queries
+                // Defining values to reuse.
+                X_a := val.MeanTime
+                X_b := item.MeanTime
+                n_a := float64(val.Calls)
+                n_b := float64(item.Calls)
+                S_a := val.StddevTime
+                S_b := item.StddevTime
 
-                                // Defining values to reuse.
-                                X_a := val.MeanTime
-                                X_b := item.MeanTime
-                                n_a := float64(val.Calls)
-                                n_b := float64(item.Calls)
-                                S_a := val.StddevTime
-                                S_b := item.StddevTime
-
-                                val.TotalTime += item.TotalTime
-                                val.Calls += item.Calls
-                                val.Rows += item.Rows
-                                val.MaxTime = math.Max(float64(val.MaxTime), float64(item.MaxTime))
-                                val.MinTime = math.Min(float64(val.MinTime), float64(item.MinTime))
-                                val.LocalBlksWritten += item.LocalBlksWritten
-                                /*
-                                 * Formula to calculate std dev of two samples:
-                                 * Let mean, std dev, and size of
-                                 * sample A be X_a, S_a, n_a respectively;
-                                 * and mean, std dev, and size of sample B
-                                 * be X_b, S_b, n_b respectively.
-                                 * Then mean of combined sample X is given by
-                                 *     n_a X_a + n_b X_b
-                                 * X = -----------------
-                                 *         n_a + n_b
-                                 *
-                                 * The std dev of combined sample S is
-                                 *           n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 + (X_b - X)^2)
-                                 * S = sqrt( ----------------------------------------------------- )
-                                 *                                 n_a + n_b
-                                 */
-                                totalCalls := float64(val.Calls)
-                                averageTime := (n_a*X_a + n_b*X_b) / totalCalls
-                                stdDevTime := math.Sqrt(
-                                        (n_a*(math.Pow(S_a, 2)+math.Pow(X_a-averageTime, 2)) +
-                                        n_b*(math.Pow(S_b, 2)+math.Pow(X_b-averageTime, 2))) /
-                                        totalCalls)
-                                val.MeanTime = averageTime
-                                val.StddevTime = stdDevTime
-                        } else {
-                                // If the query is not already in the map, add it to the map.
-                                queryMap[item.Query] = item
-                        }
-                }
+                val.TotalTime += item.TotalTime
+                val.Calls += item.Calls
+                val.Rows += item.Rows
+                val.MaxTime = math.Max(float64(val.MaxTime), float64(item.MaxTime))
+                val.MinTime = math.Min(float64(val.MinTime), float64(item.MinTime))
+                val.LocalBlksWritten += item.LocalBlksWritten
+                /*
+                 * Formula to calculate std dev of two samples:
+                 * Let mean, std dev, and size of
+                 * sample A be X_a, S_a, n_a respectively;
+                 * and mean, std dev, and size of sample B
+                 * be X_b, S_b, n_b respectively.
+                 * Then mean of combined sample X is given by
+                 *     n_a X_a + n_b X_b
+                 * X = -----------------
+                 *         n_a + n_b
+                 *
+                 * The std dev of combined sample S is
+                 *           n_a ( S_a^2 + (X_a - X)^2) + n_b(S_b^2 + (X_b - X)^2)
+                 * S = sqrt( ----------------------------------------------------- )
+                 *                                 n_a + n_b
+                 */
+                totalCalls := float64(val.Calls)
+                averageTime := (n_a*X_a + n_b*X_b) / totalCalls
+                stdDevTime := math.Sqrt(
+                    (n_a*(math.Pow(S_a, 2)+math.Pow(X_a-averageTime, 2)) +
+                    n_b*(math.Pow(S_b, 2)+math.Pow(X_b-averageTime, 2))) /
+                    totalCalls)
+                val.MeanTime = averageTime
+                val.StddevTime = stdDevTime
+            } else {
+                // If the query is not already in the map, add it to the map.
+                queryMap[item.Query] = item
+            }
         }
-        // put queries into slice and return
-        for _, value := range queryMap {
-                slowQueryResponse.Data.Ysql.Queries =
-                    append(slowQueryResponse.Data.Ysql.Queries, *value)
-        }
-        return ctx.JSON(http.StatusOK, slowQueryResponse)
+    }
+    // put queries into slice and return
+    for _, value := range queryMap {
+        slowQueryResponse.Data.Ysql.Queries =
+            append(slowQueryResponse.Data.Ysql.Queries, *value)
+    }
+    return ctx.JSON(http.StatusOK, slowQueryResponse)
 }
 
 // GetLiveQueries - Get the tablets in a cluster
@@ -1013,26 +1040,46 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
     tabletListResponse := models.ClusterTabletListResponse{
         Data: map[string]models.ClusterTablet{},
     }
-    tabletsFuture := make(chan helpers.TabletsFuture)
-    go helpers.GetTabletsFuture(helpers.HOST, tabletsFuture)
-    tabletsList := <-tabletsFuture
-    if tabletsList.Error != nil {
-        return ctx.String(http.StatusInternalServerError, tabletsList.Error.Error())
+    // We need to aggregate results from all tservers
+    nodes, err := c.getNodes()
+    if err != nil {
+        c.logger.Errorf("[getNodes]: %s", err.Error())
+        return ctx.String(http.StatusInternalServerError, err.Error())
     }
-    for tabletId, tabletInfo := range tabletsList.Tablets {
-        hasLeader := false
-        for _, obj := range tabletInfo.RaftConfig {
-            if _, ok := obj["LEADER"]; ok {
-                hasLeader = true
-                break
-            }
+    tabletsFutures := map[string]chan helpers.TabletsFuture{}
+    for _, host := range nodes {
+        tabletsFuture := make(chan helpers.TabletsFuture)
+        tabletsFutures[host] = tabletsFuture
+        go c.helper.GetTabletsFuture(host, tabletsFuture)
+    }
+    for host, tabletsFuture := range tabletsFutures {
+        c.logger.Debugf("getting tablets from tserver %s", host)
+        tabletsList := <- tabletsFuture
+        if tabletsList.Error != nil {
+            c.logger.Warnf("[GetTabletsFuture] for node %s: %s", host, tabletsList.Error.Error())
+            continue
         }
-        tabletListResponse.Data[tabletId] = models.ClusterTablet{
-            Namespace: tabletInfo.Namespace,
-            TableName: tabletInfo.TableName,
-            TableUuid: tabletInfo.TableId,
-            TabletId:  tabletId,
-            HasLeader: hasLeader,
+        for tabletId, tabletInfo := range tabletsList.Tablets {
+            // skip if tablet already in map
+            if _, ok := tabletListResponse.Data[tabletId]; ok {
+                c.logger.Debugf("skipping tablet id %s", tabletId)
+                continue
+            }
+            c.logger.Debugf("adding tablet id %s", tabletId)
+            hasLeader := false
+            for _, obj := range tabletInfo.RaftConfig {
+                if _, ok := obj["LEADER"]; ok {
+                    hasLeader = true
+                    break
+                }
+            }
+            tabletListResponse.Data[tabletId] = models.ClusterTablet{
+                Namespace: tabletInfo.Namespace,
+                TableName: tabletInfo.TableName,
+                TableUuid: tabletInfo.TableId,
+                TabletId:  tabletId,
+                HasLeader: hasLeader,
+            }
         }
     }
     return ctx.JSON(http.StatusOK, tabletListResponse)
@@ -1041,22 +1088,23 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
 // GetVersion - Get YugabyteDB version
 func (c *Container) GetVersion(ctx echo.Context) error {
     tabletServersFuture := make(chan helpers.TabletServersFuture)
-    go helpers.GetTabletServersFuture(c.logger, helpers.HOST, tabletServersFuture)
+    go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
 
     // Get response from tabletServersFuture
     tabletServersResponse := <-tabletServersFuture
     if tabletServersResponse.Error != nil {
-            return ctx.String(http.StatusInternalServerError,
-                    tabletServersResponse.Error.Error())
+        c.logger.Errorf("[GetTabletServersFuture]: %s", tabletServersResponse.Error.Error())
+        return ctx.String(http.StatusInternalServerError,
+            tabletServersResponse.Error.Error())
     }
-    nodeList := helpers.GetNodesList(tabletServersResponse)
-    versionInfoFutures := []chan helpers.VersionInfoFuture{}
+    nodeList := c.helper.GetNodesList(tabletServersResponse)
+    versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
     for _, nodeHost := range nodeList {
         versionInfoFuture := make(chan helpers.VersionInfoFuture)
-        versionInfoFutures = append(versionInfoFutures, versionInfoFuture)
-        go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
+        versionInfoFutures[nodeHost] = versionInfoFuture
+        go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
     }
-    smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
+    smallestVersion := c.helper.GetSmallestVersion(versionInfoFutures)
     return ctx.JSON(http.StatusOK, models.VersionInfo{
         Version: smallestVersion,
     })
@@ -1065,12 +1113,15 @@ func (c *Container) GetVersion(ctx echo.Context) error {
 // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
 func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
     mastersFuture := make(chan helpers.MastersFuture)
-    go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
-    masters := map[string] helpers.Master{}
-    mastersResponse := <- mastersFuture
+    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+    masters := map[string]helpers.Master{}
+    mastersResponse := <-mastersFuture
     // Build comma separated master addresses list for yb-admin
     csvMasterAddresses := ""
-    if mastersResponse.Error == nil {
+    if mastersResponse.Error != nil {
+        c.logger.Errorf("[GetMastersFuture]: %s", mastersResponse.Error.Error())
+        return ctx.String(http.StatusInternalServerError, mastersResponse.Error.Error())
+    } else {
         for _, master := range mastersResponse.Masters {
             if len(master.Registration.PrivateRpcAddresses) > 0 {
                 masters[master.Registration.PrivateRpcAddresses[0].Host] = master
@@ -1089,10 +1140,11 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
         "get_is_load_balancer_idle",
     }
     loadBalancerIdleFuture := make(chan helpers.YBAdminFuture)
-    go helpers.RunYBAdminFuture(params, loadBalancerIdleFuture)
+    go c.helper.RunYBAdminFuture(params, loadBalancerIdleFuture)
     loadBalancerResult := <-loadBalancerIdleFuture
     if loadBalancerResult.Error != nil {
-        c.logger.Errorf(loadBalancerResult.Error.Error())
+        c.logger.Errorf("failed to get_is_load_balancer_idle result: %s",
+            loadBalancerResult.Error.Error())
     } else {
         isLoadBalancerIdle = strings.Contains(loadBalancerResult.Result, "1")
     }
@@ -1112,10 +1164,11 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
     }
 
     tableInfoFuture := make(chan helpers.TableInfoFuture)
-    go helpers.GetTableInfoFuture(c.logger, nodeHost, id, tableInfoFuture)
+    go c.helper.GetTableInfoFuture(nodeHost, id, tableInfoFuture)
 
     tableInfo := <- tableInfoFuture
     if tableInfo.Error != nil {
+        c.logger.Errorf("[GetTableInfoFuture]: %s", tableInfo.Error.Error())
         return ctx.String(http.StatusInternalServerError, tableInfo.Error.Error())
     }
 
@@ -1166,6 +1219,7 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
         hidden, err := strconv.ParseBool(tablet.Hidden)
         // If parsebool fails, assume tablet is not hidden
         if err != nil {
+            c.logger.Warnf("failed to parse if tablet is hidden")
             hidden = false
         }
         // Get Raft Config info

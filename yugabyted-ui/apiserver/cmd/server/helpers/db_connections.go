@@ -10,7 +10,7 @@ import (
     "github.com/jackc/pgx/v4/pgxpool"
 )
 
-func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
+func (h *HelperContainer) CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
 
     // Initialize gocql client
     cluster := gocql.NewCluster(HOST)
@@ -34,7 +34,7 @@ func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
     return cluster
 }
 
-func CreatePgClient(log logger.Logger, host string) (*pgxpool.Pool, error) {
+func (h *HelperContainer) CreatePgClient(log logger.Logger, host string) (*pgxpool.Pool, error) {
 
     var url string
 

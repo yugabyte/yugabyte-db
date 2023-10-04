@@ -20,6 +20,7 @@ import (
 )
 
 const serverPortEnv string = "YUGABYTED_UI_PORT"
+const logLevelEnv string = "YUGABYTED_UI_LOG_LEVEL"
 
 const (
         uiDir     = "ui"
@@ -78,12 +79,28 @@ func getStaticFiles() http.FileSystem {
 func main() {
 
         // Initialize logger
-        log := logger.Log
-        if helpers.Debug {
-            log = logger.DebugLog
+        logLevel := getEnv(logLevelEnv, "info")
+        var logLevelEnum logger.LogLevel
+        switch logLevel {
+        case "debug":
+            logLevelEnum = logger.Debug
+        case "info":
+            logLevelEnum = logger.Info
+        case "warn":
+            logLevelEnum = logger.Warn
+        case "error":
+            logLevelEnum = logger.Error
+        default:
+            println("unknown log level env variable, defaulting to info level logging")
+            logLevel = "info"
+            logLevelEnum = logger.Info
         }
+        log, _ := logger.NewLogger(logLevelEnum)
         defer log.Cleanup()
-        log.Infof("Logger initialized")
+        log.Infof("Logger initialized with %s level logging", logLevel)
+
+        // all helper functions are be methods of the helper object
+        helper, _ := helpers.NewHelperContainer(log)
 
         serverPort := getEnv(serverPortEnv, "15433")
 
@@ -93,7 +110,7 @@ func main() {
 
         e := echo.New()
 
-        cluster := helpers.CreateGoCqlClient(log)
+        cluster := helper.CreateGoCqlClient(log)
 
         // We keep a map of pgx connections since we need to
         // connect to all nodes (sql) for slow_queries
@@ -128,7 +145,7 @@ func main() {
         }
 
         //todo: handle the error!
-        c, _ := handlers.NewContainer(log, cluster, gocqlSession, pgxConnMap)
+        c, _ := handlers.NewContainer(log, cluster, gocqlSession, pgxConnMap, helper)
         defer c.Cleanup()
 
         // Middleware

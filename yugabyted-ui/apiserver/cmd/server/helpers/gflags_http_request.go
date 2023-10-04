@@ -14,7 +14,11 @@ type GFlagsFuture struct {
     Error error
 }
 
-func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
+func (h *HelperContainer) GetGFlagsFuture(
+    hostName string,
+    isMaster bool,
+    future chan GFlagsFuture,
+) {
     port := TserverUIPort
     if isMaster {
         port = MasterUIPort
