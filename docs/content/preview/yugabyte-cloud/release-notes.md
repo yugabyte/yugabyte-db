@@ -20,6 +20,13 @@ On this page:
 
 ## Change log
 
+### September 22, 2023
+
+**Database**
+
+- Preview track updated to 2.19.2.0.
+- Production track updated to 2.14.12.0.
+
 ### September 12, 2023
 
 **New Features**
