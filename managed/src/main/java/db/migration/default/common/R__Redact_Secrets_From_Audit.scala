@@ -3,7 +3,8 @@ package db.migration.default.common
 
 import java.sql.Connection
 
-import com.yugabyte.yw.common.audit.AuditService
+import com.yugabyte.yw.common.RedactingService
+import com.yugabyte.yw.common.RedactingService.RedactionTarget
 import org.apache.commons.lang3.StringUtils
 import org.flywaydb.core.api.migration.MigrationChecksumProvider
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
@@ -22,7 +23,7 @@ class R__Redact_Secrets_From_Audit extends JdbcMigration with MigrationChecksumP
       val payloadStr = resultSet.getString("payload")
       if (StringUtils.isNotEmpty(payloadStr)) {
         val payload = play.libs.Json.parse(payloadStr);
-        val newPayload = AuditService.filterSecretFields(payload)
+        val newPayload = RedactingService.filterSecretFields(payload, RedactionTarget.LOGS);
         if (!payload.equals(newPayload)) {
           updateStatement.setString(1, play.libs.Json.stringify(newPayload))
           updateStatement.setLong(2, id)
@@ -34,7 +35,7 @@ class R__Redact_Secrets_From_Audit extends JdbcMigration with MigrationChecksumP
 
   override def getChecksum: Integer = {
     val codeChecksum: Int = 82918230 // Change me if you want to force migration to run
-    val secretPathsChecksum: Int = MurmurHash3.arrayHash(AuditService.SECRET_PATHS.toArray);
+    val secretPathsChecksum: Int = MurmurHash3.arrayHash(RedactingService.SECRET_PATHS_FOR_LOGS.toArray);
     MurmurHash3.arrayHash(Array(codeChecksum, secretPathsChecksum))
   }
 }

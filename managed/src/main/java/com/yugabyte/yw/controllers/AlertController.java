@@ -423,7 +423,7 @@ public class AlertController extends AuthenticatedController {
             Objects.toString(channel.getUuid(), null),
             Audit.ActionType.Create,
             request().body().asJson());
-    return PlatformResults.withData(channel);
+    return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
   @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)

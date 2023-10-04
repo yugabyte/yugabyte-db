@@ -14,6 +14,8 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,16 +41,20 @@ import java.util.function.Consumer;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
+@Slf4j
 public class Commissioner {
 
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
   public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
+  public static final String ENABLE_DETAILED_LOGGING_FAILED_REQUEST =
+      "yb.logging.enable_task_failed_request_logs";
 
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
   private final ExecutorService executor;
 
   private final TaskExecutor taskExecutor;
+  private final RuntimeConfigFactory runtimeConfigFactory;
 
   // A map of all task UUID's to the task runnable objects for all the user tasks that are currently
   // active. Recently completed tasks are also in this list, their completion percentage should be
@@ -63,10 +69,12 @@ public class Commissioner {
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
+      RuntimeConfigFactory runConfigFactory,
       TaskExecutor taskExecutor) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
+    this.runtimeConfigFactory = runConfigFactory;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -103,6 +111,14 @@ public class Commissioner {
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
     try {
+      if (runtimeConfigFactory
+          .globalRuntimeConf()
+          .getBoolean(ENABLE_DETAILED_LOGGING_FAILED_REQUEST)) {
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.LOGS);
+        log.debug(
+            "Executing TaskType {} with params {}", taskType, redactedJson);
+      }
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
