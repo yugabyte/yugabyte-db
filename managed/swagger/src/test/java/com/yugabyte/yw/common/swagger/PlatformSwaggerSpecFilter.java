@@ -55,6 +55,19 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
   }
 
   @Override
+  public boolean isDefinitionAllowed(
+      Model model,
+      Map<String, List<String>> params,
+      Map<String, String> cookies,
+      Map<String, List<String>> headers) {
+    if (model.getDescription() != null && model.getDescription().contains(INTERNAL_MARKER)) {
+      LOG.info("Skipping swagger generation for model '{}'", ((ModelImpl) model).getName());
+      return false;
+    }
+    return true;
+  }
+
+  @Override
   public boolean isPropertyAllowed(
       Model model,
       Property property,
@@ -69,10 +82,6 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
           ((ModelImpl) model).getName());
       return false;
     }
-    return true;
-  }
-
-  public boolean isRemovingUnreferencedDefinitions() {
     return true;
   }
 }
