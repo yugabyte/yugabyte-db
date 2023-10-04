@@ -122,6 +122,19 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> showDrXClusterConfig =
+      new ConfKeyInfo<>(
+          "yb.ui.xcluster.dr.show_xcluster_config",
+          ScopeType.CUSTOMER,
+          "Show underlying xCluster configs from DR setup",
+          "YBA creates an underlying transactional xCluster config when setting "
+              + "up an active-active single-master disaster recovery (DR) config. During regular "
+              + "operation you should manage the DR config through the DR UI instead of the "
+              + "xCluster UI. This feature flag serves as a way to expose the underlying "
+              + "xCluster config for troubleshooting.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",

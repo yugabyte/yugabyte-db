@@ -46,6 +46,7 @@ export interface XClusterConfig {
   targetActive: boolean;
   txnTableDetails: XClusterTableDetails;
   type: XClusterConfigType;
+  usedForDr: boolean;
   uuid: string;
 
   sourceUniverseUUID?: string;

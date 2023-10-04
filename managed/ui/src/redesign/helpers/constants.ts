@@ -38,7 +38,8 @@ export const RuntimeConfigKey = {
   EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
-  IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf'
+  IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
+  SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config'
 } as const;
 
 /**
@@ -48,4 +49,4 @@ export const ToastNotificationDuration = {
   SHORT: 2000,
   DEFAULT: 3000,
   LONG: 5000
-};
+} as const;
