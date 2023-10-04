@@ -433,9 +433,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void setCloudNodeUuids(Universe universe) {
-    // Set random node UUIDs for nodes in the cloud.
-    universe
-        .getUniverseDetails()
+    // Set deterministic node UUIDs for nodes in the cloud.
+    taskParams()
         .clusters
         .stream()
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))

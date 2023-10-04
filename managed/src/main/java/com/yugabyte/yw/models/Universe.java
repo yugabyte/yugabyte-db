@@ -793,7 +793,8 @@ public class Universe extends Model {
   public void save(boolean incrementVersion) {
     // Update the universe details json.
     this.universeDetailsJson =
-        Json.stringify(RedactingService.filterSecretFields(
+        Json.stringify(
+            RedactingService.filterSecretFields(
                 Json.toJson(universeDetails), RedactionTarget.APIS));
     this.version = incrementVersion ? this.version + 1 : this.version;
     super.save();
