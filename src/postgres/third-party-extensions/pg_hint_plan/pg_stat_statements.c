@@ -159,7 +159,7 @@ JumbleRangeTable(pgssJumbleState *jstate, List *rtable)
 }
 
 #ifdef YB_TODO
-/* YB_TODO(neil@yugabyte)
+/*
  * - Delete this code.
  * - This function has been moved to utils/misc/queryjumble.c
  */

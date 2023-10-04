@@ -456,7 +456,7 @@ typedef struct PgStat_StatTabEntry
 } PgStat_StatTabEntry;
 
 #ifdef YB_TODO
-/* YB_TODO(neil) Postgres no longer uses the following structures. */
+/* Postgres no longer uses the following structures. */
 
 /* ----------
  * Wait Events - Timeout
@@ -753,7 +753,7 @@ extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern PgStat_BackendFunctionEntry *find_funcstat_entry(Oid func_id);
 
 #ifdef YB_TODO
-/* YB_TODO(neil) These functions are no longer used in Pg15 */
+/* These functions are no longer used in Pg15 */
 /* ----------
  * pgstat_report_wait_end_for_proc(PGPROC *proc) -
  *

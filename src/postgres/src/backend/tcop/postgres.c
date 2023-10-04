@@ -810,7 +810,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 								 queryEnv);
 
 #ifdef YB_TODO
-	/* YB_TODO(neil) The IF block needs to be rewrite in this module. */
+	/* The IF block needs to be rewrite in this module. */
 	 if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
@@ -4790,7 +4790,7 @@ yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 static void yb_maybe_sleep_on_txn_conflict(int attempt)
 {
 #ifdef YB_TODO
-	/* YB_TODO(neil) Rewrite this function */
+	/* Rewrite this function */
 	if (!YBIsWaitQueueEnabled())
 	{
 		/*
