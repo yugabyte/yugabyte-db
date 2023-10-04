@@ -230,7 +230,7 @@ void XClusterConsumer::Shutdown() {
     client->Shutdown();
   }
 
-  local_client_->client->Shutdown();
+  local_client_->Shutdown();
 
   for (const auto& poller : pollers_to_shutdown) {
     poller->CompleteShutdown();
@@ -731,7 +731,14 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
   }
 
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Failed to flush to XClusterSafeTime table");
+  // We dont use TEST_Flush here since it gets stuck on shutdown (#19402).
+  auto future = session->FlushFuture();
+  SCHECK(
+      future.wait_for(client->default_rpc_timeout().ToSteadyDuration()) ==
+          std::future_status::ready,
+      IllegalState, "Failed to flush to XClusterSafeTime table");
+
+  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to flush to XClusterSafeTime table");
 
   last_safe_time_published_at_ = MonoTime::Now();
 
