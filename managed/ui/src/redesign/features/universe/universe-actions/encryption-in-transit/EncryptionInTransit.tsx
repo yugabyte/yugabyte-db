@@ -231,8 +231,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       title={t('universeActions.encryptionInTransit.title')}
       onClose={onClose}
       onSubmit={handleFormSubmit}
-      submitTestId="EncryptionAtRest-Submit"
-      cancelTestId="EncryptionAtRest-Close"
+      submitTestId="EncryptionInTransit-Submit"
+      cancelTestId="EncryptionInTransit-Close"
       buttonProps={{
         primary: {
           disabled: !canEditEAT
