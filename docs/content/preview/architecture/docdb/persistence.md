@@ -103,7 +103,7 @@ While UDTs (user-defined types) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
+The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 

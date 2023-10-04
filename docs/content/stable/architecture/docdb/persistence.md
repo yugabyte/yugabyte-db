@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
+Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer's local DocDB document storage layer.
 
 ## Storage model
 
@@ -101,7 +101,7 @@ While UDTs (user-defined types) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
+The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 
@@ -135,7 +135,7 @@ The packed row feature works for the YSQL API using the YSQL-specific GFlags wit
 
 ## Data expiration in YCQL
 
-In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's syscatalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
+In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's system catalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
 
 Furthermore, YCQL has a distinction between rows created using Insert vs Update. YugabyteDB keeps track of this difference (and row-level TTLs) using a "liveness column", a special system column invisible to the user. It is added for inserts, but not updates, which ensures the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
@@ -237,7 +237,7 @@ operation only involves adding a delete marker at the correct level, and does no
 (hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
 </pre>
-The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout per se, as the writes happen in a log-structured manner.
+The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout by itself, as the writes happen in a log-structured manner.
 
 When compactions occur, the space for the key-value pairs corresponding to the deleted columns is reclaimed, as per the following:
 
