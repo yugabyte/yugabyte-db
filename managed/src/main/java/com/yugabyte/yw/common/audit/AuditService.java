@@ -11,17 +11,15 @@
 package com.yugabyte.yw.common.audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.DocumentContext;
-import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Singleton;
 
 import play.libs.Json;
@@ -37,56 +35,7 @@ public class AuditService {
 
   public static final Logger LOG = LoggerFactory.getLogger(AuditService.class);
 
-  public static final String SECRET_REPLACEMENT = "REDACTED";
-  // List of json paths to any secret fields we want to redact in audit entries.
-  // More on json path format can be found here: https://goessner.net/articles/JsonPath/
-  public static final List<String> SECRET_PATHS =
-      ImmutableList.of(
-          "$..password",
-          "$..confirmPassword",
-          "$..ysqlPassword",
-          "$..ycqlPassword",
-          "$..ysqlAdminPassword",
-          "$..ycqlAdminPassword",
-          "$..ysqlCurrAdminPassword",
-          "$..ycqlCurrAdminPassword",
-          "$..['config.AWS_ACCESS_KEY_ID']",
-          "$..['config.AWS_SECRET_ACCESS_KEY']",
-          // GCP private key
-          "$..['config.config_file_contents.private_key_id']",
-          "$..['config.config_file_contents.private_key']",
-          "$..config.private_key_id",
-          "$..config.private_key",
-          // Azure client secret
-          "$..['config.AZURE_CLIENT_SECRET']",
-          // Kubernetes secrets
-          "$..KUBECONFIG_PULL_SECRET_CONTENT",
-          "$..KUBECONFIG_CONTENT",
-          // onprem and certificate private keys
-          "$..keyContent",
-          "$..certContent",
-          "$..customServerCertData",
-          // S3 storage credentials
-          "$..AWS_ACCESS_KEY_ID",
-          "$..AWS_SECRET_ACCESS_KEY",
-          // GCS storage credentials
-          "$..GCS_CREDENTIALS_JSON",
-          // Azure storage credentials
-          "$..AZURE_STORAGE_SAS_TOKEN",
-          // HA cluster credentials
-          "$..cluster_key",
-          // SmartKey API key
-          "$..api_key",
-          // SMTP password
-          "$..smtpPassword",
-          // Hashicorp token
-          "$..HC_VAULT_TOKEN",
-          "$..vaultToken");
-
-  public static final List<JsonPath> SECRET_JSON_PATHS =
-      SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
-
-  private static final Configuration JSONPATH_CONFIG =
+  public static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
           .jsonProvider(new JacksonJsonNodeJsonProvider())
           .mappingProvider(new JacksonMappingProvider())
@@ -226,7 +175,7 @@ public class AuditService {
     ctx.args.put("isAudited", true);
     String method = request.method();
     String path = request.path();
-    JsonNode redactedParams = filterSecretFields(params);
+    JsonNode redactedParams = RedactingService.filterSecretFields(params, RedactionTarget.LOGS);
     Audit entry =
         Audit.create(
             user.getUser(),
@@ -257,16 +206,5 @@ public class AuditService {
 
   public Audit getOrBadRequest(UUID customerUUID, UUID taskUUID) {
     return Audit.getOrBadRequest(customerUUID, taskUUID);
-  }
-
-  public static JsonNode filterSecretFields(JsonNode input) {
-    if (input == null) {
-      return null;
-    }
-    DocumentContext context = JsonPath.parse(input.deepCopy(), JSONPATH_CONFIG);
-
-    SECRET_JSON_PATHS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
-
-    return context.json();
   }
 }

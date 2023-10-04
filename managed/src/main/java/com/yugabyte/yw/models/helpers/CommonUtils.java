@@ -71,7 +71,7 @@ public class CommonUtils {
   private static final Pattern RELEASE_REGEX =
       Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
 
-  private static final String maskRegex = "(?<!^.?).(?!.?$)";
+  public static final String maskRegex = "(?<!^.?).(?!.?$)";
 
   private static final String MASKED_FIELD_VALUE = "********";
 

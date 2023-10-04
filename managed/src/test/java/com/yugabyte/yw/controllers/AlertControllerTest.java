@@ -169,7 +169,11 @@ public class AlertControllerTest extends FakeDBApplication {
             authToken,
             channelFormDataJson);
     assertThat(result.status(), equalTo(OK));
-    return channelFromJson(Json.parse(contentAsString(result)));
+
+    JsonNode getResponse = Json.parse(contentAsString(result));
+    AlertChannel channel =
+        AlertChannel.get(customer.getUuid(), UUID.fromString(getResponse.get("uuid").asText()));
+    return channelFromJson(Json.toJson(channel));
   }
 
   @Test

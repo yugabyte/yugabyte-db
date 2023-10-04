@@ -21,7 +21,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -116,7 +118,9 @@ public class ShellProcessHandler {
 
                 try {
                   JsonNode valueJson = Json.mapper().readTree(value);
-                  redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+                  redactedCommand.add(
+                      RedactingService.filterSecretFields(valueJson, RedactionTarget.LOGS)
+                          .toString());
 
                 } catch (JsonProcessingException e) {
                   redactedCommand.add(RedactingService.redactString(value));
