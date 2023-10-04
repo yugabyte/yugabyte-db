@@ -20,6 +20,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_options.h"
@@ -105,12 +106,13 @@ class MiniSysCatalogTable {
   scoped_refptr<server::Clock> clock_;
   unique_ptr<ThreadPool> thread_pool_;
 
-  unique_ptr<tablet::TabletStatusListener> status_listener_;
+  unique_ptr<MetricRegistry> metric_registry_;
   unique_ptr<consensus::ConsensusMetadata> consensus_metadata_;
   std::promise<client::YBClient*> client_promise_;
   const tablet::TabletOptions tablet_options_;
 
   tablet::TabletPtr tablet_;
+  tablet::TabletPeerPtr tablet_peer_;
 };
 
 Result<MiniSysCatalogTablePtr> MiniSysCatalogTable::Load(FsManager* fs_manager) {
@@ -120,7 +122,8 @@ Result<MiniSysCatalogTablePtr> MiniSysCatalogTable::Load(FsManager* fs_manager) 
 }
 
 MiniSysCatalogTable::MiniSysCatalogTable()
-    : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)) {
+    : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)),
+      metric_registry_(new MetricRegistry) {
   CHECK_OK(ThreadPoolBuilder("pool").set_min_threads(1).Build(&thread_pool_));
 }
 
@@ -170,8 +173,7 @@ Status MiniSysCatalogTable::LoadConsensusMetadata(FsManager* fs_manager, const s
   } else if (loaded_config.peers().empty()) {
     LOG(ERROR) << "Loaded consensus metadata, but had no peers";
   } else {
-    LOG(ERROR) << "Loaded consensus metadata - expected a single peer, but got "
-               << loaded_config.peers().size() << " peers";
+    LOG(INFO) << "Loaded consensus metadata - got " << loaded_config.peers().size() << " peers";
   }
 
   return Status::OK();
@@ -179,31 +181,50 @@ Status MiniSysCatalogTable::LoadConsensusMetadata(FsManager* fs_manager, const s
 
 Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata,
                                        const Schema& expected_schema) {
+  struct DoNothing {
+    static void fn(std::shared_ptr<StateChangeContext>) {}
+  };
+  std::shared_future<client::YBClient*> client_future = client_promise_.get_future();
+  tablet_peer_ = std::make_shared<tablet::TabletPeer>(
+      metadata,
+      consensus::RaftPeerPB(),
+      clock_,
+      metadata->fs_manager()->uuid(),
+      Bind(&DoNothing::fn),
+      metric_registry_.get(),
+      nullptr, // tablet_splitter
+      client_future);
+
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = client_promise_.get_future(),
+      .client_future = client_future,
       .clock = clock_,
       .parent_mem_tracker = nullptr,
       .block_based_table_mem_tracker = nullptr,
+      .metric_registry = metric_registry_.get(),
       .log_anchor_registry = nullptr,
       .tablet_options = tablet_options_,
       .log_prefix_suffix = "",
+      .transaction_participant_context = tablet_peer_.get(),
       .local_tablet_filter = nullptr,
-      // Initdb is much faster with transactions disabled.
-      .txns_enabled = tablet::TransactionsEnabled::kFalse,
+      .transaction_coordinator_context = nullptr,
+      // Curently TabletBootstrap::PlaySegments() fails if txns_enabled == false.
+      .txns_enabled = tablet::TransactionsEnabled::kTrue,
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
+      .auto_flags_manager = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
       .metadata_cache = nullptr,
   };
 
-  status_listener_ = std::make_unique<tablet::TabletStatusListener>(metadata);
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
-      .listener = status_listener_.get(),
+      .listener = tablet_peer_->status_listener(),
       .append_pool = thread_pool_.get(),
       .allocation_pool = thread_pool_.get(),
       .log_sync_pool = thread_pool_.get(),
