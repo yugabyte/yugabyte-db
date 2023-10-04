@@ -12,9 +12,6 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}"/common.sh
 
-GRPCIO_PY37_VERSION="1.57.0"
-PROTOBUF_PY37_VERSION="4.23.4"
-
 if [[ ! ${1:-} =~ ^(-y|--yes)$ ]]; then
   echo >&2 "This will remove and re-create the entire virtualenv from ${virtualenv_dir} in order"
   echo >&2 "to re-generate 'frozen' python dependency versions. It is only necessary to run this"
@@ -51,18 +48,6 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 # Use LANG=C to force case-sensitive sorting.
 # https://stackoverflow.com/questions/10326933/case-sensitive-sort-unix-bash
 ( set -x; run_pip freeze | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
-
-# TODO This patch is for build running on python 3.6.
-# Patch grpcio and protobuf versions
-# The current version is only for python <= 3.7.*
-sed -ie "s/\(grpcio.*==.*\)/\1;python_version < '3.7'/" $FROZEN_REQUIREMENTS_FILE
-sed -ie "s/\(protobuf.*==.*\)/\1;python_version < '3.7'/" $FROZEN_REQUIREMENTS_FILE
-
-# Now, add our 3.7+ version of grpcio (and grpcio-tools)
-echo "grpcio==${GRPCIO_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
-echo "grpcio-tools==${GRPCIO_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
-echo "protobuf==${PROTOBUF_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
-
 
 log_empty_line
 log "Contents of $FROZEN_REQUIREMENTS_FILE:"
