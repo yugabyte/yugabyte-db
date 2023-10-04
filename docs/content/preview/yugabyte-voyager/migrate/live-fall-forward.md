@@ -390,7 +390,8 @@ Some important metrics such as number of events, ingestion rate, and so on, will
 The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
-[table-list](../../reference/data-migration/import-data/#arguments) and [exclude-table-list](../../reference/data-migration/import-data/#arguments) flags are not supported in live migration.
+The arguments `table-list` and `exclude-table-list` are not supported in live migration.
+For details about the arguments, refer to the [arguments table](../../reference/data-migration/import-data/#arguments).
 {{< /note >}}
 
 {{< tip title="Importing large datasets" >}}

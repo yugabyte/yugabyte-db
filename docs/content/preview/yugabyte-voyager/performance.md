@@ -102,6 +102,6 @@ As more optimizations are introduced, average throughput increases. The followin
 
 ## Improve export performance
 
-By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/data-migration/export-data/#arguments) argument with the export data command to increase the number of jobs. Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
+By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the `–-parallel-jobs` argument with the export data command to increase the number of jobs. For details about the argument, refer to the [arguments table](../reference/data-migration/export-data/#arguments). Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
 
 If you use BETA_FAST_DATA_EXPORT to [accelerate data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), yb-voyager exports only one table at a time and the `--parallel-jobs` argument is ignored.
