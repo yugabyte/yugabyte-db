@@ -51,6 +51,10 @@ ap-south-1:
   name: Asia Pacific (Mumbai)
   latitude: 19.0825223
   longitude: 72.7411014
+ap-south-2:
+  name: Asia Pacific (Hyderabad)
+  latitude: 17.3850
+  longitude: 78.4867
 ca-central-1:
   name: Montreal (Canada)
   latitude: 45.5580421

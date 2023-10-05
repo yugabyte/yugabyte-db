@@ -15,6 +15,10 @@ export const regionsData = [
     zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c']
   },
   {
+    destVpcRegion: 'ap-south-2',
+    zones: ['ap-south-2a', 'ap-south-2b', 'ap-south-2c']
+  },
+  {
     destVpcRegion: 'ap-southeast-1',
     zones: ['ap-southeast-1a', 'ap-southeast-1b', 'ap-southeast-1c']
   },
@@ -24,7 +28,7 @@ export const regionsData = [
   },
   {
     destVpcRegion: 'ca-central-1',
-    zones: ['ca-central-1a', 'ca-central-1b']
+    zones: ['ca-central-1a', 'ca-central-1b', 'ca-central-1c', 'ca-central-1d']
   },
   {
     destVpcRegion: 'eu-central-1',
@@ -48,7 +52,7 @@ export const regionsData = [
   },
   {
     destVpcRegion: 'us-east-1',
-    zones: ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-east-1d', 'us-east-1e', 'us-east-1f']
+    zones: ['us-east-1a', 'us-east-1b', 'us-east-1c', 'us-east-1d', 'us-east-1e', 'us-east-1f', 'us-east-1-atl-1a']
   },
   {
     destVpcRegion: 'us-east-2',
@@ -56,11 +60,11 @@ export const regionsData = [
   },
   {
     destVpcRegion: 'us-west-1',
-    zones: ['us-west-1a', 'us-west-1b']
+    zones: ['us-west-1a', 'us-west-1b', 'us-west1-c']
   },
   {
     destVpcRegion: 'us-west-2',
-    zones: ['us-west-2a', 'us-west-2b', 'us-west-2c']
+    zones: ['us-west-2a', 'us-west-2b', 'us-west-2c', 'us-west-2d', 'us-west-2-den-1a', 'us-west-2-las-1a', 'us-west-2-lax-1a', 'us-west-2-lax-1b', 'us-west-2-sea-1a']
   },
   {
     destVpcRegion: 'af-south-1',

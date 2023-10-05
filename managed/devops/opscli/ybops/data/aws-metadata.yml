@@ -70,6 +70,9 @@ regions:
   ap-south-1:
     cidr_prefix: "10.105"
     image: ami-0ffc7af9c06de0077
+  ap-south-2:
+    cidr_prefix: '10.116'
+    image: ami-04c136901bc992ae6
 # TODO: not currently supported in x-region VPC.
 # cn-north-1:
 #    cidr_prefix: "10.106"
