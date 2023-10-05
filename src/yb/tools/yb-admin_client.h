@@ -332,7 +332,8 @@ class ClusterAdminClient {
                         const bool add_indexes = true,
                         const int flush_timeout_secs = 0);
   Status CreateNamespaceSnapshot(
-      const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours);
+      const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+      bool add_indexes = true);
   Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
