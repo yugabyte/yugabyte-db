@@ -16,7 +16,7 @@ ERROR:  unrecognized parameter "Fillfactor"
 CREATE UNLOGGED TABLE unlogged1 (a int primary key);			-- OK
 CREATE TEMPORARY TABLE unlogged2 (a int primary key);			-- OK
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
-    relname     | relkind | relpersistence
+    relname     | relkind | relpersistence 
 ----------------+---------+----------------
  unlogged1      | r       | u
  unlogged1_pkey | i       | u
@@ -27,7 +27,7 @@ SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged
 REINDEX INDEX unlogged1_pkey;
 REINDEX INDEX unlogged2_pkey;
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
-    relname     | relkind | relpersistence
+    relname     | relkind | relpersistence 
 ----------------+---------+----------------
  unlogged1      | r       | u
  unlogged1_pkey | i       | u
@@ -75,7 +75,7 @@ DEALLOCATE select1;
 \set ECHO none
 INSERT INTO extra_wide_table(firstc, lastc) VALUES('first col', 'last col');
 SELECT firstc, lastc FROM extra_wide_table;
-  firstc   |  lastc
+  firstc   |  lastc   
 -----------+----------
  first col | last col
 (1 row)
@@ -263,7 +263,7 @@ CREATE TABLE partitioned (
 ) PARTITION BY RANGE (a oid_ops, plusone(b), c collate "default", d collate "C");
 -- check relkind
 SELECT relkind FROM pg_class WHERE relname = 'partitioned';
- relkind
+ relkind 
 ---------
  p
 (1 row)
@@ -307,10 +307,10 @@ DETAIL:  Partition key of the failing row contains ((a + 1), substr(b, 1, 5)) = 
 CREATE TABLE part2_1 PARTITION OF partitioned2 FOR VALUES FROM (-1, 'aaaaa') TO (100, 'ccccc');
 \d+ part2_1
                                   Table "public.part2_1"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | integer |           |          |         | plain    |              |
- b      | text    |           |          |         | extended |              |
+ a      | integer |           |          |         | plain    |              | 
+ b      | text    |           |          |         | extended |              | 
 Partition of: partitioned2 FOR VALUES FROM ('-1', 'aaaaa') TO (100, 'ccccc')
 Partition constraint: (((a + 1) IS NOT NULL) AND (substr(b, 1, 5) IS NOT NULL) AND (((a + 1) > '-1'::integer) OR (((a + 1) = '-1'::integer) AND (substr(b, 1, 5) >= 'aaaaa'::text))) AND (((a + 1) < 100) OR (((a + 1) = 100) AND (substr(b, 1, 5) < 'ccccc'::text))))
 
@@ -744,7 +744,7 @@ CREATE TABLE part_a PARTITION OF parted FOR VALUES IN ('a');
 SELECT attname, attislocal, attinhcount FROM pg_attribute
   WHERE attrelid = 'part_a'::regclass and attnum > 0
   ORDER BY attnum;
- attname | attislocal | attinhcount
+ attname | attislocal | attinhcount 
 ---------+------------+-------------
  a       | f          |           1
  b       | f          |           1
@@ -814,7 +814,7 @@ DETAIL:  Failing row contains (1, null).
 -- note that while b's default is overridden, a's default is preserved
 \d parted_notnull_inh_test1
       Table "public.parted_notnull_inh_test1"
- Column |  Type   | Collation | Nullable | Default
+ Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  a      | integer |           | not null | 1
  b      | integer |           | not null | 1
@@ -853,10 +853,10 @@ drop table test_part_coll_posix;
 -- Partition bound in describe output
 \d+ part_b
                                    Table "public.part_b"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           | not null | 1       | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           | not null | 1       | plain    |              | 
 Partition of: parted FOR VALUES IN ('b')
 Partition constraint: ((a IS NOT NULL) AND (a = 'b'::text))
 
@@ -875,10 +875,10 @@ Partitions: part_c_1_10 FOR VALUES FROM (1) TO (10)
 -- a level-2 partition's constraint will include the parent's expressions
 \d+ part_c_1_10
                                 Table "public.part_c_1_10"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | extended |              |
- b      | integer |           | not null | 0       | plain    |              |
+ a      | text    |           |          |         | extended |              | 
+ b      | integer |           | not null | 0       | plain    |              | 
 Partition of: part_c FOR VALUES FROM (1) TO (10)
 Partition constraint: ((a IS NOT NULL) AND (a = 'c'::text) AND (b IS NOT NULL) AND (b >= 1) AND (b < 10))
 
@@ -908,11 +908,11 @@ CREATE TABLE range_parted4 (a int, b int, c int) PARTITION BY RANGE (abs(a), abs
 CREATE TABLE unbounded_range_part PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (MAXVALUE, MAXVALUE, MAXVALUE);
 \d+ unbounded_range_part
                            Table "public.unbounded_range_part"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
- b      | integer |           |          |         | plain   |              |
- c      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+ c      | integer |           |          |         | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (MAXVALUE, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL))
 
@@ -920,33 +920,33 @@ DROP TABLE unbounded_range_part;
 CREATE TABLE range_parted4_1 PARTITION OF range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (1, MAXVALUE, MAXVALUE);
 \d+ range_parted4_1
                               Table "public.range_parted4_1"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
- b      | integer |           |          |         | plain   |              |
- c      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+ c      | integer |           |          |         | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (MINVALUE, MINVALUE, MINVALUE) TO (1, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND (abs(a) <= 1))
 
 CREATE TABLE range_parted4_2 PARTITION OF range_parted4 FOR VALUES FROM (3, 4, 5) TO (6, 7, MAXVALUE);
 \d+ range_parted4_2
                               Table "public.range_parted4_2"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
- b      | integer |           |          |         | plain   |              |
- c      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+ c      | integer |           |          |         | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (3, 4, 5) TO (6, 7, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND ((abs(a) > 3) OR ((abs(a) = 3) AND (abs(b) > 4)) OR ((abs(a) = 3) AND (abs(b) = 4) AND (c >= 5))) AND ((abs(a) < 6) OR ((abs(a) = 6) AND (abs(b) <= 7))))
 
 CREATE TABLE range_parted4_3 PARTITION OF range_parted4 FOR VALUES FROM (6, 8, MINVALUE) TO (9, MAXVALUE, MAXVALUE);
 \d+ range_parted4_3
                               Table "public.range_parted4_3"
- Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
- a      | integer |           |          |         | plain   |              |
- b      | integer |           |          |         | plain   |              |
- c      | integer |           |          |         | plain   |              |
+ a      | integer |           |          |         | plain   |              | 
+ b      | integer |           |          |         | plain   |              | 
+ c      | integer |           |          |         | plain   |              | 
 Partition of: range_parted4 FOR VALUES FROM (6, 8, MINVALUE) TO (9, MAXVALUE, MAXVALUE)
 Partition constraint: ((abs(a) IS NOT NULL) AND (abs(b) IS NOT NULL) AND (c IS NOT NULL) AND ((abs(a) > 6) OR ((abs(a) = 6) AND (abs(b) >= 8))) AND (abs(a) <= 9))
 
@@ -972,7 +972,7 @@ CREATE TABLE parted_col_comment (a int, b text) PARTITION BY LIST (a);
 COMMENT ON TABLE parted_col_comment IS 'Am partitioned table';
 COMMENT ON COLUMN parted_col_comment.a IS 'Partition key';
 SELECT obj_description('parted_col_comment'::regclass);
-   obj_description
+   obj_description    
 ----------------------
  Am partitioned table
 (1 row)
@@ -982,7 +982,7 @@ SELECT obj_description('parted_col_comment'::regclass);
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target |  Description  
 --------+---------+-----------+----------+---------+----------+--------------+---------------
  a      | integer |           |          |         | plain    |              | Partition key
- b      | text    |           |          |         | extended |              |
+ b      | text    |           |          |         | extended |              | 
 Partition key: LIST (a)
 Number of partitions: 0
 
@@ -992,9 +992,9 @@ CREATE TABLE arrlp (a int[]) PARTITION BY LIST (a);
 CREATE TABLE arrlp12 PARTITION OF arrlp FOR VALUES IN ('{1}', '{2}');
 \d+ arrlp12
                                    Table "public.arrlp12"
- Column |   Type    | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |   Type    | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+-----------+-----------+----------+---------+----------+--------------+-------------
- a      | integer[] |           |          |         | extended |              |
+ a      | integer[] |           |          |         | extended |              | 
 Partition of: arrlp FOR VALUES IN ('{1}', '{2}')
 Partition constraint: ((a IS NOT NULL) AND ((a = '{1}'::integer[]) OR (a = '{2}'::integer[])))
 

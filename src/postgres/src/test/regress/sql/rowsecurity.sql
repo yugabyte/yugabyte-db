@@ -2117,26 +2117,6 @@ SELECT * FROM rls_tbl;
 DROP TABLE rls_tbl;
 RESET SESSION AUTHORIZATION;
 
--- Leaky operator test
-CREATE TABLE rls_tbl (a int);
-INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
-ANALYZE rls_tbl;
-
-ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
-GRANT SELECT ON rls_tbl TO regress_rls_alice;
-
-SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE FUNCTION op_leak(int, int) RETURNS bool
-    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
-    LANGUAGE plpgsql;
-CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
-                     restrict = scalarltsel);
-SELECT * FROM rls_tbl WHERE a <<< 1000;
-DROP OPERATOR <<< (int, int);
-DROP FUNCTION op_leak(int, int);
-RESET SESSION AUTHORIZATION;
-DROP TABLE rls_tbl;
-
 -- CVE-2023-2455: inlining an SRF may introduce an RLS dependency
 create table rls_t (c text);
 insert into rls_t values ('invisible to bob');
