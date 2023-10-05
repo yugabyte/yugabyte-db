@@ -47,16 +47,21 @@ public class ResourceGroup {
   private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
 
   public static ResourceGroup getSystemDefaultResourceGroup(UUID customerUUID, Users user) {
+    return getSystemDefaultResourceGroup(customerUUID, user.getUuid(), user.getRole());
+  }
+
+  public static ResourceGroup getSystemDefaultResourceGroup(
+      UUID customerUUID, UUID userUUID, Users.Role usersRole) {
     ResourceGroup defaultResourceGroup = new ResourceGroup();
     ResourceDefinition resourceDefinition;
-    switch (user.getRole()) {
+    switch (usersRole) {
       case ConnectOnly:
         // For connect only role, user should have access to only his user profile, nothing else.
         resourceDefinition =
             ResourceDefinition.builder()
                 .resourceType(ResourceType.USER)
                 .allowAll(false)
-                .resourceUUIDSet(new HashSet<>(Arrays.asList(user.getUuid())))
+                .resourceUUIDSet(new HashSet<>(Arrays.asList(userUUID)))
                 .build();
         defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
         break;

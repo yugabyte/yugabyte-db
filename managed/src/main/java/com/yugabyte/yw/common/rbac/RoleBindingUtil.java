@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
@@ -86,10 +87,18 @@ public class RoleBindingUtil {
     return RoleBinding.getAll(userUUID);
   }
 
-  public void validateRoles(UUID userUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
-    UUID customerUUID = Users.getOrBadRequest(userUUID).getCustomerUUID();
+  public void validateRoles(
+      UUID customerUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
-      Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
+      Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
+      if (Users.Role.SuperAdmin.name().equals(role.getName())) {
+        String errMsg =
+            String.format(
+                "Cannot assign SuperAdmin role to a user in the roleResourceDefinition: %s.",
+                roleResourceDefinition.toString());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
     }
   }
 
@@ -102,50 +111,73 @@ public class RoleBindingUtil {
 
   public void validateRoleResourceDefinition(
       UUID customerUUID, RoleResourceDefinition roleResourceDefinition) {
-    // Check that the resource definition set in the resource group is not empty.
-    if (roleResourceDefinition.getResourceGroup().getResourceDefinitionSet() == null
-        || roleResourceDefinition.getResourceGroup().getResourceDefinitionSet().isEmpty()) {
-      String errMsg =
-          String.format(
-              "resourceDefinitionSet cannot be empty in the roleResourceDefinition: %s.",
-              roleResourceDefinition.toString());
-      log.error(errMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errMsg);
-    }
 
-    // Basic validatation on each resource definition individually.
-    for (ResourceDefinition resourceDefinition :
-        roleResourceDefinition.getResourceGroup().getResourceDefinitionSet()) {
-      validateResourceDefinition(customerUUID, resourceDefinition);
-    }
-
-    // Validate that for the given role, there is some resource definition that has allowAll = true
-    // from the permissions which have "permissionValidOnResource" = false. Which indicates that it
-    // is a generic permission, not valid on a specific resource.
+    // System role validation.
     Role role = Role.get(customerUUID, roleResourceDefinition.getRoleUUID());
-    for (Permission permission : role.getPermissionDetails().getPermissionList()) {
-      PermissionInfo permissionInfo = permissionUtil.getPermissionInfo(permission);
-      if (!permissionInfo.isPermissionValidOnResource()) {
-        if (!hasGenericResourceDefinition(
-            customerUUID,
-            roleResourceDefinition.getResourceGroup().getResourceDefinitionSet(),
-            permission.getResourceType())) {
-          if (ResourceType.OTHER.equals(permission.getResourceType())) {
-            String errMsg =
-                String.format(
-                    "For permission '%s' from role '%s' to be valid, it needs a "
-                        + "resource definition with '%s' and customerUUID in the resourceUUIDSet.",
-                    permission.toString(), role.getName(), permission.getResourceType());
-            log.error(errMsg);
-            throw new PlatformServiceException(BAD_REQUEST, errMsg);
-          } else {
-            String errMsg =
-                String.format(
-                    "For permission '%s' from role '%s' to be valid, "
-                        + "it needs a resource definition with '%s' and allowAll = true.",
-                    permission.toString(), role.getName(), permission.getResourceType());
-            log.error(errMsg);
-            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    if (RoleType.System.equals(role.getRoleType())) {
+      // Validate system roles cannot be scoped down.
+      if (roleResourceDefinition.getResourceGroup() != null) {
+        String errMsg =
+            String.format(
+                "Cannot specify a resource group for system role ('%s':'%s').",
+                role.getName(), role.getRoleUUID());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+    } else {
+      // Custom role validation.
+      if (roleResourceDefinition.getResourceGroup() == null) {
+        String errMsg =
+            String.format(
+                "Must specify resource group for custom role ('%s':'%s').",
+                role.getName(), role.getRoleUUID());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+      // Check that the resource definition set in the resource group is not empty for custom roles.
+      if (roleResourceDefinition.getResourceGroup().getResourceDefinitionSet() == null
+          || roleResourceDefinition.getResourceGroup().getResourceDefinitionSet().isEmpty()) {
+        String errMsg =
+            String.format(
+                "resourceDefinitionSet cannot be empty in the roleResourceDefinition: %s.",
+                roleResourceDefinition.toString());
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+
+      // Basic validatation on each resource definition individually on custom roles.
+      for (ResourceDefinition resourceDefinition :
+          roleResourceDefinition.getResourceGroup().getResourceDefinitionSet()) {
+        validateResourceDefinition(customerUUID, resourceDefinition);
+      }
+
+      // Validate that for the given custom role, there is some resource definition that has
+      // allowAll = true from the permissions which have "permissionValidOnResource" = false. Which
+      // indicates that it is a generic permission, not valid on a specific resource.
+      for (Permission permission : role.getPermissionDetails().getPermissionList()) {
+        PermissionInfo permissionInfo = permissionUtil.getPermissionInfo(permission);
+        if (!permissionInfo.isPermissionValidOnResource()) {
+          if (!hasGenericResourceDefinition(
+              customerUUID,
+              roleResourceDefinition.getResourceGroup().getResourceDefinitionSet(),
+              permission.getResourceType())) {
+            if (ResourceType.OTHER.equals(permission.getResourceType())) {
+              String errMsg =
+                  String.format(
+                      "For permission '%s' from role '%s' to be valid, it needs a resource"
+                          + " definition with '%s' and customerUUID in the resourceUUIDSet.",
+                      permission.toString(), role.getName(), permission.getResourceType());
+              log.error(errMsg);
+              throw new PlatformServiceException(BAD_REQUEST, errMsg);
+            } else {
+              String errMsg =
+                  String.format(
+                      "For permission '%s' from role '%s' to be valid, "
+                          + "it needs a resource definition with '%s' and allowAll = true.",
+                      permission.toString(), role.getName(), permission.getResourceType());
+              log.error(errMsg);
+              throw new PlatformServiceException(BAD_REQUEST, errMsg);
+            }
           }
         }
       }
@@ -173,11 +205,11 @@ public class RoleBindingUtil {
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
     }
-    // Check that only one of the fields `allowAll` or `resourceUUIDSet` exists.
-    if (resourceDefinition.isAllowAll() ^ resourceDefinition.getResourceUUIDSet().isEmpty()) {
+    // Check that both of the fields `allowAll` or `resourceUUIDSet` are not filled.
+    if (resourceDefinition.isAllowAll() && !resourceDefinition.getResourceUUIDSet().isEmpty()) {
       String errMsg =
           String.format(
-              "One of 'allowAll' or 'resourceUUIDSet' should be filled in resourceDefinition: %s.",
+              "Both 'allowAll' and 'resourceUUIDSet' cannot be filled in resourceDefinition: %s.",
               resourceDefinition.toString());
       log.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
@@ -231,6 +263,27 @@ public class RoleBindingUtil {
       }
     }
     return false;
+  }
+
+  /**
+   * Populates the list of role resource definitions with the system default resource groups for all
+   * system defined roles.
+   *
+   * @param customerUUID
+   * @param userUUID
+   * @param roleResourceDefinitions
+   */
+  public void populateSystemRoleResourceGroups(
+      UUID customerUUID, UUID userUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
+    for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
+      Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
+      if (RoleType.System.equals(role.getRoleType())) {
+        ResourceGroup systemDefaultResourceGroup =
+            ResourceGroup.getSystemDefaultResourceGroup(
+                customerUUID, userUUID, Users.Role.valueOf(role.getName()));
+        roleResourceDefinition.setResourceGroup(systemDefaultResourceGroup);
+      }
+    }
   }
 
   /**

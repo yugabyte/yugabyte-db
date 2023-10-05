@@ -65,6 +65,14 @@ public class PermissionUtil {
 
   public void validatePermissionList(Set<Permission> permissionList)
       throws PlatformServiceException {
+    // Ensure that the given permission list does not contain super admin actions.
+    if (permissionList.contains(new Permission(ResourceType.OTHER, Action.SUPER_ADMIN_ACTIONS))) {
+      String errorMsg = "Super admin actions not allowed in custom role.";
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Validate if all the prerequisite permissions are given.
     Set<Permission> missingPermissions = new HashSet<>();
     for (Permission permission : permissionList) {
       Set<Permission> prerequisitePermissions =

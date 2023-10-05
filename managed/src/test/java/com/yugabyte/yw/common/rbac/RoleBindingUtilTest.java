@@ -218,7 +218,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .build();
     roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition3);
 
-    // Assert that exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
+    // Assert that no exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
     // filled.
     ResourceDefinition resourceDefinition4 =
         ResourceDefinition.builder()
@@ -226,8 +226,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>())
             .build();
-    assertPlatformException(
-        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4));
+    roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4);
   }
 
   @Test
@@ -378,5 +377,56 @@ public class RoleBindingUtilTest extends FakeDBApplication {
         () ->
             roleBindingUtil.validateRoleResourceDefinition(
                 customer.getUuid(), roleResourceDefinition1));
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinitionSystemRoleInvalid() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.System,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE))));
+
+    // Assert that exception is thrown when resource group is given for system defined roles.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup resourceGroup1 = new ResourceGroup();
+    resourceGroup1.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition1)));
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    roleResourceDefinition1.setResourceGroup(resourceGroup1);
+    // Exception should be thrown because system roles should not have a resource group attached.
+    assertPlatformException(
+        () ->
+            roleBindingUtil.validateRoleResourceDefinition(
+                customer.getUuid(), roleResourceDefinition1));
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinitionSystemRoleValid() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.System,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE))));
+
+    // Assert that exception is not thrown when resource group is not given for system defined
+    // roles.
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    // Exception should not be thrown since system roles do not have a resource group attached.
+    roleBindingUtil.validateRoleResourceDefinition(customer.getUuid(), roleResourceDefinition1);
   }
 }
