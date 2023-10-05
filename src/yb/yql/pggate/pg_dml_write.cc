@@ -137,7 +137,9 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
-  if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
+  if (VERIFY_RESULT(doc_op_->Execute(
+          force_non_bufferable ||
+          (transaction_setting_ == YB_SINGLE_SHARD_TRANSACTION))) == RequestSent::kTrue) {
     RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
 
     // Save the number of rows affected by the op.
