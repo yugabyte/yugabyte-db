@@ -189,7 +189,7 @@ void Connection::Shutdown(const Status& provided_status) {
       if (shutdown_initiated_.exchange(true, std::memory_order_release)) {
         LOG_WITH_PREFIX(WARNING)
             << "Connection shutdown invoked multiple times. Previously with status "
-            << ShutdownStatus() << " and now with status " << provided_status
+            << shutdown_status_ << " and now with status " << provided_status
             << ", completed=" << shutdown_completed() << ". Skipping repeated shutdown.";
         return;
       }
@@ -519,7 +519,7 @@ void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) cons
       /* $4 */ call_ptr,
       /* $5 */ call_id,
       /* $6 */ found_call_id,
-      /* $7 */ shutdown_status_,
+      /* $7 */ ShutdownStatus(),
       /* $8 */ ToStringRelativeToNow(shutdown_time_, now),
       /* $9 */ calls_queued_after_shutdown_.load(std::memory_order_acquire),
       /* $10 */ responses_queued_after_shutdown_.load(std::memory_order_acquire));

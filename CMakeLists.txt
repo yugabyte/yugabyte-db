@@ -363,6 +363,7 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
   ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
   ADD_CXX_FLAGS("-Wthread-safety-analysis")
+  ADD_CXX_FLAGS("-Wthread-safety-reference")
   ADD_CXX_FLAGS("-Wshorten-64-to-32")
 endif()
 

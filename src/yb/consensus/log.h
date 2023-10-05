@@ -446,7 +446,10 @@ class Log : public RefCountedThreadSafe<Log> {
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
-  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
+  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      REQUIRES_SHARED(state_lock_);
+  Status GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      EXCLUDES(state_lock_);
 
   // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.
   void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const;
