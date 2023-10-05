@@ -906,28 +906,6 @@ SELECT * FROM array_index_op_test WHERE i <@ '{}' ORDER BY seqno;
    101 | {} | {}
 (1 row)
 
-SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
- seqno |   i    |   t    
--------+--------+--------
-   102 | {NULL} | {NULL}
-(1 row)
-
-SELECT * FROM array_index_op_test WHERE i @> '{NULL}' ORDER BY seqno;
- seqno | i | t 
--------+---+---
-(0 rows)
-
-SELECT * FROM array_index_op_test WHERE i && '{NULL}' ORDER BY seqno;
- seqno | i | t 
--------+---+---
-(0 rows)
-
-SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
- seqno | i  | t  
--------+----+----
-   101 | {} | {}
-(1 row)
-
 CREATE INDEX textarrayidx ON array_index_op_test USING gin (t);
 explain (costs off)
 SELECT * FROM array_index_op_test WHERE t @> '{AAAAAAAA72908}' ORDER BY seqno;
@@ -1192,18 +1170,6 @@ SELECT * FROM array_index_op_test WHERE i && '{32}' AND t @> '{AAAAAAA80240}' OR
 (1 row)
 
 SELECT * FROM array_index_op_test WHERE t = '{}' ORDER BY seqno;
- seqno | i  | t  
--------+----+----
-   101 | {} | {}
-(1 row)
-
-SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
- seqno |   i    |   t    
--------+--------+--------
-   102 | {NULL} | {NULL}
-(1 row)
-
-SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
  seqno | i  | t  
 -------+----+----
    101 | {} | {}

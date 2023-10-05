@@ -907,20 +907,3 @@ SELECT name FROM tab_settings_flags
 (0 rows)
 
 DROP TABLE tab_settings_flags;
--- test SET unrecognized parameter
-SET foo = false;  -- no such setting
-ERROR:  unrecognized configuration parameter "foo"
--- test setting a parameter with a registered prefix (plpgsql)
-SET plpgsql.extra_foo_warnings = false;  -- no such setting
-WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
-DETAIL:  "plpgsql" is a reserved prefix.
-SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
- plpgsql.extra_foo_warnings 
-----------------------------
- false
--- cleanup
-RESET foo;
-ERROR:  unrecognized configuration parameter "foo"
-RESET plpgsql.extra_foo_warnings;
-WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
-DETAIL:  "plpgsql" is a reserved prefix.
