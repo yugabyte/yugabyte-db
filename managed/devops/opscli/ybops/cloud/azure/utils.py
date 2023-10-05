@@ -1120,15 +1120,7 @@ class AzureCloudAdmin():
         node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
         universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
-        instance_state = None
-        if vm.instance_view is not None and vm.instance_view.statuses is not None:
-            for status in vm.instance_view.statuses:
-                logging.info("VM state {}".format(status.code))
-                parts = status.code.split("/")
-                if len(parts) != 2 or parts[0] != "PowerState":
-                    continue
-                instance_state = parts[1]
-                break
+        instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
@@ -1142,6 +1134,16 @@ class AzureCloudAdmin():
             self.dns_client = PrivateDnsManagementClient(self.credentials,
                                                          subscription_id)
         return self.dns_client
+
+    def extract_vm_instance_state(self, instance_view):
+        if instance_view is not None and instance_view.statuses is not None:
+            for status in instance_view.statuses:
+                logging.info("VM state {}".format(status.code))
+                parts = status.code.split("/")
+                if len(parts) != 2 or parts[0] != "PowerState":
+                    continue
+                return parts[1]
+        return None
 
     def list_dns_record_set(self, dns_zone_id):
         # Passing None as domain_name_prefix is not dangerous here as we are using subscription ID
@@ -1203,12 +1205,12 @@ class AzureCloudAdmin():
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
 
     def get_vm_status(self, vm_name):
-        vm_statuses = self.compute_client.virtual_machines.get(RESOURCE_GROUP,
-                                                               vm_name, expand='instanceView') \
-                          .instance_view.statuses
-        for status in vm_statuses:
-            if status.display_status.startswith("PowerState"):
-                return status.display_status
+        instance_view = self.compute_client.virtual_machines.get(RESOURCE_GROUP,
+                                                                 vm_name, expand='instanceView') \
+                          .instance_view
+        instance_state = self.extract_vm_instance_state(instance_view)
+        if instance_state is not None:
+            return instance_state
         raise YBOpsRecoverableError("Could not find last PowerState for VM {}.".format(vm_name))
 
     def deallocate_instance(self, vm_name):
