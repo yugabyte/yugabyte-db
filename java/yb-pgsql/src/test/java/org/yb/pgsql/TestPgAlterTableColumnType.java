@@ -168,6 +168,7 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
   @Test
   public void testForeignKey() throws Exception {
     try (Statement statement = connection.createStatement()) {
+      // Test that altering the type of a foreign key column is not allowed.
       statement.execute("CREATE TABLE fk_table(c1 int, c2 int references int4_table(id))");
       statement.execute("ALTER TABLE fk_table ALTER c1 TYPE varchar");
 
@@ -178,6 +179,30 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
         "ERROR: Altering type of foreign key is not supported");
 
       statement.execute("DROP TABLE fk_table");
+    }
+  }
+
+  @Test
+  public void testForeignKey2() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that foreign key constraints are preserved when the type of a column is altered.
+      statement.executeUpdate("CREATE TABLE test (id int unique, col1 text)");
+      statement.execute("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      statement.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      statement.execute("INSERT INTO test VALUES (1, 'hi')");
+      statement.execute("INSERT INTO test_part VALUES (1)");
+      statement.execute("ALTER TABLE test ALTER COLUMN col1 TYPE int USING length(col1)");
+
+      assertQuery(statement, "SELECT * FROM test", new Row(1, 2));
+      assertQuery(statement, "SELECT * FROM test_part", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(statement, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(statement, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
     }
   }
 

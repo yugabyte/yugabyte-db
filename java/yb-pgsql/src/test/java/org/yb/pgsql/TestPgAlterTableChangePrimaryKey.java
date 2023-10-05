@@ -920,6 +920,31 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
   }
 
+  /** Altered table referenced by a partitioned FK table. */
+  @Test
+  public void foreignKeys3() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE test (id int unique)");
+      stmt.executeUpdate("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      stmt.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      stmt.executeUpdate("INSERT INTO test VALUES (1)");
+      stmt.executeUpdate("INSERT INTO test_part VALUES (1)");
+
+      alterAddPrimaryKeyId(stmt, "test");
+
+      assertQuery(stmt, "SELECT * FROM test", new Row(1));
+      assertQuery(stmt, "SELECT * FROM test_part ORDER BY id", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(stmt, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+    }
+  }
+
   @Test
   public void otherConstraintsAndIndexes() throws Exception {
     try (Statement stmt = connection.createStatement()) {
