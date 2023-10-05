@@ -500,14 +500,15 @@ public class AsyncYBClient implements AutoCloseable {
                                                        boolean needSchemaInfo,
                                                        CdcSdkCheckpoint explicitCheckpoint) {
     return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
-      needSchemaInfo, null, -1);
+      needSchemaInfo, explicitCheckpoint, -1);
   }
 
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
       String tabletId, long term, long index, byte[] key, int write_id, long time,
       boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime) {
     return getChangesCDCSDK(
-        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo, null, -1, 0);
+        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, safeHybridTime, 0);
   }
 
   /**
