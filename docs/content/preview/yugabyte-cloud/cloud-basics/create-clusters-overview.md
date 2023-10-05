@@ -115,7 +115,7 @@ You can't change the cluster fault tolerance after the cluster is created.
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster.
 
 #### Region
 
