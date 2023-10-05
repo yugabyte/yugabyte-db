@@ -312,12 +312,10 @@ input_files=()
 compiling_pch=false
 yb_pch=false
 
-rpath_found=false
 num_output_files_found=0
 has_yb_c_files=false
 
 compiler_args_no_output=()
-analyzer_checkers_specified=false
 
 linking=false
 use_lld=false
@@ -355,9 +353,6 @@ while [[ $# -gt 0 ]]; do
         fi
       fi
     ;;
-    -Wl,-rpath,*)
-      rpath_found=true
-    ;;
     c++-header)
       compiling_pch=true
     ;;
@@ -373,9 +368,6 @@ while [[ $# -gt 0 ]]; do
       else
         export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
       fi
-    ;;
-    -analyzer-checker=*)
-      analyzer_checkers_specified=true
     ;;
     -fuse-ld=lld)
       use_lld=true
