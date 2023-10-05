@@ -2667,6 +2667,8 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+
 Executor::ExecutorTask& Executor::ExecutorTask::Bind(
     Executor* executor, Executor::ResetAsyncCalls* reset_async_calls) {
   executor_ = executor;
@@ -2686,6 +2688,8 @@ void Executor::ExecutorTask::Done(const Status& status) {
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+
 Executor::ResetAsyncCalls::ResetAsyncCalls(std::atomic<int64_t>* num_async_calls)
     : num_async_calls_(num_async_calls) {
   LOG_IF(DFATAL, num_async_calls && num_async_calls->load(std::memory_order_acquire))
@@ -2700,10 +2704,11 @@ Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
 }
 
 void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
+  auto* rhs_counter_ptr = rhs.Move();
+
   std::lock_guard guard(num_async_calls_mutex_);
   PerformUnlocked();
-  num_async_calls_ = rhs.num_async_calls_;
-  rhs.num_async_calls_ = nullptr;
+  num_async_calls_ = rhs_counter_ptr;
   LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
       << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
 }
@@ -2731,6 +2736,13 @@ void Executor::ResetAsyncCalls::PerformUnlocked() {
       << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
   num_async_calls_->store(kAsyncCallsIdle, std::memory_order_release);
   num_async_calls_ = nullptr;
+}
+
+std::atomic<int64_t>* Executor::ResetAsyncCalls::Move() EXCLUDES(num_async_calls_mutex_) {
+  std::lock_guard lock(num_async_calls_mutex_);
+  auto* old_value = num_async_calls_;
+  num_async_calls_ = nullptr;
+  return old_value;
 }
 
 }  // namespace ql

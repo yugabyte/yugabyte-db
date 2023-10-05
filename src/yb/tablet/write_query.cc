@@ -908,9 +908,11 @@ struct UpdateQLIndexesTask {
 
   void AddRequests(
       const std::shared_ptr<UpdateQLIndexesTask>& self, docdb::QLWriteOperation* write_op) {
+    DCHECK_EQ(self.get(), this);
+
     // Apply the write ops to update the index
     {
-      std::lock_guard lock(self->mutex);
+      std::lock_guard lock(mutex);
       counter += write_op->index_requests().size();
     }
     for (auto& [index_info, index_request] : write_op->index_requests()) {
