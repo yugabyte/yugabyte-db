@@ -25,14 +25,14 @@ A number of concepts are central to replication.
 A fault domain comprises a group of nodes that are prone to correlated failures. The following are examples of fault domains:
 
 * Zones or racks
-* Regions or datacenters
+* Regions or data centers
 * Cloud providers
 
 Data is typically replicated across fault domains to be resilient to the outage of all nodes in one fault domain.
 
 ### Fault tolerance
 
-The fault tolerance (FT) of a YugabyteDB universe is the maximum number of node failures it can survive while continuing to preserve correctness of data.
+The fault tolerance (FT) of a YugabyteDB universe is the maximum number of fault domain failures it can survive while continuing to preserve correctness of data.
 
 ### Replication factor
 

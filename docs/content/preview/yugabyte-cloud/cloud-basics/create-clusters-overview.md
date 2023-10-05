@@ -94,23 +94,47 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-The _fault tolerance_ determines how resilient the cluster is to node, zone, and region failures. YugabyteDB Managed provides the following options for providing replication and redundancy:
+YugabyteDB achieves resilience by replicating data across fault domains using the [RAFT consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-- **Region Level**. Includes 3 nodes spread across multiple regions with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud region failure. This configuration provides the maximum protection for a regional failure.
+The _fault tolerance_ determines how resilient the cluster is to node, zone, or region failures. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, to provide fault tolerance of `n` requires replicating data across `2n + 1` domains.
 
-- **Availability Zone Level**. Includes a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure.
+YugabyteDB Managed provides the following configurations for fault tolerance.
 
-- **Node Level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone or region outages.
+| Fault tolerance | Resilient to | Minimum number of nodes | Scale in increments of |
+| :--------- | :--- | :---: | :---: |
+| **None**   | 0 Node failures   | 1 | 1 |
+| **Node**   | 1 Node failure    | 3 | 1 |
+|            | 2 Node failures   | 5 | 1 |
+|            | 3 Node failures   | 7 | 1 |
+| **Zone**   | 1 Zone failure    | 3 across 3 zones   | 3 |
+| **Region** | 1 Region failure  | 3 across 3 regions | 3 |
+|            | 2 Region failures | 5 across 5 regions | 5 |
+|            | 3 Region failures | 7 across 7 regions | 7 |
 
-Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
-
-- For Region Level, you can add or remove nodes in increments of 1 per region; all regions have the same number of nodes.
-- For Availability Zone Level, you can add or remove nodes in increments of 3.
-- For Node Level, you can add or remove nodes in increments of 1.
+You can't change the cluster fault tolerance after the cluster is created.
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
 For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. Single-node clusters can't be scaled.
+
+#### Region
+
+- YugabyteDB can continue to do reads and writes even in case of a cloud region outage.
+- Minimum of 3 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
+- Add or remove nodes in increments of 1 per region; all regions have the same number of nodes. For example, for a fault tolerance of 2 regions, you must scale in increments of 5 (one node per region).
+
+#### Availability Zone
+
+- YugabyteDB can continue to do reads and writes even in case of a cloud availability zone outage.
+- Minimum of 3 nodes across 3 availability zones for a fault tolerance of 1 zone.
+- Because cloud providers typically provide only 3-4 availability zones per region, availability zone fault tolerance is limited to 1 zone failure (anything more requires more zones than are available in any typical region).
+- Add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+
+#### Node
+
+- YugabyteDB can continue to do reads and writes even in case of node failure, but this configuration is not resilient to cloud availability zone or region outages.
+- Minimum of 3 nodes deployed in a single availability zone.
+- Add or remove nodes in increments of 1.
 
 ### Sizing
 
