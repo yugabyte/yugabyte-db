@@ -57,11 +57,11 @@ Select **Single-Region Deployment** and set the following options.
 
 ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
 
-Fault tolerance determines how resilient the cluster is to node and cloud zone failures. Choose one of the following:
+Fault tolerance determines how resilient the cluster is to node and cloud zone outages (planned or unplanned). Choose one of the following:
 
-- **Availability Zone Level**: Minimum of 3 nodes spread across multiple availability zones with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
-- **Node Level**: Minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
-- **None**: Single node, with no replication or resiliency. Recommended for development and testing only.
+- **Availability Zone Level**: Minimum of 3 nodes spread across 3 availability zones. YugabyteDB can continue to do reads and writes even in case of a zone outage. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
+- **Node Level**: Minimum of 3 nodes deployed in a single availability zone. YugabyteDB can continue to do reads and writes even in case of node outages, but this configuration is not resilient to zone outages. For horizontal scaling, you can scale nodes in increments of 1.
+- **None**: Minimum of 1 node, with no replication or resiliency. For horizontal scaling, you can scale nodes in increments of 1. Recommended for development and testing only.
 
 You can't change the Fault tolerance of a cluster after it's created.
 
