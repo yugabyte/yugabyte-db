@@ -68,12 +68,7 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
         // We assume that user has provisioned nodes again with new service files in case of
         // on-prem manual provisioned universe.
         if (!Util.isOnPremManualProvisioning(universe)) {
-          createSetupServerTasks(
-              universe.getNodes(),
-              param -> {
-                param.isYbcInstall = true;
-                param.isSystemdUpgrade = true;
-              });
+          createSetupServerTasks(universe.getNodes(), param -> param.isSystemdUpgrade = true);
         }
       }
 

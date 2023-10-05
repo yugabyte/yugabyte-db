@@ -85,12 +85,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           // on-prem
           // universes as we may not have sudo permissions.
           if (reProvision) {
-            createSetupServerTasks(
-                nodes1,
-                param -> {
-                  param.isSystemdUpgrade = true;
-                  param.isYbcInstall = true;
-                });
+            createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
           }
           createSoftwareInstallTasks(
               nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
