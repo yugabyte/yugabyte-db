@@ -608,6 +608,19 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
   ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
 
+  // Create snapshot of default table but skip the attached index that gets created.
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name, "skip_indexes"));
+  auto skip_index_snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(/* num_snapshots= */ 2));
+  if (skip_index_snapshot_id == snapshot_id) {
+    skip_index_snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(
+        /* num_snapshots= */ 2, /* idx= */ 1));
+  }
+
+  const auto skip_index_snapshot_file =
+      JoinPathSegments(tmp_dir, "exported_skip_index_snapshot.dat");
+  ASSERT_OK(
+      RunAdminToolCommand("export_snapshot", skip_index_snapshot_id, skip_index_snapshot_file));
+
   // Import table and index into the existing table and index.
   ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   // Wait for the new snapshot completion.
@@ -680,6 +693,15 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   ASSERT_NOK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, "new_" + table_name));
   ASSERT_NOK(RunAdminToolCommand(
       "import_snapshot", snapshot_file, "new_" + keyspace, "new_" + table_name));
+
+  // Import skip_index_snapshot_file should not import index.
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", skip_index_snapshot_file));  // Wait for the new snapshot completion.
+  ASSERT_RESULT(WaitForAllSnapshots());
+  // Verify that index is not imported and the table is imported correctly.
+  ASSERT_EQ(1, ASSERT_RESULT(NumTables(table_name)));
+  ASSERT_EQ(0, ASSERT_RESULT(NumTables(index_name)));
+  CheckAndDeleteImportedTable(keyspace, table_name);
 }
 
 TEST_F(AdminCliTest, TestExportImportIndexSnapshot) {

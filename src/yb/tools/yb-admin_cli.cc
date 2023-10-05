@@ -1299,17 +1299,23 @@ Status list_snapshots_action(
 }
 
 const auto create_snapshot_args =
-    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)"
+    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing) "
     "[<retention_duration_hours>] (set a <= 0 value to retain the snapshot forever. If not "
-    "specified then takes the default value controlled by gflag default_snapshot_retention_hours)";
+    "specified then takes the default value controlled by gflag default_snapshot_retention_hours) "
+    "[skip_indexes]";
 Status create_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   int timeout_secs = 60;
   std::optional<int32_t> retention_duration_hours;
   bool timeout_set = false;
+  bool skip_indexes = false;
   const auto tables = VERIFY_RESULT(ResolveTableNames(
       client, args.begin(), args.end(), [&](auto i, const auto& end) -> Status {
         for (auto curr_it = i; curr_it != end; ++curr_it) {
+          if (IsEqCaseInsensitive(*curr_it, "skip_indexes")) {
+            skip_indexes = true;
+            continue;
+          }
           if (!timeout_set) {
             timeout_secs = VERIFY_RESULT(CheckedStoi(*curr_it));
             timeout_set = true;
@@ -1327,11 +1333,16 @@ Status create_snapshot_action(
       return STATUS(
           InvalidArgument, "Cannot create snapshot of YCQL system table", table.table_name());
     }
+    if (table.is_pgsql_namespace()) {
+      return STATUS(
+          InvalidArgument,
+          "Cannot create snapshot of individual YSQL tables. Only database level is supported");
+    }
   }
 
   RETURN_NOT_OK_PREPEND(
       client->CreateSnapshot(tables, retention_duration_hours,
-                             /* add_indexes */ true, timeout_secs),
+                             !skip_indexes, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }
@@ -1431,15 +1442,21 @@ Status edit_snapshot_schedule_action(
 
 const auto create_keyspace_snapshot_args = "[ycql.]<database_name> [retention_duration_hours] "
     "(set a <= 0 value to retain the snapshot forever. If not specified "
-    "then takes the default value controlled by gflag default_retention_hours)";
+    "then takes the default value controlled by gflag default_retention_hours) "
+    "[skip_indexes] (if not specified then defaults to false)";
 Status create_keyspace_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() > 2) {
+  if (args.size() < 1 || args.size() > 3) {
     return ClusterAdminCli::kInvalidArguments;
   }
   std::optional<int32_t> retention_duration_hours;
-  if (args.size() == 2) {
-    retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[1]));
+  bool skip_indexes = false;
+  for (size_t i = 1; i < args.size(); i++) {
+    if (IsEqCaseInsensitive(args[i], "skip_indexes")) {
+      skip_indexes = true;
+    } else {
+      retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[i]));
+    }
   }
 
   const TypedNamespaceName keyspace = VERIFY_RESULT(ParseNamespaceName(args[0]));
@@ -1448,7 +1465,7 @@ Status create_keyspace_snapshot_action(
       Format("Wrong keyspace type: $0", YQLDatabase_Name(keyspace.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(keyspace, retention_duration_hours),
+      client->CreateNamespaceSnapshot(keyspace, retention_duration_hours, !skip_indexes),
       Format("Unable to create snapshot of keyspace: $0", keyspace.name));
   return Status::OK();
 }
