@@ -384,11 +384,7 @@ normalize_build_type() {
 decide_whether_to_use_linuxbrew() {
   expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ ${YB_BUILD_OPTS:-} =~ .*--linuxbrew.* ]]; then
-        YB_USE_LINUXBREW=1
-    elif [[ ${YB_BUILD_OPTS:-} =~ .*--no-linuxbrew.* ]]; then
-        YB_USE_LINUXBREW=0
-    elif [[ -n ${predefined_build_root:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
