@@ -57,6 +57,8 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
+    const characterLimit = 100;
+
     let content = '';
     hitIs.forEach(hit => {
       let pageTitle = '';
@@ -79,16 +81,51 @@ import algoliasearch from 'algoliasearch';
       if (hit.content) {
         const contentValue = hit.content;
 
+        let splittedContent = [];
         if (contentValue.indexOf(searchedQuery) !== -1) {
-          highlightContent = searchedQuery;
+          splittedContent = contentValue.split(searchedQuery);
         }
+
+        let test = 0;
+        splittedContent.every((splittedValue) => {
+          const splitWithMatched = `${splittedValue} ${searchedQuery}`;
+
+          test += 1;
+
+          if (highlightContent.length === 0) {
+            highlightContent = splitWithMatched;
+
+            const matchedLength = highlightContent.length;
+            if (matchedLength > 100) {
+              const initialLength = matchedLength - characterLimit;
+              highlightContent = highlightContent.slice(initialLength, matchedLength);
+            }
+          } else {
+            const moreLength = characterLimit - highlightContent.length;
+
+            if (splitWithMatched.length > moreLength) {
+              highlightContent += splitWithMatched.slice(0, moreLength);
+            } else {
+              highlightContent += splitWithMatched;
+            }
+          }
+
+          if (highlightContent.length >= characterLimit) {
+            console.log('test', test);
+            return false;
+          }
+
+          return true;
+        });
+
+        console.log('highlightContent', highlightContent);
       }
 
       if (highlightContent.length > 0) {
-        highlightedText = `#:~:text=${highlightContent.replace(/-/g, '%2D')}`;
+        highlightedText = `#:~:text=${highlightContent}`;
       }
 
-      console.log('highlightedText', highlightedText);
+      console.log('highlightedText', highlightedText, hit);
 
       content += `<li>
         <div class="search-title">
