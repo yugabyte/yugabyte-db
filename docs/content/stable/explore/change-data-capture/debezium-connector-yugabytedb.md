@@ -985,7 +985,7 @@ The following properties are _required_ unless a default value is available:
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | connector.class | N/A | Specifies the connector to use to connect Debezium to the database. For YugabyteDB, use `io.debezium.connector.yugabytedb.YugabyteDBConnector`. |
-| database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. |
+| database.hostname | N/A | The IP address of the database host machine. For a distributed cluster, use the leader node's IP address. Alternatively, you can specify a comma-separated list of multiple host addresses and corresponding ports (for example,`ip1:port1,ip2:port2,ip3:port3`). This is useful for connection fail-over. |
 | database.port | N/A | The port at which the YSQL process is running. |
 | database.master.addresses | N/A | Comma-separated list of `host:port` values. |
 | database.user | N/A | The user which will be used to connect to the database. |
@@ -1135,10 +1135,12 @@ For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the 
 The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. Once the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
 
 ### Prerequisites
+
 * Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../admin/yb-admin#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations
+
 * Transactional ordering is currently not supported with schema evolution. See issue [18476](https://github.com/yugabyte/yugabyte-db/issues/18476).
 
 ## Monitoring
