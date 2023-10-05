@@ -1269,7 +1269,7 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     }
     // GetTablets locks lock_ in shared mode.
     if (table) {
-      tablets = table->GetTablets();
+      tablets = table->GetTablets(IncludeInactive::kTrue);
     }
 
     // For the table dropped, GetTablets() will be empty.
@@ -1373,62 +1373,64 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(
   if (!ybclient) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
-  std::shared_ptr<yb::client::TableHandle> cdc_state_table = VERIFY_RESULT(GetCDCStateTable());
-  client::TableIteratorOptions options;
-  Status failer_status;
-  options.error_handler = [&failer_status](const Status& status) {
-    LOG(WARNING) << "Scan of table failed: " << status;
-    failer_status = status;
-  };
-  options.columns = std::vector<std::string>{
-      master::kCdcTabletId, master::kCdcStreamId, master::kCdcCheckpoint,
-      master::kCdcLastReplicationTime};
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-  // Map to identify the list of drop tables for the stream.
-  StreamTablesMap drop_stream_tablelist;
+
+  // Map of valid tablets to keep for each stream.
+  std::unordered_map<CDCStreamId, std::set<TabletId>> tablets_to_keep_per_stream;
+  // Map to identify the list of dropped tables for the stream.
+  StreamTablesMap drop_stream_table_list;
   for (const auto& stream : streams) {
-    // The set "tablets_with_streams" consists of all tablets not associated with the table
-    // dropped. Tablets belonging to this set will not be deleted from cdc_state.
-    // The set "drop_table_list" consists of all the tables those were associated with the stream,
-    // but dropped.
-    std::set<TabletId> tablets_with_streams;
-    std::set<TableId> drop_table_list;
-    bool should_delete_from_map = true;
-    GetValidTabletsAndDroppedTablesForStream(stream, &tablets_with_streams, &drop_table_list);
-
-    for (const auto& row : client::TableRange(*cdc_state_table, options)) {
-      auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-      auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-      // 1. stream id matches the one marked for deleting.
-      // 2. And tablet id is not contained in the set "tablets_with_streams".
-      if ((stream_id == stream->id()) &&
-          (tablets_with_streams.find(tablet_id) == tablets_with_streams.end())) {
-        auto result = DeleteFromCDCStateTable(cdc_state_table, session, tablet_id, stream_id);
-        if (!result.ok()) {
-          LOG(WARNING) << "Error deleting cdc_state row with tablet id " << tablet_id
-                       << " and stream id " << stream_id << " : " << result.message().cdata();
-          should_delete_from_map = false;
-          break;
-        }
-        LOG(INFO) << "Deleted cdc_state table entry for stream " << stream_id << " for tablet "
-                  << tablet_id;
-      }
-    }
-
-    if (should_delete_from_map) {
-      // Track those succeed delete stream in the map.
-      drop_stream_tablelist[stream->id()] = drop_table_list;
-    }
+    const auto& stream_id = stream->id();
+    // Get the set of all tablets not associated with the table dropped. Tablets belonging to this
+    // set will not be deleted from cdc_state.
+    // The second set consists of all the tables that were associated with the stream, but dropped.
+    GetValidTabletsAndDroppedTablesForStream(
+        stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]);
   }
 
-  Status s = session->TEST_Flush();
+  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+  std::shared_ptr<yb::client::TableHandle> cdc_state_table = VERIFY_RESULT(GetCDCStateTable());
+  client::TableIteratorOptions options;
+  Status failure_status;
+  options.error_handler = [&failure_status](const Status& status) {
+    LOG(WARNING) << "Scan of table failed: " << status;
+    failure_status = status;
+  };
+  options.columns = std::vector<std::string>{master::kCdcTabletId, master::kCdcStreamId};
+
+  std::vector<client::YBOperationPtr> ops;
+  for (const auto& row : client::TableRange(*cdc_state_table, options)) {
+    auto stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+
+    const auto tablets = FindOrNull(tablets_to_keep_per_stream, stream_id);
+    if (!tablets) {
+      continue;
+    }
+
+    if (!tablets->contains(tablet_id)) {
+      // Tablet is no longer part of this stream so delete it.
+      LOG(INFO) << "Deleting cdc_state table entry for stream " << stream_id
+                << " for tablet " << tablet_id;
+      const auto delete_op = cdc_state_table->NewDeleteOp();
+      auto* const delete_req = delete_op->mutable_request();
+      QLAddStringHashValue(delete_req, tablet_id);
+      QLAddStringRangeValue(delete_req, stream_id);
+      ops.push_back(std::move(delete_op));
+    }
+  }
+  RETURN_NOT_OK(failure_status);
+  if (ops.empty()) {
+    return Status::OK();
+  }
+
+  Status s = session->TEST_ApplyAndFlush(ops);
   if (!s.ok()) {
     LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
     return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
   }
 
   // Cleanup the streams from system catalog and from internal maps.
-  return CleanUpCDCMetadataFromSystemCatalog(drop_stream_tablelist);
+  return CleanUpCDCMetadataFromSystemCatalog(drop_stream_table_list);
 }
 
 Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
