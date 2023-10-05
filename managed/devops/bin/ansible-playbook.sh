@@ -27,7 +27,8 @@ if [ "$is_mac" == false ] && \
    [ -d "$yb_devops_home/pex/pexEnv" ]; then
 
   activate_pex
-  $PYTHON_EXECUTABLE $PEX_PATH "$PEX_ANSIBLE_PLAYBOOK_PATH/ansible-playbook" "$@"
+  set -x
+  ansible-playbook "$@"
 
 else
   activate_virtualenv
