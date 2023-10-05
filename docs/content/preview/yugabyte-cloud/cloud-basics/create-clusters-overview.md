@@ -96,7 +96,7 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 YugabyteDB achieves resilience by replicating data across fault domains using the [RAFT consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-The _fault tolerance_ determines how resilient the cluster is to node, zone, or region failures. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, to provide fault tolerance of `n` requires replicating data across `2n + 1` domains.
+The _fault tolerance_ determines how resilient the cluster is to node, zone, or region outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
 
 YugabyteDB Managed provides the following configurations for fault tolerance.
 
