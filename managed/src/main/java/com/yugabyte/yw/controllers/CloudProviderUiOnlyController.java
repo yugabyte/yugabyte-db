@@ -152,7 +152,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
       response = KubernetesProviderFormData.class)
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    return PlatformResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
+    return PlatformResults.withRawData(
+        Json.toJson(cloudProviderHandler.suggestedKubernetesConfigs()));
   }
 
   /** Deprecated because uses GET for state mutating method and now getting audited. */

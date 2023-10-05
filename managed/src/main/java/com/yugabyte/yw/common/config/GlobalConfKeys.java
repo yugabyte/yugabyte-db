@@ -749,6 +749,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Provider associated with universes can be edited",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> enableTaskAndFailedRequestDetailedLogging =
+      new ConfKeyInfo<>(
+          "yb.logging.enable_task_failed_request_logs",
+          ScopeType.GLOBAL,
+          "Enables extra logging",
+          "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
       new ConfKeyInfo<>(
           "yb.fixPaths",

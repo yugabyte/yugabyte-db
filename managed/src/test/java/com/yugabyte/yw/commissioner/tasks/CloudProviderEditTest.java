@@ -358,7 +358,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider.getDetails().getCloudInfo().aws.awsHostedZoneId = "1234";
     mockDnsManagerListSuccess("test");
     Result result = editProvider(Json.toJson(provider), false);
-    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));

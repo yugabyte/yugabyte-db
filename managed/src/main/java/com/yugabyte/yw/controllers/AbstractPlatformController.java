@@ -59,7 +59,7 @@ import play.mvc.With;
                   in = ApiKeyAuthDefinition.ApiKeyLocation.HEADER,
                   description = "API token passed as header")
             }))
-@With(AuditAction.class)
+@With({AuditAction.class, FailedRequestAction.class})
 public abstract class AbstractPlatformController extends Controller {
 
   protected static final String LICENSE_1_0_0_NAME = "Polyform Free Trial License 1.0.0";

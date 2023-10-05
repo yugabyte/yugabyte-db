@@ -14,6 +14,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -36,6 +38,7 @@ import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class Commissioner {
 
   public static final String TASK_ID = "commissioner_task_id";
@@ -58,17 +61,21 @@ public class Commissioner {
 
   private final ProviderEditRestrictionManager providerEditRestrictionManager;
 
+  private final RuntimeConfGetter runtimeConfGetter;
+
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
       PlatformExecutorFactory platformExecutorFactory,
       TaskExecutor taskExecutor,
-      ProviderEditRestrictionManager providerEditRestrictionManager) {
+      ProviderEditRestrictionManager providerEditRestrictionManager,
+      RuntimeConfGetter runtimeConfGetter) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
     this.taskExecutor = taskExecutor;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
+    this.runtimeConfGetter = runtimeConfGetter;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -104,6 +111,15 @@ public class Commissioner {
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
     RunnableTask taskRunnable = null;
     try {
+      if (runtimeConfGetter.getGlobalConf(
+          GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
+        JsonNode taskParamsJson = Json.toJson(taskParams);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(
+                taskParamsJson, RedactingService.RedactionTarget.LOGS);
+        log.debug(
+            "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
+      }
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
       // Add the consumer to handle before task if available.
