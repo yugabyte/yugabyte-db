@@ -97,7 +97,6 @@ DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_bool(TEST_xcluster_write_hybrid_time);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_insecure_connections);
-DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_uint32(async_replication_max_idle_wait);
 DECLARE_int32(async_replication_polling_delay_ms);

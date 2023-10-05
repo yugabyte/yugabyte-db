@@ -148,12 +148,7 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_RUNTIME_bool(
-    allow_ycql_transactional_xcluster, false,
-    "Determines if xCluster transactional replication on YCQL tables is allowed.");
-
-DEFINE_RUNTIME_bool(
-    enable_fast_pitr, true,
+DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
 namespace yb {
@@ -3238,122 +3233,6 @@ Status CatalogManager::GetUDTypeMetadata(
   return Status::OK();
 }
 
-Status CatalogManager::ValidateTableSchema(
-    const std::shared_ptr<client::YBTableInfo>& info,
-    const SetupReplicationInfo& setup_info,
-    GetTableSchemaResponsePB* resp) {
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
-  if (setup_info.transactional && !GetAtomicFlag(&FLAGS_allow_ycql_transactional_xcluster) &&
-      !is_ysql_table) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Transactional replication is not supported for non-YSQL tables: $0",
-        info->table_name.ToString());
-  }
-
-  // Get corresponding table schema on local universe.
-  GetTableSchemaRequestPB req;
-
-  auto* table = req.mutable_table();
-  table->set_table_name(info->table_name.table_name());
-  table->mutable_namespace_()->set_name(info->table_name.namespace_name());
-  table->mutable_namespace_()->set_database_type(
-      GetDatabaseTypeForTable(client::ClientToPBTableType(info->table_type)));
-
-  // Since YSQL tables are not present in table map, we first need to list tables to get the table
-  // ID and then get table schema.
-  // Remove this once table maps are fixed for YSQL.
-  ListTablesRequestPB list_req;
-  ListTablesResponsePB list_resp;
-
-  list_req.set_name_filter(info->table_name.table_name());
-  Status status = ListTables(&list_req, &list_resp);
-  SCHECK(status.ok() && !list_resp.has_error(), NotFound,
-         Substitute("Error while listing table: $0", status.ToString()));
-
-  const auto& source_schema = client::internal::GetSchema(info->schema);
-  for (const auto& t : list_resp.tables()) {
-    // Check that table name and namespace both match.
-    if (t.name() != info->table_name.table_name() ||
-        t.namespace_().name() != info->table_name.namespace_name()) {
-      continue;
-    }
-
-    // Check that schema name matches for YSQL tables, if the field is empty, fill in that
-    // information during GetTableSchema call later.
-    bool has_valid_pgschema_name = !t.pgschema_name().empty();
-    if (is_ysql_table && has_valid_pgschema_name &&
-        t.pgschema_name() != source_schema.SchemaName()) {
-      continue;
-    }
-
-    // Get the table schema.
-    table->set_table_id(t.id());
-    status = GetTableSchema(&req, resp);
-    SCHECK(status.ok() && !resp->has_error(), NotFound,
-           Substitute("Error while getting table schema: $0", status.ToString()));
-
-    // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !has_valid_pgschema_name) {
-      std::string target_schema_name = resp->schema().pgschema_name();
-      if (target_schema_name != source_schema.SchemaName()) {
-        table->clear_table_id();
-        continue;
-      }
-    }
-
-    // Verify that the table on the target side supports replication.
-    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
-      return STATUS_FORMAT(NotSupported,
-          "Replication is not supported for materialized view: $0",
-          info->table_name.ToString());
-    }
-
-    Schema consumer_schema;
-    auto result = SchemaFromPB(resp->schema(), &consumer_schema);
-
-    // We now have a table match. Validate the schema.
-    SCHECK(result.ok() && consumer_schema.EquivalentForDataCopy(source_schema), IllegalState,
-           Substitute("Source and target schemas don't match: "
-                      "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-               info->table_id, resp->identifier().table_id(),
-               info->schema.ToString(), resp->schema().DebugString()));
-    break;
-  }
-
-  SCHECK(table->has_table_id(), NotFound, Substitute(
-      "Could not find matching table for $0$1", info->table_name.ToString(),
-      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
-
-  // Still need to make map of table id to resp table id (to add to validated map)
-  // For colocated tables, only add the parent table since we only added the parent table to the
-  // original pb (we use the number of tables in the pb to determine when validation is done).
-  if (info->colocated) {
-    // We require that colocated tables have the same colocation ID.
-    //
-    // Backward compatibility: tables created prior to #7378 use YSQL table OID as a colocation ID.
-    auto source_clc_id = info->schema.has_colocation_id()
-        ? info->schema.colocation_id()
-        : CHECK_RESULT(GetPgsqlTableOid(info->table_id));
-    auto target_clc_id = (resp->schema().has_colocated_table_id() &&
-                          resp->schema().colocated_table_id().has_colocation_id())
-        ? resp->schema().colocated_table_id().colocation_id()
-        : CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
-    SCHECK(source_clc_id == target_clc_id, IllegalState,
-           Substitute("Source and target colocation IDs don't match for colocated table: "
-                      "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
-                      info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
-  }
-
-  {
-    SharedLock lock(mutex_);
-    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
-      return STATUS(IllegalState, "N:1 replication topology not supported");
-    }
-  }
-
-  return Status::OK();
-}
 
 Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
     client::internal::RemoteTabletPtr tablet) {

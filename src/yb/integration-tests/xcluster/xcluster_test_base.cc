@@ -520,7 +520,7 @@ uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
     auto* tserver = mini_tserver->server();
     XClusterConsumer* xcluster_consumer;
     if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer())) {
-      size += xcluster_consumer->GetNumSuccessfulWriteRpcs();
+      size += xcluster_consumer->TEST_GetNumSuccessfulWriteRpcs();
     }
   }
   return size;
