@@ -163,7 +163,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
   Status DoLaunchBackfill();
-  Status LaunchComputeSafeTimeForRead();
+  Status LaunchComputeSafeTimeForRead() EXCLUDES(mutex_);
   Status DoBackfill();
 
   Status MarkAllIndexesAsFailed();
