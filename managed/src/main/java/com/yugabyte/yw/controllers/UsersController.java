@@ -228,7 +228,8 @@ public class UsersController extends AuthenticatedController {
       // Check the role and resource definitions list field. New RBAC APIs use case. To be
       // standardized.
       else if (formData.getRole() == null && formData.getRoleResourceDefinitions() != null) {
-        // Validate the resource group definitions given.
+        // Validate the roles and resource group definitions given.
+        roleBindingUtil.validateRoles(customerUUID, formData.getRoleResourceDefinitions());
         roleBindingUtil.validateResourceGroups(customerUUID, formData.getRoleResourceDefinitions());
 
         // Create the user.
@@ -239,6 +240,10 @@ public class UsersController extends AuthenticatedController {
                 Users.Role.ConnectOnly,
                 customerUUID,
                 false);
+
+        // Populate all the system default resource groups for all system defined roles.
+        roleBindingUtil.populateSystemRoleResourceGroups(
+            customerUUID, user.getUuid(), formData.getRoleResourceDefinitions());
         // Add all the role bindings for the user.
         List<RoleBinding> createdRoleBindings =
             roleBindingUtil.setUserRoleBindings(

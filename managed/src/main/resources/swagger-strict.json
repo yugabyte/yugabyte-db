@@ -9575,7 +9575,7 @@
       "properties" : {
         "resourceGroup" : {
           "$ref" : "#/definitions/ResourceGroup",
-          "description" : "Resource group definition for the role."
+          "description" : "Resource group definition for the role. Only applicable for custom roles."
         },
         "roleUUID" : {
           "description" : "UUID of the role to attach resource group to.",
@@ -9583,7 +9583,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "resourceGroup", "roleUUID" ],
+      "required" : [ "roleUUID" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
