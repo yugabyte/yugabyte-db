@@ -91,7 +91,7 @@ public class HookInserterTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     // Assert that hook preUpgradeHook has been created
-    List<TaskInfo> hookTasks = subTasksByPosition.get(0);
+    List<TaskInfo> hookTasks = subTasksByPosition.get(1);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 3);
 
@@ -106,7 +106,7 @@ public class HookInserterTest extends UpgradeTaskTest {
     assertEquals(hookTasks.size(), 3);
 
     // Assert that no more hooks were added
-    hookTasks = subTasksByPosition.get(3);
+    hookTasks = subTasksByPosition.get(4);
     assertTrue(hookTasks.get(0).getTaskType() != TaskType.RunHooks);
   }
 
@@ -154,27 +154,27 @@ public class HookInserterTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     // Assert that hook gcpProviderHook has been created
-    List<TaskInfo> hookTasks = subTasksByPosition.get(0);
+    List<TaskInfo> hookTasks = subTasksByPosition.get(1);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 3);
 
     // Assert that hook preUpgradeHook has been created
-    hookTasks = subTasksByPosition.get(1);
+    hookTasks = subTasksByPosition.get(2);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 6);
 
     // Assert that hook providerHook has been created
-    hookTasks = subTasksByPosition.get(2);
+    hookTasks = subTasksByPosition.get(3);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 3);
 
     // Assert that hook universeHook has been created
-    hookTasks = subTasksByPosition.get(3);
+    hookTasks = subTasksByPosition.get(4);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 6);
 
     // Assert that no more hooks were added
-    hookTasks = subTasksByPosition.get(4);
+    hookTasks = subTasksByPosition.get(5);
     assertTrue(hookTasks.get(0).getTaskType() != TaskType.RunHooks);
   }
 
@@ -188,7 +188,7 @@ public class HookInserterTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     // Assert that hook universeHook has been created, since it is not sudo
-    List<TaskInfo> hookTasks = subTasksByPosition.get(0);
+    List<TaskInfo> hookTasks = subTasksByPosition.get(1);
     assertTaskType(hookTasks, TaskType.RunHooks);
     assertEquals(hookTasks.size(), 3);
 
@@ -206,7 +206,7 @@ public class HookInserterTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     // Assert that the hook has not been created
-    List<TaskInfo> hookTasks = subTasksByPosition.get(0);
+    List<TaskInfo> hookTasks = subTasksByPosition.get(1);
     assert (hookTasks.get(0).getTaskType() != TaskType.RunHooks);
   }
 }

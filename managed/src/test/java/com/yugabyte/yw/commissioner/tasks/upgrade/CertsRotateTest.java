@@ -10,7 +10,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -436,7 +435,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
 
     assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(taskInfo.getSubTasks().isEmpty());
+    assertEquals(1, taskInfo.getSubTasks().size());
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 
@@ -499,7 +498,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(Failure, taskInfo.getTaskState());
-        assertTrue(taskInfo.getSubTasks().isEmpty());
+        assertEquals(1, taskInfo.getSubTasks().size());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -513,8 +512,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // RootCA update task
-    int expectedPosition = 15;
+    int expectedPosition = 16;
     if (rotateRootCA) {
       expectedPosition += 2;
       position = assertCommonTasks(subTasksByPosition, position, true, false);
@@ -608,7 +608,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-        assertTrue(taskInfo.getSubTasks().isEmpty());
+        assertEquals(1, taskInfo.getSubTasks().size());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -622,8 +622,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 66;
+    int expectedPosition = 67;
     int expectedNumberOfInvocations = 21;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (rotateRootCA) {
       expectedPosition += 128;
       expectedNumberOfInvocations += 30;
@@ -721,7 +722,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     if (!((isRootCARequired && selfSignedServerCertRotate)
         || (isClientRootCARequired && selfSignedClientCertRotate))) {
       assertEquals(Failure, taskInfo.getTaskState());
-      assertTrue(taskInfo.getSubTasks().isEmpty());
+      assertEquals(1, taskInfo.getSubTasks().size());
       verify(mockNodeManager, times(0)).nodeCommand(any(), any());
       return;
     }
@@ -734,8 +735,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // RootCA update task
-    int expectedPosition = isRolling ? 66 : 15;
+    int expectedPosition = isRolling ? 67 : 16;
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
     // gflags update tasks

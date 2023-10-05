@@ -515,9 +515,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    int position =
+    int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    position =
         assertAllNodesActions(
-            0,
+            position,
             subTasksByPosition,
             TaskType.SetNodeState,
             TaskType.InstanceActions,
@@ -1150,8 +1152,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getDetails().get("nodeName").textValue());
-    assertEquals(0L, (long) updateMounts.get(0).getPosition());
-    assertTasksSequence(1, subTasks, true, true, true, false);
+    assertEquals(1L, (long) updateMounts.get(0).getPosition());
+    assertTasksSequence(2, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
   }
@@ -1195,7 +1197,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
     taskTypes.add(TaskType.PersistResizeNode);
     taskTypes.add(TaskType.UniverseUpdateSucceeded);
-    assertTasksSequence(1, subTasksByPosition, taskTypes, paramsForTask, false);
+    assertTasksSequence(2, subTasksByPosition, taskTypes, paramsForTask, false);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       if (nodeDetails.getAzUuid().equals(az2.getUuid())) {
@@ -1231,12 +1233,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             .findFirst()
             .get();
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.InstanceActions);
     assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
-    TaskInfo deviceTask = subTasksByPosition.get(1).get(0);
+    TaskInfo deviceTask = subTasksByPosition.get(2).get(0);
     JsonNode params = deviceTask.getDetails();
     assertEquals(azNodeName, params.get("nodeName").asText());
     JsonNode deviceParams = params.get("deviceInfo");
@@ -1278,7 +1281,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskType> taskTypes = new ArrayList<>(TASK_SEQUENCE);
+    List<TaskType> taskTypes = new ArrayList<>();
+    taskTypes.addAll(TASK_SEQUENCE);
     Map<Integer, Map<String, Object>> paramsForTask = new HashMap<>();
     createTasksTypesForNode(
         false, false, false, true, taskTypes, paramsForTask, true, false, false);
@@ -1293,7 +1297,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
     taskTypes.add(TaskType.PersistResizeNode);
     taskTypes.add(TaskType.UniverseUpdateSucceeded);
-    assertTasksSequence(1, subTasksByPosition, taskTypes, paramsForTask, false);
+    assertTasksSequence(2, subTasksByPosition, taskTypes, paramsForTask, false);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
@@ -1423,6 +1427,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     int position = startPosition;
     List<TaskType> expectedTaskTypes = new ArrayList<>();
     Map<Integer, Map<String, Object>> expectedParams = new HashMap<>();
+    if (startPosition == 0) {
+      expectedTaskTypes.add(TaskType.FreezeUniverse);
+    }
     expectedTaskTypes.add(TaskType.ModifyBlackList); // removing all tservers from BL
 
     createTasksSequence(

@@ -9,7 +9,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -335,7 +334,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
   private Pair<Integer, Integer> getExpectedValues(TlsToggleParams taskParams) {
     int nodeToNodeChange = getNodeToNodeChange(taskParams.enableNodeToNodeEncrypt);
-    int expectedPosition = 1;
+    int expectedPosition = 2;
     int expectedNumberOfInvocations = 0;
 
     if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
@@ -388,7 +387,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(taskInfo.getSubTasks().isEmpty());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -402,7 +401,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(taskInfo.getSubTasks().isEmpty());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -417,7 +416,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
-    assertTrue(taskInfo.getSubTasks().isEmpty());
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -516,6 +515,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
@@ -670,6 +670,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt) {
       // Cert update tasks will be non rolling
       List<TaskInfo> certUpdateTasks = subTasksByPosition.get(position++);
