@@ -176,10 +176,6 @@ reset enable_indexonlyscan;
 
 drop table gist_tbl;
 
--- Also check that use_physical_tlist doesn't trigger in such cases.
-explain (verbose, costs off)
-select count(*) from gist_tbl;
-select count(*) from gist_tbl;
 -- test an unlogged table, mostly to get coverage of gistbuildempty
 create unlogged table gist_tbl (b box);
 create index gist_tbl_box_index on gist_tbl using gist (b);

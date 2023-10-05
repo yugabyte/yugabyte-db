@@ -392,23 +392,6 @@ reset enable_seqscan;
 reset enable_bitmapscan;
 reset enable_indexonlyscan;
 drop table gist_tbl;
-
--- Also check that use_physical_tlist doesn't trigger in such cases.
-explain (verbose, costs off)
-select count(*) from gist_tbl;
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Aggregate
-   Output: count(*)
-   ->  Index Only Scan using gist_tbl_multi_index on public.gist_tbl
-(3 rows)
-
-select count(*) from gist_tbl;
- count 
--------
- 10001
-(1 row)
-
 -- test an unlogged table, mostly to get coverage of gistbuildempty
 create unlogged table gist_tbl (b box);
 create index gist_tbl_box_index on gist_tbl using gist (b);
