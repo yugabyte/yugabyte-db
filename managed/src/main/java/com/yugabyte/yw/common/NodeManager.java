@@ -1870,10 +1870,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
-            if (taskParam.isYbcInstall) {
-              commandArgs.add("--skip_tags");
-              commandArgs.add("systemd_reboot");
-            }
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
