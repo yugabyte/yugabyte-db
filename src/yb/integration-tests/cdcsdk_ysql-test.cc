@@ -13,6 +13,7 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -2752,8 +2753,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupMultiTab
   }
   auto stream_id = ASSERT_RESULT(CreateDBStream());
 
-  // Drop one of the table from the namespace, check stream associated with namespace should not
-  // be deleted, but metadata related to the droppped table should be cleaned up from the master.
+  // Drop table1 and table2 from the namespace, check stream associated with namespace should not
+  // be deleted, but metadata related to the dropped tables should be cleaned up from the master.
   for (int idx = 1; idx < kNumTables; idx++) {
     char drop_table[64] = {0};
     (void)snprintf(drop_table, sizeof(drop_table), "%s_%d", kTableName, idx);
@@ -2784,6 +2785,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupMultiTab
       ASSERT_GT(record_size, 100);
     }
   }
+
+  // Verify that cdc_state only has tablets from table3 left.
+  std::unordered_set<TabletId> table_3_tablet_ids;
+  for (const auto& tablet : tablets[2]) {
+    table_3_tablet_ids.insert(tablet.tablet_id());
+  }
+  CDCStateTable cdc_state_table(test_client());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        Status s;
+        std::unordered_set<TabletId> tablets_found;
+        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          if (row.key.stream_id == stream_id && !table_3_tablet_ids.contains(row.key.tablet_id)) {
+            // Still have a tablet left over from a dropped table.
+            return false;
+          }
+          if (row.key.stream_id == stream_id) {
+            tablets_found.insert(row.key.tablet_id);
+          }
+        }
+        RETURN_NOT_OK(s);
+        LOG(INFO) << "tablets found: " << AsString(tablets_found)
+                  << ", expected tablets: " << AsString(table_3_tablet_ids);
+        return table_3_tablet_ids == tablets_found;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 
   // Deleting the created stream.
   ASSERT_TRUE(DeleteCDCStream(stream_id));
