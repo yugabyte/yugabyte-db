@@ -1083,8 +1083,16 @@ void CatalogManager::FindAllTablesMissingInCDCSDKStream(
   }
 }
 
-Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
+/*
+ * Processing for relevant tables that have been added after the creation of a stream
+ * This involves
+ *   1) Enabling the WAL retention for the tablets of the table
+ *   2) INSERTING records for the tablets of this table and each stream for which
+ *      this table is relevant into the cdc_state table
+ */
+Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     const TableStreamIdsMap& table_to_unprocessed_streams_map) {
+
   client::TableHandle cdc_table;
   const client::YBTableName cdc_state_table_name(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -1131,6 +1139,19 @@ Status CatalogManager::AddTabletEntriesToCDCSDKStreamsForNewTables(
       continue;
     }
 
+    // Set the WAL retention for this new table
+    // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
+    AlterTableRequestPB alter_table_req;
+    alter_table_req.mutable_table()->set_table_id(table_id);
+    alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
+    AlterTableResponsePB alter_table_resp;
+    s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
+      continue;
+    }
+
+    // INSERT the required cdc_state table entries
     NamespaceId namespace_id;
     bool stream_pending = false;
     for (const auto& stream : streams) {
