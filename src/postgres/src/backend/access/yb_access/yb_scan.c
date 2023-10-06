@@ -2202,10 +2202,6 @@ ybcBeginScan(Relation relation,
 	tsdesc->rs_key = keys;
 	tsdesc->rs_nkeys = nkeys;
 
-	/* Reorder the keys to regular key first then yb_hash_code. */
-	ybScan->keys = (ScanKey*) palloc(sizeof(ScanKey) * nkeys);
-	ybScan->nkeys = 0;
-	ybScan->nhash_keys = 0;
 	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = &keys[i];
@@ -2867,15 +2863,11 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	foreach(lc, path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		int			indexcol = iclause->indexcol;
-		ListCell *lc2, *lci;
-		List* indexcols = iclause->indexcols == NIL ? list_make1_int(indexcol) : iclause->indexcols;
-
-		Assert(iclause->indexquals->length == indexcols->length);
-		forboth(lc2, iclause->indexquals, lci, indexcols)
+		int      indexcol = iclause->indexcol;
+		ListCell   *lc2;
+		foreach (lc2, iclause->indexquals)
 		{
 			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			int			  indexcol = lfirst_int(lci);
 			AttrNumber	 attnum = isprimary ? index->rd_index->indkey.values[indexcol]
 											: (indexcol + 1);
 			Expr	   *clause = rinfo->clause;

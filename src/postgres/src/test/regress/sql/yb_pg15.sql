@@ -176,3 +176,9 @@ CREATE DATABASE mytest;
 
 -- drop database
 DROP DATABASE mytest;
+
+-- Index scan test row comparison expressions
+CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
+INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
