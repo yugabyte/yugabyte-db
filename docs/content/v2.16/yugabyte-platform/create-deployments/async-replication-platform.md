@@ -57,9 +57,10 @@ You can set up xCluster replication as follows:
 1. Click **Validate Table Selection**.
 
    {{< note >}}
-Note that if data on the source universe is created by restoring a backup, the same backup must be restored to the target universe before setting up replication. This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables.
+If data on the source universe is created by restoring a backup, the same backup must be restored to the target universe before setting up replication.
    {{< /note >}}
 
+YugabyteDB Anywhere checks whether or not bootstrapping is required for the selected database and its tables. Depending on the result, do the following:
    - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
 
      ![Create Replication](/images/yp/asynch-replication-332.png)
