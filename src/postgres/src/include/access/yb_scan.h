@@ -98,7 +98,7 @@ typedef struct YbScanDescData
 	 * Array of keys that are reordered to regular keys first then yb_hash_code().
 	 * Size and contents are the same as rs_keys in different order.
 	 */
-	ScanKey *keys;
+	ScanKey keys[YB_MAX_SCAN_KEYS];
 	/* number of regular keys */
 	int nkeys;
 	/* number of keys which represents the yb_hash_code function */

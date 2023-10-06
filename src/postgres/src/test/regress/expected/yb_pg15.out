@@ -377,3 +377,84 @@ select * from address2 order by id;
 CREATE DATABASE mytest;
 -- drop database
 DROP DATABASE mytest;
+-- Index scan test row comparison expressions
+CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
+INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+                                     QUERY PLAN
+-------------------------------------------------------------------------------------
+ Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=67 loops=1)
+   Index Cond: (ROW(r1, r2, r3) <= ROW(2, 3, 2))
+(2 rows)
+
+SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+ r1 | r2 | r3 | v
+----+----+----+----
+  0 |  0 |  1 |  1
+  0 |  0 |  2 |  2
+  0 |  0 |  3 |  3
+  0 |  0 |  4 |  4
+  0 |  1 |  0 |  5
+  0 |  1 |  1 |  6
+  0 |  1 |  2 |  7
+  0 |  1 |  3 |  8
+  0 |  1 |  4 |  9
+  0 |  2 |  0 | 10
+  0 |  2 |  1 | 11
+  0 |  2 |  2 | 12
+  0 |  2 |  3 | 13
+  0 |  2 |  4 | 14
+  0 |  3 |  0 | 15
+  0 |  3 |  1 | 16
+  0 |  3 |  2 | 17
+  0 |  3 |  3 | 18
+  0 |  3 |  4 | 19
+  0 |  4 |  0 | 20
+  0 |  4 |  1 | 21
+  0 |  4 |  2 | 22
+  0 |  4 |  3 | 23
+  0 |  4 |  4 | 24
+  1 |  0 |  0 | 25
+  1 |  0 |  1 | 26
+  1 |  0 |  2 | 27
+  1 |  0 |  3 | 28
+  1 |  0 |  4 | 29
+  1 |  1 |  0 | 30
+  1 |  1 |  1 | 31
+  1 |  1 |  2 | 32
+  1 |  1 |  3 | 33
+  1 |  1 |  4 | 34
+  1 |  2 |  0 | 35
+  1 |  2 |  1 | 36
+  1 |  2 |  2 | 37
+  1 |  2 |  3 | 38
+  1 |  2 |  4 | 39
+  1 |  3 |  0 | 40
+  1 |  3 |  1 | 41
+  1 |  3 |  2 | 42
+  1 |  3 |  3 | 43
+  1 |  3 |  4 | 44
+  1 |  4 |  0 | 45
+  1 |  4 |  1 | 46
+  1 |  4 |  2 | 47
+  1 |  4 |  3 | 48
+  1 |  4 |  4 | 49
+  2 |  0 |  0 | 50
+  2 |  0 |  1 | 51
+  2 |  0 |  2 | 52
+  2 |  0 |  3 | 53
+  2 |  0 |  4 | 54
+  2 |  1 |  0 | 55
+  2 |  1 |  1 | 56
+  2 |  1 |  2 | 57
+  2 |  1 |  3 | 58
+  2 |  1 |  4 | 59
+  2 |  2 |  0 | 60
+  2 |  2 |  1 | 61
+  2 |  2 |  2 | 62
+  2 |  2 |  3 | 63
+  2 |  2 |  4 | 64
+  2 |  3 |  0 | 65
+  2 |  3 |  1 | 66
+  2 |  3 |  2 | 67
+(67 rows)
