@@ -66,7 +66,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 DECLARE_int32(log_max_seconds_to_retain);
