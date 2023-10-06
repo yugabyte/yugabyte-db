@@ -34,7 +34,7 @@ To view API key details, select an API key in the list to display the **API Key 
 
 To create an API key:
 
-1. Navigate to **Admin > Access Control > API Keys**, and click **Create API Key**.
+1. Navigate to **Security > Access Control > API Keys**, and click **Create API Key**.
 
 1. Enter a name and description for the key.
 
