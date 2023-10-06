@@ -36,52 +36,52 @@ You can set up xCluster replication as follows:
 
 1. Click **Configure Replication** to open the dialog shown in the following illustration:<br>
 
-   ![Configure Replication](/images/yp/asynch-replication-221.png)
+    ![Configure Replication](/images/yp/asynch-replication-221.png)
 
 1. Provide a name for your replication. This name cannot contain [SPACE '_' '*' '<' '>' '?' '|' '"' NULL].
 
 1. Select the target universe.
 
-   Note that paused universes are not included in the selection list.
+    Note that paused universes are not included in the selection list.
 
 1. Click **Next: Select Tables**.
 
 1. From a list of common tables between source and target universes, select the tables you want to include in the replication, as per the following illustration:
 
-   ![Create Replication](/images/yp/asynch-replication-333.png)
+    ![Create Replication](/images/yp/asynch-replication-333.png)
 
-   Note that even though index tables are not displayed in the YugabyteDB  Anywhere UI, the replication is automatically set up for them if it is  set up for their main table. If a new index table is created after the replication has been set up, it is not added to the replication configuration automatically. To add the new index table to the replication configuration, you need to restart the  replication for the main table.
+    Note that even though index tables are not displayed in the YugabyteDB  Anywhere UI, the replication is automatically set up for them if it is  set up for their main table. If a new index table is created after the replication has been set up, it is not added to the replication configuration automatically. To add the new index table to the replication configuration, you need to restart the  replication for the main table.
 
    See [About the table selection](#about-the-table-selection) for additional information.
 
 1. Click **Validate Table Selection**.
 
-   {{< note >}}
-If data on the source universe is created by restoring a backup, the same backup must be restored to the target universe before setting up replication.
-   {{< /note >}}
+    {{< note >}}
+If data on the source universe is created by restoring a backup, you must restore the same backup to the target universe before setting up replication.
+    {{< /note >}}
 
-YugabyteDB Anywhere checks whether or not bootstrapping is required for the selected database and its tables. Depending on the result, do the following:
-   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
+    YugabyteDB Anywhere checks whether or not bootstrapping is required for the selected database and its tables. Depending on the result, do the following:
 
-     ![Create Replication](/images/yp/asynch-replication-332.png)
+    - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication.
 
-   - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
+    - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
 
-     ![Create Replication](/images/yp/asynch-replication-335.png)
+      ![Create Replication](/images/yp/asynch-replication-335.png)
 
-     Select the storage configuration to be used during backup and restore part of bootstrapping. For information on how to configure storage, see [Configure backup storage](../../back-up-restore-universes/configure-backup-storage/).
+      Select the storage configuration to be used during the backup and restore part of bootstrapping. For information on how to configure storage, see [Configure backup storage](../../back-up-restore-universes/configure-backup-storage/).
 
-     Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
+      Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
 
-     Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
+      Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
 
-     You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
+    You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
 
 1. Optionally, configure alerts on lag, as follows:
 
-   - Click **Max acceptable lag time**.
-   - Use the **Define Max Acceptable Lag Time** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:<br><br>
-   ![Create Replication](/images/yp/asynch-replication-91.png)
+    - Click **Max acceptable lag time**.
+    - Use the **Define Max Acceptable Lag Time** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:
+
+      ![Create Replication](/images/yp/asynch-replication-91.png)
 
 ### About the table selection
 
