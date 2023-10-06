@@ -1552,5 +1552,110 @@ TEST_F(
   ASSERT_EQ(expected_total_splits, total_splits);
 }
 
+// Ensures that a drop table (table 2) after a tablet split (table 1) from the same namespace
+// doesn't lead to the deletion of parent tablet entry for table 1 in the cdc_state table.
+TEST_F(
+    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaDataCleanupDropTableAfterTabletSplit)) {
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const vector<string> table_list_suffix = {"_1", "_2", "_3"};
+  const int kNumTables = 3;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+  vector<std::string> tablet_ids_before_split;
+  vector<std::string> tablet_ids_before_drop;
+
+  for (auto table_suffix : table_list_suffix) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, table_suffix));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_suffix, kNamespaceName, kTableName));
+    idx += 1;
+  }
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  // Consume changes for table 1 whose tablet will be split later. It ensures that the parent tablet
+  // remains in the cdc_state table after the split is complete.
+  // If we don't consume the changes here, upon the tablet split, the parent tablet id will be
+  // removed from the cdc_state table as an optimization which we don't want here.
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets[0]));
+  ASSERT_FALSE(resp.has_error());
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[0]));
+  ASSERT_OK(WriteEnumsRows(
+      100 /* start */, 200 /* end */, &test_cluster_, table_list_suffix[0], kNamespaceName,
+      kTableName));
+
+  ASSERT_OK(test_client()->FlushTables(
+      table, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  SleepFor(MonoDelta::FromSeconds(30));
+
+  // Split tablet of table 1.
+  WaitUntilSplitIsSuccesful(tablets[0].Get(0).tablet_id(), table[0]);
+  LOG(INFO) << "Tablet split succeded";
+
+  // Drop table3 from the namespace.
+  DropTable(&test_cluster_, "test_table_3");
+  LOG(INFO) << "Dropped test_table_3 from namespace";
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          // Wait until the background thread cleanup up the drop table metadata.
+          if (get_resp.ok() && !get_resp->has_error() && get_resp->table_info_size() == 2) {
+            return true;
+          }
+        }
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  // Verify that cdc_state has tablets from table1 (both parent and child tablets) and table2 left.
+  std::unordered_set<TabletId> expected_tablet_ids;
+  expected_tablet_ids.insert(tablets[0].Get(0).tablet_id()); // parent tablet
+  for (const auto& tablet : tablets[1]) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table[0], 0, &table1_tablets_after_split, /* partition_list_version =*/nullptr));
+  for (const auto& tablet : table1_tablets_after_split) {
+    expected_tablet_ids.insert(tablet.tablet_id());
+  }
+
+  CDCStateTable cdc_state_table(test_client());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        Status s;
+        std::unordered_set<TabletId> tablets_found;
+        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          if (row.key.stream_id == stream_id && !expected_tablet_ids.contains(row.key.tablet_id)) {
+            // Still have a tablet left over from a dropped table.
+            return false;
+          }
+          if (row.key.stream_id == stream_id) {
+            tablets_found.insert(row.key.tablet_id);
+          }
+        }
+        RETURN_NOT_OK(s);
+        LOG(INFO) << "tablets found: " << AsString(tablets_found)
+                  << ", expected tablets: " << AsString(expected_tablet_ids);
+        return expected_tablet_ids == tablets_found;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  // Deleting the created stream.
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+}
+
 }  // namespace cdc
 }  // namespace yb
