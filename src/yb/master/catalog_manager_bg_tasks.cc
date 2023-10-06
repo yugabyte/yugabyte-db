@@ -271,8 +271,8 @@ void CatalogManagerBgTasks::Run() {
             catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
 
         if (s.ok() && !table_unprocessed_streams_map.empty()) {
-          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
-              table_unprocessed_streams_map);
+          s = catalog_manager_->ProcessNewTablesForCDCSDKStreams(
+              table_unprocessed_streams_map, l.epoch());
         }
         if (!s.ok()) {
           YB_LOG_EVERY_N(WARNING, 10)
