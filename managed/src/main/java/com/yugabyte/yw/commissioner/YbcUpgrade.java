@@ -96,7 +96,6 @@ public class YbcUpgrade {
 
   public void start() {
     Duration duration = this.upgradeInterval();
-    platformScheduler.schedule("Ybc Upgrade", Duration.ZERO, duration, this::scheduleRunner);
   }
 
   private Duration upgradeInterval() {
