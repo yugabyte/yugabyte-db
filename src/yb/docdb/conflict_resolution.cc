@@ -452,6 +452,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());
     SET_WAIT_STATUS(util::WaitStateCode::WaitOnTxnResolve);
+    TracePtr trace = Trace::CurrentTrace();
     for (auto& i : conflict_data_->RemainingTransactions()) {
       auto& transaction = i;
       TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
@@ -463,10 +464,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction, trace = Trace::CurrentTrace(),
+        [self, &transaction, trace,
          wait_state = util::WaitStateInfo::CurrentWaitState()](Result<TransactionStatusResult> result) {
           SCOPED_ADOPT_WAIT_STATE(wait_state);
-          ADOPT_TRACE(trace);
+          ADOPT_TRACE(trace.get());
           if (result.ok()) {
             transaction.ProcessStatus(*result);
           } else if (result.status().IsTryAgain()) {
@@ -1310,7 +1311,6 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    ResolutionCallback callback) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
-  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
 
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
@@ -1351,7 +1351,6 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   TRACE("ResolveOperationConflicts");
-  // SCOPED_WAIT_STATUS(util::WaitStateCode::ActiveOnCPU);
   VLOG_WITH_FUNC(3)
       << "conflict_management_policy=" << conflict_management_policy
       << ", initial_resolution_ht: " << intial_resolution_ht;
