@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.Universe;
@@ -20,6 +19,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -35,11 +35,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   @Override
-  protected SoftwareUpgradeParams taskParams() {
-    return (SoftwareUpgradeParams) taskParams;
-  }
-
-  @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.UpgradingSoftware;
   }
@@ -49,12 +44,27 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected UpgradeContext getUpgradeContext() {
+  protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
-        .targetSoftwareVersion(taskParams().ybSoftwareVersion)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .build();
+  }
+
+  protected UpgradeContext getRollbackUpgradeContext(
+      Set<NodeDetails> nodesToSkipMasterActions,
+      Set<NodeDetails> nodesToSkipTServerActions,
+      String targetSoftwareVersion) {
+    return UpgradeContext.builder()
+        .reconfigureMaster(false)
+        .runBeforeStopping(false)
+        .processInactiveMaster(true)
+        .processTServersFirst(true)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .nodesToSkipMasterActions(nodesToSkipMasterActions)
+        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
@@ -75,7 +85,10 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   protected void createUpgradeTaskFlowTasks(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes, String newVersion, boolean reProvision) {
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean reProvision) {
     createUpgradeTaskFlow(
         (nodes1, processTypes) -> {
           // Re-provisioning the nodes if ybc needs to be installed and systemd is already
@@ -91,7 +104,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
         },
         nodes,
-        getUpgradeContext(),
+        upgradeContext,
         false);
   }
 

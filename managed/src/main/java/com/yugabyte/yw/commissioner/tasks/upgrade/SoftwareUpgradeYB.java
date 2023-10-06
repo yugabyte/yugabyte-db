@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -29,6 +30,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   public NodeState getNodeState() {
     return NodeState.UpgradeSoftware;
+  }
+
+  @Override
+  protected SoftwareUpgradeParams taskParams() {
+    return (SoftwareUpgradeParams) taskParams;
   }
 
   @Override
@@ -71,13 +77,20 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
-          createUpgradeTaskFlowTasks(nodes, newVersion, reProvisionRequired);
+          createUpgradeTaskFlowTasks(
+              nodes,
+              newVersion,
+              getUpgradeContext(taskParams().ybSoftwareVersion),
+              reProvisionRequired);
 
           if (taskParams().installYbc) {
             createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);
           }
 
           createCheckSoftwareVersionTask(allNodes, newVersion);
+
+          createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID());
+
           createPromoteAutoFlagTask(
               universe.getUniverseUUID(),
               true /* ignoreErrors*/,

@@ -278,6 +278,9 @@ public class Audit extends Model {
     @EnumValue("Finalize Upgrade")
     FinalizeUpgrade,
 
+    @EnumValue("Rollback Upgrade")
+    RollbackUpgrade,
+
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
 

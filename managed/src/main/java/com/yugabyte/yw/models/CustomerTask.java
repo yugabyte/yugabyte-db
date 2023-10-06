@@ -162,6 +162,9 @@ public class CustomerTask extends Model {
     @EnumValue("FinalizeUpgrade")
     FinalizeUpgrade,
 
+    @EnumValue("RollbackUpgrade")
+    RollbackUpgrade,
+
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
 
@@ -379,6 +382,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case FinalizeUpgrade:
           return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+        case RollbackUpgrade:
+          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
