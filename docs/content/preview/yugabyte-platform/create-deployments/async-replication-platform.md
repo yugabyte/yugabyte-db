@@ -125,7 +125,7 @@ This page allows you to do the following:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
-  Note that even though index tables are not displayed in the preceding dialog, the replication is automatically restarted for them if it is restarted for the main table.
+  Note that even though index tables are not displayed, the replication is automatically restarted for them if it is restarted for the main table.
 
 - Delete the replication configuration by clicking **Actions > Delete Replication**.
 

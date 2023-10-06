@@ -50,7 +50,7 @@ You can set up xCluster replication as follows:
 
     ![Create Replication](/images/yp/asynch-replication-333.png)
 
-    Note that even though index tables are not displayed in the YugabyteDB  Anywhere UI, the replication is automatically set up for them if it is  set up for their main table. If a new index table is created after the replication has been set up, it is not added to the replication configuration automatically. To add the new index table to the replication configuration, you need to restart the  replication for the main table.
+    Note that even though index tables are not displayed, the replication is automatically set up for them if it is set up for the main table. If a new index table is created after the replication has been set up, it is not added to the replication configuration automatically. To add the new index table to the replication configuration, you need to restart the replication for the main table.
 
    See [About the table selection](#about-the-table-selection) for additional information.
 
@@ -124,7 +124,7 @@ This page allows you to do the following:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
-  Note that even though index tables are not displayed in the preceding dialog, the replication is automatically restarted for them if it is restarted for the main table.
+  Note that even though index tables are not displayed, the replication is automatically restarted for them if it is restarted for the main table.
 
 - Delete the replication configuration by clicking **Actions > Delete Replication**.
 
