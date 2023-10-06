@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shlex
+import shlex
 import subprocess
 import sys
 import time
@@ -245,8 +246,10 @@ def load_profile(
         if getattr(args, arg_name) is None:
             setattr(args, arg_name, profile.get(arg_name))
     if args.build_args is None:
-        args.build_args = []
-    args.build_args += profile.get('extra_args', [])
+        args.build_args = ''
+    extra_args = shlex_join(profile.get('extra_args', []))
+    if extra_args:
+        args.build_args += ' ' + extra_args
 
 
 def sync_changes(
