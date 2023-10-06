@@ -4,14 +4,15 @@ Copyright (c) YugaByte, Inc.
 This module provides utility and helper functions to work with a remote server through SSH.
 """
 
-import sys
+import argparse
 import json
+import logging
 import os
 import shlex
+import shlex
 import subprocess
+import sys
 import time
-import logging
-import argparse
 
 from typing import Sequence, Union, Tuple, List, Set, Optional, Dict, Any
 
@@ -240,8 +241,10 @@ def load_profile(
         if getattr(args, arg_name) is None:
             setattr(args, arg_name, profile.get(arg_name))
     if args.build_args is None:
-        args.build_args = []
-    args.build_args += profile.get('extra_args', [])
+        args.build_args = ''
+    extra_args = shlex_join(profile.get('extra_args', []))
+    if extra_args:
+        args.build_args += ' ' + extra_args
 
 
 def sync_changes(
