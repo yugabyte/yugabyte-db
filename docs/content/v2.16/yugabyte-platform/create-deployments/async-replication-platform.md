@@ -34,7 +34,7 @@ You can set up xCluster replication as follows:
 
 1. Select the universe you want to replicate and navigate to **Replication**.
 
-1. Click **Configure Replication** to open the dialog shown in the following illustration:<br>
+1. Click **Configure Replication** to open the dialog shown in the following illustration:
 
     ![Configure Replication](/images/yp/asynch-replication-221.png)
 

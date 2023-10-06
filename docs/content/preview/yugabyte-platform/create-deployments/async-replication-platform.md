@@ -64,7 +64,7 @@ You can set up xCluster replication as follows:
 
    This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables:
 
-   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
+   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication.
 
    - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
 
