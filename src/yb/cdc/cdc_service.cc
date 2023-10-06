@@ -1208,10 +1208,12 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
     cdc_sdk_safe_time = HybridTime::FromPB(req.cdc_sdk_safe_time());
   }
 
+  // If set_latest_entry is true i.e. the case of bootstrap, we know it is not a snapshot call.
+  // Similarly, if bootstrap (set_latest_entry) is false, we know it is a snapshot call.
   RETURN_NOT_OK_SET_CODE(
       UpdateCheckpointAndActiveTime(
-          producer_tablet, checkpoint, checkpoint, GetCurrentTimeMicros(), CDCRequestSource::CDCSDK,
-          true, cdc_sdk_safe_time),
+          producer_tablet, checkpoint, checkpoint, GetCurrentTimeMicros(),
+          CDCRequestSource::CDCSDK, true, cdc_sdk_safe_time, !set_latest_entry),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   if (req.has_initial_checkpoint() || set_latest_entry) {
