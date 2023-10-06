@@ -12,7 +12,9 @@ import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class UpgradeYbc extends AbstractTaskBase {
 
   private final YbcUpgrade ybcUpgrade;
@@ -63,10 +65,13 @@ public class UpgradeYbc extends AbstractTaskBase {
       boolean success =
           ybcUpgrade.pollUpgradeTaskResult(
               taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
+      log.info(
+          "Polling ybc upgrade for the universe {} resulted in the state {}",
+          taskParams().universeUUID,
+          success);
 
-      if (!success
-          && numRetries == ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES
-          && confGetter.getGlobalConf(GlobalConfKeys.forceYbcShutdownDuringUpgrade)) {
+      if (!success && confGetter.getGlobalConf(GlobalConfKeys.forceYbcShutdownDuringUpgrade)) {
+        log.info("Making a request to shutdown ybc for the universe {}", taskParams().universeUUID);
         // Shutdown YBC explicitly.
         ybcUpgrade.shutdownYbc(universe);
         // Wait for ybc to start after explicit shutdown.
@@ -74,6 +79,10 @@ public class UpgradeYbc extends AbstractTaskBase {
         success =
             ybcUpgrade.pollUpgradeTaskResult(
                 taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
+        log.info(
+            "Polling ybc upgrade for the universe {} resulted in the state {} post shutdown",
+            taskParams().universeUUID,
+            success);
       }
 
       if (!success && !taskParams().validateOnlyMasterLeader) {
@@ -114,6 +123,8 @@ public class UpgradeYbc extends AbstractTaskBase {
     while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
       numRetries++;
       if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
+        log.info(
+            "Ybc upgrade process does not exist for the universe {}", taskParams().universeUUID);
         break;
       } else {
         ybcUpgrade.pollUpgradeTaskResult(
