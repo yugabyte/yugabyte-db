@@ -1387,9 +1387,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
 
-  // Add missing table details to the relevant CDCSDK streams.
-  Status AddTabletEntriesToCDCSDKStreamsForNewTables(
-      const TableStreamIdsMap& table_to_unprocessed_streams_map);
+  // Process the newly created tables that are relevant to existing CDCSDK streams.
+  Status ProcessNewTablesForCDCSDKStreams(
+      const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
 
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<CDCStreamInfoPtr>* streams);
