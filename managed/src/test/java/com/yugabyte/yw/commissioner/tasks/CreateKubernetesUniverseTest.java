@@ -351,6 +351,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
+          TaskType.InstallingThirdPartySoftware,
           TaskType.WaitForServer,
           TaskType.WaitForMasterLeader,
           TaskType.UpdatePlacementInfo,
@@ -376,6 +377,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
@@ -391,7 +393,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-        namespaceTasks, parallelTasks, parallelTasks, 0, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+        namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
   }
 
   private void assertTaskSequence(

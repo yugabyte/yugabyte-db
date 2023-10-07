@@ -73,6 +73,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
+          TaskType.InstallingThirdPartySoftware,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
@@ -141,6 +142,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

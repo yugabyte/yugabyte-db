@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -137,6 +138,8 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               case NON_RESTART_UPGRADE:
                 throw new RuntimeException("Non-restart unimplemented for K8s");
             }
+            installThirdPartyPackagesTaskK8s(
+                universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
           } catch (Throwable t) {
             th = t;
             throw t;
