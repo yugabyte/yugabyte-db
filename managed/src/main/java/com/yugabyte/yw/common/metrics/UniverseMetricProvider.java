@@ -103,7 +103,7 @@ public class UniverseMetricProvider implements MetricsProvider {
       List<Provider> providers = Provider.getAll(customer.getUuid());
       // Build instanceTypeMap.
       for (Provider provider : providers) {
-        for (InstanceType instanceType : InstanceType.findByProvider(provider, config)) {
+        for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
           mapInstanceTypes.put(instanceType.getIdKey().toString(), instanceType);
         }
       }

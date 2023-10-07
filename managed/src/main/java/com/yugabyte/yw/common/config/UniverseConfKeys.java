@@ -29,14 +29,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Default threshold for Clock Skew alert",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> cloudEnabled =
-      new ConfKeyInfo<>(
-          "yb.cloud.enabled",
-          ScopeType.UNIVERSE,
-          "Cloud Enabled",
-          "Enables YBM specific features",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
