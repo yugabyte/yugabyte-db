@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeType;
 import java.util.ArrayList;
@@ -47,6 +49,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Mock Config mockConfig;
   @Mock ConfigHelper mockConfigHelper;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setUp() {
@@ -61,6 +64,9 @@ public class InstanceTypeTest extends FakeDBApplication {
     defaultDetails = new InstanceType.InstanceTypeDetails();
     defaultDetails.volumeDetailsList.add(volumeDetails);
     defaultDetails.setDefaultMountPaths();
+    when(mockConfGetter.getConfForScope(defaultCustomer, CustomerConfKeys.cloudEnabled))
+        .thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   @Test
@@ -112,7 +118,8 @@ public class InstanceTypeTest extends FakeDBApplication {
     instanceType.setActive(false);
     instanceType.save();
     InstanceType.upsert(newProvider.getUuid(), "bar", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfGetter);
     assertNotNull(instanceTypeList);
     assertEquals(2, instanceTypeList.size());
     Set<String> possibleTypes = new HashSet<>();
@@ -127,7 +134,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testFindByProviderOnprem() {
     InstanceType.upsert(onpremProvider.getUuid(), "bar", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(onpremProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(onpremProvider, mockConfGetter);
     assertEquals(1, instanceTypeList.size());
 
     InstanceType it = instanceTypeList.get(0);
@@ -139,7 +147,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testFindByProviderWithUnSupportedInstances() {
     InstanceType.upsert(defaultProvider.getUuid(), "t2.medium", 3, 10.0, defaultDetails);
     InstanceType.upsert(defaultProvider.getUuid(), "c3.medium", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfGetter);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
     assertThat(
@@ -152,7 +161,8 @@ public class InstanceTypeTest extends FakeDBApplication {
         defaultProvider.getUuid(), "c5.medium", 3, 10.0, new InstanceType.InstanceTypeDetails());
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY)).thenReturn(1);
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY)).thenReturn(250);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfGetter);
     assertNotNull(instanceTypeList);
     InstanceType.VolumeDetails volumeDetails =
         instanceTypeList.get(0).getInstanceTypeDetails().volumeDetailsList.get(0);
@@ -169,7 +179,8 @@ public class InstanceTypeTest extends FakeDBApplication {
     InstanceType.upsert(defaultProvider.getUuid(), "c5.medium", 3, 10.0, null);
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_COUNT_KEY)).thenReturn(1);
     when(mockConfig.getInt(InstanceType.YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY)).thenReturn(250);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfGetter);
     assertNotNull(instanceTypeList);
     InstanceType.VolumeDetails volumeDetails =
         instanceTypeList.get(0).getInstanceTypeDetails().volumeDetailsList.get(0);
@@ -205,8 +216,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testDeleteByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(newProvider.getUuid(), "bar", 2, 10.0, defaultDetails);
-    InstanceType.deleteInstanceTypesForProvider(newProvider, mockConfig);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfig);
+    InstanceType.deleteInstanceTypesForProvider(newProvider, mockConfGetter);
+    List<InstanceType> instanceTypeList = InstanceType.findByProvider(newProvider, mockConfGetter);
     assertEquals(0, instanceTypeList.size());
   }
 
@@ -214,7 +225,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testGravitonProvider() {
     InstanceType.upsert(defaultProvider.getUuid(), "t2.medium", 3, 10.0, defaultDetails);
     InstanceType.upsert(defaultProvider.getUuid(), "m6g.small", 2, 10.0, defaultDetails);
-    List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider, mockConfig);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByProvider(defaultProvider, mockConfGetter);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());
     assertThat(

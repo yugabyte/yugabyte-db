@@ -88,7 +88,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
       // Clear Node instance for the provider.
       NodeInstance.deleteByProvider(providerUUID);
       // Delete the instance types for the provider.
-      InstanceType.deleteInstanceTypesForProvider(provider, config);
+      InstanceType.deleteInstanceTypesForProvider(provider, confGetter);
 
       // Delete the provider.
       provider.delete();

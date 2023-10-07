@@ -26,6 +26,14 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "We garbage collect stale tasks after this duration",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> cloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.cloud.enabled",
+          ScopeType.CUSTOMER,
+          "Cloud Enabled",
+          "Enables YBM specific features",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> isAuthEnforced =
       new ConfKeyInfo<>(
           "yb.universe.auth.is_enforced",
