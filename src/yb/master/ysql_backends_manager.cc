@@ -473,7 +473,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
     std::lock_guard l(mutex_);
 
     // Commit term now.
-    epoch_ = std::move(epoch);
+    epoch_ = epoch;
 
     for (const auto& ts_desc : descs) {
       if (!ts_desc->IsLive()) {
@@ -489,7 +489,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
   }
 
   for (const auto& ts_uuid : ts_uuids) {
-    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch_));
+    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch));
   }
 
   return Status::OK();
@@ -498,7 +498,7 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
 Status BackendsCatalogVersionJob::LaunchTS(
     TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends, epoch_);
+      shared_from_this(), ts_uuid, num_lagging_backends, epoch);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -610,12 +610,14 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     auto s = num_lagging_backends.status();
     if (s.IsTryAgain()) {
       int last_known_num_lagging_backends;
+      LeaderEpoch epoch;
       {
         std::lock_guard l(mutex_);
         last_known_num_lagging_backends = ts_map_[ts_uuid];
+        epoch = epoch_;
       }
       // Ignore returned status since it is already logged/handled.
-      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch_);
+      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch);
     } else {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString() << " from TS " << ts_uuid;
       master_->ysql_backends_manager()->TerminateJob(
@@ -626,8 +628,10 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
   DCHECK_GE(*num_lagging_backends, 0);
 
   // Update num_lagging_backends.
+  LeaderEpoch epoch;
   {
     std::lock_guard l(mutex_);
+    epoch = epoch_;
 
 #ifndef NDEBUG
     if (ts_map_[ts_uuid] != -1) {
@@ -644,7 +648,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     VLOG_WITH_PREFIX(2) << "still waiting on " << *num_lagging_backends << " backends of TS "
                         << ts_uuid;
     // Ignore returned status since it is already logged/handled.
-    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch_);
+    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch);
     return;
   }
   DCHECK_EQ(*num_lagging_backends, 0);

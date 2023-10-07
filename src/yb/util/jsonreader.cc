@@ -302,7 +302,10 @@ Status JsonReader::ExtractProtobufMessage(const Value& value,
       required.erase(name);
     }
 
-    const FieldDescriptor* const field = DCHECK_NOTNULL(desc->FindFieldByName(name));
+    const FieldDescriptor* const field = desc->FindFieldByName(name);
+    SCHECK(field != nullptr, InvalidArgument,
+        "Field '" + name + "' is not found in PB descriptor: " + desc->DebugString());
+
     if (field->is_repeated()) {
       SCHECK(it->value.IsArray(), InvalidArgument,
           "Expected JSON Array for field " + field->DebugString());

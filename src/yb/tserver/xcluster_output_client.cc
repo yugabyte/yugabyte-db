@@ -71,7 +71,8 @@ DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     } \
   } while (0)
 
-#define RETURN_WHEN_OFFLINE \
+#define ACQUIRE_MUTEX_IF_ONLINE \
+  std::lock_guard l(lock_); \
   if (IsOffline()) { \
     VLOG_WITH_PREFIX(1) << "Aborting ApplyChanges since the output client is shutting down."; \
     return; \
@@ -138,8 +139,8 @@ void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion 
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMappings(
-      const cdc::XClusterSchemaVersionMap& schema_version_map,
-      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
+    const cdc::XClusterSchemaVersionMap& schema_version_map,
+    const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) {
   std::lock_guard l(lock_);
 
   // Incoming schema version map is typically a superset of what we have so merge should be ok.
@@ -460,8 +461,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
 
-  std::lock_guard l(lock_);
-  RETURN_WHEN_OFFLINE;
+  ACQUIRE_MUTEX_IF_ONLINE;
 
   auto handle = rpcs_->Prepare();
   if (handle == rpcs_->InvalidHandle()) {
@@ -490,8 +490,7 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
 
-  std::lock_guard l(lock_);
-  RETURN_WHEN_OFFLINE;
+  ACQUIRE_MUTEX_IF_ONLINE;
 
   auto handle = rpcs_->Prepare();
   if (handle == rpcs_->InvalidHandle()) {
@@ -518,16 +517,12 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
 }
 
 void XClusterOutputClient::DoSchemaVersionCheckDone(
-    const Status& status,
-    const GetCompatibleSchemaVersionRequestPB& req,
+    const Status& status, const GetCompatibleSchemaVersionRequestPB& req,
     const GetCompatibleSchemaVersionResponsePB& resp) {
-  RETURN_WHEN_OFFLINE;
-
   SchemaVersion producer_schema_version = cdc::kInvalidSchemaVersion;
   ColocationId colocation_id = 0;
   {
-    std::lock_guard l(lock_);
-    RETURN_WHEN_OFFLINE;
+    ACQUIRE_MUTEX_IF_ONLINE;
 
     producer_schema_version = producer_schema_version_;
     colocation_id = colocation_id_;
@@ -615,8 +610,6 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
-  RETURN_WHEN_OFFLINE;
-
   if (!status.ok()) {
     HandleError(status);
     return;
@@ -624,12 +617,12 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
     HandleError(StatusFromPB(response.error().status()));
     return;
   }
-  xcluster_consumer_->IncrementNumSuccessfulWriteRpcs();
+  xcluster_consumer_->TEST_IncrementNumSuccessfulWriteRpcs();
 
   // See if we need to handle any more writes.
   std::unique_ptr<WriteRequestPB> write_request;
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE;
     write_request = write_strategy_->FetchNextRequest();
   }
 
@@ -667,7 +660,7 @@ void XClusterOutputClient::HandleError(const Status& s) {
                << ", consumer tablet: " << consumer_tablet_info_.tablet_id;
   }
   {
-    std::lock_guard l(lock_);
+    ACQUIRE_MUTEX_IF_ONLINE;
     error_status_ = s;
     // In case of a consumer side tablet split, need to refresh the partitions.
     if (client::ClientError(error_status_) == client::ClientErrorCode::kTablePartitionListIsStale) {
@@ -678,33 +671,24 @@ void XClusterOutputClient::HandleError(const Status& s) {
   HandleResponse();
 }
 
-XClusterOutputClientResponse XClusterOutputClient::PrepareResponse() {
-  XClusterOutputClientResponse response;
-  response.status = error_status_;
-  response.get_changes_response = std::move(get_changes_resp_);
-  if (response.status.ok()) {
-    response.last_applied_op_id = op_id_;
-    response.processed_record_count = processed_record_count_;
-    response.wait_for_version = wait_for_version_;
-  }
-  op_id_ = consensus::MinimumOpId();
-  processed_record_count_ = 0;
-  return response;
-}
-
-void XClusterOutputClient::SendResponse(const XClusterOutputClientResponse& resp) {
-  // If we're shutting down, then don't try to call the callback as that object might be deleted.
-  RETURN_WHEN_OFFLINE;
-  apply_changes_clbk_(resp);
-}
-
 void XClusterOutputClient::HandleResponse() {
   XClusterOutputClientResponse response;
   {
-    std::lock_guard l(lock_);
-    response = PrepareResponse();
+    // If we're shutting down, then don't try to call the callback as that object might be deleted.
+    ACQUIRE_MUTEX_IF_ONLINE;
+
+    response.status = error_status_;
+    response.get_changes_response = std::move(get_changes_resp_);
+    if (response.status.ok()) {
+      response.last_applied_op_id = op_id_;
+      response.processed_record_count = processed_record_count_;
+      response.wait_for_version = wait_for_version_;
+    }
+    op_id_ = consensus::MinimumOpId();
+    processed_record_count_ = 0;
   }
-  SendResponse(response);
+
+  apply_changes_clbk_(std::move(response));
 }
 
 bool XClusterOutputClient::IncProcessedRecordCount() {

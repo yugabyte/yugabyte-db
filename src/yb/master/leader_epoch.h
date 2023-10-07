@@ -51,6 +51,8 @@ struct LeaderEpoch {
       : leader_term(term), pitr_count(pitr_count) {}
 
   explicit LeaderEpoch(int64_t term) : LeaderEpoch(term, 0) {}
+
+  LeaderEpoch() : LeaderEpoch(-1, 0) {}
 };
 
 }  // namespace master

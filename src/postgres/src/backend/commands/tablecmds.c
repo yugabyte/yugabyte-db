@@ -18097,8 +18097,7 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	ScanKeyData key[2];
 	SysScanDesc scan;
 	HeapTuple	dep_tuple, con_tuple;
-	ListCell   *cell;
-	List *cons_to_drop = NIL; /* list of pairs (ConOid, ConstraintedRelOid) */
+	ObjectAddresses *cons_to_drop;
 
 	/* Move sequences dependencies. */
 	ScanKeyInit(&key[0], Anum_pg_depend_refclassid, BTEqualStrategyNumber,
@@ -18136,10 +18135,11 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	scan = systable_beginscan(pg_constraint, InvalidOid /* no index */,
 							  true /* indexOK */, NULL /* snapshot */,
 							  2 /* nkeys */, key);
+	cons_to_drop = new_object_addresses();
 	while (HeapTupleIsValid(con_tuple = systable_getnext(scan)))
 	{
 		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(con_tuple);
-
+		ObjectAddress con_addr;
 		/*
 		 * We need to rename this FK constraint and create a new one in its
 		 * stead. Dropping old constraints will be postponed until the end of
@@ -18157,9 +18157,9 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 		CatalogTupleUpdate(pg_constraint, &con_tuple->t_self, con_tuple);
 		CommandCounterIncrement();
 
-		cons_to_drop =
-			lappend(cons_to_drop, list_make2_oid(HeapTupleGetOid(con_tuple),
-												 con_form->conrelid));
+		ObjectAddressSet(con_addr, ConstraintRelationId,
+						 HeapTupleGetOid(con_tuple));
+		add_exact_object_address(&con_addr, cons_to_drop);
 
 		/*
 		 * We don't need AccessExclusiveLock since old constraint
@@ -18187,22 +18187,8 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	}
 	systable_endscan(scan);
 
-	foreach(cell, cons_to_drop)
-	{
-		List *cell_list = lfirst(cell);
-		Oid	  conoid = linitial_oid(cell_list);
-		Oid	  base_relid = lsecond_oid(cell_list);
-
-		ObjectAddress con_objaddr;
-		con_objaddr.classId = ConstraintRelationId;
-		con_objaddr.objectId = conoid;
-		con_objaddr.objectSubId = 0;
-
-		Relation base_rel = heap_open(base_relid, ShareUpdateExclusiveLock);
-
-		performDeletion(&con_objaddr, DROP_CASCADE, 0);
-		heap_close(base_rel, ShareUpdateExclusiveLock);
-	}
+	performMultipleDeletions(cons_to_drop, DROP_RESTRICT,
+							 PERFORM_DELETION_INTERNAL);
 }
 
 static void

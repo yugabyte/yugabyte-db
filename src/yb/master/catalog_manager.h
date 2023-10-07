@@ -164,6 +164,18 @@ typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 
 constexpr int32_t kInvalidClusterConfigVersion = 0;
 
+YB_DEFINE_ENUM(
+    CreateNewCDCStreamMode,
+    // Only populate the namespace_id. It is only used by CDCSDK while creating a stream from
+    // cdc_service. The caller is expected to populate table_ids in subsequent requests.
+    // This should not be needed after we tackle #18890.
+    (kNamespaceId)
+    // Only populate the table_id. It is only used by xCluster.
+    (kXClusterTableIds)
+    // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
+    (kNamespaceAndTableIds)
+);
+
 using DdlTxnIdToTablesMap =
   std::unordered_map<TransactionId, std::vector<scoped_refptr<TableInfo>>, TransactionIdHash>;
 
@@ -1221,11 +1233,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
-  Status CreateNewCDCStream(
-      const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
-      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
-  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
-
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
       const GetTableSchemaFromSysCatalogRequestPB* req,
@@ -1926,7 +1933,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status EnableBgTasks();
 
   // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
-  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet);
+  Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) REQUIRES(mutex_);
   // Background task for automatically rebuilding system.partitions every
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
@@ -2008,7 +2015,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status ValidateNewSchemaWithCdc(const TableInfo& table_info, const Schema& new_schema) const;
 
-  Status ResumeCdcAfterNewSchema(
+  Status ResumeXClusterConsumerAfterNewSchema(
       const TableInfo& table_info, SchemaVersion last_compatible_consumer_schema_version);
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type);
@@ -2653,6 +2660,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   static void SetTabletSnapshotsState(
       SysSnapshotEntryPB::State state, SysSnapshotEntryPB* snapshot_pb);
 
+  Status CreateNewCDCStreamForNamespace(
+      const CreateCDCStreamRequestPB& req,
+      CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status CreateNewXReplStream(
+      const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
+      const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
+      CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch);
+
+  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
+
+  Status SetWalRetentionForTable(
+      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status BackfillMetadataForCDC(
+      const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
   // Create the cdc_state table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateCDCStream.
@@ -2667,6 +2689,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status MarkCDCStreamsForMetadataCleanup(
       const std::vector<CDCStreamInfoPtr>& streams, SysCDCStreamEntryPB::State state);
+
+  // This method returns all tables in the namespace suitable for CDCSDK.
+  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id) REQUIRES(mutex_);
 
   // Find CDC streams for a table.
   std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableUnlocked(
@@ -2705,9 +2730,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
   // validation is successful.
-  Status ValidateTableSchema(
-      const std::shared_ptr<client::YBTableInfo>& info,
-      const SetupReplicationInfo& setup_info,
+  Status ValidateTableSchemaForXCluster(
+      const std::shared_ptr<client::YBTableInfo>& info, const SetupReplicationInfo& setup_info,
       GetTableSchemaResponsePB* resp);
 
   // Adds a validated table to the sys catalog table map for the given universe
@@ -2795,10 +2819,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       scoped_refptr<UniverseReplicationBootstrapInfo> bootstrap_info,
       const SysUniverseReplicationBootstrapEntryPB::State& state);
 
-  // Maps replication group id to the corresponding cdc stream for that table.
-  typedef std::unordered_map<cdc::ReplicationGroupId, xrepl::StreamId>
-      XClusterConsumerTableStreamInfoMap;
-
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
       client::internal::RemoteTabletServer* ts);
 
@@ -2824,12 +2844,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
-  // Gets the set of CDC stream info for an xCluster consumer table.
-  XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(
-      const TableId& table_id) const EXCLUDES(mutex_);
+  // Maps replication group id to the corresponding xrepl stream for a table.
+  using XClusterConsumerTableStreamIds =
+      std::unordered_map<cdc::ReplicationGroupId, xrepl::StreamId>;
 
-  XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTableUnlocked(
-      const TableId& table_id) const REQUIRES_SHARED(mutex_);
+  // Gets the set of CDC stream info for an xCluster consumer table.
+  XClusterConsumerTableStreamIds GetXClusterConsumerStreamIdsForTable(const TableId& table_id) const
+      EXCLUDES(mutex_);
 
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
@@ -3087,10 +3108,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       xcluster_producer_tables_to_stream_map_ GUARDED_BY(mutex_);
 
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
-  std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>
-      xcluster_consumer_tables_to_stream_map_ GUARDED_BY(mutex_);
+  std::unordered_map<TableId, XClusterConsumerTableStreamIds>
+      xcluster_consumer_table_stream_ids_map_ GUARDED_BY(mutex_);
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
+      GUARDED_BY(mutex_);
+
+  // Maps a ReplicationSlotName to the xrepl::StreamId of the stream it belongs to. Present for
+  // CDCSDK streams created from the YSQL syntax.
+  std::unordered_map<ReplicationSlotName, xrepl::StreamId> cdcsdk_replication_slots_to_stream_map_
       GUARDED_BY(mutex_);
 
   typedef std::unordered_map<cdc::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>

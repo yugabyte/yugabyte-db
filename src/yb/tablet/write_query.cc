@@ -519,7 +519,7 @@ Status WriteQuery::DoExecute() {
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
-  TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
+  DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;

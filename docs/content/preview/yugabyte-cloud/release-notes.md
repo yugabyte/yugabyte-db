@@ -20,6 +20,13 @@ On this page:
 
 ## Change log
 
+### October 5, 2023
+
+**New Features**
+
+- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana.
+
 ### September 22, 2023
 
 **Database**

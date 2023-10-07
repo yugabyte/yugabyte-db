@@ -32,6 +32,7 @@ message CDCStreamInfoPB {
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
   optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -52,6 +53,8 @@ message CreateCDCStreamRequestPB {
   optional SysCDCStreamEntryPB.State initial_state = 4;
   optional string db_stream_id = 5;
   optional bool transactional = 6; // [default = false]
+  optional string namespace_id = 7;
+  optional string cdcsdk_ysql_replication_slot_name = 8;
 }
 
 message CreateCDCStreamResponsePB {
@@ -101,6 +104,7 @@ message IsObjectPartOfXReplResponsePB {
 
 message GetCDCStreamRequestPB {
   optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
 }
 
 message GetCDCStreamResponsePB {

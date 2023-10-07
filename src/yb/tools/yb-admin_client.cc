@@ -2427,7 +2427,8 @@ Status ClusterAdminClient::CreateSnapshot(
 }
 
 Status ClusterAdminClient::CreateNamespaceSnapshot(
-    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours) {
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+    bool add_indexes) {
   ListTablesResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListTablesRequestPB req;
@@ -2436,7 +2437,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(
     req.mutable_namespace_()->set_database_type(ns.db_type);
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    if (add_indexes) {
+      req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    }
     req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));

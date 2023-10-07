@@ -1093,7 +1093,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(
 			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
 

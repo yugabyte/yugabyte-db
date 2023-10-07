@@ -153,34 +153,6 @@
       become_method: sudo
       shell:
         cmd: "loginctl enable-linger {{ user_name }}"
-
-    - block:
-      - name: Set ulimits for user scope in system.conf
-        lineinfile:
-          dest: /etc/systemd/system.conf
-          regexp: '^DefaultLimitNOFILE*'
-          line: 'DefaultLimitNOFILE=1048576'
-          create: yes
-          state: present
-          insertafter: 'EOF'
-
-      - name: Set ulimits for user scope in user.conf
-        lineinfile:
-          dest: /etc/systemd/user.conf
-          regexp: '^DefaultLimitNOFILE*'
-          line: 'DefaultLimitNOFILE=1048576'
-          create: yes
-          state: present
-          insertafter: 'EOF'
-
-      - name: Reboot the system for new ulimits
-        shell: "shutdown -r +2"
-        become: yes
-        become_method: sudo
-
-      - name: Wait 600 seconds for target connection to become reachable/usable
-        ansible.builtin.wait_for_connection:
-
     # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
     when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
   - block:
@@ -250,8 +222,7 @@
         line: "#includedir /etc/sudoers.d"
         state: present
         validate: "/usr/sbin/visudo -cf %s"
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7') or
-            (ansible_os_family == 'Amazon' and ansible_distribution_major_version == '2')
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
   - name: setup-postgres-cgroups
     include_role:

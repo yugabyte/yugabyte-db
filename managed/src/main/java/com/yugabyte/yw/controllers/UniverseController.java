@@ -85,7 +85,6 @@ public class UniverseController extends AuthenticatedController {
       boolean isDeleteBackups,
       boolean isDeleteAssociatedCerts,
       Http.Request request) {
-    LOG.info("SHUBIN: Calling delete");
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 

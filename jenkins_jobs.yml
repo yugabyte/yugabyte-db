@@ -19,7 +19,7 @@ jobs:
   - os: centos7
     compiler: clang16
     build_type: release
-    build_opts: --full-lto
+    build_opts: YB_LINKING_TYPE=full-lto
     release_artifact: true
 
   - os: alma8
