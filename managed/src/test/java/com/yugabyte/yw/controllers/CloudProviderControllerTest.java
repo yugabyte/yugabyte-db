@@ -18,6 +18,11 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyMap;
@@ -47,6 +52,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
@@ -80,6 +87,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -90,12 +98,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   Customer customer;
   Users user;
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
@@ -108,6 +118,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     when(mockAccessManager.createKubernetesAuthDataFile(
             anyString(), anyString(), anyString(), anyBoolean()))
         .thenReturn("/tmp/some-fake-path-here/kubernetes-auth-file.txt");
+    when(mockConfGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)).thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   private Result listProviders() {
@@ -643,7 +655,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
   }
 

@@ -69,6 +69,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void setUp() {
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfigFactory.forCustomer(any())).thenReturn(mockRuntimeConfig);
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
     when(mockRuntimeConfig.getLong("yb.ysql_timeout_secs")).thenReturn(180L);
 
