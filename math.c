@@ -37,8 +37,6 @@ orafce_reminder_smallint(PG_FUNCTION_ARGS)
 		PG_RETURN_INT16(0);
 
 	PG_RETURN_INT16(arg1 - ((int16) round(((double) arg1) / ((double) arg2)) * arg2));
-
-	PG_RETURN_NULL();
 }
 
 /*

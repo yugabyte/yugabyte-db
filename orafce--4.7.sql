@@ -329,19 +329,19 @@ $$ LANGUAGE sql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.remainder(smallint, smallint)
 RETURNS smallint AS 'MODULE_PATHNAME','orafce_reminder_smallint'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.remainder(int, int)
 RETURNS int AS 'MODULE_PATHNAME','orafce_reminder_int'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.remainder(bigint, bigint)
 RETURNS bigint AS 'MODULE_PATHNAME','orafce_reminder_bigint'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.remainder(numeric, numeric)
 RETURNS numeric AS 'MODULE_PATHNAME','orafce_reminder_numeric'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 
 ALTER FUNCTION oracle.mod(smallint, smallint) PARALLEL SAFE;
 ALTER FUNCTION oracle.mod(int, int) PARALLEL SAFE;
