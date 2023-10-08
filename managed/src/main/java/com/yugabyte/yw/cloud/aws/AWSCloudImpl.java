@@ -1038,8 +1038,7 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSecurityGroupsRequest request =
           new DescribeSecurityGroupsRequest()
-              .withGroupIds(
-                  Arrays.asList(region.getSecurityGroupId().replaceAll(",", "").split(" ")));
+              .withGroupIds(Arrays.asList(region.getSecurityGroupId().split("\\s*,\\s*")));
       DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
       return result.getSecurityGroups();
     } catch (AmazonServiceException e) {
