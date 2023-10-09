@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC } from 'react';
 import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, makeStyles } from '@material-ui/core';
@@ -22,7 +22,7 @@ export const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const InheritRRDialog: FC<ModalProps> = ({ onCancel, onSubmit, open }) => {
+export const ModifiedFlagsDialog: FC<ModalProps> = ({ onCancel, onSubmit, open }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   return (
@@ -32,20 +32,21 @@ export const InheritRRDialog: FC<ModalProps> = ({ onCancel, onSubmit, open }) =>
       size="sm"
       overrideHeight={300}
       overrideWidth={600}
-      cancelLabel={t('common.cancel')}
-      submitLabel={t('common.applyChanges')}
+      cancelLabel={t('common.continue')}
+      submitLabel={t('common.reload')}
       title={t('common.areYouSure')}
       onClose={onCancel}
       onSubmit={onSubmit}
-      submitTestId="InheritRRDialog-Submit"
-      cancelTestId="InheritRRDialog-Close"
+      hideCloseBtn={true}
+      submitTestId="ModifiedFlagsDialog-Reload"
+      cancelTestId="ModifiedFlagsDialog-Continue"
     >
       <Box
         height="100%"
         width="100%"
         display="flex"
         flexDirection="column"
-        data-testid="InheritRRDialog-Modal"
+        data-testid="ModifiedFlagsDialog-Modal"
       >
         <Box className={classes.infoContainer}>
           <Box display="flex" flexShrink={1} alignItems="flex-start">
@@ -53,17 +54,17 @@ export const InheritRRDialog: FC<ModalProps> = ({ onCancel, onSubmit, open }) =>
           </Box>
           <Box display="flex" flexDirection="column" ml={1}>
             <Typography variant="body2">
-              {t('universeForm.gFlags.inheritRRModalLine1')}
+              {t('universeForm.gFlags.flagsModifiedModalBody1')}
               <br />
-              {t('universeForm.gFlags.inheritRRModalLine2')}
-              <br />
-              {t('universeForm.gFlags.inheritRRModalLine3')}
+              {t('universeForm.gFlags.flagsModifiedModalBody2')}
             </Typography>
           </Box>
         </Box>
-        <Box mt={4}>
+        <Box mt={3}>
           <Typography variant="body2">
-            {t('universeForm.gFlags.inheritRRModalConfirmMsg')}
+            {t('universeForm.gFlags.flagsModifiedModalLine1')}
+            <br />
+            {t('universeForm.gFlags.flagsModifiedModalLine2')}
           </Typography>
         </Box>
       </Box>
