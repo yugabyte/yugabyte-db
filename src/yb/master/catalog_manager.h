@@ -2698,6 +2698,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::vector<CDCStreamInfoPtr> FindCDCStreamsForTableToDeleteMetadata(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  Result<std::optional<CDCStreamInfoPtr>> GetStreamIfValidForDelete(
+      const xrepl::StreamId& stream_id, bool force_delete) REQUIRES_SHARED(mutex_);
+
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB* req,
