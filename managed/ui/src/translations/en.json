@@ -6,6 +6,7 @@
       "applyChanges": "Apply Changes",
       "cancel": "Cancel",
       "confirm": "Confirm",
+      "continue": "Continue",
       "create": "Create",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
@@ -27,7 +28,8 @@
       "back": "Back",
       "selectAll": "Select All",
       "selected": "Selected",
-      "note": "Note :"
+      "note": "Note :",
+      "reload": "Reload"
     },
     "task": {
       "viewDetails": "View Details"
@@ -251,11 +253,14 @@
         "gFlagUpdateOptions": "G-Flag Update Options",
         "rollingMsg": "Apply all changes using a rolling restart (slower, zero downtime)",
         "nonRollingMsg": "Apply all changes immediately, using a concurrent restart (faster, some downtime)",
-        "nonRestart": "Apply all changes which do not require a restart immediately",
-        "nonRestartRuntime": "apply remaining changes the next time the database is restarted",
+        "nonRestart": "Apply all changes which do not require a restart immediately; ",
+        "nonRestartRuntime": " apply remaining changes the next time the database is restarted",
         "delayBetweenServers": "Delay Between Servers :",
         "seconds": "seconds",
-        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
+        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? \n<br/> This will override all the Flags that are currently applied to Read replica <br/> by Primary Cluster’s Flag.",
+        "inheritRRModalLine1": "Apply the same Flags to both Primary Cluster and Read replica?",
+        "inheritRRModalLine2": "This will override all the Flags that are currently applied to Read replica",
+        "inheritRRModalLine3": "by Primary Cluster’s Flag.",
         "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
         "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
@@ -274,7 +279,11 @@
         "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
-        "readLess": "Read Less"
+        "readLess": "Read Less",
+        "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
+        "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
+        "flagsModifiedModalLine1": "Do you want to reload ?",
+        "flagsModifiedModalLine2": "Note that current changes will be lost."
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
