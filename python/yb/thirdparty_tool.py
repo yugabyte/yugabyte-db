@@ -150,6 +150,11 @@ class ThirdPartyReleaseBase:
             (self.KEY_FIELDS_WITH_TAG if include_tag else self.KEY_FIELDS_NO_TAG))
 
 
+class SkipThirdPartyReleaseException(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+
+
 class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
     github_release: GitRelease
 
@@ -162,6 +167,9 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         self.sha = self.github_release.target_commitish
 
         tag = self.github_release.tag_name
+        if tag.endswith('-snyk-scan'):
+            raise SkipThirdPartyReleaseException(f"Skipping a tag ending with '-snyk-scan': {tag}")
+
         tag_match = TAG_RE.match(tag)
         if not tag_match:
             logging.info(f"Full regular expression for release tags: {TAG_RE_STR}")
@@ -171,9 +179,9 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
 
         sha_prefix = tag_match.group('sha_prefix')
         if not self.sha.startswith(sha_prefix):
-            raise ValueError(
-                f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
-                f"SHA corresponding to the release/tag: {self.sha}.")
+            msg = (f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
+                   f"SHA corresponding to the release/tag: {self.sha}. Skipping.")
+            raise SkipThirdPartyReleaseException(msg)
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
@@ -445,7 +453,12 @@ class MetadataUpdater:
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
 
-            yb_dep_release = GitHubThirdPartyRelease(release)
+            try:
+                yb_dep_release = GitHubThirdPartyRelease(release)
+            except SkipThirdPartyReleaseException as ex:
+                logging.warning("Skipping release: %s", ex)
+                continue
+
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
                 logging.debug(
                     f"Skipping release tag: {tag_name} (does not match version {yb_version}")
@@ -636,16 +649,6 @@ def get_third_party_release(
         architecture = local_sys_conf().architecture
 
     needed_compiler_type = compiler_type
-    if compiler_type == 'gcc11' and os_type == 'almalinux8' and architecture == 'x86_64':
-        # A temporary workaround for https://github.com/yugabyte/yugabyte-db/issues/12429
-        # Strictly speaking, we don't have to build third-party dependencies with the same compiler
-        # as we build YugabyteDB code with, unless we want to use advanced features like LTO where
-        # the "bitcode" format files of object files being linked need to match, and they may differ
-        # across different compiler versions. Another potential issue is libstdc++ versioning.
-        # We don't want to end up linking two different versions of libstdc++.
-        #
-        # TODO: use a third-party archive built with GCC 10 (and ideally with GCC 11 itself).
-        needed_compiler_type = 'gcc9'
 
     candidates: List[Any] = [
         archive for archive in available_archives

@@ -603,16 +603,22 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
-  // Memory trackers.
-  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
-  // Total memory.
-  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
   // Metrics.
   DisplayIconTile(output, "fa-line-chart", "Metrics", "/prometheus-metrics");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
+}
+
+void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
+  // Memory trackers.
+  DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
+  // Total memory.
+  DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
+  // Heap snapshot.
+  DisplayIconTile(output, "fa-camera", "Heap Snapshot",
+      "/pprof/heap_snapshot?peak_heap=false&order_by=count");
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
@@ -630,6 +636,12 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   *output << "<h2> General Info </h2>";
   DisplayGeneralInfoIcons(output);
   *output << "</div> <!-- row -->\n";
+
+  *output << "<h2> Memory </h2>";
+  *output << "<div class='row debug-tiles'>\n";
+  DisplayMemoryIcons(output);
+  *output << "</div> <!-- row -->\n";
+
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
   RETURN_NOT_OK(DisplayRpcIcons(output));

@@ -12,8 +12,8 @@
 
 #pragma once
 
-// Utilities for using tcmalloc. Here we abstract away some differences between gperftools
-// and Google tcmalloc implementations, as well as the case when tcmalloc is not used.
+// Utilities for using tcmalloc. Here we abstract away some differences between (gperftools)
+// tcmalloc and no tcmalloc.
 
 #include <cstdint>
 
@@ -29,8 +29,7 @@ int64_t GetTCMallocPhysicalBytesUsed();
 
 int64_t GetTCMallocCurrentAllocatedBytes();
 
-// This correspondins to the generic.heap_size property of Google TCMalloc, which does not include
-// unmapped pages. For gperftools TCMalloc, this function subtracts the unmapped pages.
+// This function subtracts the unmapped pages from gperftools tcmalloc's generic.heap_size.
 int64_t GetTCMallocCurrentHeapSizeBytes();
 
 // This is used for the root memtracker.

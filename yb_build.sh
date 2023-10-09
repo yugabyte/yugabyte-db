@@ -74,9 +74,7 @@ Build options:
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
-  --use-google-tcmalloc, --google-tcmalloc
-    Use Google's implementation of tcmalloc from https://github.com/google/tcmalloc
-  --no-google-tcmalloc, --use-gperftools-tcmalloc, --gperftools-tcmalloc
+  --use-gperftools-tcmalloc, --gperftools-tcmalloc
     Use the gperftools implementation of tcmalloc
 
   --clean-postgres
@@ -1465,7 +1463,7 @@ fi
 
 if [[ ${no_tcmalloc} == "true" && ${must_use_tcmalloc} == "true" ]]; then
   fatal "--no-tcmalloc was specified along with one of the options that implies we must use" \
-        "some version of tcmalloc (Google tcmalloc or gperftools tcmalloc)"
+        "tcmalloc"
 fi
 
 if [[ ${no_tcmalloc} == "true" ]]; then

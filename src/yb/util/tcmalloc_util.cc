@@ -35,15 +35,21 @@ DEFINE_int64(server_tcmalloc_max_total_thread_cache_bytes, -1,
     "Total number of bytes to use for the thread cache for tcmalloc across all threads in the "
     "tserver/master. If this is negative, it has no effect.");
 
-DEFINE_int32(tcmalloc_max_per_cpu_cache_bytes, -1,
-    "Sets the maximum cache size per CPU cache if Google TCMalloc is being used. If this is zero "
-    "or less, it has no effect.");
+DEFINE_bool(enable_process_lifetime_heap_sampling,
+    true,
+    "Enables heap sampling for the lifetime of the process, at a rate specified by "
+    "profiler_sample_freq_bytes.");
+TAG_FLAG(enable_process_lifetime_heap_sampling, stable);
+TAG_FLAG(enable_process_lifetime_heap_sampling, advanced);
 
-DEFINE_bool(enable_process_lifetime_heap_profiling, false, "Enables heap "
-    "profiling for the lifetime of the process. If gperftools TCMalloc is being used, profile "
-    "output will be stored in the directory specified by -heap_profile_path, and enabling this "
-    "option will disable the on-demand profiling in /pprof/heap. If Google TCMalloc is being used, "
-    "the sample rate will be set to profiler_sample_freq_bytes.");
+DEFINE_bool(enable_process_lifetime_heap_profiling,
+    false,
+    "WARNING: This flag will cause tcmalloc to sample every allocation. This can significantly "
+    "impact performance. For a lighter approach, use enable_process_lifetime_heap_sampling. "
+    "This option is only supported with gperftools tcmalloc. "
+    "Enables heap profiling for the lifetime of the process. Profile output will be stored in the "
+    "directory specified by -heap_profile_path, and enabling this option will disable the "
+    "on-demand profiling in /pprof/heap.");
 TAG_FLAG(enable_process_lifetime_heap_profiling, stable);
 TAG_FLAG(enable_process_lifetime_heap_profiling, advanced);
 
@@ -53,9 +59,11 @@ DEFINE_string(heap_profile_path, "",
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_int64(profiler_sample_freq_bytes, 10_MB, "The frequency at which Google "
-    "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
-    "true).");
+// Assuming 30 lines per stack trace line * 20 bytes for the stack ptr, each sample costs 600 bytes.
+// With 1 MB sampling, a 64 GB server would have ~65536 samples, so the samples take ~39 MB, which
+// is a reasonable amount of overhead.
+DEFINE_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which TCMalloc should sample "
+    "allocations (if enable_process_lifetime_heap_sampling is set to true).");
 
 DEFINE_bool(mem_tracker_include_pageheap_free_in_root_consumption, false,
     "Whether to include tcmalloc.pageheap_free_bytes from the consumption of the root memtracker. "
@@ -104,8 +112,6 @@ int64_t GetTCMallocCurrentAllocatedBytes() {
 
 int64_t GetTCMallocCurrentHeapSizeBytes() {
   int64_t value = GetTCMallocProperty("generic.heap_size");
-  // In Google TCMalloc, we do not need to subtract unmapped bytes from heap size, it has already
-  // been subtracted. Only do the subtraction in case of gperftools TCMalloc.
 #if YB_TCMALLOC_ENABLED
   value -= GetTCMallocPageHeapUnmappedBytes();
 #endif
@@ -167,7 +173,7 @@ void SetTCMallocTotalThreadCacheSize(int64_t size) {
 }
 
 void ConfigureTCMalloc(int64_t mem_limit) {
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
   if (FLAGS_server_tcmalloc_max_total_thread_cache_bytes < 0) {
     FLAGS_server_tcmalloc_max_total_thread_cache_bytes =
         std::min(std::max(static_cast<size_t>(2.5 * mem_limit / 100), 32_MB), 2_GB);
@@ -183,10 +189,17 @@ void ConfigureTCMalloc(int64_t mem_limit) {
     FLAGS_heap_profile_path = strings::Substitute(
         "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
   }
+
+  if (FLAGS_enable_process_lifetime_heap_sampling) {
+    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
+        FLAGS_profiler_sample_freq_bytes);
+    MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
+  }
+
   if (FLAGS_enable_process_lifetime_heap_profiling) {
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   }
-#endif // YB_TCMALLOC_ENABLED
+#endif
 }
 
 }  // namespace yb

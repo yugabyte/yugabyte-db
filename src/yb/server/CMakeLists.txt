@@ -90,6 +90,7 @@ set(SERVER_PROCESS_SRCS
   glog_metrics.cc
   monitored_task.cc
   pgsql_webserver_wrapper.cc
+  pprof-path-handlers_util.cc
   pprof-path-handlers.cc
   rpc_server.cc
   rpcz-path-handler.cc
@@ -131,3 +132,4 @@ endif()
 
 set(YB_TEST_LINK_LIBS server_process ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(webserver-test)
+ADD_YB_TEST(pprof-path-handler_util-test)

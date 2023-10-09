@@ -15,6 +15,10 @@
 
 #include <iostream>
 
+#if YB_ABSL_ENABLED
+#include "absl/debugging/symbolize.h"
+#endif
+
 #include "yb/util/init.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
@@ -53,6 +57,11 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
     std::cerr << "usage: " << (*argv)[0] << std::endl;
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
+
+#if YB_ABSL_ENABLED
+  // Must be called before installing a failure signal handler (in InitYB).
+  absl::InitializeSymbolizer((*argv)[0]);
+#endif
 
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
