@@ -1374,6 +1374,7 @@ YbMemCtxReset(MemoryContext context)
 static void
 YBResetDdlState()
 {
+	YBCStatus status = NULL;
 	if (ddl_transaction_state.mem_context)
 	{
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
@@ -1389,12 +1390,12 @@ YBResetDdlState()
 		 * during this ddl transaction are released, we assume they are no longer
 		 * needed after the ddl transaction aborts.
 		 */
-		HandleYBStatusAtErrorLevel(
-			YbMemCtxReset(ddl_transaction_state.mem_context), WARNING);
+		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
-	HandleYBStatusAtErrorLevel(YBCPgClearSeparateDdlTxnMode(), WARNING);
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
+	HandleYBStatus(status);
 }
 
 int
@@ -1432,12 +1433,13 @@ YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 void
 YBDecrementDdlNestingLevel()
 {
+	--ddl_transaction_state.nesting_level;
 	if (yb_test_fail_next_ddl)
 	{
 		yb_test_fail_next_ddl = false;
 		elog(ERROR, "Failed DDL operation as requested");
 	}
-	if (ddl_transaction_state.nesting_level == 1)
+	if (ddl_transaction_state.nesting_level == 0)
 	{
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
@@ -1467,8 +1469,6 @@ YBDecrementDdlNestingLevel()
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(
 					is_breaking_catalog_change, is_global_ddl);
-
-		--ddl_transaction_state.nesting_level;
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1501,10 +1501,6 @@ YBDecrementDdlNestingLevel()
 			}
 		}
 		YBClearDdlHandles();
-	}
-	else
-	{
-		--ddl_transaction_state.nesting_level;
 	}
 }
 
@@ -1947,88 +1943,53 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	return is_ddl;
 }
 
-static void
-ddlTxnErrorCallback(void *arg)
-{
-	const bool *is_txn_ddl = (const bool *) arg;
-	uint16_t txn_errcode = geterryb_txn_errcode();
-
-	if (*is_txn_ddl)
-	{
-		if (YBCIsRestartReadError(txn_errcode) ||
-			YBCIsTxnConflictError(txn_errcode) ||
-			YBCIsTxnDeadlockError(txn_errcode))
-			errcontext("transactional DDLs cannot be restarted");
-
-		/* always forbid DDL statement restart */
-		yb_forbid_stmt_restart(true);
-	}
-}
-
-static void
-YBTxnDdlProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					   ProcessUtilityContext context, ParamListInfo params,
-					   QueryEnvironment *queryEnv, DestReceiver *dest,
-					   char *completionTag)
-{
-	ErrorContextCallback errcallback;
+static void YBTxnDdlProcessUtility(
+		PlannedStmt *pstmt,
+		const char *queryString,
+		ProcessUtilityContext context,
+		ParamListInfo params,
+		QueryEnvironment *queryEnv,
+		DestReceiver *dest,
+		char *completionTag) {
 
 	/* Assuming this is a breaking change by default. */
 	bool is_catalog_version_increment = true;
 	bool is_breaking_catalog_change = true;
-	const bool is_txn_ddl =
-		IsTransactionalDdlStatement(pstmt, &is_catalog_version_increment,
-									&is_breaking_catalog_change, context);
+	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
+												  &is_catalog_version_increment,
+												  &is_breaking_catalog_change,
+												  context);
 
+	if (is_txn_ddl) {
+		YBIncrementDdlNestingLevel(is_catalog_version_increment,
+								   is_breaking_catalog_change);
+	}
 	PG_TRY();
 	{
-		/* Set up callback to flag DDL transaction errors as non-restartable */
-		errcallback.callback = ddlTxnErrorCallback;
-		errcallback.arg = (void *) &is_txn_ddl;
-		errcallback.previous = error_context_stack;
-		error_context_stack = &errcallback;
-
-		if (is_txn_ddl)
-		{
-			YBIncrementDdlNestingLevel(is_catalog_version_increment,
-									   is_breaking_catalog_change);
-		}
-
 		if (prev_ProcessUtility)
-			prev_ProcessUtility(pstmt, queryString, context, params, queryEnv,
+			prev_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
 								dest, completionTag);
 		else
-			standard_ProcessUtility(pstmt, queryString, context, params,
-									queryEnv, dest, completionTag);
-
-		if (is_txn_ddl)
-		{
-			YBDecrementDdlNestingLevel();
-		}
-
-		/* Pop the error context stack */
-		error_context_stack = errcallback.previous;
+			standard_ProcessUtility(pstmt, queryString,
+									context, params, queryEnv,
+									dest, completionTag);
 	}
 	PG_CATCH();
 	{
-		if (is_txn_ddl)
-		{
+		if (is_txn_ddl) {
 			/*
-			 * It is possible that nesting_level has wrong value due to error,
-			 * so the DDL transaction state should be reset.
-			 *
-			 * YBResetDdlState() can fail operations while exiting DDL mode, or
-			 * resetting the memory context. These will be recorded in the log,
-			 * but it isn't the end of the world because the original error is
-			 * about to be rethrown. If exiting DDL mode failed, it will retry
-			 * the memory cleanup as part of memory context reset and will
-			 * abort the DDL transaction as part of AbortTransaction().
+			 * It is possible that nesting_level has wrong value due to error.
+			 * Ddl transaction state should be reset.
 			 */
 			YBResetDdlState();
 		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+	if (is_txn_ddl) {
+		YBDecrementDdlNestingLevel();
+	}
 }
 
 static void YBCInstallTxnDdlHook() {

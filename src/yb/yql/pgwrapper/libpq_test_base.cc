@@ -142,16 +142,13 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
       threads.emplace_back([this, color, kKeys, &complete] {
         auto connection = ASSERT_RESULT(Connect());
 
-        // TODO(#12494): undo this change
-        // ASSERT_OK(connection.Execute("BEGIN"));
-        // ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
-
-        ASSERT_OK(connection.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(connection.Execute("BEGIN"));
+        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
           // res will have failed status here for conflicting transactions as long as we are using
-          // fail-on-conflict concurrency control. Hence, this test runs with wait-on-conflict
+          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
           // disabled.
           ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           return;
