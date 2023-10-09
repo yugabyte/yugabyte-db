@@ -1,6 +1,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.anyBoolean;
@@ -14,6 +16,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
@@ -40,6 +43,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.yb.CommonTypes;
 import org.yb.client.ListMastersResponse;
@@ -103,6 +107,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 }
                 listResponse.message = respJson.toString();
                 return listResponse;
+              }
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Control)) {
+                AnsibleClusterServerCtl.Params params = invocation.getArgument(1);
+                assertTrue(StringUtils.isNotBlank(params.command));
+                Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+                NodeDetails nodeDetails = universe.getNode(params.nodeName);
+                if ("stop".equalsIgnoreCase(params.command)) {
+                  assertFalse(nodeDetails.isSoftwareDeleted());
+                }
               }
               return dummyShellResponse;
             });
