@@ -116,8 +116,7 @@ public class Commissioner {
           .getBoolean(ENABLE_DETAILED_LOGGING_FAILED_REQUEST)) {
         JsonNode redactedJson =
             RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.LOGS);
-        log.debug(
-            "Executing TaskType {} with params {}", taskType, redactedJson);
+        log.debug("Executing TaskType {} with params {}", taskType, redactedJson);
       }
       // Create the task runnable object based on the various parameters passed in.
       taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
