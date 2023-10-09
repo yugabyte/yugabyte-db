@@ -866,24 +866,6 @@ yb_txn_errcode(uint16_t txn_errcode)
 	return 0;					/* return value does not matter */
 }
 
-/*
- * yb_forbid_stmt_restart --- error indicates that a statement shall not be
- * restarted
- */
-int
-yb_forbid_stmt_restart(bool forbid_stmt_restart)
-{
-	Assert(!IsMultiThreadedMode());
-
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
-
-	edata->yb_forbid_stmt_restart = forbid_stmt_restart;
-
-	return 0;					/* return value does not matter */
-}
 
 /*
  * errcode_for_file_access --- add SQLSTATE error code to the current error
@@ -1674,23 +1656,6 @@ getinternalerrposition(void)
 	CHECK_STACK_DEPTH();
 
 	return edata->internalpos;
-}
-
-/*
- * geterryb_txn_errcode --- return the currently set yb_txn_errcode
- *
- * This is only intended for use in error callback subroutines, since there
- * is no other place outside elog.c where the concept is meaningful.
- */
-uint16_t
-geterryb_txn_errcode(void)
-{
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
-
-	return edata->yb_txn_errcode;
 }
 
 /*
