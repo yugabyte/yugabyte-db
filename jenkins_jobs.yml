@@ -45,7 +45,7 @@ jobs:
     architecture: arm64
     release_artifact: true
 
-  - os: mac11
+  - os: mac12
     compiler: clang
     build_type: release
     architecture: x86_64
