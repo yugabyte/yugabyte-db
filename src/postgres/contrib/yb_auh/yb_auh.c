@@ -80,7 +80,7 @@ circularBufferIndex *CircularBufferIndexArray = NULL;
 static int circular_buf_size = 0;
 static int circular_buf_size_kb = 16*1024;
 
-static int auh_sampling_interval = 1000;
+static int auh_sampling_interval_ms = 1000;
 static int auh_sample_size = 5;
 /* Entry point of library loading */
 void _PG_init(void);
@@ -128,8 +128,8 @@ _PG_init(void)
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
-  DefineCustomIntVariable("yb_auh.sampling_interval", "Duration (in milliseconds) between each pull.",
-                          "Default value is 1000 millisecond", &auh_sampling_interval,
+  DefineCustomIntVariable("yb_auh.sampling_interval_ms", "Duration (in milliseconds) between each pull.",
+                          "Default value is 1000 millisecond", &auh_sampling_interval_ms,
                           1000, 1, INT_MAX, PGC_SIGHUP,
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
@@ -227,7 +227,7 @@ yb_auh_main(Datum main_arg) {
     MemoryContext uppercxt;
     /* Wait necessary amount of time */
     rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-                   auh_sampling_interval, PG_WAIT_EXTENSION);
+                   auh_sampling_interval_ms, PG_WAIT_EXTENSION);
     ResetLatch(MyLatch);
     /* bailout if postmaster has died */
     if (rc & WL_POSTMASTER_DEATH)
