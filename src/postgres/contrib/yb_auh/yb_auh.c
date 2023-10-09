@@ -227,7 +227,7 @@ yb_auh_main(Datum main_arg) {
     MemoryContext uppercxt;
     /* Wait necessary amount of time */
     rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-                   auh_sampling_interval , PG_WAIT_EXTENSION);
+                   auh_sampling_interval, PG_WAIT_EXTENSION);
     ResetLatch(MyLatch);
     /* bailout if postmaster has died */
     if (rc & WL_POSTMASTER_DEATH)
