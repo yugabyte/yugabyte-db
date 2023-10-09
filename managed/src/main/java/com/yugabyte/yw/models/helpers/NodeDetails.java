@@ -357,6 +357,13 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isSoftwareDeleted() {
+    return state == NodeState.Decommissioned
+        || state == NodeState.Terminating // Software can be partially removed during this state.
+        || state == NodeState.Terminated;
+  }
+
+  @JsonIgnore
   public boolean isActive() {
     // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
     // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
