@@ -1030,8 +1030,11 @@ void CatalogManager::LoadSysCatalogDataTask() {
   }
 
   LOG_WITH_PREFIX(INFO) << "Loading table and tablet metadata into memory for term " << term;
+  SysCatalogLoadingState state {
+    .post_load_tasks = {},
+  };
   LOG_SLOW_EXECUTION(WARNING, 1000, LogPrefix() + "Loading metadata into memory") {
-    Status status = VisitSysCatalog(term);
+    Status status = VisitSysCatalog(term, &state);
     if (!status.ok()) {
       {
         std::lock_guard<simple_spinlock> l(state_lock_);
@@ -1059,7 +1062,7 @@ void CatalogManager::LoadSysCatalogDataTask() {
     is_catalog_loaded_ = true;
     LOG_WITH_PREFIX(INFO) << "Completed load of sys catalog in term " << term;
   }
-  SysCatalogLoaded(term);
+  SysCatalogLoaded(term, state);
   // Once we have loaded the SysCatalog, reset and regenerate the yql partitions table in order to
   // regenerate entries for previous tables.
   GetYqlPartitionsVtable().ResetAndRegenerateCache();
@@ -1072,7 +1075,7 @@ Status CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
   return Status::OK();
 }
 
-Status CatalogManager::VisitSysCatalog(int64_t term) {
+Status CatalogManager::VisitSysCatalog(int64_t term, SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
   LOG_WITH_PREFIX_AND_FUNC(INFO)
       << "Wait on leader_lock_ for any existing operations to finish. Term: " << term;
@@ -1098,7 +1101,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   AbortAndWaitForAllTasks(tables);
 
   // Clear internal maps and run data loaders.
-  RETURN_NOT_OK(RunLoaders(term));
+  RETURN_NOT_OK(RunLoaders(term, state));
 
   // Prepare various default system configurations.
   RETURN_NOT_OK(PrepareDefaultSysConfig(term));
@@ -1142,7 +1145,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
           LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-          RETURN_NOT_OK(RunLoaders(term));
+          // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
+          // instead of calling it here and above?
+          state->Reset();
+          RETURN_NOT_OK(RunLoaders(term, state));
         }
       } else {
         LOG_WITH_PREFIX(WARNING)
@@ -1214,16 +1220,17 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 }
 
 template <class Loader>
-Status CatalogManager::Load(const std::string& title, const int64_t term) {
+Status CatalogManager::Load(
+    const std::string& title, SysCatalogLoadingState* state, const int64_t term) {
   LOG_WITH_PREFIX(INFO) << __func__ << ": Loading " << title << " into memory.";
-  std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, term);
+  std::unique_ptr<Loader> loader = std::make_unique<Loader>(this, state, term);
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(loader.get()),
       "Failed while visiting " + title + " in sys catalog");
   return Status::OK();
 }
 
-Status CatalogManager::RunLoaders(int64_t term) {
+Status CatalogManager::RunLoaders(int64_t term, SysCatalogLoadingState* state) {
   // Clear the table and tablet state.
   table_names_map_.clear();
   transaction_table_ids_set_.clear();
@@ -1270,18 +1277,18 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
     // Clear the roles mapping.
     permissions_manager()->ClearRolesUnlocked();
-    RETURN_NOT_OK(Load<RoleLoader>("roles", term));
-    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", term));
+    RETURN_NOT_OK(Load<RoleLoader>("roles", state, term));
+    RETURN_NOT_OK(Load<SysConfigLoader>("sys config", state, term));
   }
   // Clear the hidden tablets vector.
   hidden_tablets_.clear();
 
-  RETURN_NOT_OK(Load<TableLoader>("tables", term));
-  RETURN_NOT_OK(Load<TabletLoader>("tablets", term));
-  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", term));
-  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", term));
-  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", term));
-  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", term));
+  RETURN_NOT_OK(Load<TableLoader>("tables", state, term));
+  RETURN_NOT_OK(Load<TabletLoader>("tablets", state, term));
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state, term));
+  RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state, term));
+  RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state, term));
+  RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state, term));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(term));
@@ -11800,6 +11807,35 @@ Status CatalogManager::CheckIfPitrActive(
   LOG(INFO) << "Servicing CheckIfPitrActive request";
   resp->set_is_pitr_active(IsPitrActive());
   return Status::OK();
+}
+
+void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) {
+  StartPostLoadTasks(state);
+}
+
+void CatalogManager::StartPostLoadTasks(const SysCatalogLoadingState& state) {
+  for (const auto& task_and_msg : state.post_load_tasks) {
+    auto s = background_tasks_thread_pool_->SubmitFunc(task_and_msg.first);
+    if (s.ok()) {
+      LOG(INFO) << "Successfully submitted post load task: " << task_and_msg.second;
+    } else {
+      LOG(WARNING) << Format("Failed to submit post load task: $0. Reason: $1",
+          task_and_msg.second, s);
+    }
+  }
+}
+
+void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
+  auto tablet_res = GetTabletInfo(tablet_id);
+  if (!tablet_res.ok()) {
+    LOG(WARNING) << Format("$0 could not find tablet $1 in tablet map.", __func__, tablet_id);
+    return;
+  }
+
+  LOG(INFO) << Format("Writing tablet $0 to sys catalog as part of a migration.", tablet_id);
+  auto l = (*tablet_res)->LockForWrite();
+  WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), *tablet_res),
+      "Failed to upsert migrated colocated tablet into sys catalog.");
 }
 
 }  // namespace master

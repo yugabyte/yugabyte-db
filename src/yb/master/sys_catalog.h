@@ -121,10 +121,17 @@ class SysCatalogTable {
   Status Upsert(int64_t leader_term, Items&&... items);
 
   template <class... Items>
+  Status ForceUpsert(int64_t leader_term, Items&&... items);
+
+  template <class... Items>
   Status Delete(int64_t leader_term, Items&&... items);
 
   template <class... Items>
   Status Mutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
+
+  template <class... Items>
+  Status ForceMutate(
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
 
   // ==================================================================

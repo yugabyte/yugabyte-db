@@ -45,13 +45,27 @@
 namespace yb {
 namespace master {
 
+struct SysCatalogLoadingState {
+  std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
+
+  void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
+    post_load_tasks.push_back({std::move(func), std::move(msg)});
+  }
+
+  void Reset() {
+    post_load_tasks.clear();
+  }
+};
+
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \
       public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
   public: \
     explicit BOOST_PP_CAT(name, Loader)( \
-        CatalogManager* catalog_manager, int64_t term = OpId::kUnknownTerm) \
-        : catalog_manager_(catalog_manager), term_(term) {} \
+                                         CatalogManager* catalog_manager, \
+                                         SysCatalogLoadingState* state, \
+                                         int64_t term = OpId::kUnknownTerm) \
+      : catalog_manager_(catalog_manager), state_(state), term_(term) {} \
     \
   private: \
     Status Visit( \
@@ -59,6 +73,8 @@ namespace master {
         const entry_pb_name& metadata) override REQUIRES(mutex); \
     \
     CatalogManager *catalog_manager_; \
+    \
+    SysCatalogLoadingState* state_; \
     \
     int64_t term_; \
     \

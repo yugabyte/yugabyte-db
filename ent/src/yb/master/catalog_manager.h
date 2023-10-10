@@ -36,7 +36,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   virtual ~CatalogManager();
   void CompleteShutdown();
 
-  Status RunLoaders(int64_t term) override REQUIRES(mutex_);
+  Status RunLoaders(int64_t term, SysCatalogLoadingState* state) override REQUIRES(mutex_);
 
   // API to start a snapshot creation.
   Status CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -574,7 +574,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   void Started() override;
 
-  void SysCatalogLoaded(int64_t term) override;
+  void SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) override;
 
   Status AddNamespaceEntriesToPB(
       const std::vector<TableDescription>& tables,
