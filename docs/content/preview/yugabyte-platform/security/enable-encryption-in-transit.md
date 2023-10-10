@@ -247,13 +247,31 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 #### Verify certificate chain
 
-To verify the certificate chain, execute the following command:
+Perform the following steps to verify your certificates:
 
-```sh
-openssl verify -CAfile bundle.pem cert.pem
-```
+1. Execute the following verify command which checks the database node certificate "node.crt" against the root CA certificate "ca.crt":
 
-The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+    ```sh
+    openssl verify -CAfile bundle.pem cert.pem
+    ```
+
+    The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+
+1. Verify that the node certificate (`node.ip_address.crt`) and the node private key (`node.ip_address.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
+
+1. Verify that the node certificate expiration is at least 3 months by checking the validity field in the output of the following command:
+
+    ```sh
+    openssl x509 -in node.crt -text -noout
+    ```
+
+1. Verify that the node certificate Common Name or Subject Alternate Name contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
+
+    If you face any issue with the above verification, you can customize the verification. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
+
+{{< note >}}
+Note that the client certificates and keys are required only if you intend to use [PostgreSQL certificate based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+{{< /note >}}
 
 ### Rotate custom CA-signed certificates
 
