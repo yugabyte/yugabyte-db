@@ -237,7 +237,7 @@ operation only involves adding a delete marker at the correct level, and does no
 (hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
 </pre>
-The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout by itself, as the writes happen in a log-structured manner.
+The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout, as the writes happen in a log-structured manner.
 
 When compactions occur, the space for the key-value pairs corresponding to the deleted columns is reclaimed, as per the following:
 
