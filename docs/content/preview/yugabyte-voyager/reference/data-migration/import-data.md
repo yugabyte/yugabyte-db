@@ -35,16 +35,16 @@ The valid *arguments* for import data are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. (default: 20000 rows)<br>Example: `yb-voyager import data ... --batch-size 20000` |
-| --continue-on-error | Ignores the error while executing the DDLs for resuming sequences on target db after the data is imported. (Default: false) |
+| --continue-on-error | Ignores the error while executing the DDLs for resuming sequences on target db after the data is imported. (default: false) |
 | --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
-| --enable-upsert | Enable UPSERT mode on target tables while importing data. (Default: true)<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
+| --enable-upsert | Enable UPSERT mode on target tables while importing data. (default: true)<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
 | --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. This argument is unsupported for live migration. |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For the import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. This argument is unsupported for live migration. |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --parallel-jobs <connectionCount> | Number of parallel COPY commands issued to the target database. Depending on the YugabyteDB database configuration, the value of `--parallel-jobs` should be tweaked such that at most 50% of target cores are utilised. (default: If yb-voyager can determine the total number of cores N in the YugabyteDB database cluster, it uses N/2 as the default. Otherwise, it defaults to twice the number of nodes in the cluster.)|
-| --send-diagnostics | Send diagnostics information to Yugabyte. |
-| --start-clean | Starts a fresh import with data files present in the `data` directory. If any table on the YugabyteDB database is not empty, you are prompted to continue the import without truncating those tables. If you continue, yb-voyager starts ingesting the data present in the data files with upsert mode, and for cases where a table doesn't have a primary key, it may duplicate the data. In this case, you should use the `--exclude-table-list` flag to exclude such tables, or truncate those tables manually before using the `start-clean` flag. |
+| --send-diagnostics | Send diagnostics information to Yugabyte. (default: true) |
+| --start-clean | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files with upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag. |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: "127.0.0.1") |
 | --target-db-name <name> | Target database name. |
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
@@ -61,11 +61,6 @@ The valid *arguments* for import data are described in the following table:
 | --verbose | Display extra information in the output. (default: false) |
 | -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 
-<!-- To do : document the following arguments with description
-| --continue-on-error |
-| --enable-upsert |
-| --target-endpoints |
-| --use-public-ip | -->
 ### Example
 
 ```sh
