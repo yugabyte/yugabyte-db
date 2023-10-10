@@ -227,8 +227,6 @@ class CatalogManagerIf {
 
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
-  virtual Status VisitSysCatalog(int64_t term) = 0;
-
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
 
   virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,

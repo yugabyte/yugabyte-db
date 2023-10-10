@@ -512,8 +512,8 @@ void CatalogManager::CompleteShutdown() {
   super::CompleteShutdown();
 }
 
-Status CatalogManager::RunLoaders(int64_t term) {
-  RETURN_NOT_OK(super::RunLoaders(term));
+Status CatalogManager::RunLoaders(int64_t term, SysCatalogLoadingState* state) {
+  RETURN_NOT_OK(super::RunLoaders(term, state));
 
   // Clear the snapshots.
   non_txn_snapshot_ids_map_.clear();
@@ -7801,8 +7801,8 @@ bool CatalogManager::IsPitrActive() {
   return snapshot_coordinator_.IsPitrActive();
 }
 
-void CatalogManager::SysCatalogLoaded(int64_t term) {
-  super::SysCatalogLoaded(term);
+void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state) {
+  super::SysCatalogLoaded(term, state);
   snapshot_coordinator_.SysCatalogLoaded(term);
 }
 

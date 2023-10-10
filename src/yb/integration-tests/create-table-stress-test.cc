@@ -53,6 +53,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
@@ -605,7 +606,8 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
+      master::SysCatalogLoadingState state;
+      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(0, &state));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }

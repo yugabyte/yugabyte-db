@@ -206,6 +206,7 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)

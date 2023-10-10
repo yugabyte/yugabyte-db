@@ -130,6 +130,7 @@ namespace master {
 
 struct DeferredAssignmentActions;
 class XClusterSafeTimeService;
+struct SysCatalogLoadingState;
 
 using PlacementId = std::string;
 
@@ -805,8 +806,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
-  Status VisitSysCatalog(int64_t term) override;
-  virtual Status RunLoaders(int64_t term) REQUIRES(mutex_);
+  // TODO(asrivastava): This is only public because it is used by a test
+  // (CreateTableStressTest.TestConcurrentCreateTableAndReloadMetadata). Can we refactor that test
+  // to avoid this call and make this private?
+  Status VisitSysCatalog(int64_t term, SysCatalogLoadingState* state);
+  virtual Status RunLoaders(int64_t term, SysCatalogLoadingState* state) REQUIRES(mutex_);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -1014,6 +1018,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   virtual docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
     return { HybridTime(), HybridTime() };
   }
+  void WriteTabletToSysCatalog(const TabletId& tablet_id);
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1035,13 +1040,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTable;
   friend class BackfillTablet;
 
-  FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
-  FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
-  FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
-  FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
-  FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
-
-  FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
@@ -1509,11 +1507,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, const int64_t term);
+  Status Load(const std::string& title, SysCatalogLoadingState* state, const int64_t term);
 
   virtual void Started() {}
 
-  virtual void SysCatalogLoaded(int64_t term) { StartXClusterSafeTimeServiceIfStopped(); }
+  virtual void SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state);
 
   // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
   // Chooses an unblacklisted master in the highest priority affinity location to step down to. If
@@ -1995,6 +1993,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(
     const std::string& ts_uuid) EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
+  void StartPostLoadTasks(const SysCatalogLoadingState& state);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
