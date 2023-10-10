@@ -240,7 +240,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool ShouldApplyWrite() override;
 
   // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
-  // in a valid state.
+  // in a valid state or a peer is not running (shutting down or shut down).
   Result<std::shared_ptr<consensus::Consensus>> GetConsensus() const EXCLUDES(lock_);
   Result<std::shared_ptr<consensus::RaftConsensus>> GetRaftConsensus() const EXCLUDES(lock_);
 
