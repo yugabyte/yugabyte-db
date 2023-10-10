@@ -200,9 +200,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     return res;
   }
 
-  Result<uint64_t> RPCCountOnStartUp() {
-    auto res = VERIFY_RESULT(metrics_->Delta([this] {
-      VERIFY_RESULT(Connect());
+  Result<uint64_t> RPCCountOnStartUp(const std::string& db_name = {}) {
+    auto res = VERIFY_RESULT(metrics_->Delta([this, &db_name] {
+      VERIFY_RESULT(ConnectToDB(db_name));
       return static_cast<Status>(Status::OK());
     })).master_read_rpc;
     return res;
@@ -302,6 +302,7 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
 
 constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
+constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 } // namespace
@@ -315,7 +316,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(subsequent_connect_rpc_count, 2);
+  ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
@@ -554,6 +555,30 @@ TEST_F_EX(PgCatalogPerfTest,
           PgPreloadAdditionalCatBothTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+}
+
+// Test checks that response cache is DB specific.
+// First, start up an initial connection and measure the startup RPC count (a).
+// Then, create a new database. Create a new connection to this database and
+// measure the startup RPC count (b). Both (a) and (b) should be equal to the
+// initial startup RPC count, because the second connection can't use the
+// cached responses from the first connection. We also check that upon creating
+// a subsequent connection to the new database, the startup RPC count is what we
+// expect for a second connection.
+TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "db1";
+  auto rpc_count_checker = [this](const std::string& db_name = {}) -> Status {
+    for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                    kSubsequentConnectionRPCCount}) {
+      const auto rpc_count = VERIFY_RESULT(RPCCountOnStartUp(db_name));
+      SCHECK_EQ(rpc_count, expected_rpc_count, IllegalState, "Unexpected rpc count");
+    }
+    return Status::OK();
+  };
+  ASSERT_OK(rpc_count_checker());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  ASSERT_OK(rpc_count_checker(kDBName));
 }
 
 } // namespace yb::pgwrapper

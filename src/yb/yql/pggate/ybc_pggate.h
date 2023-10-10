@@ -695,6 +695,7 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
 void YBCStartSysTablePrefetchingNoCache();
 
 void YBCStartSysTablePrefetching(
+    YBCPgOid database_oid,
     YBCPgLastKnownCatalogVersionInfo catalog_version,
     YBCPgSysTablePrefetcherCacheMode cache_mode);
 
