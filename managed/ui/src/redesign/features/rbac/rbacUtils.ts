@@ -39,7 +39,7 @@ export const getResourceDefinitionSet = (role: Role, resourceType: UniverseResou
                 ...resource,
                 resourceType,
                 resourceUUIDSet: resource.allowAll ? [] : resource.resourceUUIDSet.map(i => i.universeUUID ?? i),
-                allowAll : resource.allowAll || resource.resourceUUIDSet.length === 0
+                allowAll : resource.allowAll
             };
     }
 

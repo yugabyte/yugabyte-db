@@ -17,6 +17,7 @@ import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
 import { isCertCAEnabledInRuntimeConfig } from '../customCACerts';
+import { RBAC_RUNTIME_FLAG } from '../../redesign/features/rbac/common/RbacUtils';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './Administration.scss';
@@ -94,7 +95,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
 
-  const isRBACEnabled = test['enableRBAC'] || released['enableRBAC'];
+  const isRBACEnabled = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === RBAC_RUNTIME_FLAG
+  )?.value === 'true';
 
   const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
     (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
@@ -224,7 +227,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
       >
         {getHighAvailabilityTab()}
         {getAlertTab()}
-        {getUserManagementTab()}
+        {!isRBACEnabled && getUserManagementTab()}
         {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
         {isRBACEnabled && getRbacTab()}

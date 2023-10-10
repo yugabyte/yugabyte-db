@@ -7,8 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { useEffect } from 'react';
 import { useMap } from 'react-use';
-import { concat, find, flattenDeep, groupBy, isEmpty, values } from 'lodash';
+import clsx from 'clsx';
+import { capitalize, concat, find, flattenDeep, groupBy, isEmpty, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import {
   Accordion,
@@ -18,8 +20,8 @@ import {
   makeStyles
 } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
-import { Permission, Resource, ResourceType } from './IPermission';
 import { resourceOrderByRelevance } from '../common/RbacUtils';
+import { Action, Permission, Resource, ResourceType } from './IPermission';
 import { ArrowDropDown } from '@material-ui/icons';
 
 type ListPermissionsModalProps = {
@@ -52,10 +54,17 @@ const convertPermissionListToMap = (
 
 const useStyles = makeStyles((theme) => ({
   permission_container: {
+    '&:last-child': {
+      borderRadius: '0px 0px 8px 8px'
+    },
+    '&:first-child': {
+      borderRadius: '8px 8px 0px 0px'
+    },
     '& .MuiAccordionSummary-root': {
       background: theme.palette.ybacolors.backgroundGrayLightest,
-      padding: '14px 24px',
-      height: '45px',
+      padding: '24px 24px 18px 24px',
+      height: '35px',
+      borderRadius: theme.spacing(1),
       '&.Mui-expanded': {
         borderBottom: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`
       }
@@ -67,7 +76,7 @@ const useStyles = makeStyles((theme) => ({
       gap: '8px'
     },
     '& .MuiAccordion-root.Mui-expanded,& .MuiAccordionSummary-root.Mui-expanded': {
-      minHeight: 'unset',
+      minHeight: '40px',
       margin: 0
     }
   },
@@ -90,7 +99,21 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: '5px'
   },
   expandMore: {
-    fontSize: '24px'
+    fontSize: '30px'
+  },
+  contentRoot: {
+    padding: '20px'
+  },
+  checkbox: {
+    transform: 'scale(1.3)'
+  },
+  insetCheckbox: {
+    marginLeft: '24px'
+  },
+  universeInfoText: {
+    textTransform: 'uppercase',
+    color: theme.palette.ybacolors.textDarkGray,
+    marginLeft: '10px'
   }
 }));
 
@@ -101,7 +124,7 @@ function ListPermissionsModal({
   permissionsList,
   defaultPerm
 }: ListPermissionsModalProps) {
-  const [selectedPermissions, { set }] = useMap(
+  const [selectedPermissions, { set, setAll }] = useMap(
     convertPermissionListToMap(permissionsList, defaultPerm)
   );
 
@@ -130,6 +153,12 @@ function ListPermissionsModal({
     })
   );
 
+  useEffect(() => {
+    if (!visible) {
+      setAll(convertPermissionListToMap(permissionsList, defaultPerm));
+    }
+  }, [visible, setAll, permissionsList, defaultPerm, convertPermissionListToMap]);
+
   return (
     <YBModal
       title={t('title')}
@@ -148,6 +177,9 @@ function ListPermissionsModal({
         maxHeight: 'unset'
       }}
       size="lg"
+      dialogContentProps={{
+        className: classes.contentRoot
+      }}
     >
       <div className={classes.permission_container}>
         {resourceOrderByRelevance.map((resourceType, i) => {
@@ -163,7 +195,9 @@ function ListPermissionsModal({
               >
                 <div className={classes.resourceTitle}>
                   <Typography variant="body1" className={classes.permissionGroupTitle}>
-                    {t('resourceManagement', { resource: resourceType.toLowerCase() })}
+                    {resourceType === Resource.DEFAULT
+                      ? t('otherResource')
+                      : t('resourceManagement', { resource: resourceType.toLowerCase() })}
                     {resourceType === Resource.UNIVERSE && (
                       <Typography
                         variant="subtitle1"
@@ -184,7 +218,13 @@ function ListPermissionsModal({
               </AccordionSummary>
               <AccordionDetails>
                 <YBCheckbox
-                  label={t('selectAllPermissions', { resource: resourceType.toLowerCase() })}
+                  label={
+                    resourceType === Resource.DEFAULT
+                      ? t('selectAllOtherPermissions')
+                      : t('selectAllPermissions', {
+                          resource: capitalize(resourceType.toLowerCase())
+                        })
+                  }
                   indeterminate={
                     selectedPermissions[resourceType].length > 0 &&
                     permissionsList &&
@@ -203,8 +243,15 @@ function ListPermissionsModal({
                     selectedPermissions[resourceType].length ===
                     permissionGroups[resourceType].length
                   }
+                  className={classes.checkbox}
                 />
+                {resourceType === Resource.UNIVERSE && (
+                  <Typography variant="subtitle1" className={classes.universeInfoText}>
+                    {t('universePrimaryAndReplica2')}
+                  </Typography>
+                )}
                 {permissionGroups[resourceType].map((permission, i) => {
+                  if (permission.action === Action.SUPER_ADMIN_ACTIONS) return null; // we cannot assign super-admin action
                   return (
                     <YBCheckbox
                       key={i}
@@ -225,6 +272,7 @@ function ListPermissionsModal({
                       checked={find(selectedPermissions[resourceType], permission) !== undefined}
                       disabled={find(dependentPermissions, permission) !== undefined}
                       data-testid={`rbac-resource-${resourceType}-${permission.name}`}
+                      className={clsx(classes.checkbox, classes.insetCheckbox)}
                     />
                   );
                 })}

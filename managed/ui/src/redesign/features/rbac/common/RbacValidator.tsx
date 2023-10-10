@@ -11,7 +11,7 @@ import { Component, ErrorInfo, FC, cloneElement, useState } from 'react';
 import { find } from 'lodash';
 import { Popover, Tooltip, Typography } from '@material-ui/core';
 import { CSSProperties } from '@material-ui/styles';
-import { ActionType } from '../permission';
+import { ActionType, Permission } from '../permission';
 import { isRbacEnabled } from './RbacUtils';
 import { RbacResourceTypes, UserPermission } from './rbac_constants';
 import { ReactComponent as LockIcon } from '../../../assets/lock.svg';
@@ -42,8 +42,18 @@ const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) 
 
   let requiredResource = onResource;
 
+  const allPermissions: Permission[] = (window as any).all_permissions;
+
+  const permissionValidOnResource = accessRequiredOn.permissionRequired.map((permReq) => {
+    return find(allPermissions, { action: permReq, resourceType: resourceType });
+  });
+
   if (onResource === 'CUSTOMER_ID') {
     requiredResource = localStorage.getItem('customerId') ?? undefined;
+  }
+
+  if (!permissionValidOnResource.some((p) => p?.permissionValidOnResource)) {
+    requiredResource = undefined;
   }
 
   const resource = find(userPermissions, function (perm) {
