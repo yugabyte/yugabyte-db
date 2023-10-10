@@ -86,27 +86,18 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'abc')"));
+  DoTestYSQLRestoreBackup(std::nullopt /* db_catalog_version_mode */);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  const string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--pg_based_backup", "--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
-       "create"}));
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
+  DoTestYSQLRestoreBackup(true /* db_catalog_version_mode */);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT k, v FROM mytbl ORDER BY k",
-      R"#(
-          k  |  v
-        -----+-----
-         100 | abc
-        (1 row)
-      )#"
-  ));
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToGlobalCatalogVersionMode)) {
+  DoTestYSQLRestoreBackup(false /* db_catalog_version_mode */);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

@@ -70,12 +70,13 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBas
   void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
 
   Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
-
+  void RestartClusterWithCatalogVersionMode(bool db_catalog_version_mode);
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
+  void DoTestYSQLRestoreBackup(std::optional<bool> db_catalog_version_mode);
 
   void TestColocatedDBBackupRestore();
 
