@@ -1112,9 +1112,9 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	       IsPolymorphicType(valtypid);
 }
 
-static bool
+static void
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
-								int skey_index, bool is_for_precheck)
+						int skey_index)
 {
 	int last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation index = ybScan->index;
@@ -1170,15 +1170,16 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * to push down.
 	 */
 
-	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)
+	for (int i = 0; i < index->rd_index->indnkeyatts; i++)
 	{
 		if (index->rd_indoption[i] & INDOPTION_HASH)
 		{
 			can_pushdown = false;
+			break;
 		}
 	}
 
-	if (can_pushdown && !is_for_precheck)
+	if (can_pushdown)
 	{
 
 		YBCPgExpr *col_values =
@@ -1288,8 +1289,6 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 										 is_inclusive));
 		}
 	}
-
-	return can_pushdown;
 }
 
 /*
@@ -1539,21 +1538,14 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey key = ybScan->keys[i];
-		/* Check if this is full key row comparison expression */
-		if (YbIsRowHeader(key) &&
-			!YbIsSearchArray(key))
+		if (!is_for_precheck)
 		{
-			bool can_pushdown =
-				YbBindRowComparisonKeys(ybScan, scan_plan, i, is_for_precheck);
-			ybScan->all_ordinary_keys_bound &= can_pushdown;
-			/*
-			 * Full primary-key RowComparison bindings don't interact
-			 * or interfere with other bindings to the same columns. They
-			 * just set the upper/lower bounds of the requested scan. We
-			 * can just continue looking at the next keys without recording this
-			 * key in the offsets array below.
-			 */
-			continue;
+			/* Check if this is full key row comparison expression */
+			if (YbIsRowHeader(key) &&
+				!YbIsSearchArray(key))
+			{
+				YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			}
 		}
 
 		/* Check if this is primary columns */
