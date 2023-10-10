@@ -244,6 +244,18 @@ HINT:  You might need to specify "USING a::bigint".
 ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
 ```
 
+Another option is to use a custom function:
+
+```sql
+CREATE OR REPLACE FUNCTION myfunc(text) RETURNS BIGINT
+    AS 'select $1::BIGINT;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
+ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING myfunc(a);
+```
+
 
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
