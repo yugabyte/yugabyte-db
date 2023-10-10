@@ -1632,7 +1632,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2376,7 +2378,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
