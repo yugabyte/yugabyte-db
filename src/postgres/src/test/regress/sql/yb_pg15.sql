@@ -177,6 +177,10 @@ CREATE DATABASE mytest;
 -- drop database
 DROP DATABASE mytest;
 
+create table fastpath (a int, b text, c numeric);
+insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
+select md5(string_agg(a::text, b order by a, b asc)) from fastpath
+	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
 -- Index scan test row comparison expressions
 CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
