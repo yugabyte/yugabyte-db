@@ -348,7 +348,7 @@ public class YBClient implements AutoCloseable {
       Deferred<IsAlterTableDoneResponse> d = asyncClient.isAlterTableDone(keyspace, name);
       IsAlterTableDoneResponse response;
       try {
-        response = d.join(AsyncYBClient.SLEEP_TIME);
+        response = d.join(AsyncYBClient.sleepTime);
       } catch (Exception ex) {
         throw ex;
       }
@@ -360,15 +360,15 @@ public class YBClient implements AutoCloseable {
       // Count time that was slept and see if we need to wait a little more.
       long elapsed = System.currentTimeMillis() - start;
       // Don't oversleep the deadline.
-      if (totalSleepTime + AsyncYBClient.SLEEP_TIME > getDefaultAdminOperationTimeoutMs()) {
+      if (totalSleepTime + AsyncYBClient.sleepTime > getDefaultAdminOperationTimeoutMs()) {
         return false;
       }
       // elapsed can be bigger if we slept about 500ms
-      if (elapsed <= AsyncYBClient.SLEEP_TIME) {
-        LOG.debug("Alter not done, sleep " + (AsyncYBClient.SLEEP_TIME - elapsed) +
+      if (elapsed <= AsyncYBClient.sleepTime) {
+        LOG.debug("Alter not done, sleep " + (AsyncYBClient.sleepTime - elapsed) +
             " and slept " + totalSleepTime);
-        Thread.sleep(AsyncYBClient.SLEEP_TIME - elapsed);
-        totalSleepTime += AsyncYBClient.SLEEP_TIME;
+        Thread.sleep(AsyncYBClient.sleepTime - elapsed);
+        totalSleepTime += AsyncYBClient.sleepTime;
       } else {
         totalSleepTime += elapsed;
       }
@@ -509,7 +509,7 @@ public class YBClient implements AutoCloseable {
     long start = System.currentTimeMillis();
     while (System.currentTimeMillis() - start < timeoutMS &&
       getMasterUUID(hp.getHost(), hp.getPort()) == null) {
-      Thread.sleep(AsyncYBClient.SLEEP_TIME);
+      Thread.sleep(AsyncYBClient.sleepTime);
     }
     return getMasterUUID(hp.getHost(), hp.getPort()) != null;
   }
@@ -655,7 +655,7 @@ public class YBClient implements AutoCloseable {
         return leaderUuid;
       }
 
-      Thread.sleep(asyncClient.SLEEP_TIME);
+      Thread.sleep(asyncClient.sleepTime);
     } while (System.currentTimeMillis() - start < timeoutMs);
 
     LOG.error("Timed out getting leader uuid.");
@@ -708,7 +708,7 @@ public class YBClient implements AutoCloseable {
           break;
         }
 
-        Thread.sleep(asyncClient.SLEEP_TIME);
+        Thread.sleep(asyncClient.sleepTime);
       } while (true);
     } catch (Exception e) {
      // TODO: Ideally we need an error code here, but this is come another layer which
@@ -765,7 +765,7 @@ public class YBClient implements AutoCloseable {
       // In case the master UUID is returned as null, retry a few times
       do {
           masterUuid = getMasterUUID(host, port);
-          Thread.sleep(AsyncYBClient.SLEEP_TIME);
+          Thread.sleep(AsyncYBClient.sleepTime);
           tries++;
       } while (tries < MAX_NUM_RETRIES && masterUuid == null);
 
@@ -1179,7 +1179,7 @@ public class YBClient implements AutoCloseable {
     do {
       try {
         if (injectWaitError) {
-          Thread.sleep(AsyncYBClient.SLEEP_TIME);
+          Thread.sleep(AsyncYBClient.sleepTime);
           injectWaitError = false;
           String msg = "Simulated expection due to injected error.";
           LOG.info(msg);
@@ -1209,7 +1209,7 @@ public class YBClient implements AutoCloseable {
 
       // Need to wait even when ping has an exception, so the sleep is outside the above try block.
       try {
-        Thread.sleep(AsyncYBClient.SLEEP_TIME);
+        Thread.sleep(AsyncYBClient.sleepTime);
       } catch (Exception e) {}
     } while (System.currentTimeMillis() - start < timeoutMs);
 
