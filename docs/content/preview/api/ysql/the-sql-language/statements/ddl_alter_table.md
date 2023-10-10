@@ -206,7 +206,7 @@ If the optional `COLLATE` clause is not specified, the default collation for the
 
 If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 
-A `USING` clause must be included when there is no implicit or assignment cast available from the old type to the new type.
+A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
 
 ##### Alter type without table-rewrite
 
