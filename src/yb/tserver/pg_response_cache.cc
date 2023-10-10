@@ -18,6 +18,7 @@
 #include <mutex>
 #include <utility>
 
+#include <boost/functional/hash.hpp>
 #include <boost/multi_index/member.hpp>
 
 #include "yb/client/yb_op.h"
@@ -243,11 +244,27 @@ class Value {
   std::shared_ptr<Data> data_;
 };
 
-struct Entry {
-  explicit Entry(std::string&& key_)
-      : key(std::move(key_)) {}
+struct Key {
+  uint64_t group;
+  std::string value;
+  explicit Key (uint64_t key_group, std::string&& key_value)
+      : group(key_group), value(std::move(key_value)) {}
 
-  std::string key;
+  friend bool operator==(const Key&, const Key&) = default;
+};
+
+inline size_t hash_value(const Key& key) {
+  size_t value = 0;
+  boost::hash_combine(value, key.group);
+  boost::hash_range(value, key.value.begin(), key.value.end());
+  return value;
+}
+
+struct Entry {
+  explicit Entry(uint64_t key_group, std::string&& key_value)
+      : key(key_group, std::move(key_value)) {}
+
+  Key key;
   Value value;
 };
 
@@ -313,7 +330,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
     });
     std::lock_guard lock(mutex_);
-    const auto& value = entries_.emplace(std::move(*cache_info->mutable_key()))->value;
+    const auto& value = entries_.emplace(
+        cache_info->key_group(), std::move(*cache_info->mutable_key_value()))->value;
     const auto& data = value.data();
     bool loading_required = false;
     if (!data ||
@@ -420,7 +438,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   std::mutex mutex_;
   LRUCache<
       Entry,
-      boost::multi_index::member<Entry, std::string, &Entry::key>
+      boost::multi_index::member<Entry, Key, &Entry::key>
   > entries_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Impl);

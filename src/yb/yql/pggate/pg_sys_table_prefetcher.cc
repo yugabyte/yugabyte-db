@@ -311,7 +311,8 @@ class VersionInfoWriter {
     yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info) {
   return {
-      .key = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
+      .key_group = caching_info.db_oid,
+      .key_value = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
       .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode)
   };
 }
