@@ -10,7 +10,7 @@
 import { useContext, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { flattenDeep, values } from 'lodash';
+import { find, flattenDeep, values } from 'lodash';
 import { useToggle } from 'react-use';
 import { Box, makeStyles } from '@material-ui/core';
 import { TableHeaderColumn } from 'react-bootstrap-table';
@@ -23,16 +23,17 @@ import { YBSearchInput } from '../../../../../components/common/forms/fields/YBS
 import { RoleTypeComp } from '../../common/RbacUtils';
 
 import { RoleContextMethods, RoleViewContext } from '../RoleContext';
-import { Role } from '../IRoles';
+import { ForbiddenRoles, Role, RoleType } from '../IRoles';
 import { getAllRoles, getRoleBindingsForAllUsers } from '../../api';
-import { RBAC_ERR_MSG_NO_PERM, RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { SortOrder } from '../../../../helpers/constants';
 import { UserPermissionMap } from '../../UserPermPathMapping';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
 import { ReactComponent as Clone } from '../../../../assets/copy.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
-import { toast } from 'react-toastify';
+import { ReactComponent as User } from '../../../../assets/user.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -91,7 +92,7 @@ const ListRoles = () => {
     keyPrefix: 'rbac.roles.list'
   });
 
-  const [, { setCurrentPage, setCurrentRole }] = (useContext(
+  const [, { setCurrentPage, setCurrentRole, setEditView }] = (useContext(
     RoleViewContext
   ) as unknown) as RoleContextMethods;
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
@@ -108,48 +109,72 @@ const ListRoles = () => {
   }
 
   const getActions = (_: undefined, role: Role) => {
-    return (
-      <MoreActionsMenu
-        menuOptions={[
-          {
-            text: t('table.moreActions.editRole'),
-            icon: <Create />,
-            callback: () => {
-              if (
-                !hasNecessaryPerm({
-                  ...UserPermissionMap.editRole,
-                  onResource: role.roleUUID
-                })
-              ) {
-                toast.error(RBAC_ERR_MSG_NO_PERM);
-                return;
-              }
-              setCurrentRole(role);
-              setCurrentPage('EDIT_ROLE');
-            }
-          },
-          {
-            text: t('table.moreActions.cloneRole'),
-            icon: <Clone />,
-            callback: () => {
-              setCurrentRole({
-                ...role,
-                roleUUID: '',
-                name: ''
-              });
-              setCurrentPage('CREATE_ROLE');
-            }
-          },
-          {
+    const menuOptions = [
+      {
+        text: t('table.moreActions.viewUsers'),
+        icon: <User />,
+        callback: () => {
+          setCurrentRole(role);
+          setEditView("USERS");
+          setCurrentPage('EDIT_ROLE');
+        }
+      }
+    ];
+
+
+    if (
+      hasNecessaryPerm({
+        ...UserPermissionMap.editRole,
+        onResource: role.roleUUID
+      })
+    ) {
+
+      menuOptions.push({
+        text: t('table.moreActions.editRole'),
+        icon: <Create />,
+        callback: () => {
+          setCurrentRole(role);
+          setEditView("CONFIGURATIONS");
+          setCurrentPage('EDIT_ROLE');
+        }
+      });
+
+      if (find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) === undefined) {
+        menuOptions.push({
+          text: t('table.moreActions.cloneRole'),
+          icon: <Clone />,
+          callback: () => {
+            setCurrentRole({
+              ...role,
+              roleUUID: '',
+              name: ''
+            });
+            setEditView("CONFIGURATIONS");
+            setCurrentPage('CREATE_ROLE');
+          }
+        });
+
+        if (
+          role.roleType !== RoleType.SYSTEM &&
+          hasNecessaryPerm({
+            ...UserPermissionMap.deleteRole,
+            onResource: role.roleUUID
+          })
+        ) {
+          menuOptions.push({
             text: t('table.moreActions.deleteRole'),
             icon: <Delete />,
             callback: () => {
               setCurrentRole(role);
               toggleDeleteModal(true);
             }
-          }
-        ]}
-      >
+          });
+        }
+      }
+    }
+
+    return (
+      <MoreActionsMenu menuOptions={menuOptions}>
         <span className={classes.moreActionsBut}>
           {t('table.actions')} <ArrowDropDown />
         </span>
@@ -167,7 +192,9 @@ const ListRoles = () => {
       <Box className={classes.root}>
         <div className={classes.actions}>
           <div className={classes.search}>
-            <div className={classes.title}>{t('rowsCount', { count: roles?.length })}</div>
+            <div className={classes.title} data-testid="roles-count">
+              {t('rowsCount', { count: roles?.length })}
+            </div>
             <YBSearchInput
               placeHolder={t('search')}
               onEnterPressed={(val: string) => setSearchText(val)}
@@ -202,7 +229,7 @@ const ListRoles = () => {
           <TableHeaderColumn
             dataSort
             dataField="description"
-            width="45%"
+            width="35%"
             dataFormat={(desc) => desc ?? '-'}
           >
             {t('table.description')}
@@ -219,6 +246,15 @@ const ListRoles = () => {
             width="10%"
             dataSort
             dataField="users"
+            sortFunc={(a: Role, b: Role, order) => {
+              const aCount = allRoleMapping.filter(
+                (roleMapping) => roleMapping.role.roleUUID === a.roleUUID
+              ).length;
+              const bCount = allRoleMapping.filter(
+                (roleMapping) => roleMapping.role.roleUUID === b.roleUUID
+              ).length;
+              return order === SortOrder.ASCENDING ? aCount - bCount : bCount - aCount;
+            }}
             dataFormat={(_, role: Role) => (
               <>
                 {

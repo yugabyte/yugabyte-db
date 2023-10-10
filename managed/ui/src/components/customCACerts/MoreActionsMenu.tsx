@@ -18,6 +18,7 @@ type MoreOptionsProps = {
     callback: Function;
     className?: string;
     isDivider?: boolean;
+    disabled?: boolean
   }[];
 };
 
@@ -83,6 +84,7 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
                 handleClose();
                 m.callback();
               }}
+              disabled={m.disabled ?? false}
             >
               {m.icon && m.icon}
               {m.text}

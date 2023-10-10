@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useContext } from 'react';
+import { FC, useContext, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
@@ -45,7 +45,9 @@ type DeleteRoleFormProps = {
 };
 
 export const DeleteRoleModal: FC<DeleteRoleProps> = ({ open, onHide }) => {
-  const [{ currentRole }] = (useContext(RoleViewContext) as unknown) as RoleContextMethods;
+  const [{ currentRole }, { setCurrentPage }] = (useContext(
+    RoleViewContext
+  ) as unknown) as RoleContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'rbac.roles.delete'
@@ -57,6 +59,7 @@ export const DeleteRoleModal: FC<DeleteRoleProps> = ({ open, onHide }) => {
     onSuccess: () => {
       toast.success(t('successMsg', { role_name: currentRole?.name }));
       queryClient.invalidateQueries('roles');
+      setCurrentPage('LIST_ROLE');
       onHide();
     },
     onError: (err) => {
@@ -69,8 +72,15 @@ export const DeleteRoleModal: FC<DeleteRoleProps> = ({ open, onHide }) => {
 
   const {
     control,
-    formState: { isValid }
+    formState: { isValid },
+    reset
   } = useForm<DeleteRoleFormProps>();
+
+  useEffect(() => {
+    if (open) {
+      reset();
+    }
+  }, [open]);
 
   return (
     <YBModal

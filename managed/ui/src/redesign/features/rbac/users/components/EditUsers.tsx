@@ -9,7 +9,7 @@
 import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
 
@@ -75,13 +75,16 @@ export const EditUser = () => {
     defaultValues: currentUser ?? {}
   });
 
+  const queryClient = useQueryClient();
+  
   const [showDeleteModal, toggleDeleteModal] = useToggle(false);
 
   const editUser = useMutation(
     () => editUsersRolesBindings(currentUser!.uuid!, methods.getValues()),
     {
       onSuccess() {
-        toast.success('Done');
+        toast.success(t('successMsg', { user_email: currentUser!.email }));
+        queryClient.invalidateQueries('users');
         setCurrentPage('LIST_USER');
       },
       onError: (err) => {

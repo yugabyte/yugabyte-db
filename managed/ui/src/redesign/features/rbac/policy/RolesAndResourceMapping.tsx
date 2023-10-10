@@ -14,7 +14,7 @@ import { useFieldArray, useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { Box, MenuItem, Typography, makeStyles } from '@material-ui/core';
-import { YBButton, YBSelect } from '../../../components';
+import { YBSelect } from '../../../components';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 
 import { getAllRoles } from '../api';
@@ -23,16 +23,15 @@ import { Universe } from '../../../helpers/dtos';
 import { SelectUniverseResource } from './SelectUniverseResource';
 import { RbacUserWithResources } from '../users/interface/Users';
 import { initialMappingValue } from '../users/components/CreateUsers';
+import { ForbiddenRoles, Role } from '../roles';
 
-import { Add } from '@material-ui/icons';
 import { ReactComponent as BulbIcon } from '../../../assets/bulb.svg';
 import { ReactComponent as Close } from '../../../assets/close copy.svg';
 import { YBTabPanel, YBTab, YBTabs } from '../../../components/YBTabs/YBTabs';
-import { Role } from '../roles';
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    marginTop: theme.spacing(2)
+    marginTop: theme.spacing(4)
   },
   mappingsContainer: {
     borderRadius: theme.spacing(1),
@@ -40,7 +39,7 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.ybacolors.backgroundGrayLightest,
     padding: theme.spacing(2),
     paddingBottom: theme.spacing(3),
-    width: '1064px',
+    width: '1080px',
     marginTop: theme.spacing(2)
   },
   mappingRow: {
@@ -52,7 +51,10 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(2)
   },
   roleSelect: {
-    width: '490px'
+    minWidth: '500px',
+    '& .MuiInputBase-formControl': {
+      padding: theme.spacing(1)
+    }
   },
   assignNewRole: {
     color: '#EF5824',
@@ -76,14 +78,15 @@ const useStyles = makeStyles((theme) => ({
   },
   connectOnly: {
     color: '#67666C',
-    width: '1500px'
+    width: '1500px',
+    margin: `${theme.spacing(3)}px 0`
   },
   noUniverses: {
     borderRadius: theme.spacing(1),
     border: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`,
     background: theme.palette.ybacolors.backgroundGrayLight,
     padding: theme.spacing(1.25),
-    width: '1067px',
+    width: '1080px',
     display: 'flex',
     gap: theme.spacing(1.25),
     marginTop: theme.spacing(2)
@@ -101,6 +104,9 @@ const useStyles = makeStyles((theme) => ({
   },
   marginTop: {
     marginTop: theme.spacing(5.25)
+  },
+  title: {
+    marginBottom: theme.spacing(0.8)
   }
 }));
 
@@ -119,12 +125,12 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
   );
   const classes = useStyles();
 
-  const { control, setValue } = useFormContext<RbacUserWithResources>();
+  const { control } = useFormContext<RbacUserWithResources>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'rbac.permissions'
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, update } = useFieldArray({
     control,
     name: 'roleResourceDefinitions'
   });
@@ -136,49 +142,32 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
 
   if (isRoleListLoading || isUniverseListLoading) return <YBLoadingCircleIcon />;
 
-  if (fields.length === 0) {
-    return (
-      <>
-        <div>
-          <Typography variant="body2">{t('userAssignedRole')}</Typography>
-        </div>
-        <div className={classes.connectOnly}>
-          <Trans t={t} i18nKey="connectOnly" components={{ b: <b /> }} />
-        </div>
-
-        <YBButton
-          startIcon={<Add />}
-          size="large"
-          variant="primary"
-          onClick={() => {
-            if (initialMappingValue.roleResourceDefinitions) {
-              append(initialMappingValue!.roleResourceDefinitions);
-            }
-          }}
-          data-testid={`rbac-user-assign-role`}
-        >
-          {t('assignNewRole')}
-        </YBButton>
-      </>
-    );
-  }
+  const ConnectOnly = (
+    <div className={classes.connectOnly}>
+      <Trans t={t} i18nKey="connectOnly" components={{ b: <b /> }} />
+    </div>
+  );
 
   const [BuiltinRoleTab, CustomRoleTab] = fields.reduce(
     (prevValue, field, index) => {
+      const isForbidden =
+        find(ForbiddenRoles, { name: field.role?.name, roleType: field.role?.roleType }) !==
+        undefined;
       const component = (
         <Box key={field.id} className={classes.roleMargin}>
           <div className={classes.mappingRow}>
             <YBSelect
               name={`mappings.${index}.role`}
               className={classes.roleSelect}
-              defaultValue={field.role?.roleUUID}
+              value={field.role?.roleUUID}
               onChange={(e) => {
-                setValue(
-                  `roleResourceDefinitions.${index}.role`,
-                  find(roles, { roleUUID: e.target.value })!
-                );
+                update(index, {
+                  ...field,
+                  role: find(roles, { roleUUID: e.target.value })!
+                });
               }}
               data-testid={`rbac-role-select`}
+              disabled={isForbidden}
             >
               {roles
                 ?.filter((r) => r.roleType === tab)
@@ -187,6 +176,10 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
                     key={role.roleUUID}
                     value={role.roleUUID}
                     data-testid={`rbac-role-select-${role.name}`}
+                    disabled={
+                      find(ForbiddenRoles, { name: role?.name, roleType: role?.roleType }) !==
+                      undefined
+                    }
                   >
                     {role.name}
                   </MenuItem>
@@ -198,14 +191,15 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
                 <SelectUniverseResource universeList={universeList ?? []} fieldIndex={index} />
               </>
             )}
-
-            <span
-              onClick={() => remove(index)}
-              className={classes.removeRoleMapping}
-              data-testid={`rbac-remove-role`}
-            >
-              <Close />
-            </span>
+            {!isForbidden && (
+              <span
+                onClick={() => remove(index)}
+                className={classes.removeRoleMapping}
+                data-testid={`rbac-remove-role`}
+              >
+                <Close />
+              </span>
+            )}
           </div>
         </Box>
       );
@@ -251,7 +245,14 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
         </div>
       )}
       <YBTabPanel value={(tab as unknown) as string} tabIndex={'System' as any}>
+        {ConnectOnly}
         <Box className={classes.mappingsContainer}>
+          {BuiltinRoleTab.length > 0 && (
+            <Typography variant="body2" className={classes.title}>
+              {t('builtInRoleTab')}
+            </Typography>
+          )}
+
           {BuiltinRoleTab.map((p) => p)}
           <div
             className={clsx(classes.assignNewRole, BuiltinRoleTab.length > 0 && classes.marginTop)}
@@ -270,7 +271,13 @@ export const RolesAndResourceMapping: FC<RolesAndResourceMappingProps> = () => {
         </Box>
       </YBTabPanel>
       <YBTabPanel value={(tab as unknown) as string} tabIndex={'Custom' as any}>
+        {ConnectOnly}
         <Box className={classes.mappingsContainer}>
+          {CustomRoleTab.length > 0 && (
+            <Typography variant="body2" className={classes.title}>
+              {t('customRoleTab')}
+            </Typography>
+          )}
           {CustomRoleTab.map((c) => c)}
           <div
             className={clsx(classes.assignNewRole, CustomRoleTab.length > 0 && classes.marginTop)}

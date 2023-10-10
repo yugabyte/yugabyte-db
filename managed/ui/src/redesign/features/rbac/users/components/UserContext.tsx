@@ -8,8 +8,10 @@
  */
 
 import { createContext } from 'react';
+import { browserHistory } from 'react-router';
 import { RbacUserWithResources } from '../interface/Users';
 import { UniverseResource } from '../../policy/IPolicy';
+import { UsersTab } from '../../common/rbac_constants';
 
 export const UserPages = ['CREATE_USER', 'LIST_USER', 'EDIT_USER'] as const;
 export type UserPage = typeof UserPages[number];
@@ -31,13 +33,16 @@ export const defaultUserContext: UserContext<UniverseResource> = {
 export const UserViewContext = createContext<UserContext<UniverseResource>>(defaultUserContext);
 
 export const userMethods = (context: UserContext<UniverseResource>) => ({
-  setCurrentPage: (page: UserPage): UserContext<UniverseResource> => ({
-    ...context,
-    formProps: {
-      ...context.formProps,
-      currentPage: page
-    }
-  }),
+  setCurrentPage: (page: UserPage): UserContext<UniverseResource> => {
+    browserHistory.push(UsersTab);
+    return {
+      ...context,
+      formProps: {
+        ...context.formProps,
+        currentPage: page
+      }
+    };
+  },
   setCurrentUser: (currentUser: RbacUserWithResources | null): UserContext<UniverseResource> => ({
     ...context,
     currentUser

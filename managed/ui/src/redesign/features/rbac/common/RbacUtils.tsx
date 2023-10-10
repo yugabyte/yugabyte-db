@@ -15,9 +15,9 @@ import { Resource } from '../permission';
 
 const useStyles = makeStyles((theme) => ({
   roleType: {
-    borderRadius: theme.spacing(0.5),
+    borderRadius: '6px',
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
-    padding: '2px 6px',
+    padding: '4px 6px',
     '&.custom': {
       border: `1px solid ${theme.palette.primary[300]}`,
       background: theme.palette.primary[200],
@@ -26,24 +26,32 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const RoleTypeComp: FC<{ role: Role }> = ({ role }) => {
+export const RoleTypeComp: FC<{ role: Role; customLabel?: string }> = ({ role, customLabel }) => {
   const classes = useStyles();
   return (
     <span
       className={clsx(classes.roleType, role.roleType === 'Custom' && 'custom')}
       data-testid="rbac-role-type"
     >
-      {role.roleType}
+      {customLabel ?? role.roleType}
     </span>
   );
 };
 
+export const RBAC_RUNTIME_FLAG = 'yb.rbac.use_new_authz';
+
+export const rbac_identifier = 'rbac_enabled';
+
+export const setIsRbacEnabled = (flag: boolean) => {
+  localStorage.setItem(rbac_identifier, flag + '');
+};
+
 export const isRbacEnabled = () => {
-  return Array.isArray((window as any).rbac_permissions);
+  return localStorage.getItem(rbac_identifier) === 'true';
 };
 
 export const clearRbacCreds = () => {
-  delete (window as any).rbac_permissions;
+  localStorage.removeItem(rbac_identifier);
 };
 
 export const resourceOrderByRelevance = [

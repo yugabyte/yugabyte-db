@@ -998,7 +998,13 @@
             "selectPermissionSubText": "Select the permissions you want to include in this role.",
             "permissions": "Permissions",
             "editSelection": "Edit Permissions",
-            "permissionsCount": "{{count}} Permissions"
+            "permissionsCount": "{{count}} Permissions",
+            "validationMsg": {
+              "nameRequired": "Name is required",
+              "descRequired": "Description is required",
+              "permRequired": "Atleast one permission must be selected",
+              "invalidRoleName": "Role should not start or end with whitespace"
+            }
           },
           "successMsg": "\"{{role_name}}\" role was created successfully",
           "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
@@ -1031,12 +1037,21 @@
             "configurations": "Configurations",
             "users": "Users"
           },
-          "title": "Edit Role"
+          "title": "Edit Role",
+          "viewUsers": {
+            "assignedUser": "Assigned users",
+            "noUsersAssgined": "No users assigned with this role"
+          },
+          "confirmModal": {
+            "title": "Are you sure?",
+            "errMsg": "Editing a role with assigned users can have major repercussions on user's ability to access resources.",
+            "editRoleConfirm": "Are you sure you want to continue with the changes?"
+          }
         }
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "<b>'Connect Only'</b> role is automatically assigned to users without a role, restricting access to login and view their own profile page.",
+        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
@@ -1049,9 +1064,12 @@
         "selectPermissionModal": {
           "title": "Select Permissions",
           "resourceManagement": "{{resource}} Management",
+          "otherResource": "Other Resources",
+          "selectAllOtherPermissions": "Select All Other Resource Permissions",
           "selectAllPermissions": "Select All {{resource}} Management Permissions",
           "selectionCount": "{{count}} / {{total}} Selected",
-          "universePrimaryAndReplica": "(Primary Uninverse and Read Replica)"
+          "universePrimaryAndReplica": "(Primary Universe and Read Replica)",
+          "universePrimaryAndReplica2":"Universes (Primary and Read)"
         }
       },
       "users": {
@@ -1062,12 +1080,21 @@
             "emailPlaceholder": "Add email",
             "password": "Password",
             "confirmPassword": "Confirm Password",
-            "successMsg": "\"{{user_email}}\" user created successfully"
+            "successMsg": "\"{{user_email}}\" user created successfully",
+            "validationMsg": {
+              "emailRequired": "Email is required",
+              "invalidEmail": "Invalid email",
+              "passwordRequired": "Password is required",
+              "confirmPasswordRequired": "Confirm Password is required",
+              "confirmPasswordMatch": "Passwords should match",
+              "roleRequired": "Atleast one role must be assigned"
+            }
           }
         },
         "edit": {
           "title": "Edit User",
-          "delete": "Delete User"
+          "delete": "Delete User",
+          "successMsg": "\"{{user_email}}\" user is edited successfully"
         },
         "delete": {
           "title": "Delete User",
@@ -1077,9 +1104,12 @@
         "list": {
           "rowsCount": "{{count}} Users",
           "createUser": "Create User",
-          "search": "search by user email",
+          "search": "Search by user email",
           "table": {
             "email": "User Email",
+            "role": "Role",
+            "moreRoles": "+ {{count}} More",
+            "connectOnly":"Connect Only (Default)",
             "createdAt": "Created At",
             "actions": "Actions",
             "moreActions": {

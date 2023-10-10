@@ -50,8 +50,8 @@ const useStyle = makeStyles((theme) => ({
   noRole: {
     border: `1px dashed ${theme.palette.primary[300]}`,
     background: theme.palette.primary[100],
-    padding: `${theme.spacing(1.5)}px ${theme.spacing(2)}px`,
-    width: '454px',
+    padding: `8px 16px`,
+    minWidth: '458px',
     height: '42px',
     borderRadius: theme.spacing(1),
     color: '#67666C'

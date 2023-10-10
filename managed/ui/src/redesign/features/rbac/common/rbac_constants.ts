@@ -25,3 +25,5 @@ export type UserPermission = {
   resourceUUID?: string;
   actions: ActionType[];
 };
+
+export const UsersTab = `/admin/rbac?tab=users`;
