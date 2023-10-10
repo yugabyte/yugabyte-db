@@ -817,7 +817,7 @@ main(int argc, char **argv)
 	 * DEPRECATED: Custom YB-Master host/port to use.
 	 */
 	if (dopt.master_hosts)
-		pg_log_info("WARNING: ignoring the deprecated argument --masters (-m)\n");
+		pg_log_info("WARNING: ignoring the deprecated argument --masters (-m)");
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -18981,7 +18981,7 @@ queryDatabaseData(Archive *fout, PQExpBuffer dbQry)
 static Oid
 getDatabaseOid(Archive *fout)
 {
-	pg_log_info("reading database id\n");
+	pg_log_info("reading database id");
 
 	PQExpBuffer dbQry = createPQExpBuffer();
 	PGresult* res = queryDatabaseData(fout, dbQry);
