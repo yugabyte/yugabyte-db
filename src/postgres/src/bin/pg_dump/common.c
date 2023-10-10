@@ -187,7 +187,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 
 #ifdef YB_TODO
 	/* Need rework to match Pg15 */
-	pg_log_info("reading user-defined tablegroups\n");
+	pg_log_info("reading user-defined tablegroups");
 	tblgrpinfo = getTablegroups(fout, &numTablegroups);
 	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
 #endif
